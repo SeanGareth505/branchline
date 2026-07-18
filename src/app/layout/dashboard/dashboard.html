@@ -1,0 +1,270 @@
+<section class="dash">
+  <div class="atmosphere" aria-hidden="true">
+    <svg class="branch-art" viewBox="0 0 720 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        class="lane lane-a"
+        d="M72 40v88c0 18 12 30 30 30h168"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+      <path
+        class="lane lane-b"
+        d="M72 128v92"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+      <path
+        class="lane lane-c"
+        d="M270 158h140c18 0 30 12 30 30v52"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+      />
+      <circle class="node n1" cx="72" cy="40" r="5" />
+      <circle class="node n2" cx="270" cy="158" r="5" />
+      <circle class="node n3" cx="72" cy="220" r="5" />
+      <circle class="node n4" cx="440" cy="240" r="5" />
+    </svg>
+  </div>
+
+  <header class="hero">
+    <div class="hero-brand">
+      <app-brand-mark [size]="48" />
+      <h1>Repos</h1>
+    </div>
+    <p class="lead">
+      @if (store.isDummyBackend) {
+        Browser preview with <strong>DUMMY DATA</strong>. Open a real folder in the desktop app to use live Git.
+      } @else {
+        {{ greeting() }}. Open a local repo, clone from remote, or pick up where you left off.
+      }
+    </p>
+
+    <div class="toolbar">
+      <div class="actions">
+        <button type="button" class="tool primary" (click)="openFolder()">
+          <ng-icon name="lucideFolderOpen" size="16" />
+          Open
+        </button>
+        <button type="button" class="tool" (click)="store.openCloneDialog()">
+          <ng-icon name="lucideDownload" size="16" />
+          Clone
+        </button>
+        <button type="button" class="tool" (click)="initRepo()">
+          <ng-icon name="lucideFolderGit2" size="16" />
+          Init
+        </button>
+        <button type="button" class="tool" (click)="store.openSettings('connections')" title="Connect GitHub, GitLab, Jira…">
+          <ng-icon name="lucideLink" size="16" />
+          Connect
+        </button>
+      </div>
+      <div class="search">
+        <ng-icon name="lucideSearch" size="15" />
+        <input
+          type="search"
+          placeholder="Search by name or path…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          aria-label="Search repositories"
+        />
+        @if (query()) {
+          <kbd class="count">{{ filteredCount() }}</kbd>
+        } @else if (totalCount() > 0) {
+          <kbd class="count">{{ totalCount() }}</kbd>
+        }
+      </div>
+    </div>
+
+    @if (store.repos().length > 0) {
+      <div class="library-controls">
+        <div class="sort-tabs" role="group" aria-label="Sort repositories">
+          <button
+            type="button"
+            [class.active]="sortMode() === 'recent'"
+            (click)="setSort('recent')"
+          >
+            Recent
+          </button>
+          <button type="button" [class.active]="sortMode() === 'name'" (click)="setSort('name')">
+            Name
+          </button>
+        </div>
+        @if (groups().length > 1) {
+          <div class="fold-actions">
+            <button type="button" class="text-btn" (click)="expandAll()">Expand all</button>
+            <button type="button" class="text-btn" (click)="collapseAll()">Collapse all</button>
+          </div>
+        }
+      </div>
+    }
+  </header>
+
+  @if (continueRepo(); as last) {
+    <div class="resume-row">
+      <button type="button" class="resume" (click)="store.openRepo(last.path)">
+        <span class="resume-label">
+          @if (store.currentRepo()?.path === last.path) {
+            Connected
+          } @else {
+            Continue
+          }
+        </span>
+        <span class="resume-name">{{ last.name }}</span>
+        <span class="path">{{ last.path }}</span>
+        <span class="resume-meta">
+          {{ relativeTime(last.lastOpenedAt) }}
+          <ng-icon name="lucideChevronRight" size="16" />
+        </span>
+      </button>
+      @if (store.currentRepo()?.path === last.path) {
+        <button
+          type="button"
+          class="disconnect"
+          title="Disconnect"
+          aria-label="Disconnect repository"
+          (click)="store.closeRepo()"
+        >
+          <ng-icon name="lucideUnplug" size="16" />
+        </button>
+      }
+    </div>
+  }
+
+  @if (store.repos().length === 0) {
+    <div class="empty-wrap">
+      <app-empty-state
+        title="No repositories yet"
+        message="Open a local folder or clone a remote to start browsing history."
+        ctaLabel="Open repository"
+        (cta)="openFolder()"
+      />
+    </div>
+  } @else if (filteredCount() === 0) {
+    <div class="no-match">
+      <p>No repositories match “{{ query() }}”.</p>
+      <button type="button" class="bl-btn" (click)="query.set('')">Clear search</button>
+    </div>
+  } @else {
+    @if (pinned().length) {
+      <section class="library">
+        <div class="library-head">
+          <h2>Pinned</h2>
+          <span>{{ pinned().length }}</span>
+        </div>
+        <ul class="repo-list">
+          @for (repo of pinned(); track repo.path; let i = $index) {
+            <li [style.--i]="i">
+              <button type="button" class="repo" (click)="store.openRepo(repo.path)">
+                <span class="repo-glyph" aria-hidden="true">
+                  <ng-icon name="lucidePin" size="14" />
+                </span>
+                <span class="repo-copy">
+                  <strong>
+                    {{ repo.name }}
+                    @if (store.isDummyBackend || store.isDummyRepoPath(repo.path)) {
+                      <em class="dummy-chip">DUMMY</em>
+                    }
+                  </strong>
+                  <span class="path">{{ repo.path }}</span>
+                </span>
+                <span class="repo-time">{{ relativeTime(repo.lastOpenedAt) }}</span>
+              </button>
+              <button
+                type="button"
+                class="pin pinned"
+                (click)="store.pinRepo(repo.path, false)"
+                aria-label="Unpin repository"
+                title="Unpin repository"
+              >
+                <ng-icon name="lucidePin" size="14" />
+              </button>
+              <button
+                type="button"
+                class="pin remove"
+                (click)="store.removeRepo(repo.path)"
+                aria-label="Remove from recent"
+                title="Remove from recent"
+              >
+                <ng-icon name="lucideTrash2" size="14" />
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @for (group of groups(); track group.key) {
+      <section class="library folder-group">
+        <button
+          type="button"
+          class="folder-head"
+          [attr.aria-expanded]="!isGroupCollapsed(group.key)"
+          (click)="toggleGroup(group.key)"
+          [title]="group.key"
+        >
+          <ng-icon
+            [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
+            size="14"
+          />
+          <ng-icon
+            [name]="isGroupCollapsed(group.key) ? 'lucideFolder' : 'lucideFolderOpen'"
+            size="14"
+          />
+          <h2>{{ group.label }}</h2>
+          <span>{{ group.repos.length }}</span>
+        </button>
+        @if (!isGroupCollapsed(group.key)) {
+          <ul class="repo-list">
+            @for (repo of group.repos; track repo.path; let i = $index) {
+              <li [style.--i]="i">
+                <button type="button" class="repo" (click)="store.openRepo(repo.path)">
+                  <span class="repo-glyph" aria-hidden="true">
+                    <ng-icon name="lucideFolderGit2" size="14" />
+                  </span>
+                  <span class="repo-copy">
+                    <strong>
+                      {{ repo.name }}
+                      @if (store.isDummyBackend || store.isDummyRepoPath(repo.path)) {
+                        <em class="dummy-chip">DUMMY</em>
+                      }
+                      @if (repo.isLast) {
+                        <em class="bl-chip">Last</em>
+                      }
+                    </strong>
+                    <span class="path">{{ repo.path }}</span>
+                  </span>
+                  <span class="repo-time">{{ relativeTime(repo.lastOpenedAt) }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="pin"
+                  (click)="store.pinRepo(repo.path, true)"
+                  aria-label="Pin repository"
+                  title="Pin repository"
+                >
+                  <ng-icon name="lucidePin" size="14" />
+                </button>
+                <button
+                  type="button"
+                  class="pin remove"
+                  (click)="store.removeRepo(repo.path)"
+                  aria-label="Remove from recent"
+                  title="Remove from recent"
+                >
+                  <ng-icon name="lucideTrash2" size="14" />
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
+
+    @if (!pinned().length && !groups().length) {
+      <p class="muted">No other repositories to show.</p>
+    }
+  }
+</section>

@@ -1,0 +1,128 @@
+@if (open()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="workflow-editor-title"
+    >
+      <header>
+        <div class="copy">
+          <p class="eyebrow">Automation</p>
+          <h2 id="workflow-editor-title">{{ title() }}</h2>
+          <p>Name it, click steps to add them, then save. Run anytime from Automation.</p>
+        </div>
+        <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <div class="fields">
+        <label class="field">
+          <span>Name</span>
+          <input
+            type="text"
+            [ngModel]="name()"
+            (ngModelChange)="name.set($event)"
+            placeholder="e.g. Morning sync"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="field">
+          <span>Description <em>optional</em></span>
+          <input
+            type="text"
+            [ngModel]="description()"
+            (ngModelChange)="description.set($event)"
+            placeholder="What this workflow does"
+            autocomplete="off"
+          />
+        </label>
+      </div>
+
+      <section class="block">
+        <div class="block-head">
+          <h3>Add steps</h3>
+          <p>Click to append — order is top to bottom when you run.</p>
+        </div>
+        <div class="catalog">
+          @for (step of catalog; track step.id) {
+            <button
+              type="button"
+              class="catalog-item"
+              (click)="addStep(step.id)"
+              [title]="step.hint"
+            >
+              <span class="cat-label">{{ step.label }}</span>
+              <ng-icon name="lucidePlus" size="14" />
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
+          <h3>Sequence</h3>
+          <p>{{ steps().length }} step{{ steps().length === 1 ? '' : 's' }}</p>
+        </div>
+        @if (steps().length === 0) {
+          <div class="empty">Pick steps above to build your workflow.</div>
+        } @else {
+          <ol class="sequence">
+            @for (id of steps(); track $index; let i = $index) {
+              <li>
+                <span class="num">{{ i + 1 }}</span>
+                <span class="label">{{ stepLabel(id) }}</span>
+                <div class="row-actions">
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    (click)="moveStep(i, -1)"
+                    [disabled]="i === 0"
+                    title="Move up"
+                    aria-label="Move up"
+                  >
+                    <ng-icon name="lucideArrowUp" size="14" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    (click)="moveStep(i, 1)"
+                    [disabled]="i === steps().length - 1"
+                    title="Move down"
+                    aria-label="Move down"
+                  >
+                    <ng-icon name="lucideArrowDown" size="14" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-btn danger"
+                    (click)="removeStep(i)"
+                    title="Remove step"
+                    aria-label="Remove step"
+                  >
+                    <ng-icon name="lucideTrash2" size="14" />
+                  </button>
+                </div>
+              </li>
+            }
+          </ol>
+        }
+      </section>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSave()"
+          (click)="save()"
+        >
+          {{ busy() ? 'Saving…' : isEdit() ? 'Save changes' : 'Create workflow' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

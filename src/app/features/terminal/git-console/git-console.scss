@@ -1,0 +1,69 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.console {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg-base) 92%, #000);
+  color: var(--text-secondary);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.quick {
+  display: flex;
+  gap: 0.25rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+pre {
+  margin: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+pre span {
+  display: block;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.65rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.prompt,
+.git {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.input-row input {
+  flex: 1;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  border-radius: var(--radius-control);
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+}

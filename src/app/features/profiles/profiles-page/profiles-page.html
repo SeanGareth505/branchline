@@ -1,0 +1,44 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <p class="kicker">Identity</p>
+      <h1>Profiles</h1>
+      <p>Switch Git author identity by repository context.</p>
+    </div>
+    <div class="count">
+      <strong>{{ profiles().length }}</strong>
+      profiles
+    </div>
+  </header>
+
+  <div class="grid">
+    @for (p of profiles(); track p.id) {
+      <article class="card">
+        <div class="card-top">
+          <div class="identity">
+            <span class="icon" [attr.data-kind]="p.kind">
+              <ng-icon name="lucideUser" size="18" />
+            </span>
+            <div>
+              <div class="title-row">
+                <h2>{{ p.name }}</h2>
+                <span class="bl-chip">{{ p.kind }}</span>
+              </div>
+              <p class="email">
+                <ng-icon name="lucideMail" size="13" />
+                {{ p.email }}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="bl-btn action"
+            title="Apply this profile to the open repository"
+          >
+            Use
+          </button>
+        </div>
+      </article>
+    }
+  </div>
+</section>

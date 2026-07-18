@@ -1,0 +1,100 @@
+:host {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0.05rem 0;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 11rem;
+  min-width: 0;
+  height: 1.85rem;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.tab.active {
+  background: color-mix(in srgb, var(--accent-muted) 70%, var(--bg-active));
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
+}
+
+.tab-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0 0.2rem 0 0.45rem;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  cursor: pointer;
+}
+
+.tab-main ng-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.tab.active .tab-main ng-icon {
+  color: var(--accent);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tab:hover .close,
+.tab.active .close,
+.tab:focus-within .close {
+  opacity: 1;
+}
+
+.close:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 90%, transparent);
+}

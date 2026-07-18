@@ -1,0 +1,59 @@
+<div class="diff">
+  <header>
+    <div class="meta">
+      <span class="source-chip" [attr.data-source]="store.diffSource()">{{ sourceLabel() }}</span>
+      <div class="files">
+        @for (f of files(); track f.path) {
+          <button
+            type="button"
+            class="bl-chip file-chip"
+            [class.on]="store.selectedDiffPath() === f.path"
+            (click)="selectFile(f.path)"
+            [title]="f.path"
+          >
+            {{ f.path }}
+          </button>
+        }
+      </div>
+    </div>
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="toggleSideBySide()"
+      [title]="
+        sideBySide()
+          ? 'Switch to unified diff (line select enabled)'
+          : 'Switch to side-by-side diff'
+      "
+    >
+      {{ sideBySide() ? 'Unified' : 'Side by side' }}
+    </button>
+  </header>
+
+  @if (loading() && !patch()) {
+    <p class="empty">Loading diff…</p>
+  } @else if (!patch()) {
+    <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
+  } @else if (sideBySide()) {
+    <div class="split mono">
+      <pre>
+@for (line of splitPairs().left; track $index) {
+<span [class.add]="line.startsWith('+')" [class.del]="line.startsWith('-')">{{ line || ' ' }}</span>
+}
+      </pre>
+      <pre>
+@for (line of splitPairs().right; track $index) {
+<span [class.add]="line.startsWith('+')" [class.del]="line.startsWith('-')">{{ line || ' ' }}</span>
+}
+      </pre>
+    </div>
+    <p class="hint">Switch to Unified to highlight and reset lines.</p>
+  } @else {
+    <app-patch-lines-view
+      [patch]="patch()"
+      [mode]="linesMode()"
+      emptyMessage="No changes in this diff."
+      (applied)="onApplied()"
+    />
+  }
+</div>

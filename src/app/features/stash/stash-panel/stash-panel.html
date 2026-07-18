@@ -1,0 +1,82 @@
+<section class="group kind-stash" [class.collapsed]="!open()">
+  <div class="group-head-row">
+    <button
+      type="button"
+      class="group-head"
+      (click)="toggle($event)"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon class="chev" [name]="chevron()" size="13" />
+      <span class="kind">Stash</span>
+      <span class="count">{{ filtered().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="startStash($event)"
+      aria-label="Stash working tree changes"
+      title="Stash working tree changes"
+    >
+      <ng-icon name="lucidePlus" size="11" />
+    </button>
+  </div>
+
+  @if (open()) {
+    @if (drafting()) {
+      <div class="create">
+        <input
+          [ngModel]="message()"
+          (ngModelChange)="message.set($event)"
+          placeholder="Optional message"
+          (keydown.enter)="push()"
+        />
+        <div class="row">
+          <button type="button" class="bl-btn bl-btn-primary" (click)="push()">Stash</button>
+          <button type="button" class="bl-btn" (click)="drafting.set(false)">Cancel</button>
+        </div>
+      </div>
+    }
+
+    <ul class="card-list">
+      @for (s of filtered(); track s.id) {
+        <li>
+          <div class="meta">
+            <div class="title-row">
+              <ng-icon name="lucideArchive" size="12" />
+              <span class="mono">{{ s.id }}</span>
+            </div>
+            <span class="msg" [title]="s.message">{{ s.message }}</span>
+          </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="link"
+              (click)="store.stashApply(s.index)"
+              title="Apply stash without removing it"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              class="link"
+              (click)="store.stashPop(s.index)"
+              title="Apply stash and remove it from the list"
+            >
+              Pop
+            </button>
+            <button
+              type="button"
+              class="link danger"
+              (click)="store.stashDrop(s.index)"
+              title="Delete this stash"
+            >
+              Drop
+            </button>
+          </div>
+        </li>
+      } @empty {
+        <li class="empty-row">No stashes</li>
+      }
+    </ul>
+  }
+</section>

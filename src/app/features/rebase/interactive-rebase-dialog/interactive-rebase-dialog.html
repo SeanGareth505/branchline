@@ -1,0 +1,79 @@
+@if (store.interactiveRebaseOpen() && store.interactiveRebase(); as preview) {
+  <div class="backdrop" (click)="store.closeInteractiveRebase()">
+    <div class="dialog bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <header>
+        <div>
+          <h2>Interactive rebase</h2>
+          <p>
+            Onto <span class="mono">{{ preview.ontoShort }}</span>
+            · {{ store.interactiveRebaseSteps().length }} commits
+          </p>
+        </div>
+        <button type="button" class="bl-btn" (click)="store.closeInteractiveRebase()" aria-label="Close">
+          <ng-icon name="lucideX" size="14" />
+        </button>
+      </header>
+
+      <p class="hint">Reorder commits and choose pick, reword, squash, fixup, edit, or drop — same as <code>git rebase -i</code>.</p>
+
+      <ul class="steps">
+        @for (step of store.interactiveRebaseSteps(); track step.sha; let i = $index) {
+          <li [attr.data-action]="step.action">
+            <div class="order">
+              <button
+                type="button"
+                class="icon"
+                [disabled]="i === 0"
+                (click)="store.moveRebaseStep(step.sha, -1)"
+                title="Move up"
+                aria-label="Move up"
+              >
+                <ng-icon name="lucideChevronDown" size="12" class="flip" />
+              </button>
+              <button
+                type="button"
+                class="icon"
+                [disabled]="i === store.interactiveRebaseSteps().length - 1"
+                (click)="store.moveRebaseStep(step.sha, 1)"
+                title="Move down"
+                aria-label="Move down"
+              >
+                <ng-icon name="lucideChevronDown" size="12" />
+              </button>
+            </div>
+            <select
+              [ngModel]="step.action"
+              (ngModelChange)="setAction(step.sha, $event)"
+              [attr.aria-label]="'Action for ' + step.shortSha"
+            >
+              @for (a of actions; track a.id) {
+                <option [value]="a.id">{{ a.label }}</option>
+              }
+            </select>
+            <span class="mono">{{ step.shortSha }}</span>
+            <div class="body">
+              @if (step.action === 'reword') {
+                <input
+                  type="text"
+                  [ngModel]="step.message"
+                  (ngModelChange)="store.setRebaseStepMessage(step.sha, $event)"
+                  [attr.aria-label]="'New message for ' + step.shortSha"
+                />
+              } @else {
+                <span class="subject" [class.drop]="step.action === 'drop'">{{ step.subject }}</span>
+              }
+              <span class="author">{{ step.author }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="store.closeInteractiveRebase()">Cancel</button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="store.applyInteractiveRebase()">
+          Start rebase
+        </button>
+      </footer>
+    </div>
+  </div>
+}

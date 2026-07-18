@@ -1,0 +1,13 @@
+@if (store.toast(); as toast) {
+  <div class="host">
+    @for (t of [toast]; track t.id) {
+      <app-undo-toast
+        [message]="t.message"
+        [kind]="t.kind"
+        [canUndo]="!!t.undo"
+        (undo)="store.runUndoFromToast()"
+        (dismiss)="store.dismissToast()"
+      />
+    }
+  </div>
+}

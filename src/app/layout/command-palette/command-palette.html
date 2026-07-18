@@ -1,0 +1,28 @@
+@if (store.paletteOpen()) {
+  <div class="backdrop" (click)="close()">
+    <div class="palette bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog">
+      <div class="search-row">
+        <ng-icon name="lucideSearch" size="16" />
+        <input
+          type="search"
+          placeholder="Search actions, repos, commits…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          autofocus
+        />
+      </div>
+      <ul>
+        @for (item of results(); track item.id) {
+          <li>
+            <button type="button" (click)="run(item)">
+              <span class="group">{{ item.group }}</span>
+              <span>{{ item.label }}</span>
+            </button>
+          </li>
+        } @empty {
+          <li class="empty">No matches</li>
+        }
+      </ul>
+    </div>
+  </div>
+}

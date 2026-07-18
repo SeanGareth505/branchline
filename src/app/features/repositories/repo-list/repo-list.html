@@ -1,0 +1,10 @@
+<ul class="repos">
+  @for (repo of store.repos(); track repo.path) {
+    <li>
+      <button type="button" (click)="store.openRepo(repo.path)">
+        <strong>{{ repo.name }}</strong>
+        <span>{{ repo.path }}</span>
+      </button>
+    </li>
+  }
+</ul>

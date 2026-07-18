@@ -1,0 +1,63 @@
+@if (prompts.request(); as prompt) {
+  <div class="backdrop" (click)="cancel()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'prompt-title'"
+    >
+      <header>
+        <div class="copy">
+          <h2 id="prompt-title">{{ prompt.title }}</h2>
+          @if (prompt.message) {
+            <p>{{ prompt.message }}</p>
+          }
+        </div>
+        <button type="button" class="bl-btn icon" (click)="cancel()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <label class="field">
+        <span>{{ prompt.label || 'Value' }}</span>
+        @if (prompt.multiline) {
+          <textarea
+            #field
+            rows="4"
+            [class.mono]="prompt.mono"
+            [placeholder]="prompt.placeholder || ''"
+            [ngModel]="value()"
+            (ngModelChange)="value.set($event)"
+          ></textarea>
+        } @else {
+          <input
+            #field
+            type="text"
+            [class.mono]="prompt.mono"
+            [placeholder]="prompt.placeholder || ''"
+            [ngModel]="value()"
+            (ngModelChange)="value.set($event)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        }
+      </label>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="cancel()">
+          {{ prompt.cancelLabel || 'Cancel' }}
+        </button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ prompt.confirmLabel || 'Continue' }}
+          <span class="kbd">{{ prompt.multiline ? '⌘↵' : '↵' }}</span>
+        </button>
+      </footer>
+    </div>
+  </div>
+}

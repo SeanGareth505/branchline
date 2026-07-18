@@ -1,0 +1,295 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem 1.5rem;
+  min-height: 100%;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hero p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  max-width: 42rem;
+  line-height: 1.4;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.dummy-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--git-modified) 35%, transparent);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stats strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.stats .accent strong {
+  color: var(--accent);
+}
+
+.stats .ok strong {
+  color: var(--git-added);
+}
+
+.active-key {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.jql-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+}
+
+.jql-bar label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.jql-bar input {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: 7px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+}
+
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 12rem;
+  min-width: 10rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 7px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  outline: none;
+  min-width: 0;
+}
+
+.filters select {
+  padding: 0.35rem 0.45rem;
+  border-radius: 7px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+}
+
+.card.active {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--glass-bg-soft));
+}
+
+.card-main h2 {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.status {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.status[data-status='In Progress'],
+.status[data-status='In progress'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.status[data-status='Done'],
+.status[data-status='Resolved'] {
+  color: var(--git-added);
+  border-color: color-mix(in srgb, var(--git-added) 35%, transparent);
+  background: color-mix(in srgb, var(--git-added) 12%, transparent);
+}
+
+.prio {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.prio[data-priority='High'],
+.prio[data-priority='Highest'] {
+  color: var(--git-deleted);
+  font-weight: 650;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  opacity: 0.7;
+}
+
+.label {
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--glass-border);
+  font-size: 10.5px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.transitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--glass-border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.transitions em {
+  font-style: normal;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+}
+
+.empty {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.empty.error {
+  color: var(--git-deleted);
+}

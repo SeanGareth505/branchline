@@ -1,0 +1,116 @@
+:host {
+  display: contents;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: color-mix(in srgb, #020617 52%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.dialog {
+  width: min(440px, 96vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.1rem 1.15rem 1rem;
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+  animation: dialog-in 180ms var(--ease-out, ease-out);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: -0.03em;
+}
+
+header p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dest {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-control);
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dest code {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  word-break: break-all;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  padding-top: 0.15rem;
+}

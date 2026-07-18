@@ -1,0 +1,97 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.browse {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  background: color-mix(in srgb, var(--lane-2) 14%, var(--glass-bg-soft));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: inset 3px 0 0 var(--lane-2);
+  font-size: 12px;
+}
+
+.split {
+  flex: 1;
+  min-height: 0;
+}
+
+.nested {
+  height: 100%;
+}
+
+.bottom {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--glass-bg-soft);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  border-top: 1px solid var(--glass-border);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.3rem 0.5rem 0;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
+}
+
+.tabs button {
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.tabs button:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+}
+
+.tabs button.active {
+  background: color-mix(in srgb, var(--accent-muted) 55%, var(--glass-bg-strong));
+  color: var(--text-primary);
+  border-color: var(--glass-border);
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
+}
+
+.tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

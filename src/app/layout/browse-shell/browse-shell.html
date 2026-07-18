@@ -1,0 +1,87 @@
+<div class="browse">
+  @if (store.status()?.conflicted?.length) {
+    <app-conflict-banner />
+  }
+
+  @if (store.compareSha(); as compare) {
+    <div class="compare-bar">
+      Comparing selection ↔ <span class="mono">{{ compare.slice(0, 7) }}</span>
+      <button type="button" class="bl-btn" (click)="store.compareSha.set(null)">Clear</button>
+    </div>
+  }
+
+  <as-split
+    class="split"
+    [direction]="'horizontal'"
+    [gutterSize]="4"
+    (dragEnd)="onMainSplit($event.sizes)"
+  >
+    <as-split-area [size]="store.splitMain()[0]" [minSize]="10">
+      <app-refs-panel />
+    </as-split-area>
+    <as-split-area [size]="store.splitMain()[1]" [minSize]="40">
+      <as-split
+        [direction]="'vertical'"
+        [gutterSize]="4"
+        class="split nested"
+        (dragEnd)="onNestedSplit($event.sizes)"
+      >
+        <as-split-area [size]="store.splitNested()[0]" [minSize]="30">
+          <app-revision-grid />
+        </as-split-area>
+        <as-split-area [size]="store.splitNested()[1]" [minSize]="18">
+          <div class="bottom">
+            <div class="tabs">
+              <button type="button" [class.active]="store.browseTab() === 'commit'" (click)="setTab('commit')">
+                Commit info
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'diff'" (click)="setTab('diff')">
+                Diff
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'files'" (click)="setTab('files')">
+                File tree
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'blame'" (click)="setTab('blame')">
+                Blame
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'history'" (click)="setTab('history')">
+                File history
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'reflog'" (click)="setTab('reflog')">
+                Reflog
+              </button>
+              <button type="button" [class.active]="store.browseTab() === 'console'" (click)="setTab('console')">
+                Console
+              </button>
+            </div>
+            <div class="tab-body">
+              @switch (store.browseTab()) {
+                @case ('commit') {
+                  <app-commit-panel />
+                }
+                @case ('diff') {
+                  <app-diff-viewer />
+                }
+                @case ('files') {
+                  <app-file-tree-panel />
+                }
+                @case ('blame') {
+                  <app-blame-view />
+                }
+                @case ('history') {
+                  <app-file-history-panel />
+                }
+                @case ('reflog') {
+                  <app-reflog-panel />
+                }
+                @case ('console') {
+                  <app-git-console />
+                }
+              }
+            </div>
+          </div>
+        </as-split-area>
+      </as-split>
+    </as-split-area>
+  </as-split>
+</div>

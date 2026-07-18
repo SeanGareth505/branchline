@@ -1,0 +1,254 @@
+<div class="switcher">
+  <button
+    type="button"
+    class="trigger"
+    cdkOverlayOrigin
+    #origin="cdkOverlayOrigin"
+    [attr.aria-expanded]="menuOpen()"
+    aria-haspopup="menu"
+    aria-label="Open or switch repositories"
+    [title]="triggerTitle()"
+    (click)="toggle()"
+  >
+    <ng-icon name="lucideFolderGit2" size="13" />
+    <span class="label">{{ triggerLabel() }}</span>
+    <ng-icon name="lucideChevronsUpDown" size="12" class="chevron" />
+  </button>
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="origin"
+    [cdkConnectedOverlayOpen]="menuOpen()"
+    [cdkConnectedOverlayPositions]="menuPositions"
+    [cdkConnectedOverlayPush]="true"
+    [cdkConnectedOverlayWidth]="440"
+    (overlayOutsideClick)="close()"
+  >
+    <div class="panel bl-glass-dialog" role="menu">
+      @if (store.currentRepo(); as repo) {
+        <div class="current">
+          <button type="button" class="current-main" (click)="goBrowse()" title="Open in Browse">
+            <span class="eyebrow">Connected</span>
+            <strong>{{ repo.name }}</strong>
+            <span class="path" [title]="repo.path">{{ repo.path }}</span>
+          </button>
+          <button
+            type="button"
+            class="icon-btn disconnect"
+            title="Disconnect"
+            aria-label="Disconnect"
+            (click)="disconnect()"
+          >
+            <ng-icon name="lucideUnplug" size="14" />
+          </button>
+        </div>
+      } @else {
+        <div class="idle">
+          <strong>No project</strong>
+          <span>Search, open a folder, or clone a repo</span>
+        </div>
+      }
+
+      <div class="actions">
+        <button type="button" role="menuitem" (click)="openFolder()" title="Open local repository">
+          <ng-icon name="lucideFolderOpen" size="14" />
+          Open
+        </button>
+        <button type="button" role="menuitem" (click)="startClone()" title="Clone from URL">
+          <ng-icon name="lucideDownload" size="14" />
+          Clone
+        </button>
+        <button type="button" role="menuitem" (click)="initRepo()" title="Initialize new repository">
+          <ng-icon name="lucidePlus" size="14" />
+          Init
+        </button>
+      </div>
+
+      <div class="search">
+        <ng-icon name="lucideSearch" size="14" />
+        <input
+          #searchInput
+          type="search"
+          placeholder="Search repositories…"
+          [ngModel]="filter()"
+          (ngModelChange)="onFilterChange($event)"
+          (keydown)="onSearchKeydown($event)"
+          (click)="$event.stopPropagation()"
+          aria-label="Search repositories"
+        />
+        @if (filter()) {
+          <kbd class="count">
+            {{ tab() === 'local' ? localCount() : hostCount() }}
+          </kbd>
+        }
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          [class.active]="tab() === 'local'"
+          [attr.aria-selected]="tab() === 'local'"
+          (click)="setTab('local')"
+        >
+          Local
+          <span class="tab-count">{{ store.repos().length }}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          [class.active]="tab() === 'remote'"
+          [attr.aria-selected]="tab() === 'remote'"
+          [disabled]="!signedIn()"
+          (click)="setTab('remote')"
+        >
+          Remote
+          @if (signedIn()) {
+            <span class="tab-count">{{ store.hostRepos().length }}</span>
+          }
+        </button>
+      </div>
+
+      <div class="list-scroll">
+        @if (tab() === 'local') {
+          @if (!store.repos().length) {
+            <p class="empty">No local repositories yet. Open or clone one.</p>
+          } @else if (!localGroups().length) {
+            <p class="empty">No matches for “{{ filter() }}”</p>
+          } @else {
+            @for (group of localGroups(); track group.key) {
+              <div class="group">
+                <button
+                  type="button"
+                  class="group-head"
+                  [attr.aria-expanded]="!isGroupCollapsed(group.key)"
+                  (click)="toggleGroup(group.key, $event)"
+                  [title]="group.key"
+                >
+                  <ng-icon
+                    [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
+                    size="12"
+                  />
+                  <ng-icon name="lucideFolder" size="12" />
+                  <span class="group-label">{{ group.label }}</span>
+                  <span class="group-count">{{ group.repos.length }}</span>
+                </button>
+                @if (!isGroupCollapsed(group.key)) {
+                  <ul>
+                    @for (repo of group.repos; track repo.path) {
+                      <li [class.active]="isActiveLocal(repo.path)">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          (mouseenter)="setActiveLocal(repo.path)"
+                          (click)="switchTo(repo.path)"
+                        >
+                          <ng-icon [name]="repo.pinned ? 'lucidePin' : 'lucideFolderGit2'" size="12" />
+                          <span>
+                            <strong>{{ repo.name }}</strong>
+                            <em class="path">{{ repo.path }}</em>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          class="row-action pin"
+                          [class.on]="repo.pinned"
+                          [title]="repo.pinned ? 'Unpin' : 'Pin'"
+                          [attr.aria-label]="repo.pinned ? 'Unpin' : 'Pin'"
+                          (click)="togglePin(repo, $event)"
+                        >
+                          <ng-icon name="lucidePin" size="12" />
+                        </button>
+                        <button
+                          type="button"
+                          class="row-action"
+                          title="Remove from list"
+                          aria-label="Remove from list"
+                          (click)="remove(repo.path, $event)"
+                        >
+                          <ng-icon name="lucideTrash2" size="12" />
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+          }
+        } @else {
+          @if (!signedIn()) {
+            <div class="signin-panel">
+              <p>Sign in to browse GitHub or GitLab repositories.</p>
+              <div class="signin-actions">
+                <button type="button" class="bl-btn bl-btn-primary" (click)="signIn('github')">
+                  GitHub
+                </button>
+                <button type="button" class="bl-btn" (click)="signIn('gitlab')">GitLab</button>
+                <button type="button" class="text-btn" (click)="goConnections()">Settings</button>
+              </div>
+            </div>
+          } @else if (store.hostReposLoading()) {
+            <p class="empty">Loading repositories…</p>
+          } @else if (store.hostReposError(); as err) {
+            <p class="empty error">{{ err }}</p>
+          } @else if (!hostGroups().length) {
+            <p class="empty">
+              {{ filter() ? 'No matches for “' + filter() + '”' : 'No repositories found' }}
+            </p>
+          } @else {
+            <div class="remote-meta">
+              <span>{{ linkedHostLabels() }}</span>
+              <button type="button" class="text-btn" (click)="goConnections()">Manage</button>
+            </div>
+            @for (group of hostGroups(); track group.key) {
+              <div class="group">
+                <button
+                  type="button"
+                  class="group-head"
+                  [attr.aria-expanded]="!isGroupCollapsed(group.key)"
+                  (click)="toggleGroup(group.key, $event)"
+                >
+                  <ng-icon
+                    [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
+                    size="12"
+                  />
+                  <ng-icon name="lucideFolders" size="12" />
+                  <span class="group-label">{{ group.label }}</span>
+                  <span class="group-count">{{ group.repos.length }}</span>
+                </button>
+                @if (!isGroupCollapsed(group.key)) {
+                  <ul>
+                    @for (repo of group.repos; track repo.id) {
+                      <li [class.active]="isActiveHost(repo.id)">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          (mouseenter)="setActiveHost(repo.id)"
+                          (click)="chooseHostRepo(repo)"
+                        >
+                          <ng-icon name="lucideDownload" size="12" />
+                          <span>
+                            <strong>{{ repo.name }}</strong>
+                            <em class="path">
+                              {{ repo.provider }}{{ repo.private ? ' · private' : '' }}
+                            </em>
+                          </span>
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+              </div>
+            }
+          }
+        }
+      </div>
+
+      <p class="hint">
+        <kbd>↑</kbd><kbd>↓</kbd> move
+        <kbd>↵</kbd> open
+        <kbd>esc</kbd> close
+      </p>
+    </div>
+  </ng-template>
+</div>

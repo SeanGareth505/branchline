@@ -1,0 +1,18 @@
+<section class="search">
+  <input
+    type="search"
+    placeholder="Search commits and repositories…"
+    [ngModel]="query()"
+    (ngModelChange)="query.set($event)"
+  />
+  <ul>
+    @for (item of results(); track item.id) {
+      <li>
+        <button type="button" (click)="select(item)">
+          <span class="kind">{{ item.kind }}</span>
+          {{ item.label }}
+        </button>
+      </li>
+    }
+  </ul>
+</section>

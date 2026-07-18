@@ -1,0 +1,150 @@
+@if (store.safety(); as safety) {
+  <div class="backdrop" (click)="store.closeSafety()">
+    <div
+      class="dialog bl-glass-dialog"
+      [attr.data-severity]="safety.severity"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'safety-title'"
+    >
+      <header>
+        <div class="heading">
+          <span class="severity" [attr.data-severity]="safety.severity">
+            <ng-icon name="lucideCircleAlert" size="14" />
+            {{ severityLabel(safety.severity) }}
+          </span>
+          <h2 id="safety-title">{{ safety.title }}</h2>
+        </div>
+        <button
+          type="button"
+          class="bl-btn icon-close"
+          (click)="store.closeSafety()"
+          [disabled]="busy()"
+          aria-label="Close"
+          title="Close"
+        >
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <p class="consequence">{{ safety.consequence }}</p>
+
+      @if (safety.advice) {
+        <p class="advice">{{ safety.advice }}</p>
+      }
+
+      <ul class="checks">
+        @for (check of safety.checks; track check.id) {
+          <li [class.ok]="check.ok" [class.bad]="!check.ok">
+            <span class="mark">{{ check.ok ? '✓' : '!' }}</span>
+            <div>
+              <strong>{{ check.label }}</strong>
+              <span>{{ check.detail }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+
+      @if (isForcePush(safety)) {
+        <fieldset class="modes">
+          <legend>How do you want to push?</legend>
+          <label class="mode" [class.active]="pushMode() === 'lease'">
+            <input
+              type="radio"
+              name="pushMode"
+              value="lease"
+              [ngModel]="pushMode()"
+              (ngModelChange)="pushMode.set($event)"
+            />
+            <div>
+              <strong>Force with lease</strong>
+              <span>Recommended — refuses if the remote moved since your last fetch</span>
+            </div>
+          </label>
+          <label class="mode danger" [class.active]="pushMode() === 'force'">
+            <input
+              type="radio"
+              name="pushMode"
+              value="force"
+              [ngModel]="pushMode()"
+              (ngModelChange)="pushMode.set($event)"
+            />
+            <div>
+              <strong>Force push</strong>
+              <span>Overwrites the remote tip even if someone else pushed</span>
+            </div>
+          </label>
+        </fieldset>
+
+        @if (behindRemote(safety)) {
+          <button type="button" class="bl-btn fetch" (click)="fetchFirst()" [disabled]="busy()">
+            Fetch first, then re-check
+          </button>
+        }
+      }
+
+      <button type="button" class="linkish" (click)="toggleCommand()">
+        {{ showCommand() ? 'Hide' : 'Show' }} git command
+      </button>
+      @if (showCommand()) {
+        <pre class="mono">{{ activeCommand(safety) }}</pre>
+      }
+
+      @if (!safety.blocked) {
+        <label class="confirm">
+          <input
+            type="checkbox"
+            [ngModel]="acknowledged()"
+            (ngModelChange)="acknowledged.set($event)"
+          />
+          <span>{{ safety.confirmPrompt }}</span>
+        </label>
+
+        @if (needsTyped(safety)) {
+          <label class="typed">
+            <span>Type <code>{{ safety.target }}</code> to confirm</span>
+            <input
+              type="text"
+              [ngModel]="typedConfirm()"
+              (ngModelChange)="typedConfirm.set($event)"
+              [placeholder]="safety.target ?? 'confirm'"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+        }
+      } @else {
+        <p class="blocked-note">This action is blocked until the failed checks above are resolved.</p>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="store.closeSafety()" [disabled]="busy()">
+          Cancel
+        </button>
+        <div class="actions">
+          @if (showProceed(safety)) {
+            <button
+              type="button"
+              class="bl-btn bl-btn-danger"
+              [disabled]="!canRunProceed(safety)"
+              (click)="run(false)"
+            >
+              {{ isForcePush(safety) ? 'Push with --force' : safety.proceedLabel }}
+            </button>
+          }
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="!canRunRecommended(safety)"
+            (click)="run(true)"
+          >
+            {{
+              isForcePush(safety) ? 'Push with --force-with-lease' : safety.recommendedLabel
+            }}
+          </button>
+        </div>
+      </footer>
+    </div>
+  </div>
+}

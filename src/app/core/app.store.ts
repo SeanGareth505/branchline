@@ -1,0 +1,2084 @@
+import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import type {
+  AppSettings,
+  ArtificialCommit,
+  BranchInfo,
+  CherryPickPreview,
+  CommitInfo,
+  ConnectionConfig,
+  GitIdentity,
+  HistoryFilter,
+  HostRepository,
+  IgnoreFileOutput,
+  IgnoreKind,
+  JiraIssue,
+  RecentRepo,
+  RebasePreview,
+  RebaseStep,
+  RemoteInfo,
+  RepoStatus,
+  RepoSummary,
+  ResetMode,
+  SafetyAction,
+  SafetyAnalysis,
+  StashEntry,
+  TagInfo,
+  UiSession,
+  WorktreeInfo,
+} from './models';
+import { TauriService } from './tauri.service';
+import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
+
+export type BrowseTab = 'commit' | 'diff' | 'files' | 'blame' | 'history' | 'reflog' | 'console';
+export type AppView =
+  | 'dashboard'
+  | 'browse'
+  | 'onboarding'
+  | 'settings'
+  | 'prs'
+  | 'jira'
+  | 'profiles'
+  | 'automation'
+  | 'templates';
+export type SettingsSection = 'repos' | 'appearance' | 'git' | 'connections' | 'ssh' | 'tools';
+export type AutomationFilter = 'all' | 'custom' | 'builtin';
+export type ToastKind = 'success' | 'info' | 'warning' | 'error';
+export interface ToastState {
+  id: number;
+  message: string;
+  kind: ToastKind;
+  undo?: () => void;
+}
+export interface ToastOptions {
+  undo?: () => void;
+  kind?: ToastKind;
+  durationMs?: number;
+}
+
+@Injectable({ providedIn: 'root' })
+export class AppStore {
+  private readonly tauri = inject(TauriService);
+
+  readonly isDummyBackend = this.tauri.isDummyBackend;
+  readonly view = signal<AppView>('settings');
+  readonly settingsSection = signal<SettingsSection>('repos');
+  readonly settingsFocusConnectionId = signal<string | null>(null);
+  readonly repos = signal<RecentRepo[]>([]);
+  readonly openRepos = signal<RepoSummary[]>([]);
+  readonly currentRepo = signal<RepoSummary | null>(null);
+  readonly status = signal<RepoStatus | null>(null);
+  readonly commits = signal<CommitInfo[]>([]);
+  readonly artificial = signal<ArtificialCommit[]>([]);
+  readonly branches = signal<BranchInfo[]>([]);
+  readonly stashes = signal<StashEntry[]>([]);
+  readonly tags = signal<TagInfo[]>([]);
+  readonly remotes = signal<RemoteInfo[]>([]);
+  readonly worktrees = signal<WorktreeInfo[]>([]);
+  readonly selectedSha = signal<string | null>(null);
+  readonly selectedShas = signal<string[]>([]);
+  readonly compareSha = signal<string | null>(null);
+  readonly diffSource = signal<'commit' | 'workingDirectory' | 'staged'>('commit');
+  readonly browseTab = signal<BrowseTab>('diff');
+  readonly historyFilter = signal<HistoryFilter>({
+    query: '',
+    author: '',
+    currentBranchOnly: false,
+    mineOnly: false,
+  });
+  readonly identity = signal<GitIdentity | null>(null);
+  readonly myBranchesOnly = signal(false);
+  readonly settings = signal<AppSettings>({
+    theme: (() => {
+      try {
+        return localStorage.getItem('branchline.theme') || 'system';
+      } catch {
+        return 'system';
+      }
+    })(),
+    accent: (() => {
+      try {
+        return localStorage.getItem('branchline.accent') || '#0EA5E9';
+      } catch {
+        return '#0EA5E9';
+      }
+    })(),
+    simpleMode: true,
+    layout: {},
+    focusMode: true,
+    defaultPullAction: 'merge',
+    defaultPushAction: 'upstream',
+    autoFetchOnOpen: false,
+    confirmForcePush: true,
+    confirmDiscard: true,
+    signOffByDefault: false,
+    pushAfterCommit: false,
+    myBranchesOnly: false,
+    branchPrefixEnabled: true,
+    branchPrefix: 'feature',
+    branchPrefixes: DEFAULT_BRANCH_PREFIXES.slice(),
+    editorCommand: '',
+    diffTool: '',
+    mergeTool: '',
+    sshClient: 'openssh',
+    connections: defaultConnections(),
+    commitTypes: DEFAULT_COMMIT_TYPES.map((t) => ({ ...t })),
+  });
+  readonly loading = signal(false);
+  readonly nextAction = signal('Open a repository');
+  readonly safety = signal<SafetyAnalysis | null>(null);
+  readonly toast = signal<ToastState | null>(null);
+  private toastTimer: number | null = null;
+  private toastSeq = 0;
+  readonly paletteOpen = signal(false);
+  readonly cherryPreviewOpen = signal(false);
+  readonly cherryPreview = signal<CherryPickPreview | null>(null);
+  readonly interactiveRebaseOpen = signal(false);
+  readonly interactiveRebase = signal<RebasePreview | null>(null);
+  readonly interactiveRebaseSteps = signal<RebaseStep[]>([]);
+  readonly ignoreEditorOpen = signal(false);
+  readonly ignoreEditor = signal<IgnoreFileOutput | null>(null);
+  readonly commitModalOpen = signal(false);
+  readonly changelogModalOpen = signal(false);
+  readonly cloneDialogOpen = signal(false);
+  readonly cloneDialogUrl = signal('');
+  readonly hostRepos = signal<HostRepository[]>([]);
+  readonly hostReposLoading = signal(false);
+  readonly hostReposError = signal<string | null>(null);
+  readonly createBranchDialogOpen = signal(false);
+  readonly createBranchStartPoint = signal<string | null>(null);
+  readonly createBranchSuggestedName = signal('');
+  readonly activeJiraKey = signal<string | null>(null);
+  readonly jiraIssues = signal<JiraIssue[]>([]);
+  readonly jiraIssuesLoading = signal(false);
+  readonly jiraIssuesError = signal<string | null>(null);
+  readonly selectedDiffPath = signal<string | null>(null);
+  readonly fileHistoryPath = signal<string | null>(null);
+  readonly automationFilter = signal<AutomationFilter>('all');
+  readonly splitMain = signal<number[]>([16, 84]);
+  readonly splitNested = signal<number[]>([62, 38]);
+  private sessionSaveTimer: number | null = null;
+  private restoringSession = false;
+
+  readonly selectedCommit = computed(() => {
+    const sha = this.selectedSha();
+    return this.commits().find((c) => c.sha === sha || c.shortSha === sha) ?? null;
+  });
+
+  readonly changeCount = computed(() => {
+    const s = this.status();
+    if (!s) return 0;
+    return s.staged.length + s.unstaged.length + s.untracked.length;
+  });
+
+  readonly localBranches = computed(() => this.branches().filter((b) => !b.isRemote));
+  readonly remoteBranches = computed(() => this.branches().filter((b) => b.isRemote));
+
+  readonly filteredLocalBranches = computed(() => {
+    const list = this.localBranches();
+    if (!this.myBranchesOnly()) return list;
+    return list.filter((b) => this.isMyBranch(b));
+  });
+  readonly filteredRemoteBranches = computed(() => {
+    const list = this.remoteBranches();
+    if (!this.myBranchesOnly()) return list;
+    return list.filter((b) => this.isMyBranch(b));
+  });
+
+  private readonly commitBySha = computed(() => {
+    const map = new Map<string, CommitInfo>();
+    for (const c of this.commits()) {
+      map.set(c.sha, c);
+      map.set(c.shortSha, c);
+    }
+    return map;
+  });
+
+  readonly currentBranchLocked = computed(() => {
+    const branch = this.status()?.branch;
+    if (!branch) return false;
+    return this.localBranches().some((b) => b.name === branch && b.locked);
+  });
+
+  readonly currentBranchLockReason = computed(() => {
+    const branch = this.status()?.branch;
+    if (!branch) return null;
+    return this.localBranches().find((b) => b.name === branch)?.lockReason ?? null;
+  });
+
+  readonly filteredCommits = computed(() => {
+    const filter = this.historyFilter();
+    const identity = this.identity();
+    let list = this.commits();
+    if (filter.currentBranchOnly) {
+      list = list.filter((c) => c.isRelativeToHead);
+    }
+    const q = filter.query.trim().toLowerCase();
+    const author = filter.author.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.subject.toLowerCase().includes(q) ||
+          c.message.toLowerCase().includes(q) ||
+          c.sha.toLowerCase().includes(q) ||
+          c.shortSha.toLowerCase().includes(q) ||
+          c.refs.some((r) => r.toLowerCase().includes(q)),
+      );
+    }
+    if (filter.mineOnly) {
+      if (!identity?.email && !identity?.name) return [];
+      list = list.filter((c) => this.isMine(c.author, c.email));
+    } else if (author) {
+      list = list.filter(
+        (c) =>
+          c.author.toLowerCase().includes(author) || c.email.toLowerCase().includes(author),
+      );
+    }
+    return list;
+  });
+
+  isMine(author: string, email: string): boolean {
+    const id = this.identity();
+    if (!id) return false;
+    const idEmail = normalizeEmail(id.email);
+    const lineEmail = normalizeEmail(email);
+    if (idEmail && lineEmail && idEmail === lineEmail) return true;
+    const idName = id.name.trim().toLowerCase();
+    const lineName = author.trim().toLowerCase();
+    return !!idName && !!lineName && idName === lineName;
+  }
+
+  isMyBranch(branch: BranchInfo): boolean {
+    if (branch.tipAuthor || branch.tipEmail) {
+      return this.isMine(branch.tipAuthor ?? '', branch.tipEmail ?? '');
+    }
+    const tip = branch.tipSha;
+    if (!tip) return false;
+    const map = this.commitBySha();
+    const commit = map.get(tip) ?? map.get(tip.slice(0, 7));
+    return commit ? this.isMine(commit.author, commit.email) : false;
+  }
+
+  setView(view: AppView): void {
+    if (view === 'dashboard') {
+      this.openSettings('repos');
+      return;
+    }
+    this.view.set(view);
+    if (view !== 'onboarding' && !this.restoringSession) {
+      this.patchSession({ view });
+    }
+  }
+
+  openSettings(section: SettingsSection = 'repos', connectionId?: string): void {
+    this.settingsSection.set(section);
+    this.settingsFocusConnectionId.set(connectionId ?? null);
+    this.view.set('settings');
+    if (!this.restoringSession) {
+      this.patchSession({ view: 'settings' });
+    }
+  }
+
+  goHome(): void {
+    this.openSettings('repos');
+  }
+
+  setSettingsSection(section: SettingsSection): void {
+    this.settingsSection.set(section);
+  }
+
+  clearSettingsFocusConnection(): void {
+    this.settingsFocusConnectionId.set(null);
+  }
+
+  isConnectionLinked(conn: ConnectionConfig): boolean {
+    return conn.enabled && !!(conn.hasToken || conn.token.trim());
+  }
+
+  async disconnectConnection(idOrProvider: string): Promise<void> {
+    const target = this.settings().connections.find(
+      (c) => c.id === idOrProvider || c.provider === idOrProvider,
+    );
+    const connections = this.settings().connections.map((c) => {
+      if (c.id !== idOrProvider && c.provider !== idOrProvider) return c;
+      return { ...c, enabled: false, token: '', hasToken: false };
+    });
+    try {
+      await this.saveSettings({ connections });
+      if (target?.provider === 'jira') {
+        this.jiraIssues.set([]);
+        this.activeJiraKey.set(null);
+      }
+      if (target && ['github', 'gitlab', 'azureDevOps'].includes(target.provider)) {
+        this.hostRepos.set([]);
+      }
+      this.showSuccess('Disconnected');
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  setBrowseTab(tab: BrowseTab): void {
+    this.browseTab.set(tab);
+    if (!this.restoringSession) {
+      this.patchSession({ browseTab: tab });
+    }
+  }
+
+  setAutomationFilter(filter: AutomationFilter): void {
+    this.automationFilter.set(filter);
+    if (!this.restoringSession) {
+      this.patchSession({ automationFilter: filter });
+    }
+  }
+
+  setSplitSizes(kind: 'main' | 'nested', sizes: number[]): void {
+    if (!sizes.length) return;
+    if (kind === 'main') this.splitMain.set([...sizes]);
+    else this.splitNested.set([...sizes]);
+    if (!this.restoringSession) {
+      this.patchSession(kind === 'main' ? { splitMain: [...sizes] } : { splitNested: [...sizes] });
+    }
+  }
+
+  readSession(): UiSession {
+    const layout = this.settings().layout ?? {};
+    const raw = layout['session'];
+    if (!raw || typeof raw !== 'object') return {};
+    return raw as UiSession;
+  }
+
+  patchSession(partial: Partial<UiSession>, opts?: { flush?: boolean }): void {
+    untracked(() => {
+      const session = { ...this.readSession(), ...partial };
+      const layout = { ...(this.settings().layout ?? {}), session };
+      this.settings.update((s) => ({ ...s, layout }));
+    });
+    if (this.sessionSaveTimer !== null) {
+      window.clearTimeout(this.sessionSaveTimer);
+      this.sessionSaveTimer = null;
+    }
+    if (opts?.flush) {
+      void this.tauri.saveSettings(this.settings()).catch(() => {
+        /* ignore background session save failures */
+      });
+      return;
+    }
+    this.sessionSaveTimer = window.setTimeout(() => {
+      this.sessionSaveTimer = null;
+      void this.tauri.saveSettings(this.settings()).catch(() => {
+        /* ignore background session save failures */
+      });
+    }, 400);
+  }
+
+  private flushSession(): void {
+    if (this.sessionSaveTimer !== null) {
+      window.clearTimeout(this.sessionSaveTimer);
+      this.sessionSaveTimer = null;
+      void this.tauri.saveSettings(this.settings()).catch(() => {
+        /* ignore */
+      });
+    }
+  }
+
+  private applySession(session: UiSession): void {
+    this.restoringSession = true;
+    try {
+      if (isBrowseTab(session.browseTab)) {
+        this.browseTab.set(session.browseTab);
+      }
+      if (
+        session.automationFilter === 'all' ||
+        session.automationFilter === 'custom' ||
+        session.automationFilter === 'builtin'
+      ) {
+        this.automationFilter.set(session.automationFilter);
+      }
+      this.historyFilter.update((f) => ({
+        ...f,
+        currentBranchOnly: session.historyCurrentBranchOnly ?? f.currentBranchOnly,
+        mineOnly: session.historyMineOnly ?? f.mineOnly,
+      }));
+      if (Array.isArray(session.splitMain) && session.splitMain.length >= 2) {
+        this.splitMain.set(session.splitMain.map(Number));
+      }
+      if (Array.isArray(session.splitNested) && session.splitNested.length >= 2) {
+        this.splitNested.set(session.splitNested.map(Number));
+      }
+    } finally {
+      this.restoringSession = false;
+    }
+  }
+
+  private restoreView(session: UiSession, hasRepo: boolean): void {
+    const view = session.view;
+    if (view === 'dashboard') {
+      if (hasRepo) this.view.set('browse');
+      else {
+        this.settingsSection.set('repos');
+        this.view.set('settings');
+      }
+      return;
+    }
+    if (!isAppView(view) || view === 'onboarding') {
+      if (hasRepo) this.view.set('browse');
+      else {
+        this.settingsSection.set('repos');
+        this.view.set('settings');
+      }
+      return;
+    }
+    if (view === 'browse' && !hasRepo) {
+      this.settingsSection.set('repos');
+      this.view.set('settings');
+      return;
+    }
+    if (
+      (view === 'automation' || view === 'templates' || view === 'profiles') &&
+      this.settings().simpleMode
+    ) {
+      if (hasRepo) this.view.set('browse');
+      else {
+        this.settingsSection.set('repos');
+        this.view.set('settings');
+      }
+      return;
+    }
+    this.view.set(view);
+  }
+
+  async init(): Promise<void> {
+    try {
+      const settings = await this.tauri.getSettings();
+      this.settings.set(normalizeSettings(settings));
+      this.myBranchesOnly.set(this.settings().myBranchesOnly);
+      this.applyTheme(this.settings());
+      const session = this.readSession();
+      this.applySession(session);
+      if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', () => this.flushSession());
+        window.addEventListener('pagehide', () => this.flushSession());
+      }
+      try {
+        this.identity.set(await this.tauri.getGitIdentity());
+      } catch {
+        this.identity.set(null);
+      }
+      const onboarding = await this.tauri.getOnboardingStatus();
+      if (!onboarding.completed && !onboarding.skipped) {
+        this.view.set('onboarding');
+        return;
+      }
+      this.repos.set(await this.tauri.listRecentRepos());
+      const sessionPaths = Array.isArray(session.openRepoPaths)
+        ? session.openRepoPaths.filter((p): p is string => typeof p === 'string' && !!p.trim())
+        : [];
+      const pathsToOpen =
+        sessionPaths.length > 0
+          ? sessionPaths
+          : (() => {
+              const last = this.repos().find((r) => r.isLast) ?? this.repos()[0];
+              return last ? [last.path] : [];
+            })();
+      let hasRepo = false;
+      const activePath =
+        (typeof session.activeRepoPath === 'string' && session.activeRepoPath.trim()) ||
+        pathsToOpen[pathsToOpen.length - 1] ||
+        null;
+      this.restoringSession = true;
+      try {
+        for (const path of pathsToOpen) {
+          await this.openRepo(path, {
+            restoreView: false,
+            activate:
+              path === activePath || (!activePath && path === pathsToOpen[pathsToOpen.length - 1]),
+          });
+        }
+        hasRepo = !!this.currentRepo() || this.openRepos().length > 0;
+        if (!this.currentRepo() && this.openRepos().length) {
+          await this.openRepo(this.openRepos()[this.openRepos().length - 1].path, {
+            restoreView: false,
+          });
+          hasRepo = !!this.currentRepo();
+        }
+      } finally {
+        this.restoringSession = false;
+      }
+      this.persistOpenRepos();
+      this.restoreView(session, hasRepo);
+    } catch (err) {
+      this.showError(err);
+      this.goHome();
+    }
+  }
+
+  hasLinkedPrHost(): boolean {
+    return this.settings().connections.some(
+      (c) =>
+        c.enabled &&
+        (c.hasToken || c.token.trim()) &&
+        (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
+    );
+  }
+
+  hasLinkedJira(): boolean {
+    return this.settings().connections.some(
+      (c) => c.provider === 'jira' && c.enabled && (c.hasToken || c.token.trim()),
+    );
+  }
+
+  isDummyRepoPath(path: string | null | undefined): boolean {
+    if (!path) return false;
+    return path.includes('/Users/demo/') || path.startsWith('/demo/');
+  }
+
+  applyTheme(settings: AppSettings): void {
+    const root = document.documentElement;
+    const preference =
+      settings.theme === 'dark' || settings.theme === 'light' || settings.theme === 'system'
+        ? settings.theme
+        : 'system';
+    const theme =
+      preference === 'system'
+        ? window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark'
+        : preference;
+    root.setAttribute('data-theme', theme);
+    root.style.setProperty('--accent', settings.accent);
+    try {
+      localStorage.setItem('branchline.theme', preference);
+      localStorage.setItem('branchline.accent', settings.accent);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
+
+  formatError(err: unknown): string {
+    if (typeof err === 'string') return err;
+    if (err && typeof err === 'object' && 'message' in err) {
+      return String((err as { message: unknown }).message);
+    }
+    return 'Something went wrong';
+  }
+
+  async openRepo(
+    path: string,
+    opts?: { restoreView?: boolean; activate?: boolean },
+  ): Promise<void> {
+    const restoreView = opts?.restoreView !== false;
+    const activate = opts?.activate !== false;
+    const normalized = path.trim();
+    if (!normalized) return;
+
+    if (!activate) {
+      try {
+        const summary = await this.tauri.openRepository(normalized);
+        this.upsertOpenRepo(summary);
+        this.persistOpenRepos();
+      } catch (err) {
+        this.showError(err);
+      }
+      return;
+    }
+
+    if (this.currentRepo()?.path === normalized) {
+      if (restoreView) this.setView('browse');
+      else this.view.set('browse');
+      return;
+    }
+
+    this.loading.set(true);
+    try {
+      this.clearWorkingState();
+      const summary = await this.tauri.openRepository(normalized);
+      this.currentRepo.set(summary);
+      this.upsertOpenRepo(summary);
+      this.repos.set(await this.tauri.listRecentRepos());
+      await this.refreshRepo();
+      this.persistOpenRepos();
+      if (restoreView) {
+        this.setView('browse');
+      } else {
+        this.view.set('browse');
+      }
+      if (this.isDummyBackend || this.isDummyRepoPath(normalized)) {
+        this.showWarning(
+          'DUMMY DATA — browser preview. Open a real repo in the desktop app for live Git.',
+        );
+      }
+      if (this.settings().autoFetchOnOpen && !this.isDummyBackend) {
+        void this.tauri.fetch(normalized).then(
+          () => this.refreshRepo(),
+          (err) => this.showError(err),
+        );
+      }
+    } catch (err) {
+      this.showError(err);
+      if (!this.openRepos().length) this.goHome();
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async switchOpenRepo(path: string): Promise<void> {
+    await this.openRepo(path);
+  }
+
+  async closeOpenRepo(path: string, showToast = true): Promise<void> {
+    const tabs = this.openRepos().filter((r) => r.path !== path);
+    const closingCurrent = this.currentRepo()?.path === path;
+    const name = this.openRepos().find((r) => r.path === path)?.name;
+    this.openRepos.set(tabs);
+    this.persistOpenRepos();
+
+    if (!closingCurrent) {
+      if (showToast && name) this.showToast(`Closed ${name}`);
+      return;
+    }
+
+    if (tabs.length) {
+      await this.openRepo(tabs[tabs.length - 1].path);
+      if (showToast && name) this.showToast(`Closed ${name}`);
+      return;
+    }
+
+    this.clearWorkingState();
+    this.currentRepo.set(null);
+    this.goHome();
+    this.nextAction.set('Open a repository');
+    if (showToast && name) this.showToast(`Closed ${name}`);
+  }
+
+  closeRepo(showToast = true): void {
+    const path = this.currentRepo()?.path;
+    if (path) {
+      void this.closeOpenRepo(path, showToast);
+      return;
+    }
+    this.clearWorkingState();
+    this.currentRepo.set(null);
+    this.openRepos.set([]);
+    this.persistOpenRepos();
+    this.goHome();
+    this.nextAction.set('Open a repository');
+  }
+
+  private upsertOpenRepo(summary: RepoSummary): void {
+    this.openRepos.update((tabs) => {
+      const idx = tabs.findIndex((t) => t.path === summary.path);
+      if (idx < 0) return [...tabs, summary];
+      const next = tabs.slice();
+      next[idx] = summary;
+      return next;
+    });
+  }
+
+  private persistOpenRepos(): void {
+    if (this.restoringSession) return;
+    this.patchSession(
+      {
+        openRepoPaths: this.openRepos().map((r) => r.path),
+        activeRepoPath: this.currentRepo()?.path ?? null,
+      },
+      { flush: true },
+    );
+  }
+
+  private clearWorkingState(): void {
+    this.status.set(null);
+    this.commits.set([]);
+    this.artificial.set([]);
+    this.branches.set([]);
+    this.stashes.set([]);
+    this.tags.set([]);
+    this.remotes.set([]);
+    this.worktrees.set([]);
+    this.selectedSha.set(null);
+    this.selectedShas.set([]);
+    this.compareSha.set(null);
+    this.diffSource.set('commit');
+    this.selectedDiffPath.set(null);
+    this.fileHistoryPath.set(null);
+    this.cherryPreviewOpen.set(false);
+    this.cherryPreview.set(null);
+    this.interactiveRebaseOpen.set(false);
+    this.interactiveRebase.set(null);
+    this.interactiveRebaseSteps.set([]);
+    this.ignoreEditorOpen.set(false);
+    this.ignoreEditor.set(null);
+    this.commitModalOpen.set(false);
+  }
+
+  private clearRepoState(): void {
+    this.currentRepo.set(null);
+    this.clearWorkingState();
+  }
+
+  openCloneDialog(url?: string): void {
+    this.cloneDialogUrl.set(url?.trim() ?? '');
+    this.cloneDialogOpen.set(true);
+  }
+
+  closeCloneDialog(): void {
+    this.cloneDialogOpen.set(false);
+    this.cloneDialogUrl.set('');
+  }
+
+  linkedGitHosts(): ConnectionConfig[] {
+    return this.settings().connections.filter(
+      (c) =>
+        c.enabled &&
+        (c.hasToken || c.token.trim()) &&
+        (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
+    );
+  }
+
+  async refreshHostRepositories(connectionId?: string): Promise<void> {
+    if (!this.hasLinkedPrHost()) {
+      this.hostRepos.set([]);
+      this.hostReposError.set(null);
+      return;
+    }
+    this.hostReposLoading.set(true);
+    this.hostReposError.set(null);
+    try {
+      const repos = await this.tauri.listHostRepositories(connectionId);
+      this.hostRepos.set(repos);
+    } catch (err) {
+      this.hostRepos.set([]);
+      this.hostReposError.set(this.formatError(err));
+    } finally {
+      this.hostReposLoading.set(false);
+    }
+  }
+
+  async signInGitHost(provider: 'github' | 'gitlab', token: string, username = ''): Promise<boolean> {
+    const cleaned = token.trim();
+    if (!cleaned) {
+      this.showWarning('Paste a personal access token to sign in.');
+      return false;
+    }
+    const connections = this.settings().connections.map((c) => {
+      if (c.provider !== provider) return c;
+      return {
+        ...c,
+        enabled: true,
+        token: cleaned,
+        username: username.trim() || c.username,
+        hasToken: true,
+      };
+    });
+    try {
+      await this.saveSettings({ connections });
+      await this.refreshHostRepositories(provider);
+      this.showSuccess(`Signed in to ${provider === 'github' ? 'GitHub' : 'GitLab'}`);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  openCreateBranchDialog(startPoint?: string | null, suggestedName?: string): void {
+    this.createBranchStartPoint.set(startPoint ?? null);
+    this.createBranchSuggestedName.set(suggestedName?.trim() ?? '');
+    this.createBranchDialogOpen.set(true);
+  }
+
+  closeCreateBranchDialog(): void {
+    this.createBranchDialogOpen.set(false);
+    this.createBranchStartPoint.set(null);
+    this.createBranchSuggestedName.set('');
+  }
+
+  setActiveJiraKey(key: string | null): void {
+    this.activeJiraKey.set(key?.trim() || null);
+  }
+
+  async refreshJiraIssues(jql?: string): Promise<void> {
+    this.jiraIssuesLoading.set(true);
+    this.jiraIssuesError.set(null);
+    try {
+      if (this.hasLinkedJira()) {
+        const issues = await this.tauri.listJiraIssues(jql);
+        this.jiraIssues.set(issues);
+      } else {
+        this.jiraIssues.set(await this.tauri.listMockJiraIssues());
+      }
+    } catch (err) {
+      this.jiraIssues.set([]);
+      this.jiraIssuesError.set(this.formatError(err));
+    } finally {
+      this.jiraIssuesLoading.set(false);
+    }
+  }
+
+  async signInJira(email: string, token: string, baseUrl?: string): Promise<boolean> {
+    const cleanedEmail = email.trim();
+    const cleanedToken = token.trim();
+    if (!cleanedEmail || !cleanedToken) {
+      this.showWarning('Email and API token are required to link Jira.');
+      return false;
+    }
+    const connections = this.settings().connections.map((c) => {
+      if (c.provider !== 'jira') return c;
+      return {
+        ...c,
+        enabled: true,
+        username: cleanedEmail,
+        token: cleanedToken,
+        hasToken: true,
+        baseUrl: (baseUrl?.trim() || c.baseUrl || 'https://your-domain.atlassian.net').replace(
+          /\/$/,
+          '',
+        ),
+      };
+    });
+    try {
+      await this.saveSettings({ connections });
+      await this.refreshJiraIssues();
+      this.showSuccess('Signed in to Jira');
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  branchNameFromIssue(issue: JiraIssue): string {
+    const settings = this.settings();
+    const slug = issue.summary
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+    const leaf = slug ? `${issue.key}-${slug}` : issue.key;
+    if (!settings.branchPrefixEnabled) return leaf;
+    const prefix = (settings.branchPrefix || 'feature').trim().replace(/^\/+|\/+$/g, '');
+    return prefix ? `${prefix}/${leaf}` : leaf;
+  }
+
+  startWorkFromIssue(issue: JiraIssue): void {
+    this.setActiveJiraKey(issue.key);
+    this.openCreateBranchDialog(null, this.branchNameFromIssue(issue));
+  }
+
+  async transitionJiraIssue(issueKey: string, transitionId: string): Promise<boolean> {
+    try {
+      if (this.hasLinkedJira()) {
+        await this.tauri.transitionJiraIssue(issueKey, transitionId);
+      }
+      await this.refreshJiraIssues();
+      this.showSuccess(`Transitioned ${issueKey}`);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async refreshWorkingTree(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const [status, artificial] = await Promise.all([
+        this.tauri.getRepoStatus(path),
+        this.tauri.getArtificialCommits(path),
+      ]);
+      this.status.set(status);
+      this.artificial.set(artificial);
+      this.updateNextAction(status);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async refreshRepo(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
+        await Promise.all([
+          this.tauri.getRepoStatus(path),
+          this.tauri.getCommitLog(path, 300),
+          this.tauri.getArtificialCommits(path),
+          this.tauri.listBranches(path),
+          this.tauri.listStashes(path),
+          this.tauri.listTags(path),
+          this.tauri.listRemotes(path),
+          this.tauri.listWorktrees(path),
+        ]);
+      this.status.set(status);
+      this.commits.set(commits);
+      this.artificial.set(artificial);
+      this.branches.set(branches);
+      this.stashes.set(stashes);
+      this.tags.set(tags);
+      this.remotes.set(remotes);
+      this.worktrees.set(worktrees);
+      if (!this.identity()) {
+        void this.refreshIdentity();
+      }
+      if (!this.selectedSha() && commits[0]) {
+        this.selectedSha.set(commits[0].sha);
+        this.selectedShas.set([commits[0].sha]);
+      }
+      this.updateNextAction(status);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  updateNextAction(status: RepoStatus): void {
+    if (status.conflicted.length) {
+      this.nextAction.set(`Resolve ${status.conflicted.length} conflicts`);
+      return;
+    }
+    const uncommitted = status.unstaged.length + status.untracked.length + status.staged.length;
+    if (status.staged.length) {
+      this.nextAction.set(
+        `Commit ${status.staged.length} staged file${status.staged.length === 1 ? '' : 's'}`,
+      );
+      return;
+    }
+    if (uncommitted) {
+      this.nextAction.set(`Review ${uncommitted} local change${uncommitted === 1 ? '' : 's'}`);
+      return;
+    }
+    if (status.ahead > 0) {
+      this.nextAction.set(`Push ${status.ahead} commit${status.ahead === 1 ? '' : 's'}`);
+      return;
+    }
+    if (status.behind > 0) {
+      this.nextAction.set(`Update from team (${status.behind} behind)`);
+      return;
+    }
+    this.nextAction.set('Working tree clean');
+  }
+
+  selectCommit(sha: string, multi = false): void {
+    this.diffSource.set('commit');
+    if (multi) {
+      const cur = this.selectedShas();
+      if (cur.includes(sha)) {
+        this.selectedShas.set(cur.filter((s) => s !== sha));
+      } else {
+        this.selectedShas.set([...cur, sha]);
+      }
+      this.selectedSha.set(sha);
+      return;
+    }
+    this.selectedSha.set(sha);
+    this.selectedShas.set([sha]);
+    this.compareSha.set(null);
+  }
+
+  selectWorkingDirectory(kind: 'workingDirectory' | 'staged' = 'workingDirectory'): void {
+    this.diffSource.set(kind);
+    this.selectedSha.set(null);
+    this.selectedShas.set([]);
+    this.compareSha.set(null);
+    this.setBrowseTab('diff');
+  }
+
+  toggleCompare(sha: string): void {
+    if (this.compareSha() === sha) {
+      this.compareSha.set(null);
+    } else {
+      this.compareSha.set(sha);
+    }
+  }
+
+  showToast(message: string, undoOrOptions?: (() => void) | ToastOptions): void {
+    const options =
+      typeof undoOrOptions === 'function'
+        ? { undo: undoOrOptions, kind: 'success' as ToastKind }
+        : (undoOrOptions ?? {});
+    const kind = options.kind ?? (options.undo ? 'success' : 'info');
+    const durationMs = options.durationMs ?? (kind === 'error' ? 12000 : options.undo ? 10000 : 6000);
+    if (this.toastTimer !== null) {
+      window.clearTimeout(this.toastTimer);
+      this.toastTimer = null;
+    }
+    const id = ++this.toastSeq;
+    this.toast.set({ id, message, kind, undo: options.undo });
+    this.toastTimer = window.setTimeout(() => {
+      if (this.toast()?.id === id) {
+        this.toast.set(null);
+      }
+      this.toastTimer = null;
+    }, durationMs);
+  }
+
+  showSuccess(message: string, undo?: () => void): void {
+    this.showToast(message, { kind: 'success', undo });
+  }
+
+  showWarning(message: string, undo?: () => void): void {
+    this.showToast(message, { kind: 'warning', undo, durationMs: undo ? 10000 : 8000 });
+  }
+
+  showInfo(message: string, undo?: () => void): void {
+    this.showToast(message, { kind: 'info', undo, durationMs: undo ? 10000 : 6000 });
+  }
+
+  showError(err: unknown): void {
+    this.showToast(this.formatError(err), { kind: 'error' });
+  }
+
+  dismissToast(): void {
+    if (this.toastTimer !== null) {
+      window.clearTimeout(this.toastTimer);
+      this.toastTimer = null;
+    }
+    this.toast.set(null);
+  }
+
+  runUndoFromToast(): void {
+    const undo = this.toast()?.undo;
+    this.dismissToast();
+    undo?.();
+  }
+
+  async saveSettings(partial: Partial<AppSettings>): Promise<void> {
+    const next = normalizeSettings({
+      ...this.settings(),
+      ...partial,
+      connections: partial.connections ?? this.settings().connections,
+    });
+    const saved = await this.tauri.saveSettings(next);
+    this.settings.set(normalizeSettings(saved));
+    this.myBranchesOnly.set(saved.myBranchesOnly);
+    this.applyTheme(saved);
+  }
+
+  setMyBranchesOnly(value: boolean): void {
+    if (value) {
+      const id = this.identity();
+      if (!id?.name?.trim() && !id?.email?.trim()) {
+        void this.refreshIdentity().then(() => {
+          const refreshed = this.identity();
+          if (!refreshed?.name?.trim() && !refreshed?.email?.trim()) {
+            this.showToast('Set user.name / user.email in Git to use Mine', { kind: 'warning' });
+            return;
+          }
+          this.myBranchesOnly.set(true);
+          void this.saveSettings({ myBranchesOnly: true });
+        });
+        return;
+      }
+    }
+    this.myBranchesOnly.set(value);
+    void this.saveSettings({ myBranchesOnly: value });
+  }
+
+  async toggleTheme(): Promise<void> {
+    const preference = this.settings().theme;
+    const applied =
+      preference === 'system'
+        ? window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark'
+        : preference === 'dark'
+          ? 'dark'
+          : 'light';
+    await this.saveSettings({ theme: applied === 'dark' ? 'light' : 'dark' });
+  }
+
+  async toggleSimpleMode(): Promise<void> {
+    await this.saveSettings({ simpleMode: !this.settings().simpleMode });
+  }
+
+  async toggleFocusMode(): Promise<void> {
+    await this.saveSettings({ focusMode: !this.settings().focusMode });
+  }
+
+  async stagePaths(paths: string[]): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !paths.length) return;
+    try {
+      await this.tauri.stagePaths(path, paths);
+      await this.refreshWorkingTree();
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async unstagePaths(paths: string[]): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !paths.length) return;
+    try {
+      await this.tauri.unstagePaths(path, paths);
+      await this.refreshWorkingTree();
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async discardPaths(paths: string[]): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !paths.length) return;
+    if (paths.length > 3 || this.settings().confirmDiscard) {
+      await this.openSafety('discard', paths.join('\n'));
+      return;
+    }
+    try {
+      const result = await this.tauri.discardPaths(path, paths);
+      await this.refreshWorkingTree();
+      this.showToast(result.message, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
+      );
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async applyPatch(patch: string, mode: 'stage' | 'unstage' | 'discard'): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path || !patch.trim()) return false;
+    try {
+      const result = await this.tauri.applyPatch(path, patch, mode);
+      await this.refreshWorkingTree();
+      this.showToast(result.message, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
+      );
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async createCommit(message: string, amend = false): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !message.trim()) return;
+    const status = this.status();
+    if (!amend && !status?.staged.length) {
+      this.showToast('Stage at least one file before committing', { kind: 'warning' });
+      return;
+    }
+    try {
+      const result = await this.tauri.createCommit(path, message.trim(), amend);
+      await this.refreshRepo();
+      this.showToast(amend ? `Amended ${result.sha.slice(0, 7)}` : `Committed ${result.sha.slice(0, 7)}`, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+      );
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async softUndoLastCommit(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const entry = await this.tauri.undoLast(path);
+      await this.refreshRepo();
+      this.showToast(entry?.label ?? 'Nothing to undo', { kind: 'info' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async checkoutBranch(name: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.checkoutBranch(path, name);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async createBranch(name: string, startPoint?: string, checkout = true): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path || !name.trim()) return false;
+    try {
+      const result = await this.tauri.createBranch(path, name.trim(), checkout, startPoint);
+      await this.refreshRepo();
+      this.showToast(result.message, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+      );
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async openSafety(action: SafetyAction, target?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const analysis = await this.tauri.analyzeSafety(path, action, target);
+      this.safety.set(analysis);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  closeSafety(): void {
+    this.safety.set(null);
+  }
+
+  async executeSafety(
+    useRecommended: boolean,
+    options?: {
+      confirmationPhrase?: string;
+      allowBareForce?: boolean;
+      acknowledged?: boolean;
+    },
+  ): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const analysis = this.safety();
+    if (!path || !analysis) return;
+    try {
+      const result = await this.tauri.executeSafeAction(
+        path,
+        analysis.action,
+        analysis.target,
+        useRecommended,
+        options,
+      );
+      if (!result.ok) {
+        this.showToast(result.message || 'Action blocked', { kind: 'warning' });
+        return;
+      }
+      this.safety.set(null);
+      await this.refreshRepo();
+      if (result.undoable) {
+        this.showToast(result.message, () =>
+          void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+        );
+      } else {
+        this.showToast(result.message);
+      }
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async fetchRemote(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.fetch(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async pullRemote(rebase = false): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = rebase
+        ? await this.tauri.pullWithOptions(path, { rebase: true })
+        : await this.tauri.pull(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async pushRemote(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    if (this.currentBranchLocked()) {
+      const branch = this.status()?.branch ?? 'branch';
+      const reason = this.currentBranchLockReason();
+      this.showWarning(
+        reason
+          ? `Branch '${branch}' is locked: ${reason}`
+          : `Branch '${branch}' is locked. Unlock it before pushing.`,
+      );
+      return;
+    }
+    const status = this.status();
+    if (status && status.ahead > 0 && status.behind > 0) {
+      await this.openSafety('forcePush', status.branch);
+      return;
+    }
+    try {
+      const result = await this.tauri.push(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      const message = this.formatError(err);
+      if (/non-fast-forward|rejected|fetch first/i.test(message)) {
+        await this.openSafety('forcePush', status?.branch);
+        return;
+      }
+      this.showToast(message);
+    }
+  }
+
+  async syncRemote(): Promise<void> {
+    const action = this.settings().defaultPullAction;
+    if (action === 'fetch') {
+      await this.fetchRemote();
+    } else {
+      await this.pullRemote(action === 'rebase');
+    }
+    await this.pushRemote();
+  }
+
+  setHistoryFilter(partial: Partial<HistoryFilter>): void {
+    this.historyFilter.update((f) => {
+      const next = { ...f, ...partial };
+      if (partial.mineOnly === true) {
+        next.author = '';
+      }
+      if (partial.author !== undefined && partial.author.trim()) {
+        next.mineOnly = false;
+      }
+      return next;
+    });
+    if (!this.restoringSession) {
+      const f = this.historyFilter();
+      this.patchSession({
+        historyCurrentBranchOnly: f.currentBranchOnly,
+        historyMineOnly: f.mineOnly,
+      });
+    }
+  }
+
+  toggleMineFilter(): void {
+    const enabling = !this.historyFilter().mineOnly;
+    if (enabling) {
+      const id = this.identity();
+      if (!id?.name?.trim() && !id?.email?.trim()) {
+        void this.refreshIdentity().then(() => {
+          const refreshed = this.identity();
+          if (!refreshed?.name?.trim() && !refreshed?.email?.trim()) {
+            this.showToast('Set user.name / user.email in Git to use Mine', { kind: 'warning' });
+            return;
+          }
+          this.setHistoryFilter({ mineOnly: true });
+        });
+        return;
+      }
+    }
+    this.setHistoryFilter({ mineOnly: enabling });
+  }
+
+  toggleCurrentBranchFilter(): void {
+    this.setHistoryFilter({ currentBranchOnly: !this.historyFilter().currentBranchOnly });
+  }
+
+  clearHistoryFilter(): void {
+    this.historyFilter.set({ query: '', author: '', currentBranchOnly: false, mineOnly: false });
+    if (!this.restoringSession) {
+      this.patchSession({ historyCurrentBranchOnly: false, historyMineOnly: false });
+    }
+  }
+
+  async addRemote(name: string, url: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.addRemote(path, name, url);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async removeRemote(name: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.removeRemote(path, name);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async squashSelected(count: number, message: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.squashCommits(path, count, message);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  focusCommitPanel(): void {
+    this.openCommitModal();
+  }
+
+  openCommitModal(): void {
+    this.commitModalOpen.set(true);
+  }
+
+  closeCommitModal(): void {
+    this.commitModalOpen.set(false);
+  }
+
+  openChangelogModal(): void {
+    if (!this.currentRepo()) {
+      this.showToast('Open a repository first', { kind: 'warning' });
+      return;
+    }
+    this.setView('browse');
+    this.changelogModalOpen.set(true);
+  }
+
+  closeChangelogModal(): void {
+    this.changelogModalOpen.set(false);
+  }
+
+  async runNextAction(): Promise<void> {
+    const status = this.status();
+    if (!status) {
+      this.goHome();
+      return;
+    }
+    if (status.conflicted.length) {
+      this.setBrowseTab('files');
+      return;
+    }
+    if (status.staged.length || status.unstaged.length || status.untracked.length) {
+      this.openCommitModal();
+      return;
+    }
+    if (status.ahead > 0) {
+      await this.pushRemote();
+      return;
+    }
+    if (status.behind > 0) {
+      await this.pullRemote();
+    }
+  }
+
+  async openCherryPickPreview(shas?: string[]): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const selected = shas?.length ? shas : this.selectedShas();
+    if (!path || !selected.length) return;
+    const preview = await this.tauri.cherryPickPreview(path, selected);
+    this.cherryPreview.set(preview);
+    this.cherryPreviewOpen.set(true);
+  }
+
+  closeCherryPick(): void {
+    this.cherryPreviewOpen.set(false);
+    this.cherryPreview.set(null);
+  }
+
+  async applyCherryPick(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const preview = this.cherryPreview();
+    if (!path || !preview) return;
+    const shas = preview.commits.filter((c) => !c.alreadyApplied).map((c) => c.sha);
+    if (!shas.length) {
+      this.showToast('All selected commits are already on this branch', { kind: 'info' });
+      this.closeCherryPick();
+      return;
+    }
+    const result = await this.tauri.cherryPick(path, shas);
+    if (!result.ok) {
+      this.showToast(result.message);
+      await this.refreshRepo();
+      return;
+    }
+    this.closeCherryPick();
+    await this.refreshRepo();
+    this.showToast(result.message);
+  }
+
+  async openInteractiveRebase(fromSha?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    const selected = fromSha ?? this.selectedSha();
+    if (!selected) {
+      this.showToast('Select a commit to rebase from', { kind: 'warning' });
+      return;
+    }
+    try {
+      const commit = this.commits().find((c) => c.sha === selected || c.shortSha === selected);
+      const onto = commit?.parents?.[0] || selected;
+      const preview = await this.tauri.previewInteractiveRebase(path, onto);
+      if (!preview.commits.length) {
+        this.showToast('No commits to rebase above this point', { kind: 'info' });
+        return;
+      }
+      this.interactiveRebase.set(preview);
+      this.interactiveRebaseSteps.set(
+        preview.commits.map((c) => ({
+          sha: c.sha,
+          shortSha: c.shortSha,
+          subject: c.subject,
+          author: c.author,
+          action: 'pick' as const,
+          message: c.subject,
+        })),
+      );
+      this.interactiveRebaseOpen.set(true);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  closeInteractiveRebase(): void {
+    this.interactiveRebaseOpen.set(false);
+    this.interactiveRebase.set(null);
+    this.interactiveRebaseSteps.set([]);
+  }
+
+  setRebaseStepAction(sha: string, action: RebaseStep['action']): void {
+    this.interactiveRebaseSteps.update((steps) =>
+      steps.map((s) => (s.sha === sha ? { ...s, action } : s)),
+    );
+  }
+
+  setRebaseStepMessage(sha: string, message: string): void {
+    this.interactiveRebaseSteps.update((steps) =>
+      steps.map((s) => (s.sha === sha ? { ...s, message } : s)),
+    );
+  }
+
+  moveRebaseStep(sha: string, direction: -1 | 1): void {
+    this.interactiveRebaseSteps.update((steps) => {
+      const index = steps.findIndex((s) => s.sha === sha);
+      if (index < 0) return steps;
+      const next = index + direction;
+      if (next < 0 || next >= steps.length) return steps;
+      const copy = steps.slice();
+      const [item] = copy.splice(index, 1);
+      copy.splice(next, 0, item);
+      return copy;
+    });
+  }
+
+  async applyInteractiveRebase(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const preview = this.interactiveRebase();
+    const steps = this.interactiveRebaseSteps();
+    if (!path || !preview || !steps.length) return;
+    try {
+      const result = await this.tauri.startInteractiveRebase(
+        path,
+        preview.onto,
+        steps.map((s) => ({
+          sha: s.sha,
+          action: s.action,
+          message: s.action === 'reword' ? s.message : null,
+        })),
+      );
+      this.closeInteractiveRebase();
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+      if (!result.ok) {
+        this.setBrowseTab('files');
+      }
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openIgnoreEditor(kind: IgnoreKind = 'gitignore'): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const file = await this.tauri.getIgnoreFile(path, kind);
+      this.ignoreEditor.set(file);
+      this.ignoreEditorOpen.set(true);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  closeIgnoreEditor(): void {
+    this.ignoreEditorOpen.set(false);
+    this.ignoreEditor.set(null);
+  }
+
+  async saveIgnoreEditor(content: string, kind?: IgnoreKind): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const current = this.ignoreEditor();
+    if (!path || !current) return;
+    const targetKind = (kind ?? current.kind) as IgnoreKind;
+    try {
+      const result = await this.tauri.saveIgnoreFile(path, targetKind, content);
+      this.showToast(result.message);
+      this.closeIgnoreEditor();
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async addWorktree(
+    worktreePath: string,
+    opts: { branch?: string; createBranch?: boolean; startPoint?: string } = {},
+  ): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.addWorktree(path, worktreePath, opts);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async removeWorktree(worktreePath: string, force = false): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.removeWorktree(path, worktreePath, force);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async pruneWorktrees(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.pruneWorktrees(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openWorktree(worktreePath: string): Promise<void> {
+    await this.openRepo(worktreePath);
+  }
+
+  async revertSelected(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const sha = this.selectedSha();
+    if (!path || !sha) return;
+    const result = await this.tauri.revertCommit(path, sha);
+    await this.refreshRepo();
+    this.showToast(result.message);
+    if (!result.ok) return;
+  }
+
+  async pinRepo(path: string, pinned: boolean): Promise<void> {
+    this.repos.set(await this.tauri.pinRepo(path, pinned));
+  }
+
+  async removeRepo(path: string): Promise<void> {
+    const wasOpen = this.openRepos().some((r) => r.path === path);
+    this.repos.set(await this.tauri.removeRecentRepo(path));
+    if (wasOpen) {
+      await this.closeOpenRepo(path, false);
+      this.showToast('Removed from recent and closed');
+    }
+  }
+
+  async cloneRepo(url: string, destination: string): Promise<void> {
+    this.loading.set(true);
+    try {
+      const summary = await this.tauri.cloneRepository(url, destination);
+      this.clearWorkingState();
+      this.currentRepo.set(summary);
+      this.upsertOpenRepo(summary);
+      this.repos.set(await this.tauri.listRecentRepos());
+      await this.refreshRepo();
+      this.persistOpenRepos();
+      this.setView('browse');
+      this.showToast(`Cloned ${summary.name}`);
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async initRepo(path: string): Promise<void> {
+    this.loading.set(true);
+    try {
+      const summary = await this.tauri.initRepository(path);
+      this.clearWorkingState();
+      this.currentRepo.set(summary);
+      this.upsertOpenRepo(summary);
+      this.repos.set(await this.tauri.listRecentRepos());
+      await this.refreshRepo();
+      this.persistOpenRepos();
+      this.setView('browse');
+      this.showToast(`Initialized ${summary.name}`);
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async stashPush(message?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.stashPush(path, message);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async stashPop(index: number): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.stashPop(path, index);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async stashApply(index: number): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.stashApply(path, index);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async stashDrop(index: number): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.stashDrop(path, index);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async mergeBranch(name: string, noFf = false): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.mergeBranch(path, name, noFf);
+      await this.refreshRepo();
+      this.showToast(result.message);
+      if (!result.ok) this.setBrowseTab('files');
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async rebaseOnto(onto: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.rebaseOnto(path, onto);
+      await this.refreshRepo();
+      this.showToast(result.message);
+      if (!result.ok) this.setBrowseTab('files');
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async abortOperation(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.abortOperation(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async continueOperation(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.continueOperation(path);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async resetTo(target: string, mode: ResetMode): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    if (mode === 'hard') {
+      await this.openSafety('hardReset', target);
+      return;
+    }
+    try {
+      const result = await this.tauri.resetTo(path, target, mode);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async createTag(name: string, target?: string, message?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !name.trim()) return;
+    try {
+      const result = await this.tauri.createTag(path, name.trim(), target, message);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async deleteTag(name: string): Promise<void> {
+    await this.openSafety('deleteTag', name);
+  }
+
+  async forcePush(): Promise<void> {
+    if (this.currentBranchLocked()) {
+      const branch = this.status()?.branch ?? 'branch';
+      const reason = this.currentBranchLockReason();
+      this.showWarning(
+        reason
+          ? `Branch '${branch}' is locked: ${reason}`
+          : `Branch '${branch}' is locked. Unlock it before force-pushing.`,
+      );
+      return;
+    }
+    const branch = this.status()?.branch;
+    await this.openSafety('forcePush', branch ?? undefined);
+  }
+
+  openFileHistory(filePath: string): void {
+    this.fileHistoryPath.set(filePath);
+    this.selectedDiffPath.set(filePath);
+    this.setBrowseTab('history');
+  }
+
+  openFileBlame(filePath: string): void {
+    this.selectedDiffPath.set(filePath);
+    this.setBrowseTab('blame');
+  }
+
+  async renameBranch(from: string, to: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !to.trim()) return;
+    try {
+      const result = await this.tauri.renameBranch(path, from, to.trim());
+      await this.refreshRepo();
+      this.showToast(result.message, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+      );
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async lockBranch(name: string, reason?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !name.trim()) return;
+    try {
+      const result = await this.tauri.lockBranch(path, name.trim(), reason?.trim() || undefined);
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async unlockBranch(name: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !name.trim()) return;
+    try {
+      const result = await this.tauri.unlockBranch(path, name.trim());
+      await this.refreshRepo();
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  isBranchLocked(name: string): boolean {
+    return this.localBranches().some((b) => b.name === name && b.locked);
+  }
+
+  async refreshIdentity(): Promise<void> {
+    try {
+      this.identity.set(await this.tauri.getGitIdentity());
+    } catch {
+      this.identity.set(null);
+    }
+  }
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase().replace(/^<|>$/g, '');
+}
+
+function isBrowseTab(value: unknown): value is BrowseTab {
+  return (
+    value === 'commit' ||
+    value === 'diff' ||
+    value === 'files' ||
+    value === 'blame' ||
+    value === 'history' ||
+    value === 'reflog' ||
+    value === 'console'
+  );
+}
+
+function isAppView(value: unknown): value is AppView {
+  return (
+    value === 'dashboard' ||
+    value === 'browse' ||
+    value === 'onboarding' ||
+    value === 'settings' ||
+    value === 'prs' ||
+    value === 'jira' ||
+    value === 'profiles' ||
+    value === 'automation' ||
+    value === 'templates'
+  );
+}
+
+function normalizePullAction(value: unknown): AppSettings['defaultPullAction'] {
+  if (value === 'rebase' || value === 'fetch' || value === 'merge') return value;
+  return 'merge';
+}
+
+function normalizePushAction(value: unknown): AppSettings['defaultPushAction'] {
+  if (value === 'current' || value === 'matching' || value === 'upstream') return value;
+  return 'upstream';
+}
+
+function defaultConnections(): AppSettings['connections'] {
+  return [
+    {
+      id: 'github',
+      provider: 'github',
+      label: 'GitHub',
+      enabled: false,
+      baseUrl: 'https://api.github.com',
+      username: '',
+      token: '',
+      organization: '',
+      project: '',
+    },
+    {
+      id: 'gitlab',
+      provider: 'gitlab',
+      label: 'GitLab',
+      enabled: false,
+      baseUrl: 'https://gitlab.com',
+      username: '',
+      token: '',
+      organization: '',
+      project: '',
+    },
+    {
+      id: 'azureDevOps',
+      provider: 'azureDevOps',
+      label: 'Azure DevOps',
+      enabled: false,
+      baseUrl: 'https://dev.azure.com',
+      username: '',
+      token: '',
+      organization: '',
+      project: '',
+    },
+    {
+      id: 'jira',
+      provider: 'jira',
+      label: 'Jira',
+      enabled: false,
+      baseUrl: 'https://your-domain.atlassian.net',
+      username: '',
+      token: '',
+      organization: '',
+      project: '',
+    },
+  ];
+}
+
+export const DEFAULT_BRANCH_PREFIXES = ['feature', 'bugfix', 'hotfix', 'chore', 'release'];
+
+function normalizeBranchPrefixes(raw: unknown, selected?: string): string[] {
+  const fromList = Array.isArray(raw)
+    ? raw
+        .filter((p): p is string => typeof p === 'string')
+        .map((p) => p.trim().replace(/^\/+|\/+$/g, ''))
+        .filter(Boolean)
+    : [];
+  const selectedClean = (selected ?? '').trim().replace(/^\/+|\/+$/g, '');
+  const merged = [...fromList];
+  if (selectedClean && !merged.includes(selectedClean)) {
+    merged.unshift(selectedClean);
+  }
+  if (merged.length === 0) {
+    return DEFAULT_BRANCH_PREFIXES.slice();
+  }
+  return [...new Set(merged)];
+}
+
+function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings {
+  const base = defaultConnections();
+  const incoming = Array.isArray(raw.connections) ? raw.connections : [];
+  const connections =
+    incoming.length === 0
+      ? base
+      : base.map((def) => {
+          const found = incoming.find((c) => c.provider === def.provider || c.id === def.id);
+          return found
+            ? {
+                ...def,
+                ...found,
+                organization: found.organization ?? '',
+                project: found.project ?? '',
+              }
+            : def;
+        });
+
+  return {
+    theme: raw.theme || 'system',
+    accent: raw.accent || '#0EA5E9',
+    simpleMode: raw.simpleMode ?? true,
+    layout: raw.layout ?? {},
+    focusMode: raw.focusMode ?? true,
+    defaultPullAction: normalizePullAction(raw.defaultPullAction),
+    defaultPushAction: normalizePushAction(raw.defaultPushAction),
+    autoFetchOnOpen: raw.autoFetchOnOpen ?? false,
+    confirmForcePush: raw.confirmForcePush ?? true,
+    confirmDiscard: raw.confirmDiscard ?? true,
+    signOffByDefault: raw.signOffByDefault ?? false,
+    pushAfterCommit: raw.pushAfterCommit ?? false,
+    myBranchesOnly: raw.myBranchesOnly ?? false,
+    branchPrefixEnabled: raw.branchPrefixEnabled ?? true,
+    branchPrefix: (raw.branchPrefix ?? 'feature').trim() || 'feature',
+    branchPrefixes: normalizeBranchPrefixes(raw.branchPrefixes, raw.branchPrefix),
+    editorCommand: raw.editorCommand ?? '',
+    diffTool: raw.diffTool ?? '',
+    mergeTool: raw.mergeTool ?? '',
+    sshClient: raw.sshClient || 'openssh',
+    connections,
+    commitTypes: normalizeCommitTypes(raw.commitTypes),
+  };
+}

@@ -1,0 +1,92 @@
+<section class="group kind-worktrees" [class.collapsed]="!open()">
+  <div class="group-head-row">
+    <button
+      type="button"
+      class="group-head"
+      (click)="toggle($event)"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon class="chev" [name]="chevron()" size="13" />
+      <span class="kind">Worktrees</span>
+      <span class="count">{{ filtered().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="startAdd($event)"
+      aria-label="Add worktree"
+      title="Add worktree"
+    >
+      <ng-icon name="lucidePlus" size="11" />
+    </button>
+  </div>
+
+  @if (open()) {
+    @if (drafting()) {
+      <div class="create">
+        <input
+          [ngModel]="worktreePath()"
+          (ngModelChange)="worktreePath.set($event)"
+          placeholder="Path for new worktree"
+        />
+        <input
+          [ngModel]="branchName()"
+          (ngModelChange)="branchName.set($event)"
+          placeholder="Branch name"
+        />
+        <label class="check">
+          <input
+            type="checkbox"
+            [ngModel]="createBranch()"
+            (ngModelChange)="createBranch.set($event)"
+          />
+          Create new branch
+        </label>
+        <div class="row">
+          <button type="button" class="bl-btn bl-btn-primary" (click)="create()">Add</button>
+          <button type="button" class="bl-btn" (click)="drafting.set(false)">Cancel</button>
+        </div>
+      </div>
+    }
+
+    <ul class="card-list">
+      @for (w of filtered(); track w.path) {
+        <li [class.main]="w.isMain">
+          <div class="meta">
+            <div class="title-row">
+              <ng-icon name="lucideFolders" size="12" />
+              <span class="name">{{ folderName(w.path) }}</span>
+              @if (w.isMain) {
+                <span class="chip">main</span>
+              }
+              @if (w.locked) {
+                <span class="chip">locked</span>
+              }
+            </div>
+            <span class="msg" [title]="w.path">
+              {{ w.branch || (w.detached ? 'detached' : '—') }}
+              ·
+              <span class="mono">{{ w.shortHead }}</span>
+            </span>
+          </div>
+          <div class="actions">
+            @if (!w.isMain) {
+              <button type="button" class="link" (click)="store.openWorktree(w.path)" title="Open this worktree">
+                Open
+              </button>
+              <button type="button" class="link danger" (click)="remove(w.path)" title="Remove worktree">
+                Remove
+              </button>
+            } @else {
+              <button type="button" class="link" (click)="store.pruneWorktrees()" title="Prune stale worktrees">
+                Prune
+              </button>
+            }
+          </div>
+        </li>
+      } @empty {
+        <li class="empty-row">No worktrees</li>
+      }
+    </ul>
+  }
+</section>

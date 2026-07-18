@@ -1,0 +1,65 @@
+@if (store.cloneDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clone-title"
+    >
+      <header>
+        <div>
+          <h2 id="clone-title">Clone repository</h2>
+          <p>Paste a remote URL, then choose where it should live.</p>
+        </div>
+        <button type="button" class="bl-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <label>
+        Remote URL
+        <input
+          type="url"
+          placeholder="https://github.com/org/repo.git or git@…"
+          [ngModel]="url()"
+          (ngModelChange)="url.set($event)"
+          autofocus
+        />
+      </label>
+
+      <label>
+        Parent folder
+        <div class="row">
+          <input
+            type="text"
+            placeholder="Choose a folder…"
+            [ngModel]="parentDir()"
+            (ngModelChange)="parentDir.set($event)"
+          />
+          <button type="button" class="bl-btn" (click)="pickFolder()">Browse…</button>
+        </div>
+      </label>
+
+      @if (destination()) {
+        <p class="dest">
+          Will clone into
+          <code>{{ destination() }}</code>
+        </p>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          (click)="submit()"
+          [disabled]="!canClone()"
+        >
+          <ng-icon name="lucideDownload" size="15" />
+          {{ busy() ? 'Cloning…' : 'Clone' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

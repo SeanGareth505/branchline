@@ -1,0 +1,176 @@
+@if (store.changelogModalOpen()) {
+  <div class="backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="changelog-dialog-title"
+    >
+      <header class="dialog-head">
+        <div>
+          <p class="kicker">Release</p>
+          <h2 id="changelog-dialog-title">Extract changelog</h2>
+          <p class="sub">
+            {{ resolvedRange().fromLabel }}
+            <span class="arrow">→</span>
+            {{ resolvedRange().toLabel }}
+            <span class="dot">·</span>
+            <strong>{{ stats().total }}</strong> commits
+            @if (stats().breaking) {
+              <span class="dot">·</span>
+              <span class="breaking">{{ stats().breaking }} breaking</span>
+            }
+          </p>
+        </div>
+        <button type="button" class="bl-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <div class="body">
+        <aside class="controls">
+          <section>
+            <h3>Format</h3>
+            <div class="format-grid">
+              @for (f of formats; track f.id) {
+                <button
+                  type="button"
+                  class="format-card"
+                  [class.on]="format() === f.id"
+                  (click)="setFormat(f.id)"
+                >
+                  <strong>{{ f.label }}</strong>
+                  <span>{{ f.hint }}</span>
+                </button>
+              }
+            </div>
+          </section>
+
+          <section>
+            <h3>Range</h3>
+            <label class="field">
+              <span>From</span>
+              <select [ngModel]="fromRef()" (ngModelChange)="fromRef.set($event)">
+                @for (opt of fromOptions(); track opt.id) {
+                  <option [value]="opt.id">{{ opt.label }}</option>
+                }
+              </select>
+            </label>
+            <label class="field">
+              <span>To</span>
+              <select [ngModel]="toRef()" (ngModelChange)="toRef.set($event)">
+                @for (opt of toOptions(); track opt.id) {
+                  <option [value]="opt.id">{{ opt.label }}</option>
+                }
+              </select>
+            </label>
+          </section>
+
+          <section>
+            <h3>Release</h3>
+            <label class="field">
+              <span>Version</span>
+              <input
+                type="text"
+                [ngModel]="version()"
+                (ngModelChange)="version.set($event)"
+                placeholder="1.2.0"
+              />
+            </label>
+            @if (format() === 'release') {
+              <label class="field">
+                <span>Title</span>
+                <input
+                  type="text"
+                  [ngModel]="title()"
+                  (ngModelChange)="title.set($event)"
+                  placeholder="Release notes"
+                />
+              </label>
+            }
+            <label class="field">
+              <span>Date</span>
+              <input type="date" [ngModel]="date()" (ngModelChange)="date.set($event)" />
+            </label>
+          </section>
+
+          <section>
+            <h3>Include</h3>
+            <div class="checks">
+              <label>
+                <input
+                  type="checkbox"
+                  [ngModel]="includeShas()"
+                  (ngModelChange)="includeShas.set($event)"
+                />
+                Commit SHAs
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  [ngModel]="includeAuthors()"
+                  (ngModelChange)="includeAuthors.set($event)"
+                />
+                Authors
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  [ngModel]="excludeMerges()"
+                  (ngModelChange)="excludeMerges.set($event)"
+                />
+                Skip merge commits
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  [ngModel]="excludeChores()"
+                  (ngModelChange)="excludeChores.set($event)"
+                />
+                Skip chore / ci / build
+              </label>
+            </div>
+          </section>
+
+          @if (stats().sections.length) {
+            <section class="stats">
+              <h3>Breakdown</h3>
+              <ul>
+                @for (row of stats().sections; track row[0]) {
+                  <li>
+                    <span>{{ row[0] }}</span>
+                    <strong>{{ row[1] }}</strong>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
+        </aside>
+
+        <section class="preview">
+          <header>
+            <h3>Preview</h3>
+            <span class="mono muted">CHANGELOG.md</span>
+          </header>
+          <pre class="markdown mono">{{ result().markdown }}</pre>
+        </section>
+      </div>
+
+      <footer class="dialog-foot">
+        <button type="button" class="bl-btn" (click)="download()">
+          <ng-icon name="lucideDownload" size="15" />
+          Download .md
+        </button>
+        <div class="foot-right">
+          <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="copy()">
+            <ng-icon [name]="copied() ? 'lucideCheck' : 'lucideClipboardCopy'" size="15" />
+            {{ copied() ? 'Copied' : 'Copy changelog' }}
+            <span class="kbd">⌘↵</span>
+          </button>
+        </div>
+      </footer>
+    </div>
+  </div>
+}

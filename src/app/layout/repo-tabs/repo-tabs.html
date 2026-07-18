@@ -1,0 +1,27 @@
+@if (store.openRepos().length) {
+  <div class="tabs" role="tablist" aria-label="Open repositories">
+    @for (repo of store.openRepos(); track repo.path) {
+      <div
+        class="tab"
+        role="tab"
+        [class.active]="store.currentRepo()?.path === repo.path && store.view() === 'browse'"
+        [attr.aria-selected]="store.currentRepo()?.path === repo.path && store.view() === 'browse'"
+        [title]="tooltip(repo.path, repo.branch)"
+      >
+        <button type="button" class="tab-main" (click)="select(repo.path)">
+          <ng-icon name="lucideFolderGit2" size="12" />
+          <span class="name">{{ repo.name }}</span>
+        </button>
+        <button
+          type="button"
+          class="close"
+          [attr.aria-label]="'Close ' + repo.name"
+          title="Close"
+          (click)="close(repo.path, $event)"
+        >
+          <ng-icon name="lucideX" size="12" />
+        </button>
+      </div>
+    }
+  </div>
+}

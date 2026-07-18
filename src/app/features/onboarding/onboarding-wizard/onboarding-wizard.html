@@ -1,0 +1,40 @@
+<section class="wizard">
+  <div class="card bl-glass-dialog">
+    <div class="brand">
+      <app-brand-mark [size]="36" />
+      <span>Branchline</span>
+    </div>
+    <h1>Set up your Git environment</h1>
+    <p class="lead">A short checklist before you browse repositories.</p>
+
+    <ul class="checklist">
+      @for (item of items(); track item.id) {
+        <li [attr.data-status]="item.status">
+          <span class="mark">{{ item.status === 'verified' ? '✓' : item.status === 'skipped' ? '–' : '!' }}</span>
+          <div>
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.description }}</span>
+            <em>{{ statusLabel(item.status) }}</em>
+          </div>
+        </li>
+      }
+    </ul>
+
+    <div class="identity">
+      <label>
+        Name
+        <input [ngModel]="name()" (ngModelChange)="name.set($event)" />
+      </label>
+      <label>
+        Email
+        <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)" />
+      </label>
+      <button type="button" class="bl-btn" (click)="saveIdentity()">Save identity</button>
+    </div>
+
+    <footer>
+      <button type="button" class="bl-btn" (click)="skip()">Skip & open</button>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="complete()">Complete setup</button>
+    </footer>
+  </div>
+</section>

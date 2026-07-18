@@ -1,0 +1,127 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.05rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  height: 1.9rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.tool:hover {
+  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  color: var(--text-primary);
+  border-color: var(--glass-border);
+}
+
+.tool:disabled,
+.chev:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool.locked {
+  color: var(--text-muted);
+}
+
+.tool.primary {
+  padding: 0 0.5rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.tool.primary:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+
+.tool ng-icon {
+  flex-shrink: 0;
+}
+
+.sep {
+  width: 1px;
+  height: 1.15rem;
+  margin: 0 0.28rem;
+  background: var(--glass-border);
+  flex-shrink: 0;
+}
+
+.split {
+  display: inline-flex;
+  align-items: stretch;
+  height: 1.9rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.split:hover,
+.split.open {
+  border-color: var(--glass-border);
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+}
+
+.split .tool {
+  border: 0;
+  border-radius: 5px 0 0 5px;
+  height: 100%;
+}
+
+.split .tool:hover {
+  border-color: transparent;
+}
+
+.chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  border: 0;
+  border-left: 1px solid transparent;
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.split:hover .chev,
+.split.open .chev {
+  border-left-color: var(--glass-border);
+}
+
+.chev:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

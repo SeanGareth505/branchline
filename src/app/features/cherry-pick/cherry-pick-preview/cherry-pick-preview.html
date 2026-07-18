@@ -1,0 +1,30 @@
+@if (store.cherryPreviewOpen() && store.cherryPreview(); as preview) {
+  <div class="backdrop" (click)="store.closeCherryPick()">
+    <div class="dialog bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog">
+      <header>
+        <h2>Apply commits here</h2>
+        <button type="button" class="bl-btn" (click)="store.closeCherryPick()">Cancel</button>
+      </header>
+      <p>{{ preview.message }}</p>
+      @if (preview.estimatedConflicts) {
+        <p class="warn">Conflicts are likely.</p>
+      }
+      <ul>
+        @for (c of preview.commits; track c.sha) {
+          <li>
+            <span class="mono">{{ c.shortSha }}</span>
+            <span>{{ c.subject }}</span>
+            <span class="muted">{{ c.author }}</span>
+            @if (c.alreadyApplied) {
+              <span class="bl-chip">already applied</span>
+            }
+          </li>
+        }
+      </ul>
+      <footer>
+        <button type="button" class="bl-btn" (click)="store.closeCherryPick()">Cancel</button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="store.applyCherryPick()">Apply</button>
+      </footer>
+    </div>
+  </div>
+}

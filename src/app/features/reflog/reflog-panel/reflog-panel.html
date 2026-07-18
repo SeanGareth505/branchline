@@ -1,0 +1,23 @@
+<div class="reflog">
+  <header>Reflog · HEAD movements</header>
+  @if (loading()) {
+    <p class="empty">Loading reflog…</p>
+  } @else {
+    <ul>
+      @for (entry of entries(); track entry.selector + entry.sha) {
+        <li>
+          <button type="button" class="row" (click)="select(entry)">
+            <span class="sel mono">{{ entry.selector }}</span>
+            <span class="sha mono">{{ entry.shortSha }}</span>
+            <span class="action">{{ entry.action }}</span>
+            <span class="subject">{{ entry.subject }}</span>
+            <span class="meta">{{ time(entry.timestamp) }}</span>
+          </button>
+          <button type="button" class="link" (click)="checkout(entry)">Branch here</button>
+        </li>
+      } @empty {
+        <li class="empty">No reflog entries</li>
+      }
+    </ul>
+  }
+</div>

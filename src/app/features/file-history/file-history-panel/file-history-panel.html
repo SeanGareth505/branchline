@@ -1,0 +1,20 @@
+<div class="history">
+  <header>File history · {{ displayPath }}</header>
+  @if (loading()) {
+    <p class="empty">Loading history…</p>
+  } @else {
+    <ul>
+      @for (entry of entries(); track entry.sha) {
+        <li>
+          <button type="button" class="row" (click)="select(entry)">
+            <span class="sha mono">{{ entry.shortSha }}</span>
+            <span class="subject">{{ entry.subject }}</span>
+            <span class="meta">{{ entry.author }} · {{ time(entry.timestamp) }}</span>
+          </button>
+        </li>
+      } @empty {
+        <li class="empty">No history for this file</li>
+      }
+    </ul>
+  }
+</div>

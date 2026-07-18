@@ -1,0 +1,167 @@
+<div
+  class="patch-lines"
+  tabindex="0"
+  (focus)="onFocus()"
+  (blur)="onBlur($event)"
+>
+  @if (showToolbar() && interactive() && selectedCount() > 0) {
+    <div class="selection-bar">
+      <span>{{ selectedCount() }} line{{ selectedCount() === 1 ? '' : 's' }} selected</span>
+      <div class="selection-actions">
+        @if (canStage()) {
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="patchBusy()"
+            (click)="applySelection('stage')"
+          >
+            Stage lines (S)
+          </button>
+        }
+        @if (canUnstage()) {
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="patchBusy()"
+            (click)="applySelection('unstage')"
+          >
+            Unstage lines (U)
+          </button>
+        }
+        @if (canReset()) {
+          <button
+            type="button"
+            class="bl-btn quiet danger"
+            [disabled]="patchBusy()"
+            (click)="applySelection('discard')"
+          >
+            Reset lines (R)
+          </button>
+        }
+        <button type="button" class="bl-btn quiet" (click)="clearLineSelection()">Clear</button>
+      </div>
+    </div>
+  }
+
+  <div
+    class="patch-scroll mono"
+    (contextmenu)="onPatchContextMenu($event)"
+  >
+    @if (!patch()) {
+      <p class="patch-empty">{{ emptyMessage() }}</p>
+    } @else if (parsedDiff(); as diff) {
+      @for (line of diff.lines; track line.index) {
+        @if (line.kind === 'hunk') {
+          <div class="hunk-bar">
+            <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+            @if (interactive() && line.hunkId) {
+              <div class="hunk-actions">
+                @if (canStage()) {
+                  <button
+                    type="button"
+                    class="bl-btn quiet"
+                    [disabled]="patchBusy()"
+                    (click)="stageHunk(line.hunkId)"
+                  >
+                    Stage hunk
+                  </button>
+                  <button
+                    type="button"
+                    class="bl-btn quiet danger"
+                    [disabled]="patchBusy()"
+                    (click)="discardHunk(line.hunkId)"
+                  >
+                    Reset hunk
+                  </button>
+                } @else if (canUnstage()) {
+                  <button
+                    type="button"
+                    class="bl-btn quiet"
+                    [disabled]="patchBusy()"
+                    (click)="unstageHunk(line.hunkId)"
+                  >
+                    Unstage hunk
+                  </button>
+                } @else if (canReset()) {
+                  <button
+                    type="button"
+                    class="bl-btn quiet danger"
+                    [disabled]="patchBusy()"
+                    (click)="discardHunk(line.hunkId)"
+                  >
+                    Reset hunk
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <div
+            class="pline"
+            role="button"
+            tabindex="-1"
+            [attr.data-kind]="line.kind"
+            [class.selectable]="interactive() && line.selectable"
+            [class.selected]="isLineSelected(line.index)"
+            [class.inert]="!interactive() || !line.selectable"
+            (mousedown)="onDiffLineMouseDown(line.index, $event)"
+            (mouseenter)="onDiffLineMouseEnter(line.index)"
+            (click)="onDiffLineClick(line.index, $event)"
+            (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+          >
+            {{ line.text }}
+          </div>
+        }
+      }
+    } @else {
+      @for (line of patch().split('\n'); track $index) {
+        <div class="pline">{{ line || ' ' }}</div>
+      }
+    }
+  </div>
+</div>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="lineMenuOrigin()"
+  [cdkConnectedOverlayOpen]="lineMenu().open"
+  [cdkConnectedOverlayPositions]="lineMenuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="closeLineMenu()"
+  (overlayOutsideClick)="closeLineMenu()"
+>
+  <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+    <div class="bl-menu-label">
+      {{ selectedCount() }} line{{ selectedCount() === 1 ? '' : 's' }}
+    </div>
+    @if (canStage()) {
+      <button type="button" [disabled]="!selectedCount() || patchBusy()" (click)="runLineMenuAction('stage')">
+        Stage lines
+      </button>
+      <button
+        type="button"
+        class="danger"
+        [disabled]="!selectedCount() || patchBusy()"
+        (click)="runLineMenuAction('discard')"
+      >
+        Reset lines
+      </button>
+    } @else if (canUnstage()) {
+      <button type="button" [disabled]="!selectedCount() || patchBusy()" (click)="runLineMenuAction('unstage')">
+        Unstage lines
+      </button>
+    } @else if (canReset()) {
+      <button
+        type="button"
+        class="danger"
+        [disabled]="!selectedCount() || patchBusy()"
+        (click)="runLineMenuAction('discard')"
+      >
+        Reset lines
+      </button>
+    }
+    <button type="button" (click)="clearLineSelection()">Clear selection</button>
+  </div>
+</ng-template>

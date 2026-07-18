@@ -1,0 +1,288 @@
+<aside class="refs" (click)="branchMenu() && closeBranchMenu()">
+  <div class="toolbar">
+    <label class="filter">
+      <ng-icon name="lucideSearch" size="14" />
+      <input
+        type="search"
+        placeholder="Filter…"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        aria-label="Filter branches, tags, and remotes"
+        (click)="$event.stopPropagation()"
+      />
+    </label>
+    <button
+      type="button"
+      class="mine"
+      [class.on]="store.myBranchesOnly()"
+      (click)="store.setMyBranchesOnly(!store.myBranchesOnly()); $event.stopPropagation()"
+      [attr.aria-pressed]="store.myBranchesOnly()"
+      title="Branches whose tip commit matches your Git identity"
+    >
+      Mine
+    </button>
+    <button
+      type="button"
+      class="add"
+      (click)="store.openCreateBranchDialog()"
+      aria-label="Create branch"
+      title="Create branch"
+    >
+      <ng-icon name="lucidePlus" size="13" />
+    </button>
+  </div>
+
+  <div class="groups">
+    <section class="group kind-local" [class.collapsed]="!isOpen('local')">
+      <button
+        type="button"
+        class="group-head"
+        (click)="toggle('local', $event)"
+        [attr.aria-expanded]="isOpen('local')"
+      >
+        <ng-icon class="chev" [name]="chevron('local')" size="13" />
+        <span class="kind">Local</span>
+        @if (syncLabel(); as sync) {
+          <span class="sync-chip" [attr.data-kind]="sync.kind" [title]="sync.detail">{{ sync.short }}</span>
+        }
+        <span class="count">{{ filteredLocal().length }}</span>
+      </button>
+      @if (isOpen('local')) {
+        <ul class="ref-list">
+          @for (row of localRows(); track row.path) {
+            @if (row.kind === 'dir') {
+              <li class="folder" [style.--depth]="row.depth">
+                <button
+                  type="button"
+                  class="folder-btn"
+                  (click)="toggleFolder(row.path, $event)"
+                  [attr.aria-expanded]="row.open"
+                >
+                  <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
+                  <ng-icon [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
+                  <span class="label">{{ row.name }}</span>
+                  <span class="count">{{ row.branchCount }}</span>
+                </button>
+              </li>
+            } @else {
+              <li
+                [class.current]="row.branch.isCurrent"
+                [class.mine]="store.isMyBranch(row.branch)"
+                [class.locked]="row.branch.locked"
+                [class.tip-selected]="isTipSelected(row.branch.tipSha)"
+                [style.--depth]="row.depth"
+                (contextmenu)="openBranchMenu(row.branch.name, $event)"
+              >
+                <button type="button" class="name" (click)="store.checkoutBranch(row.branch.name)" [title]="row.branch.name">
+                  <span class="rail" aria-hidden="true"></span>
+                  <span class="label">{{ row.name }}</span>
+                  @if (row.branch.locked) {
+                    <span
+                      class="lock-badge"
+                      [title]="
+                        row.branch.lockReason
+                          ? 'Locked: ' + row.branch.lockReason
+                          : 'Locked — push, rename, and delete blocked'
+                      "
+                    >
+                      <ng-icon name="lucideLock" size="10" />
+                    </span>
+                  }
+                </button>
+                @if (!row.branch.isCurrent && !row.branch.locked) {
+                  <button
+                    type="button"
+                    class="icon"
+                    (click)="deleteBranch(row.branch.name)"
+                    aria-label="Delete branch"
+                    title="Delete branch"
+                  >
+                    <ng-icon name="lucideTrash2" size="11" />
+                  </button>
+                }
+              </li>
+            }
+          } @empty {
+            <li class="empty-row">{{ store.myBranchesOnly() ? 'No branches tipped by you' : 'No local branches' }}</li>
+          }
+        </ul>
+      }
+    </section>
+
+    @for (group of remoteGroups(); track group.path) {
+      <section class="group kind-remote" [class.collapsed]="!isRemoteGroupOpen(group.path)">
+        <button
+          type="button"
+          class="group-head"
+          (click)="toggleRemoteGroup(group.path, $event)"
+          [attr.aria-expanded]="isRemoteGroupOpen(group.path)"
+          [title]="'Remote-tracking branches under ' + group.name"
+        >
+          <ng-icon class="chev" [name]="remoteChevron(group.path)" size="13" />
+          <span class="kind">{{ group.name }}</span>
+          <span class="count">{{ group.count }}</span>
+        </button>
+        @if (isRemoteGroupOpen(group.path)) {
+          <ul class="ref-list">
+            @for (row of group.rows; track row.path) {
+              @if (row.kind === 'dir') {
+                <li class="folder" [style.--depth]="row.depth">
+                  <button
+                    type="button"
+                    class="folder-btn"
+                    (click)="toggleFolder(row.path, $event)"
+                    [attr.aria-expanded]="row.open"
+                  >
+                    <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
+                    <ng-icon [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
+                    <span class="label">{{ row.name }}</span>
+                    <span class="count">{{ row.branchCount }}</span>
+                  </button>
+                </li>
+              } @else {
+                <li
+                  [class.mine]="store.isMyBranch(row.branch)"
+                  [class.tip-selected]="isTipSelected(row.branch.tipSha)"
+                  [style.--depth]="row.depth"
+                  (contextmenu)="openBranchMenu(row.branch.name, $event)"
+                >
+                  <button
+                    type="button"
+                    class="name"
+                    (click)="store.checkoutBranch(row.branch.name)"
+                    [title]="row.branch.name"
+                  >
+                    <span class="rail" aria-hidden="true"></span>
+                    <span class="label">{{ row.name }}</span>
+                  </button>
+                </li>
+              }
+            } @empty {
+              <li class="empty-row">No branches</li>
+            }
+          </ul>
+        }
+      </section>
+    }
+
+    <section class="group kind-tags" [class.collapsed]="!isOpen('tags')">
+      <div class="group-head-row">
+        <button
+          type="button"
+          class="group-head"
+          (click)="toggle('tags', $event)"
+          [attr.aria-expanded]="isOpen('tags')"
+        >
+          <ng-icon class="chev" [name]="chevron('tags')" size="13" />
+          <span class="kind">Tags</span>
+          <span class="count">{{ filteredTags().length }}</span>
+        </button>
+        <button
+          type="button"
+          class="icon always"
+          (click)="startCreateTag($event)"
+          aria-label="Create tag"
+          title="Create tag"
+        >
+          <ng-icon name="lucidePlus" size="11" />
+        </button>
+      </div>
+      @if (isOpen('tags')) {
+        @if (creatingTag()) {
+          <div class="create">
+            <input
+              [ngModel]="newTag()"
+              (ngModelChange)="newTag.set($event)"
+              placeholder="v1.0.0"
+              (keydown.enter)="createTag()"
+            />
+            <div class="row">
+              <button type="button" class="bl-btn bl-btn-primary" (click)="createTag()">Tag</button>
+              <button type="button" class="bl-btn" (click)="creatingTag.set(false)">Cancel</button>
+            </div>
+          </div>
+        }
+        <ul class="ref-list">
+          @for (row of tagRows(); track row.path) {
+            @if (row.kind === 'dir') {
+              <li class="folder" [style.--depth]="row.depth">
+                <button
+                  type="button"
+                  class="folder-btn"
+                  (click)="toggleFolder(row.path, $event)"
+                  [attr.aria-expanded]="row.open"
+                >
+                  <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
+                  <ng-icon [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
+                  <span class="label">{{ row.name }}</span>
+                  <span class="count">{{ row.tagCount }}</span>
+                </button>
+              </li>
+            } @else {
+              <li [class.tip-selected]="isTipSelected(row.sha)" [style.--depth]="row.depth">
+                <button type="button" class="name" (click)="store.selectCommit(row.sha)" [title]="row.path">
+                  <span class="rail" aria-hidden="true"></span>
+                  <span class="label">{{ row.name }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="icon"
+                  (click)="deleteTag(row.path)"
+                  aria-label="Delete tag"
+                  title="Delete tag"
+                >
+                  <ng-icon name="lucideTrash2" size="11" />
+                </button>
+              </li>
+            }
+          } @empty {
+            <li class="empty-row">No tags</li>
+          }
+        </ul>
+      }
+    </section>
+
+    <app-remotes-panel
+      [filter]="query()"
+      [expanded]="isOpen('remotes')"
+      (expandedChange)="setExpanded('remotes', $event)"
+    />
+    <app-worktrees-panel
+      [filter]="query()"
+      [expanded]="isOpen('worktrees')"
+      (expandedChange)="setExpanded('worktrees', $event)"
+    />
+    <app-stash-panel
+      [filter]="query()"
+      [expanded]="isOpen('stash')"
+      (expandedChange)="setExpanded('stash', $event)"
+    />
+  </div>
+</aside>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="menuOrigin()"
+  [cdkConnectedOverlayOpen]="branchMenu() !== null"
+  [cdkConnectedOverlayPositions]="menuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="closeBranchMenu()"
+  (overlayOutsideClick)="closeBranchMenu()"
+>
+  @if (branchMenu(); as menu) {
+    <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+      <button type="button" (click)="store.checkoutBranch(menu.name); closeBranchMenu()">Checkout</button>
+      <button type="button" (click)="mergeBranch(menu.name)">Merge into current</button>
+      <button type="button" (click)="rebaseOnto(menu.name)">Rebase current onto…</button>
+      <button type="button" (click)="rename(menu.name)">Rename…</button>
+      @if (store.isBranchLocked(menu.name)) {
+        <button type="button" (click)="unlockBranch(menu.name)">Unlock branch</button>
+      } @else if (canLockBranch(menu.name)) {
+        <button type="button" (click)="lockBranch(menu.name)">Lock branch…</button>
+      }
+      <button type="button" class="danger" (click)="deleteBranch(menu.name); closeBranchMenu()">Delete…</button>
+    </div>
+  }
+</ng-template>

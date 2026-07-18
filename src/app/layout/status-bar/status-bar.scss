@@ -1,0 +1,106 @@
+:host {
+  display: block;
+}
+
+.bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 38px;
+  padding: 0 0.95rem;
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
+  background:
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--glass-highlight) 40%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 6%, transparent),
+      transparent 30%,
+      transparent 70%,
+      color-mix(in srgb, var(--lane-2) 5%, transparent)
+    ),
+    color-mix(in srgb, var(--glass-bg-strong) 78%, transparent);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
+  box-shadow:
+    0 1px 0 var(--glass-highlight) inset,
+    0 -6px 20px color-mix(in srgb, #0b1220 10%, transparent);
+  font-size: 12px;
+  z-index: 15;
+}
+
+.bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 26%, transparent) 40%,
+    color-mix(in srgb, var(--lane-2) 20%, transparent) 60%,
+    transparent
+  );
+  opacity: 0.5;
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  background: var(--current-bg);
+  border: 1px solid var(--selection-border);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--selection-rail);
+}
+
+.dummy-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  padding: 0.18rem 0.45rem;
+  border-radius: 6px;
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--git-modified) 35%, transparent);
+}
+
+.meta {
+  color: var(--text-muted);
+}
+
+.right .bl-btn {
+  padding: 0.28rem 0.65rem;
+  font-size: 12px;
+}
+
+.right .bl-btn.focus-on {
+  background: var(--current-bg);
+  border-color: var(--selection-border);
+  color: var(--accent);
+  box-shadow: var(--selection-glow);
+}
+
+.right .bl-btn.focus-on ng-icon {
+  color: var(--accent);
+}

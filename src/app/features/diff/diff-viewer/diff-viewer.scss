@@ -1,0 +1,125 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.source-chip {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-hover);
+}
+
+.source-chip[data-source='workingDirectory'] {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+}
+
+.source-chip[data-source='staged'] {
+  color: var(--git-added);
+  background: color-mix(in srgb, var(--git-added) 14%, transparent);
+}
+
+.files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.file-chip {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.file-chip.on {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.empty {
+  margin: 1rem;
+  color: var(--text-muted);
+}
+
+.hint {
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+pre {
+  margin: 0;
+  padding: 0.75rem;
+  overflow: auto;
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.split span {
+  display: block;
+}
+
+.add {
+  background: var(--diff-add-bg);
+  color: var(--git-added);
+}
+
+.del {
+  background: var(--diff-del-bg);
+  color: var(--git-deleted);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.split pre {
+  border-right: 1px solid var(--border-subtle);
+}
+
+app-patch-lines-view {
+  flex: 1;
+  min-height: 0;
+}

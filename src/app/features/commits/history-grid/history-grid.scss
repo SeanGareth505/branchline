@@ -1,0 +1,73 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 72px 100px 110px;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 0.75rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.row.selected {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-hover));
+}
+
+.row.dim {
+  opacity: 0.35;
+}
+
+.row.artificial {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.refs {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.sha,
+.author,
+.when,
+.meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

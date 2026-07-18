@@ -1,0 +1,14 @@
+:host {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.mark {
+  display: block;
+  border-radius: 22%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 2px 8px color-mix(in srgb, var(--accent) 14%, transparent);
+}

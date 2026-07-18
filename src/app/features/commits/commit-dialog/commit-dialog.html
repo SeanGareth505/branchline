@@ -1,0 +1,275 @@
+@if (store.commitModalOpen()) {
+  <div class="backdrop" role="presentation">
+    <div
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="commit-dialog-title"
+    >
+      <header class="toolbar">
+        <div class="toolbar-left">
+          <h2 id="commit-dialog-title">Commit</h2>
+          <span class="bl-chip">{{ store.status()?.branch || 'HEAD' }}</span>
+          @if (identity(); as id) {
+            <span class="who">{{ id.name }} &lt;{{ id.email }}&gt;</span>
+          }
+        </div>
+        <div class="toolbar-mid">
+          <span class="stat">{{ unstagedCount() }} unstaged</span>
+          <span class="stat staged">{{ stagedCount() }} staged</span>
+        </div>
+        <div class="toolbar-right">
+          <label class="filter">
+            <ng-icon name="lucideSearch" size="14" />
+            <input
+              type="search"
+              placeholder="Filter files"
+              [ngModel]="fileFilter()"
+              (ngModelChange)="fileFilter.set($event)"
+            />
+          </label>
+          <button type="button" class="bl-btn icon-btn" (click)="close()" aria-label="Close" title="Close">
+            <ng-icon name="lucideX" size="16" />
+          </button>
+        </div>
+      </header>
+
+      @if (conflicted().length) {
+        <div class="conflict-strip">
+          {{ conflicted().length }} conflicted file(s) — resolve before committing.
+        </div>
+      }
+
+      <div class="workspace">
+        <div class="files-column">
+          <section class="file-pane unstaged-pane" [class.focused]="focusPane() === 'unstaged'">
+            <header class="pane-head">
+              <h3>Unstaged changes</h3>
+              <span class="count">{{ unstaged().length }}</span>
+              <div class="pane-actions">
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  title="Stage all (Ctrl+S)"
+                  [disabled]="!unstagedCount()"
+                  (click)="stageAll()"
+                >
+                  Stage all
+                </button>
+              </div>
+            </header>
+            <ul
+              class="file-list"
+              tabindex="0"
+              (focus)="focusPane.set('unstaged')"
+              (keydown)="onFileListKey($event, false)"
+            >
+              @for (f of unstaged(); track f.path; let i = $index) {
+                <li
+                  [class.active]="isFileSelected(f.path, false)"
+                  [class.current]="selectedPath() === f.path && !selectedStaged()"
+                  (click)="onFileClick(f, false, $event, i)"
+                  (dblclick)="stage(f)"
+                >
+                  <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                  <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+                  <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
+                </li>
+              } @empty {
+                <li class="empty">No unstaged changes</li>
+              }
+            </ul>
+          </section>
+
+          <div class="transfer">
+            <button
+              type="button"
+              class="bl-btn"
+              title="Stage selected (S)"
+              [disabled]="!hasUnstagedSelection()"
+              (click)="stageSelected()"
+            >
+              Stage ▾
+            </button>
+            <button
+              type="button"
+              class="bl-btn"
+              title="Unstage selected (U)"
+              [disabled]="!hasStagedSelection()"
+              (click)="unstageSelected()"
+            >
+              ▴ Unstage
+            </button>
+            <button
+              type="button"
+              class="bl-btn quiet danger"
+              title="Reset selected (R)"
+              [disabled]="!hasUnstagedSelection()"
+              (click)="resetSelected()"
+            >
+              Reset
+            </button>
+          </div>
+
+          <section class="file-pane staged-pane" [class.focused]="focusPane() === 'staged'">
+            <header class="pane-head">
+              <h3>Staged changes</h3>
+              <span class="count">{{ staged().length }}</span>
+              <div class="pane-actions">
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  title="Unstage all"
+                  [disabled]="!stagedCount()"
+                  (click)="unstageAll()"
+                >
+                  Unstage all
+                </button>
+              </div>
+            </header>
+            <ul
+              class="file-list"
+              tabindex="0"
+              (focus)="focusPane.set('staged')"
+              (keydown)="onFileListKey($event, true)"
+            >
+              @for (f of staged(); track f.path; let i = $index) {
+                <li
+                  [class.active]="isFileSelected(f.path, true)"
+                  [class.current]="selectedPath() === f.path && selectedStaged()"
+                  (click)="onFileClick(f, true, $event, i)"
+                  (dblclick)="unstage(f)"
+                >
+                  <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                  <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+                  <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
+                </li>
+              } @empty {
+                <li class="empty">No staged changes</li>
+              }
+            </ul>
+          </section>
+        </div>
+
+        <section class="diff-pane">
+          <header class="diff-head">
+            @if (selectedPath(); as path) {
+              <div class="diff-meta">
+                <span class="area-chip" [class.staged]="selectedStaged()" [class.unstaged]="!selectedStaged()">
+                  {{ selectedStaged() ? 'Staged' : 'Unstaged' }}
+                </span>
+                <span class="mono path-label" [title]="path">{{ path }}</span>
+              </div>
+            } @else {
+              <span class="muted">Select a file to view diff</span>
+            }
+          </header>
+
+          <app-patch-lines-view
+            [patch]="patch()"
+            [mode]="linesMode()"
+            [emptyMessage]="
+              selectedPath() ? 'Loading diff…' : 'Select a file from Unstaged or Staged changes.'
+            "
+            (applied)="onPatchApplied()"
+          />
+        </section>
+      </div>
+
+      <section class="composer">
+        <div class="composer-main">
+          <div class="type-row">
+            @for (t of types(); track t.id) {
+              <button
+                type="button"
+                class="type-chip"
+                [class.on]="commitType() === t.id"
+                [title]="t.description || t.label"
+                (click)="setType(t.id)"
+              >
+                {{ t.label }}
+              </button>
+            }
+            @if (addingType()) {
+              <span class="type-add">
+                <input
+                  type="text"
+                  class="type-add-input"
+                  placeholder="type id"
+                  [ngModel]="newTypeDraft()"
+                  (ngModelChange)="newTypeDraft.set($event)"
+                  (keydown.enter)="$event.preventDefault(); confirmAddType()"
+                  (keydown.escape)="cancelAddType()"
+                />
+                <button type="button" class="bl-btn quiet" [disabled]="!canAddType() || savingType()" (click)="confirmAddType()">Add</button>
+                <button type="button" class="bl-btn quiet" (click)="cancelAddType()">Cancel</button>
+              </span>
+            } @else {
+              <button type="button" class="type-chip add" title="Add commit type" (click)="startAddType()">+</button>
+            }
+            @if (templates().length) {
+              <span class="type-sep" aria-hidden="true"></span>
+              @for (t of templates(); track t.id) {
+                <button type="button" class="bl-btn quiet" (click)="applyTemplate(t)">{{ t.name }}</button>
+              }
+            }
+            @if (jiraKeyHint(); as key) {
+              <span class="type-sep" aria-hidden="true"></span>
+              <button type="button" class="bl-btn quiet" (click)="insertJiraKey()" title="Insert Jira key into subject">
+                {{ key }}
+              </button>
+              <button type="button" class="bl-btn quiet" (click)="insertFixesFooter()" title="Add Fixes KEY footer">
+                Fixes
+              </button>
+            }
+          </div>
+
+          <label class="field subject-field">
+            <span class="sr-only">Commit message</span>
+            <textarea
+              class="message"
+              rows="4"
+              placeholder="Commit message"
+              [ngModel]="commitMessageField()"
+              (ngModelChange)="onCommitMessageChange($event)"
+            ></textarea>
+            <span class="hint" [class.warn]="subject().trim().length > 72">{{ charHint() }}</span>
+          </label>
+        </div>
+
+        <div class="composer-side">
+          <div class="options">
+            <label>
+              <input type="checkbox" [ngModel]="amend()" (ngModelChange)="toggleAmend($event)" />
+              Amend Commit
+            </label>
+            <label>
+              <input type="checkbox" [ngModel]="signOff()" (ngModelChange)="signOff.set($event)" />
+              Signed-off-by
+            </label>
+            <label>
+              <input type="checkbox" [ngModel]="pushAfter()" (ngModelChange)="pushAfter.set($event)" />
+              Push after commit
+            </label>
+          </div>
+          <div class="composer-actions">
+            <button type="button" class="bl-btn" (click)="store.softUndoLastCommit()">
+              <ng-icon name="lucideUndo2" size="14" />
+              Undo
+            </button>
+            <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary commit-btn"
+              [disabled]="!canCommit() || committing()"
+              (click)="commit()"
+            >
+              {{ amend() ? 'Amend' : 'Commit' }}
+              <span class="kbd">Ctrl+Enter</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+}

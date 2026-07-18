@@ -1,0 +1,219 @@
+<div
+  class="revision-grid"
+  tabindex="0"
+  [style.--grid-cols]="columns()"
+  (click)="menu().open && closeMenu()"
+  (keydown)="onKeydown($event)"
+>
+  <div class="filter-bar">
+    <div class="filter-main">
+      <input
+        class="filter-query"
+        type="search"
+        placeholder="Filter commits (message, SHA, ref)…"
+        [ngModel]="queryDraft()"
+        (ngModelChange)="onQueryInput($event)"
+      />
+      <input
+        class="filter-author"
+        type="search"
+        placeholder="Author"
+        [ngModel]="authorDraft()"
+        (ngModelChange)="onAuthorInput($event)"
+        [disabled]="store.historyFilter().mineOnly"
+      />
+      <div class="filter-toggles">
+        <button
+          type="button"
+          class="filter-toggle"
+          [class.on]="store.historyFilter().mineOnly"
+          title="Show only commits by your Git identity"
+          (click)="store.toggleMineFilter(); $event.stopPropagation()"
+        >
+          Mine
+        </button>
+        <button
+          type="button"
+          class="filter-toggle"
+          [class.on]="store.historyFilter().currentBranchOnly"
+          title="Show only commits reachable from the current branch"
+          (click)="store.toggleCurrentBranchFilter(); $event.stopPropagation()"
+        >
+          Branch
+        </button>
+      </div>
+    </div>
+    <div class="filter-meta">
+      @if (filterActive()) {
+        <span class="count">{{ store.filteredCommits().length }} shown</span>
+        <button
+          type="button"
+          class="clear"
+          (click)="clearFilters()"
+          title="Clear history filters"
+        >
+          Clear
+        </button>
+      }
+    </div>
+  </div>
+
+  <div #header class="grid-header">
+    <div class="h-graph" aria-hidden="true"></div>
+    <div>Description</div>
+    <div>Author</div>
+    <div>Date</div>
+    <div>Commit</div>
+  </div>
+
+  <div #body class="grid-body" (scroll)="onScroll()">
+    @for (row of rows(); track row.id) {
+      <div
+        class="row"
+        [attr.data-sha]="row.commit?.sha ?? null"
+        [class.alt]="row.alt"
+        [class.artificial]="row.artificial"
+        [class.selected]="row.selected"
+        [class.compare]="row.compare"
+        [class.head]="row.head"
+        [class.dim]="row.dim"
+        [class.hover]="row.hovered"
+        [class.parent-of]="row.parentOf"
+        [class.child-of]="row.childOf"
+        [style.height.px]="rowHeight"
+        (click)="onRowClick(row, $event)"
+        (contextmenu)="onContext(row, $event)"
+        (mouseenter)="onRowEnter(row.id)"
+        (mouseleave)="onRowLeave()"
+      >
+        <div class="col-graph" aria-hidden="true">
+          <svg
+            class="graph-svg"
+            [attr.width]="graphWidth()"
+            [attr.height]="rowHeight"
+            [class.dashed]="row.artificial"
+          >
+            @for (link of row.topLinks; track link.key) {
+              <path
+                class="edge"
+                [class.merge-parent]="link.mergeParent"
+                [class.lineage]="link.lineage"
+                [attr.d]="link.d"
+                [attr.stroke]="link.stroke"
+              />
+            }
+            @for (link of row.bottomLinks; track link.key) {
+              <path
+                class="edge"
+                [class.merge-parent]="link.mergeParent"
+                [class.lineage]="link.lineage"
+                [attr.d]="link.d"
+                [attr.stroke]="link.stroke"
+              />
+            }
+            <circle
+              class="node"
+              [class.merge]="row.node.isMerge"
+              [class.root]="row.node.isRoot"
+              [class.sel]="row.selected"
+              [class.lineage]="row.lineageNode"
+              [attr.cx]="row.cx"
+              [attr.cy]="rowHeight / 2"
+              [attr.r]="row.nodeRadius"
+              [attr.fill]="row.nodeFill"
+              [attr.stroke]="row.nodeStroke"
+            />
+            @if (row.node.isMerge) {
+              <circle
+                class="merge-ring"
+                [attr.cx]="row.cx"
+                [attr.cy]="rowHeight / 2"
+                [attr.r]="nodeR + 3.5"
+                [attr.stroke]="row.nodeFill"
+              />
+              <circle
+                class="merge-hole"
+                [attr.cx]="row.cx"
+                [attr.cy]="rowHeight / 2"
+                r="2.1"
+              />
+            }
+          </svg>
+        </div>
+
+        @if (row.art; as a) {
+          <div class="col-message artificial-msg">
+            <span class="wd-dot" [class.staged]="a.kind === 'staged'"></span>
+            <span class="subject">{{ a.label }}</span>
+            <span class="meta">{{ a.fileCount }} files · +{{ a.added }} ~{{ a.modified }} −{{ a.deleted }}</span>
+          </div>
+          <div class="col-muted"></div>
+          <div class="col-muted"></div>
+          <div class="col-muted"></div>
+        } @else if (row.commit; as c) {
+          <div class="col-message">
+            <span class="subject" [title]="c.message">{{ c.subject }}</span>
+            <div class="refs">
+              @for (chip of row.refs; track chip.ref) {
+                <button
+                  type="button"
+                  [class]="chip.className"
+                  [title]="chip.title"
+                  [disabled]="chip.disabled"
+                  (click)="onRefClick(chip.ref, $event)"
+                >
+                  {{ chip.ref }}
+                </button>
+              }
+            </div>
+          </div>
+          <div class="col-muted" [title]="c.email">{{ c.author }}</div>
+          <div class="col-muted" [title]="row.timeLabel">{{ row.timeLabel }}</div>
+          <button
+            type="button"
+            class="col-sha mono"
+            [title]="'Copy ' + c.sha"
+            (click)="copySha(c.sha, $event)"
+          >
+            {{ c.shortSha }}
+          </button>
+        }
+      </div>
+    }
+
+    @if (!rows().length) {
+      <div class="empty">
+        <p>No commits yet</p>
+        <span>Open a repository to browse history</span>
+      </div>
+    }
+  </div>
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="menuOrigin()"
+    [cdkConnectedOverlayOpen]="menu().open"
+    [cdkConnectedOverlayPositions]="menuPositions"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+    [cdkConnectedOverlayPush]="true"
+    (backdropClick)="closeMenu()"
+    (overlayOutsideClick)="closeMenu()"
+  >
+    <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+      <button type="button" (click)="applyHere()">Cherry-pick onto HEAD</button>
+      <button type="button" (click)="undoCommit()">Revert with undo commit</button>
+      <button type="button" (click)="interactiveRebase()">Interactive rebase from here…</button>
+      <button type="button" (click)="checkoutCommit()">
+        New branch at {{ menu().sha.slice(0, 7) }}
+      </button>
+      <button type="button" (click)="createTagHere()">Create tag here…</button>
+      <button type="button" (click)="extractChangelog(); closeMenu()">Extract changelog…</button>
+      <button type="button" (click)="squashInto()">Squash recent commits…</button>
+      <button type="button" (click)="resetSoft()">Reset soft (keep changes staged)</button>
+      <button type="button" (click)="resetMixed()">Reset mixed (keep changes unstaged)</button>
+      <button type="button" (click)="resetHard()">Hard reset…</button>
+      <button type="button" (click)="copySha(menu().sha, $event); closeMenu()">Copy full SHA</button>
+    </div>
+  </ng-template>
+</div>

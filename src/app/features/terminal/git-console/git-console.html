@@ -1,0 +1,60 @@
+<div class="console mono">
+  <header>
+    <span>Git console · {{ store.currentRepo()?.name ?? 'no repo' }}</span>
+    <div class="quick">
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="runQuick('status -sb')"
+        title="Run git status -sb"
+      >
+        status
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="runQuick('log --oneline -12')"
+        title="Run git log --oneline -12"
+      >
+        log
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="runQuick('diff --stat')"
+        title="Run git diff --stat"
+      >
+        diff
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="runQuick('branch -vv')"
+        title="Run git branch -vv"
+      >
+        branch
+      </button>
+      <button type="button" class="bl-btn" (click)="clear()" title="Clear console output">
+        Clear
+      </button>
+    </div>
+  </header>
+  <pre>
+@for (line of lines(); track $index) {
+<span>{{ line }}</span>
+}
+  </pre>
+  <form class="input-row" (submit)="$event.preventDefault(); run()">
+    <span class="prompt">$</span>
+    <span class="git">git</span>
+    <input
+      [ngModel]="command()"
+      (ngModelChange)="command.set($event)"
+      placeholder="status -sb"
+      [disabled]="running()"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button type="submit" class="bl-btn bl-btn-primary" [disabled]="running()">Run</button>
+  </form>
+</div>

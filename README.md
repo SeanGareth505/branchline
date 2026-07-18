@@ -1,59 +1,93 @@
-# BranchlineApp
+# Branchline
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.3.32.
+<p align="center">
+  <img src="public/brand/branchline-mark-512.png" alt="Branchline" width="96" height="96" />
+</p>
 
-## Development server
+Git Extensions v2 — a dedicated desktop Git GUI. Not an IDE. Not an AI tool.
 
-To start a local development server, run:
+Browse history, commit, branch, cherry-pick, push/pull, blame, and manage remotes with a calm focus-mode graph, plain-language safety dialogs, and easy undo.
 
-```bash
-ng serve
-```
+## Stack
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+- Angular 20 (standalone, signals, Tailwind CSS)
+- Tauri v2 + Rust (`git` CLI writes, git2 reads, SQLite)
+- Lucide icons, angular-split, Motion-ready chrome
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Develop
 
 ```bash
-ng generate --help
+npm install
+source "$HOME/.cargo/env"   # if needed
+npm run tauri:dev           # Angular + native window
 ```
 
-## Building
-
-To build the project run:
+Browser-only UI preview (mock IPC):
 
 ```bash
-ng build
+npm start
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Open http://localhost:4200 — uses mock Git data when Tauri is unavailable.
 
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
+## Build
 
 ```bash
-ng test
+npm run build
+npm run tauri:build
 ```
 
-## Running end-to-end tests
+## Release (GitHub download link)
 
-For end-to-end (e2e) testing, run:
+Push a version tag to build installers and publish a GitHub Release with downloadable assets:
 
 ```bash
-ng e2e
+# 1. Bump version in package.json + src-tauri/tauri.conf.json + src-tauri/Cargo.toml
+# 2. Commit, then:
+git tag v0.1.0
+git push origin main --tags
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+### Android APK
 
-## Additional Resources
+> Note: Branchline is primarily a desktop Git GUI. The Android build packages the UI as an APK for sideloading; local Git workflows on phone will be limited compared to desktop.
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Workflow: `.github/workflows/release-android.yml`
+
+After the workflow finishes, open **Releases** on GitHub. The APK download URL looks like:
+
+`https://github.com/<you>/<repo>/releases/download/v0.1.0/Branchline-0.1.0-android.apk`
+
+You can also run **Actions → Release Android APK → Run workflow** without a tag (uploads an artifact; tagged pushes publish a Release).
+
+Optional permanent signing (recommended before sharing widely):
+
+```bash
+chmod +x scripts/create-android-keystore.sh
+./scripts/create-android-keystore.sh
+```
+
+Then add GitHub secrets: `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_BASE64`.
+
+### Desktop (macOS / Windows / Linux)
+
+Workflow: `.github/workflows/release-desktop.yml` — same tag push also builds desktop installers onto the Release.
+
+## Layout
+
+- **Dashboard** — recent / pinned repos, open, clone, init
+- **Browse** — refs (branches, tags, remotes, stash), focus-mode revision graph with filters, commit staging, amend, diff, blame, file history, reflog, console
+- **Branches** — create, checkout, merge, rebase, rename, delete (with safety)
+- **History actions** — cherry-pick, revert, soft/mixed/hard reset, squash, create tag
+- **Remotes** — list / add / remove, pull, pull --rebase, push, force-with-lease
+- **Conflicts** — continue / abort merge, rebase, or cherry-pick
+- **Onboarding** — Git detect, identity, SSH / credentials checklist
+- **Safety** — destructive actions with recommended safe path
+- **Stubs** — PRs, Jira, profiles, automation, templates (mock adapters)
+
+## Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| ⌘/Ctrl+K | Command palette |
+| ⌘/Ctrl+Z | Undo last toast action |

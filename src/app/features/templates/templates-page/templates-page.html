@@ -1,0 +1,43 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <p class="kicker">Patterns</p>
+      <h1>Templates</h1>
+      <p>Branch names and commit messages that stay consistent.</p>
+    </div>
+    <div class="count">
+      <strong>{{ templates().length }}</strong>
+      templates
+    </div>
+  </header>
+
+  <div class="grid">
+    @for (t of templates(); track t.id) {
+      <article class="card">
+        <div class="card-top">
+          <div class="identity">
+            <span class="icon" [attr.data-kind]="t.kind">
+              <ng-icon [name]="iconFor(t.kind)" size="18" />
+            </span>
+            <div>
+              <div class="title-row">
+                <h2>{{ t.name }}</h2>
+                <span class="bl-chip" [class.bl-chip-tag]="t.kind === 'commit'">{{ t.kind }}</span>
+              </div>
+              <p class="sub">{{ kindHint(t.kind) }}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="bl-btn action"
+            title="Copy pattern to clipboard"
+            (click)="copy(t.pattern)"
+          >
+            Copy
+          </button>
+        </div>
+        <code class="pattern mono">{{ t.pattern }}</code>
+      </article>
+    }
+  </div>
+</section>

@@ -1,0 +1,583 @@
+<section class="page" [class.repos-mode]="section() === 'repos'">
+  @if (section() !== 'repos') {
+    <header class="hero">
+      <h1>Settings</h1>
+      <p>{{ sectionMeta().hint }}</p>
+    </header>
+  }
+
+  <div class="layout" [class.repos-layout]="section() === 'repos'">
+    <nav class="nav bl-panel" aria-label="Settings sections">
+      @for (item of sections; track item.id) {
+        <button
+          type="button"
+          class="nav-item"
+          [class.active]="section() === item.id"
+          (click)="setSection(item.id)"
+        >
+          {{ item.label }}
+        </button>
+      }
+    </nav>
+
+    <div class="content">
+      @switch (section()) {
+        @case ('repos') {
+          <app-dashboard />
+        }
+        @case ('appearance') {
+          <article class="bl-panel block">
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Theme</strong>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button type="button" class="seg-btn" [class.on]="store.settings().theme === 'dark'" (click)="setTheme('dark')">Dark</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().theme === 'light'" (click)="setTheme('light')">Light</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().theme === 'system'" (click)="setTheme('system')">System</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Accent</strong>
+              </div>
+              <div class="setting-control accent-control">
+                <input
+                  type="color"
+                  [ngModel]="store.settings().accent"
+                  (ngModelChange)="setAccent($event)"
+                  [attr.aria-label]="'Accent color'"
+                />
+                <code class="mono">{{ store.settings().accent }}</code>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Simple mode</strong>
+                <span>Hide Profiles, Automation, Templates</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().simpleMode"
+                    (ngModelChange)="store.saveSettings({ simpleMode: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Focus mode</strong>
+                <span>Dim commits outside current lineage</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().focusMode"
+                    (ngModelChange)="store.saveSettings({ focusMode: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>My branches only</strong>
+                <span>Default filter in the branches panel</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().myBranchesOnly"
+                    (ngModelChange)="store.setMyBranchesOnly($event)"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+        }
+
+        @case ('git') {
+          <article class="bl-panel block">
+            <h2 class="block-title">Identity</h2>
+            <p class="block-hint">Writes global <code>user.name</code> / <code>user.email</code>.</p>
+            <div class="inline-fields">
+              <label>
+                Name
+                <input [ngModel]="identityName()" (ngModelChange)="identityName.set($event)" />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  [ngModel]="identityEmail()"
+                  (ngModelChange)="identityEmail.set($event)"
+                />
+              </label>
+              <button type="button" class="bl-btn bl-btn-primary save-inline" (click)="saveIdentity()">
+                Save
+              </button>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Pull & push</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Default pull</strong>
+                <span>Toolbar Pull button</span>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'merge'" (click)="setPullAction('merge')">Merge</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'rebase'" (click)="setPullAction('rebase')">Rebase</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'fetch'" (click)="setPullAction('fetch')">Fetch</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Default push</strong>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'upstream'" (click)="setPushAction('upstream')">Upstream</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'current'" (click)="setPushAction('current')">Current</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'matching'" (click)="setPushAction('matching')">Matching</button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Safety & workflow</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Fetch on open</strong>
+                <span>Quietly fetch remotes when opening a repo</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().autoFetchOnOpen"
+                    (ngModelChange)="store.saveSettings({ autoFetchOnOpen: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Confirm force push</strong>
+                <span>Always show safety dialog for force-with-lease</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmForcePush"
+                    (ngModelChange)="store.saveSettings({ confirmForcePush: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Confirm discard</strong>
+                <span>Ask before discarding working-tree changes</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmDiscard"
+                    (ngModelChange)="store.saveSettings({ confirmDiscard: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Sign-off by default</strong>
+                <span>Pre-check Signed-off-by in the commit dialog</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().signOffByDefault"
+                    (ngModelChange)="store.saveSettings({ signOffByDefault: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Push after commit</strong>
+                <span>Pre-check push after a successful commit</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().pushAfterCommit"
+                    (ngModelChange)="store.saveSettings({ pushAfterCommit: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <div class="block-head">
+              <div>
+                <h2 class="block-title">Commit types</h2>
+                <p class="block-hint">Prefixes in the commit dialog (feat, fix, …).</p>
+              </div>
+              <button
+                type="button"
+                class="bl-btn quiet"
+                [disabled]="savingTypes()"
+                (click)="resetCommitTypes()"
+              >
+                Reset defaults
+              </button>
+            </div>
+            <div class="type-list">
+              <div class="type-head">
+                <span>Id</span>
+                <span>Label</span>
+                <span>Description</span>
+                <span></span>
+              </div>
+              @for (t of store.settings().commitTypes; track t.id) {
+                <div class="type-row">
+                  <code class="type-id">{{ t.id }}</code>
+                  <input
+                    class="type-label"
+                    [value]="t.label"
+                    (change)="updateCommitType(t.id, { label: $any($event.target).value })"
+                    [attr.aria-label]="'Label for ' + t.id"
+                  />
+                  <input
+                    class="type-desc"
+                    [value]="t.description ?? ''"
+                    (change)="updateCommitType(t.id, { description: $any($event.target).value })"
+                    placeholder="Description"
+                    [attr.aria-label]="'Description for ' + t.id"
+                  />
+                  <button
+                    type="button"
+                    class="bl-btn quiet danger"
+                    [disabled]="savingTypes() || store.settings().commitTypes.length <= 1"
+                    (click)="removeCommitType(t.id)"
+                  >
+                    Remove
+                  </button>
+                </div>
+              }
+            </div>
+            <div class="type-add-row">
+              <input
+                [ngModel]="newTypeId()"
+                (ngModelChange)="newTypeId.set($event)"
+                placeholder="New id (hotfix)"
+                (keydown.enter)="$event.preventDefault(); addCommitType()"
+              />
+              <input
+                [ngModel]="newTypeDescription()"
+                (ngModelChange)="newTypeDescription.set($event)"
+                placeholder="Description"
+                (keydown.enter)="$event.preventDefault(); addCommitType()"
+              />
+              <button
+                type="button"
+                class="bl-btn bl-btn-primary"
+                [disabled]="savingTypes()"
+                (click)="addCommitType()"
+              >
+                Add
+              </button>
+            </div>
+          </article>
+        }
+
+        @case ('connections') {
+          <article class="bl-panel block">
+            <div class="block-head">
+              <div>
+                <h2 class="block-title">Integrations</h2>
+                <p class="block-hint">
+                  Connect Git hosts and Jira. Tokens stay on this machine —
+                  {{ linkedCount() }} linked.
+                </p>
+              </div>
+              <label class="switch labeled">
+                <span>Show tokens</span>
+                <input
+                  type="checkbox"
+                  [ngModel]="showTokens()"
+                  (ngModelChange)="showTokens.set($event)"
+                />
+                <span class="track"></span>
+              </label>
+            </div>
+
+            <div class="conn-intro">
+              <p>
+                Use these accounts across Branchline: pick remote repos from the project menu,
+                browse pull requests, and work Jira tickets into branches and commits.
+              </p>
+            </div>
+
+            @for (conn of store.settings().connections; track conn.id) {
+              <div
+                class="conn"
+                [attr.data-provider]="conn.provider"
+                [class.linked]="store.isConnectionLinked(conn)"
+                [class.editing]="editingConnectionId() === conn.id"
+              >
+                <div class="conn-head">
+                  <div class="conn-identity">
+                    <span class="conn-glyph" aria-hidden="true">
+                      @switch (conn.provider) {
+                        @case ('github') {
+                          <ng-icon name="lucideGitPullRequest" size="16" />
+                        }
+                        @case ('gitlab') {
+                          <ng-icon name="lucideGitBranch" size="16" />
+                        }
+                        @case ('azureDevOps') {
+                          <ng-icon name="lucideCloud" size="16" />
+                        }
+                        @case ('jira') {
+                          <ng-icon name="lucideTicket" size="16" />
+                        }
+                        @default {
+                          <ng-icon name="lucideLink" size="16" />
+                        }
+                      }
+                    </span>
+                    <div class="conn-title">
+                      <div class="conn-name-row">
+                        <strong>{{ conn.label }}</strong>
+                        <span class="status" [attr.data-state]="connectionStatus(conn)">
+                          {{ connectionStatus(conn) }}
+                        </span>
+                      </div>
+                      <span class="conn-uses">{{ connectionUses(conn.provider) }}</span>
+                      @if (store.isConnectionLinked(conn) && conn.username) {
+                        <span class="conn-user">{{ conn.username }}</span>
+                      }
+                    </div>
+                  </div>
+                  <div class="conn-actions">
+                    @if (store.isConnectionLinked(conn)) {
+                      <button type="button" class="bl-btn quiet" (click)="openFeature(conn.provider)">
+                        Open
+                      </button>
+                      <button type="button" class="bl-btn quiet" (click)="disconnect(conn)">
+                        Disconnect
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        class="bl-btn bl-btn-primary"
+                        [disabled]="connectingId() === conn.id"
+                        (click)="connect(conn)"
+                      >
+                        Connect
+                      </button>
+                    }
+                    <button type="button" class="bl-btn quiet" (click)="editConnection(conn.id)">
+                      {{ editingConnectionId() === conn.id ? 'Done' : 'Edit' }}
+                    </button>
+                  </div>
+                </div>
+                @if (editingConnectionId() === conn.id) {
+                  <p class="conn-hint">{{ providerHint(conn.provider) }}</p>
+                  <div class="fields compact">
+                    <label>
+                      Base URL
+                      <input
+                        [ngModel]="conn.baseUrl"
+                        (ngModelChange)="updateConnection(conn.id, { baseUrl: $event })"
+                        placeholder="https://…"
+                      />
+                    </label>
+                    <label>
+                      {{ conn.provider === 'jira' ? 'Email' : 'Username / email' }}
+                      <input
+                        [ngModel]="conn.username"
+                        (ngModelChange)="updateConnection(conn.id, { username: $event })"
+                        autocomplete="username"
+                      />
+                    </label>
+                    <label>
+                      Token / PAT
+                      <input
+                        [type]="showTokens() ? 'text' : 'password'"
+                        [ngModel]="conn.token"
+                        (ngModelChange)="updateConnection(conn.id, { token: $event })"
+                        autocomplete="off"
+                        placeholder="Paste token"
+                      />
+                    </label>
+                    @if (conn.provider === 'azureDevOps') {
+                      <label>
+                        Organization
+                        <input
+                          [ngModel]="conn.organization"
+                          (ngModelChange)="updateConnection(conn.id, { organization: $event })"
+                        />
+                      </label>
+                      <label>
+                        Project
+                        <input
+                          [ngModel]="conn.project"
+                          (ngModelChange)="updateConnection(conn.id, { project: $event })"
+                        />
+                      </label>
+                    }
+                    <label class="inline-enable">
+                      <input
+                        type="checkbox"
+                        [ngModel]="conn.enabled"
+                        (ngModelChange)="updateConnection(conn.id, { enabled: $event })"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                }
+              </div>
+            }
+          </article>
+        }
+
+        @case ('ssh') {
+          <article class="bl-panel block">
+            <div class="setting">
+              <div class="setting-label">
+                <strong>SSH client</strong>
+                <span>Used for remote Git operations</span>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button type="button" class="seg-btn" [class.on]="store.settings().sshClient === 'openssh'" (click)="setSshClient('openssh')">OpenSSH</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().sshClient === 'other'" (click)="setSshClient('other')">System</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>SSH keys</strong>
+                @if (gitEnv()?.sshKeysFound) {
+                  <span class="ok-inline">Found</span>
+                } @else {
+                  <span class="warn-inline">None in ~/.ssh</span>
+                }
+              </div>
+              <div class="setting-control">
+                <button type="button" class="bl-btn quiet" (click)="refreshEnv()">Refresh</button>
+              </div>
+            </div>
+            @if (gitEnv()?.sshKeyPaths?.length) {
+              <ul class="paths">
+                @for (path of gitEnv()?.sshKeyPaths ?? []; track path) {
+                  <li class="mono">{{ path }}</li>
+                }
+              </ul>
+            }
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Credential helper</strong>
+                <span class="mono">{{ gitEnv()?.credentialHelper || '(not set)' }}</span>
+              </div>
+              <div class="setting-control">
+                <div class="seg wrap">
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('osxkeychain')">osxkeychain</button>
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('store')">store</button>
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('cache')">cache</button>
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('')">Clear</button>
+                </div>
+              </div>
+            </div>
+          </article>
+        }
+
+        @case ('tools') {
+          <article class="bl-panel block">
+            <h2 class="block-title">External tools</h2>
+            <p class="block-hint">Stored in Branchline; optionally written to global Git config.</p>
+            <div class="fields compact">
+              <label>
+                Editor command
+                <input
+                  [ngModel]="store.settings().editorCommand"
+                  (ngModelChange)="store.saveSettings({ editorCommand: $event })"
+                  placeholder="code --wait"
+                />
+              </label>
+              <label>
+                Diff tool
+                <input
+                  [ngModel]="store.settings().diffTool"
+                  (ngModelChange)="store.saveSettings({ diffTool: $event })"
+                  placeholder="vscode"
+                />
+              </label>
+              <label>
+                Merge tool
+                <input
+                  [ngModel]="store.settings().mergeTool"
+                  (ngModelChange)="store.saveSettings({ mergeTool: $event })"
+                  placeholder="vscode"
+                />
+              </label>
+            </div>
+            <div class="row tight">
+              <button type="button" class="bl-btn bl-btn-primary" (click)="applyToolSettings()">
+                Apply to Git config
+              </button>
+              <button type="button" class="bl-btn" (click)="refreshEnv()">Reload from Git</button>
+            </div>
+            @if (gitEnv(); as env) {
+              <dl class="snapshot">
+                <div>
+                  <dt>core.editor</dt>
+                  <dd class="mono">{{ env.coreEditor || '—' }}</dd>
+                </div>
+                <div>
+                  <dt>diff.tool</dt>
+                  <dd class="mono">{{ env.diffTool || '—' }}</dd>
+                </div>
+                <div>
+                  <dt>merge.tool</dt>
+                  <dd class="mono">{{ env.mergeTool || '—' }}</dd>
+                </div>
+              </dl>
+            }
+          </article>
+        }
+      }
+    </div>
+  </div>
+</section>

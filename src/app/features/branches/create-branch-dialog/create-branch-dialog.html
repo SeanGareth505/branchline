@@ -1,0 +1,205 @@
+@if (store.createBranchDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-branch-title"
+    >
+      <div class="atmosphere" aria-hidden="true">
+        <svg class="branch-art" viewBox="0 0 280 96" fill="none">
+          <path
+            class="lane a"
+            d="M36 12v28c0 8 6 14 14 14h88"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            class="lane b"
+            d="M36 54v28"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <path
+            class="lane c"
+            d="M138 54h72c8 0 14 6 14 14v12"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <circle class="node" cx="36" cy="12" r="3.5" />
+          <circle class="node" cx="138" cy="54" r="3.5" />
+          <circle class="node n2" cx="224" cy="80" r="3.5" />
+        </svg>
+      </div>
+
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">New branch</span>
+          <h2 id="create-branch-title">Create branch</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <div class="source">
+        <span class="source-label">Fork from</span>
+        <span class="source-pill">
+          <ng-icon name="lucideGitBranch" size="13" />
+          {{ baseLabel() }}
+        </span>
+      </div>
+
+      <div class="composer">
+        <div class="name-row" [class.with-prefix]="usePrefix()">
+          @if (usePrefix()) {
+            <div class="prefix-field" #prefixMenu>
+              <span class="field-label">Prefix</span>
+              <button
+                type="button"
+                class="prefix-trigger"
+                [class.open]="prefixOpen()"
+                (click)="togglePrefixMenu($event)"
+                [attr.aria-expanded]="prefixOpen()"
+                aria-haspopup="listbox"
+              >
+                <span class="prefix-value">{{ prefix() }}</span>
+                <ng-icon name="lucideChevronDown" size="14" />
+              </button>
+
+              @if (prefixOpen()) {
+                <div class="prefix-menu" role="listbox" (click)="$event.stopPropagation()">
+                  <ul>
+                    @for (item of prefixes(); track item) {
+                      <li>
+                        <button
+                          type="button"
+                          class="prefix-option"
+                          [class.active]="item === prefix()"
+                          role="option"
+                          [attr.aria-selected]="item === prefix()"
+                          (click)="selectPrefix(item)"
+                        >
+                          <span>{{ item }}</span>
+                          @if (item === prefix()) {
+                            <ng-icon name="lucideCheck" size="13" />
+                          }
+                        </button>
+                        @if (prefixes().length > 1) {
+                          <button
+                            type="button"
+                            class="prefix-remove"
+                            (click)="removePrefix(item, $event)"
+                            [attr.aria-label]="'Remove prefix ' + item"
+                            title="Remove prefix"
+                          >
+                            <ng-icon name="lucideX" size="12" />
+                          </button>
+                        }
+                      </li>
+                    }
+                  </ul>
+
+                  @if (addingPrefix()) {
+                    <div class="prefix-add-row">
+                      <input
+                        type="text"
+                        placeholder="e.g. experiment"
+                        [ngModel]="newPrefix()"
+                        (ngModelChange)="newPrefix.set($event)"
+                        (keydown.enter)="addPrefix()"
+                        (keydown.escape)="$event.stopPropagation(); addingPrefix.set(false)"
+                        autofocus
+                        spellcheck="false"
+                        autocomplete="off"
+                      />
+                      <button
+                        type="button"
+                        class="bl-btn bl-btn-primary add-confirm"
+                        (click)="addPrefix()"
+                        [disabled]="!canAddPrefix()"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  } @else {
+                    <button type="button" class="prefix-add" (click)="startAddPrefix($event)">
+                      <ng-icon name="lucidePlus" size="13" />
+                      Add prefix
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+            <span class="slash" aria-hidden="true">/</span>
+          }
+          <label class="name-field">
+            <span class="field-label">Name</span>
+            <input
+              type="text"
+              placeholder="onboarding"
+              [ngModel]="name()"
+              (ngModelChange)="name.set($event)"
+              (keydown.enter)="submit()"
+              autofocus
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </label>
+        </div>
+
+        <div class="preview" [class.ready]="canCreate()">
+          <span class="preview-label">Creates</span>
+          <code class="mono">{{ preview() }}</code>
+        </div>
+      </div>
+
+      <div class="options">
+        <button
+          type="button"
+          class="toggle"
+          [class.on]="usePrefix()"
+          (click)="onUsePrefixChange(!usePrefix())"
+          [attr.aria-pressed]="usePrefix()"
+        >
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-copy">
+            <strong>Use prefix</strong>
+            <em>Prefixed branch names</em>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="toggle"
+          [class.on]="checkout()"
+          (click)="checkout.set(!checkout())"
+          [attr.aria-pressed]="checkout()"
+        >
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-copy">
+            <strong>Checkout</strong>
+            <em>Switch after create</em>
+          </span>
+        </button>
+      </div>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          (click)="submit()"
+          [disabled]="!canCreate()"
+        >
+          <ng-icon name="lucideGitBranch" size="15" />
+          {{ busy() ? 'Creating…' : 'Create branch' }}
+          <kbd class="kbd">⌘↵</kbd>
+        </button>
+      </footer>
+    </div>
+  </div>
+}

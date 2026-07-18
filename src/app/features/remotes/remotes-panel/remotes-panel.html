@@ -1,0 +1,70 @@
+<section class="group kind-remotes" [class.collapsed]="!open()">
+  <div class="group-head-row">
+    <button
+      type="button"
+      class="group-head"
+      (click)="toggle($event)"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon class="chev" [name]="chevron()" size="13" />
+      <span class="kind" title="Remote repository URLs (origin, upstream, …)">Remote URLs</span>
+      <span class="count">{{ filtered().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="startAdd($event)"
+      aria-label="Add remote"
+      title="Add remote"
+    >
+      <ng-icon name="lucidePlus" size="11" />
+    </button>
+  </div>
+
+  @if (open()) {
+    @if (drafting()) {
+      <div class="create">
+        <input
+          [ngModel]="name()"
+          (ngModelChange)="name.set($event)"
+          placeholder="name"
+        />
+        <input
+          [ngModel]="url()"
+          (ngModelChange)="url.set($event)"
+          placeholder="https://github.com/org/repo.git"
+          (keydown.enter)="add()"
+        />
+        <div class="row">
+          <button type="button" class="bl-btn bl-btn-primary" (click)="add()">Add</button>
+          <button type="button" class="bl-btn" (click)="drafting.set(false)">Cancel</button>
+        </div>
+      </div>
+    }
+
+    <ul class="card-list">
+      @for (r of filtered(); track r.name) {
+        <li>
+          <div class="meta">
+            <div class="title-row">
+              <ng-icon name="lucideGlobe" size="12" />
+              <strong>{{ r.name }}</strong>
+            </div>
+            <span class="url" [title]="r.fetchUrl">{{ r.fetchUrl }}</span>
+          </div>
+          <button
+            type="button"
+            class="icon"
+            (click)="remove(r.name)"
+            aria-label="Remove remote"
+            title="Remove remote"
+          >
+            <ng-icon name="lucideTrash2" size="11" />
+          </button>
+        </li>
+      } @empty {
+        <li class="empty-row">No remotes</li>
+      }
+    </ul>
+  }
+</section>

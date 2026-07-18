@@ -1,0 +1,29 @@
+<div class="grid">
+  @for (a of store.artificial(); track a.id) {
+    <div class="row artificial">
+      <span class="subject">{{ a.label }}</span>
+      <span class="meta">{{ a.fileCount }} files · +{{ a.added }} ~{{ a.modified }} −{{ a.deleted }}</span>
+    </div>
+  }
+  @for (c of store.commits(); track c.sha) {
+    <button
+      type="button"
+      class="row"
+      [class.selected]="store.selectedSha() === c.sha || store.selectedShas().includes(c.sha)"
+      [class.dim]="store.settings().focusMode && !c.isRelativeToHead"
+      (click)="onRowClick(c.sha, $event)"
+    >
+      <div class="main">
+        <span class="subject">{{ c.subject }}</span>
+        <div class="refs">
+          @for (ref of c.refs; track ref) {
+            <span [class]="chipClass(ref)">{{ ref }}</span>
+          }
+        </div>
+      </div>
+      <span class="sha mono">{{ c.shortSha }}</span>
+      <span class="author">{{ c.author }}</span>
+      <span class="when">{{ time(c.timestamp) }}</span>
+    </button>
+  }
+</div>

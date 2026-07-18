@@ -1,0 +1,67 @@
+:host {
+  display: block;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1.05rem;
+  min-width: min(420px, calc(100vw - 2rem));
+  max-width: min(520px, calc(100vw - 2rem));
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-float);
+  border-left: 3px solid var(--accent);
+}
+
+.toast[data-kind='success'] {
+  border-left-color: var(--git-added);
+}
+
+.toast[data-kind='success'] .icon {
+  color: var(--git-added);
+}
+
+.toast[data-kind='warning'] {
+  border-left-color: var(--git-modified);
+}
+
+.toast[data-kind='warning'] .icon {
+  color: var(--git-modified);
+}
+
+.toast[data-kind='error'] {
+  border-left-color: var(--git-deleted);
+}
+
+.toast[data-kind='error'] .icon {
+  color: var(--git-deleted);
+}
+
+.toast[data-kind='info'] .icon {
+  color: var(--accent);
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.message {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}

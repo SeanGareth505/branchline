@@ -1,0 +1,47 @@
+@if (store.ignoreEditorOpen() && store.ignoreEditor(); as file) {
+  <div class="backdrop" (click)="store.closeIgnoreEditor()">
+    <div class="dialog bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <header>
+        <div>
+          <h2>Ignore rules</h2>
+          <p class="path">{{ file.filePath }}</p>
+        </div>
+        <button type="button" class="bl-btn" (click)="store.closeIgnoreEditor()" aria-label="Close">
+          <ng-icon name="lucideX" size="14" />
+        </button>
+      </header>
+
+      <div class="tabs">
+        <button
+          type="button"
+          class="seg"
+          [class.on]="kind() === 'gitignore'"
+          (click)="switchKind('gitignore')"
+        >
+          .gitignore
+        </button>
+        <button
+          type="button"
+          class="seg"
+          [class.on]="kind() === 'exclude'"
+          (click)="switchKind('exclude')"
+        >
+          exclude (local)
+        </button>
+      </div>
+
+      <textarea
+        [ngModel]="content()"
+        (ngModelChange)="content.set($event)"
+        spellcheck="false"
+        rows="16"
+        aria-label="Ignore file contents"
+      ></textarea>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="store.closeIgnoreEditor()">Cancel</button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="save()">Save</button>
+      </footer>
+    </div>
+  </div>
+}

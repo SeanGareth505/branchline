@@ -1,0 +1,17 @@
+<div
+  class="toast bl-glass-panel"
+  [attr.role]="kind === 'error' ? 'alert' : 'status'"
+  [attr.data-kind]="kind"
+  [attr.aria-live]="kind === 'error' ? 'assertive' : 'polite'"
+>
+  <span class="icon" aria-hidden="true">
+    <ng-icon [name]="iconName()" size="16" />
+  </span>
+  <span class="message">{{ message }}</span>
+  <div class="actions">
+    @if (canUndo) {
+      <button type="button" class="bl-btn bl-btn-primary" (click)="undo.emit()">Undo</button>
+    }
+    <button type="button" class="bl-btn" (click)="dismiss.emit()">Dismiss</button>
+  </div>
+</div>

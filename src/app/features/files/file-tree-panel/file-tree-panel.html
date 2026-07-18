@@ -1,0 +1,204 @@
+<div class="panel">
+  <header class="toolbar">
+    <label class="search">
+      <ng-icon name="lucideSearch" size="14" />
+      <input
+        type="search"
+        placeholder="Filter files and folders…"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+      />
+    </label>
+    <div class="toolbar-actions">
+      <button type="button" class="ghost" title="Expand all folders" (click)="expandAll()">
+        Expand
+      </button>
+      <button type="button" class="ghost" title="Collapse all folders" (click)="collapseAll()">
+        Collapse
+      </button>
+    </div>
+  </header>
+
+  <div class="chips" role="tablist" aria-label="File filters">
+    <button
+      type="button"
+      role="tab"
+      [class.on]="filter() === 'all'"
+      (click)="setFilter('all')"
+      title="Show all changed files"
+    >
+      All
+      <strong>{{ counts().total }}</strong>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      [class.on]="filter() === 'conflicted'"
+      [disabled]="!counts().conflicted"
+      (click)="setFilter('conflicted')"
+      title="Show conflicted files"
+    >
+      Conflicts
+      <strong>{{ counts().conflicted }}</strong>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      [class.on]="filter() === 'staged'"
+      [disabled]="!counts().staged"
+      (click)="setFilter('staged')"
+      title="Show staged files"
+    >
+      Staged
+      <strong>{{ counts().staged }}</strong>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      [class.on]="filter() === 'unstaged'"
+      [disabled]="!counts().unstaged"
+      (click)="setFilter('unstaged')"
+      title="Show unstaged changes"
+    >
+      Changes
+      <strong>{{ counts().unstaged }}</strong>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      [class.on]="filter() === 'untracked'"
+      [disabled]="!counts().untracked"
+      (click)="setFilter('untracked')"
+      title="Show untracked files"
+    >
+      Untracked
+      <strong>{{ counts().untracked }}</strong>
+    </button>
+  </div>
+
+  <div class="tree" role="tree">
+    @if (rows().length === 0) {
+      <div class="empty">
+        @if (counts().total === 0) {
+          <p>Working tree is clean</p>
+          <span>No staged, unstaged, or untracked files.</span>
+        } @else {
+          <p>No matching files</p>
+          <span>Try another filter or clear the search.</span>
+        }
+      </div>
+    } @else {
+      @for (row of rows(); track row.path + ':' + row.kind) {
+        @if (row.kind === 'dir') {
+          <button
+            type="button"
+            class="row dir"
+            role="treeitem"
+            [attr.aria-expanded]="row.open"
+            [style.--depth]="row.depth"
+            [title]="row.path"
+            (click)="toggleDir(row.path)"
+          >
+            <ng-icon
+              class="chevron"
+              [class.open]="row.open"
+              name="lucideChevronRight"
+              size="14"
+            />
+            <ng-icon
+              class="folder"
+              [name]="row.open ? 'lucideFolderOpen' : 'lucideFolderGit2'"
+              size="15"
+            />
+            <span class="name">{{ row.name }}</span>
+            <span class="count">{{ row.fileCount }}</span>
+          </button>
+        } @else {
+          <div
+            class="row file"
+            role="treeitem"
+            [class.selected]="selectedPath() === row.path"
+            [style.--depth]="row.depth"
+          >
+            <button
+              type="button"
+              class="file-main"
+              (click)="openDiff(row.path)"
+              [title]="row.path + ' — open diff'"
+            >
+              <span class="badge" [class]="statusClass(row.file.status, row.file.area)">
+                {{ statusGlyph(row.file.status, row.file.area) }}
+              </span>
+              <ng-icon class="file-icon" name="lucideFileText" size="14" />
+              <span class="name">{{ row.name }}</span>
+              <span class="area">{{ areaLabel(row.file.area) }}</span>
+            </button>
+            <div class="actions">
+              <button type="button" class="link" title="Open diff" (click)="openDiff(row.path)">
+                Diff
+              </button>
+              @if (row.file.area === 'unstaged' || row.file.area === 'untracked') {
+                <button
+                  type="button"
+                  class="link"
+                  title="Stage file"
+                  (click)="stageFile(row.path)"
+                >
+                  Stage
+                </button>
+              }
+              @if (row.file.area === 'staged') {
+                <button
+                  type="button"
+                  class="link"
+                  title="Unstage file"
+                  (click)="unstageFile(row.path)"
+                >
+                  Unstage
+                </button>
+              }
+              @if (row.file.area === 'unstaged') {
+                <button
+                  type="button"
+                  class="link resolve"
+                  title="Discard working tree changes"
+                  (click)="discardFile(row.path)"
+                >
+                  Discard
+                </button>
+              }
+              @if (row.file.area !== 'untracked') {
+                <button
+                  type="button"
+                  class="link"
+                  title="Show file history"
+                  (click)="openHistory(row.path)"
+                >
+                  History
+                </button>
+                <button
+                  type="button"
+                  class="link"
+                  title="Show blame"
+                  (click)="openBlame(row.path)"
+                >
+                  Blame
+                </button>
+              }
+              @if (row.file.area === 'conflicted') {
+                <button
+                  type="button"
+                  class="link resolve"
+                  title="Mark conflict resolved"
+                  (click)="markResolved(row.path)"
+                >
+                  Resolve
+                </button>
+              }
+            </div>
+          </div>
+        }
+      }
+    }
+  </div>
+</div>

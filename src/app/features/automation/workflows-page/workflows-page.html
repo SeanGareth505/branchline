@@ -1,0 +1,158 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <p class="kicker">Workflows</p>
+      <h1>Automation</h1>
+      <p>One-click Git sequences — start from a starter or build your own in seconds.</p>
+    </div>
+    <div class="hero-actions">
+      <div class="count">
+        <strong>{{ customCount() }}</strong>
+        custom
+      </div>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="create()" title="Create a custom workflow">
+        <ng-icon name="lucidePlus" size="15" />
+        New workflow
+      </button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <button
+      type="button"
+      class="chip"
+      [class.active]="filter() === 'all'"
+      (click)="store.setAutomationFilter('all')"
+    >
+      All
+    </button>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="filter() === 'custom'"
+      (click)="store.setAutomationFilter('custom')"
+    >
+      Custom
+    </button>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="filter() === 'builtin'"
+      (click)="store.setAutomationFilter('builtin')"
+    >
+      Starters
+    </button>
+  </div>
+
+  @if (visible().length === 0) {
+    <div class="empty-panel">
+      <ng-icon name="lucideSparkles" size="28" />
+      <h2>No workflows here yet</h2>
+      <p>Create a custom sequence — fetch, pull, push, branch, commit — in any order.</p>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="create()">
+        <ng-icon name="lucidePlus" size="15" />
+        Create workflow
+      </button>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (w of visible(); track w.id) {
+        <article class="card" [class.disabled]="!w.enabled">
+          <div class="card-top">
+            <div class="identity">
+              <span class="icon" [class.custom]="!w.builtin">
+                <ng-icon [name]="iconFor(w)" size="18" />
+              </span>
+              <div>
+                <div class="title-row">
+                  <h2>{{ w.name }}</h2>
+                  @if (!w.builtin) {
+                    <span class="bl-chip">custom</span>
+                  }
+                  @if (!w.enabled) {
+                    <span class="bl-chip muted">off</span>
+                  }
+                </div>
+                <p>{{ w.description || w.steps.length + ' steps' }}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary run"
+              [disabled]="runningId() === w.id || !w.enabled"
+              title="Run this workflow against the open repository"
+              (click)="run(w)"
+            >
+              <ng-icon name="lucidePlay" size="14" />
+              {{ runningId() === w.id ? 'Running…' : 'Run' }}
+            </button>
+          </div>
+
+          <ol class="steps">
+            @for (step of w.steps; track $index; let i = $index; let last = $last) {
+              <li>
+                <span class="num">{{ i + 1 }}</span>
+                <span class="label">{{ stepLabel(step) }}</span>
+                @if (!last) {
+                  <span class="connector" aria-hidden="true"></span>
+                }
+              </li>
+            }
+          </ol>
+
+          <div class="card-foot">
+            <button
+              type="button"
+              class="bl-btn ghost"
+              (click)="toggleEnabled(w)"
+              [title]="w.enabled ? 'Disable workflow' : 'Enable workflow'"
+            >
+              {{ w.enabled ? 'Disable' : 'Enable' }}
+            </button>
+            <button
+              type="button"
+              class="bl-btn ghost"
+              (click)="duplicate(w)"
+              title="Duplicate as a custom workflow"
+            >
+              <ng-icon name="lucideCopy" size="14" />
+              Duplicate
+            </button>
+            @if (!w.builtin) {
+              <button
+                type="button"
+                class="bl-btn ghost"
+                (click)="edit(w)"
+                title="Edit this workflow"
+              >
+                <ng-icon name="lucidePencil" size="14" />
+                Edit
+              </button>
+              <button
+                type="button"
+                class="bl-btn ghost danger"
+                (click)="remove(w)"
+                title="Delete this workflow"
+              >
+                <ng-icon name="lucideTrash2" size="14" />
+                Delete
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="bl-btn ghost"
+                (click)="edit(w)"
+                title="Customize by duplicating this starter"
+              >
+                <ng-icon name="lucidePencil" size="14" />
+                Customize
+              </button>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>
+
+<app-workflow-editor-dialog (saved)="reload()" />

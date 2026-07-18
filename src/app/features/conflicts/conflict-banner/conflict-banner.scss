@@ -1,0 +1,31 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  background: color-mix(in srgb, var(--git-conflict) 16%, var(--bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--git-conflict) 40%, var(--border-subtle));
+}
+
+.info {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  color: var(--git-conflict);
+}
+
+.files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}

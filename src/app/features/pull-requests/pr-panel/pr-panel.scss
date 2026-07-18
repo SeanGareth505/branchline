@@ -1,0 +1,336 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 0.15rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 2.2vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.hero .title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.dummy-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--git-modified) 35%, transparent);
+}
+
+.hero p {
+  margin: 0.4rem 0 0;
+  color: var(--text-secondary);
+  max-width: 40rem;
+}
+
+.bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.stats .fail {
+  color: var(--git-deleted);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border-subtle);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 220px;
+  flex: 1 1 220px;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.search input,
+select {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+  font: inherit;
+}
+
+select {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  border-radius: var(--radius-control);
+  padding: 0.4rem 0.5rem;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.8rem 0.85rem;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border-subtle);
+}
+
+.row.selected {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pick {
+  padding-top: 0.2rem;
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.num {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.diffstat {
+  display: inline-flex;
+  gap: 0.35rem;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.tag.reviewer {
+  color: var(--git-renamed);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.review-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.15rem;
+}
+
+.review-bar .bl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.review-bar .bl-btn.done {
+  opacity: 0.55;
+}
+
+.review-bar .bl-btn.quiet {
+  color: var(--text-secondary);
+}
+
+.review-bar .sep {
+  width: 1px;
+  height: 1.1rem;
+  margin: 0 0.15rem;
+  background: var(--border-subtle);
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+}
+
+.composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: 1.4;
+}
+
+.composer-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.bl-chip[data-status='merged'] {
+  background: color-mix(in srgb, var(--lane-5) 18%, transparent);
+  color: var(--lane-5);
+}
+
+.bl-chip[data-status='closed'] {
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  color: var(--text-muted);
+}
+
+.bl-chip[data-ci='failure'] {
+  background: color-mix(in srgb, var(--git-deleted) 18%, transparent);
+  color: var(--git-deleted);
+}
+
+.bl-chip[data-ci='success'] {
+  background: color-mix(in srgb, var(--git-added) 18%, transparent);
+  color: var(--git-added);
+}
+
+.bl-chip[data-ci='pending'] {
+  background: color-mix(in srgb, var(--git-modified) 18%, transparent);
+  color: var(--git-modified);
+}
+
+.bl-chip[data-review='approved'] {
+  background: color-mix(in srgb, var(--git-added) 18%, transparent);
+  color: var(--git-added);
+}
+
+.bl-chip[data-review='changesRequested'] {
+  background: color-mix(in srgb, var(--git-modified) 18%, transparent);
+  color: var(--git-modified);
+}
+
+.bl-chip[data-review='pending'] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-panel);
+}
+
+@media (max-width: 800px) {
+  .row {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .actions {
+    grid-column: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

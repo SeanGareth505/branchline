@@ -1,0 +1,10 @@
+<div class="wrap">
+  <canvas #canvas (click)="onClick($event)" (contextmenu)="onContext($event)"></canvas>
+  @if (menuState.open) {
+    <div class="menu bl-panel" [style.left.px]="menuState.x" [style.top.px]="menuState.y">
+      <button type="button" (click)="applyHere()">Apply this commit here</button>
+      <button type="button" (click)="undoCommit()">Create undo commit</button>
+      <button type="button" (click)="checkoutCommit()">Checkout…</button>
+    </div>
+  }
+</div>

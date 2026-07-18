@@ -1,0 +1,50 @@
+<svg
+  class="mark"
+  [attr.width]="dimension"
+  [attr.height]="dimension"
+  viewBox="0 0 32 32"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  [attr.aria-label]="title"
+>
+  <defs>
+    <linearGradient [attr.id]="gradBg" x1="6" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101826" />
+      <stop offset="1" stop-color="#0a1018" />
+    </linearGradient>
+    <linearGradient [attr.id]="gradStroke" x1="10" y1="5" x2="22" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7ae0ff" />
+      <stop offset="1" stop-color="#3ecfff" />
+    </linearGradient>
+    <linearGradient [attr.id]="gradNode" x1="10" y1="5" x2="22" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b8f0ff" />
+      <stop offset="1" stop-color="#3ecfff" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" [attr.fill]="'url(#' + gradBg + ')'" />
+  <rect
+    width="32"
+    height="32"
+    rx="8"
+    stroke="rgba(62,207,255,0.28)"
+    stroke-width="1"
+    fill="none"
+  />
+  <path
+    d="M11.5 7.5v7.2c0 1.7 1.2 2.8 2.8 2.8H21"
+    [attr.stroke]="'url(#' + gradStroke + ')'"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M11.5 14.7V24.5"
+    [attr.stroke]="'url(#' + gradStroke + ')'"
+    stroke-width="2.4"
+    stroke-linecap="round"
+  />
+  <circle cx="11.5" cy="7.5" r="2.35" [attr.fill]="'url(#' + gradNode + ')'" />
+  <circle cx="21" cy="17.5" r="2.35" [attr.fill]="'url(#' + gradNode + ')'" />
+  <circle cx="11.5" cy="24.5" r="2.35" [attr.fill]="'url(#' + gradNode + ')'" />
+</svg>

@@ -1,0 +1,331 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <div class="title-row">
+        <h1>Pull requests</h1>
+        @if (showingDummy()) {
+          <span class="dummy-badge">DUMMY DATA</span>
+        }
+      </div>
+      <p>
+        @if (connectionLabel(); as label) {
+          {{ label }}
+        } @else {
+          Filter by team, people, and status — then copy links for the whole result set.
+        }
+      </p>
+    </div>
+    <div class="bulk">
+      @if (showingDummy()) {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="connectHosts()">
+          <ng-icon name="lucideLink" size="14" />
+          Connect host
+        </button>
+      }
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyLinks()"
+        title="Copy all matching PR links"
+      >
+        <ng-icon name="lucideLink" size="14" />
+        Copy links
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyMarkdown()"
+        title="Copy results as markdown"
+      >
+        Copy markdown
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyTitles()"
+        title="Copy PR titles"
+      >
+        Copy titles
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyCsv()"
+        title="Copy results as CSV"
+      >
+        Copy CSV
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyCheckoutCommands()"
+        title="Copy git checkout commands for matching PRs"
+      >
+        Copy checkout cmds
+      </button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <span><strong>{{ stats().total }}</strong> matching</span>
+    <span><strong>{{ stats().open }}</strong> open</span>
+    <span><strong>{{ stats().draft }}</strong> draft</span>
+    <span class="fail"><strong>{{ stats().failing }}</strong> failing CI</span>
+    <span><strong>{{ stats().needsReview }}</strong> need review</span>
+  </div>
+
+  <div class="filters bl-glass">
+    <label class="search">
+      <ng-icon name="lucideSearch" size="14" />
+      <input
+        type="search"
+        placeholder="Search title, #, branch, label…"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+      />
+    </label>
+
+    <select [ngModel]="status()" (ngModelChange)="status.set($event)">
+      <option value="all">All statuses</option>
+      <option value="open">Open</option>
+      <option value="draft">Draft</option>
+      <option value="merged">Merged</option>
+      <option value="closed">Closed</option>
+    </select>
+
+    <select [ngModel]="team()" (ngModelChange)="team.set($event)">
+      <option value="all">All teams</option>
+      @for (t of teams(); track t) {
+        <option [value]="t">{{ t }}</option>
+      }
+    </select>
+
+    <select [ngModel]="author()" (ngModelChange)="author.set($event)">
+      <option value="all">All authors</option>
+      @for (a of authors(); track a) {
+        <option [value]="a">{{ a }}</option>
+      }
+    </select>
+
+    <select [ngModel]="reviewer()" (ngModelChange)="reviewer.set($event)">
+      <option value="all">All reviewers</option>
+      @for (r of reviewers(); track r) {
+        <option [value]="r">{{ r }}</option>
+      }
+    </select>
+
+    <select [ngModel]="repo()" (ngModelChange)="repo.set($event)">
+      <option value="all">All repos</option>
+      @for (r of repos(); track r) {
+        <option [value]="r">{{ r }}</option>
+      }
+    </select>
+
+    <select [ngModel]="label()" (ngModelChange)="label.set($event)">
+      <option value="all">All labels</option>
+      @for (l of labels(); track l) {
+        <option [value]="l">{{ l }}</option>
+      }
+    </select>
+
+    <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
+      <option value="all">Any CI</option>
+      <option value="success">CI success</option>
+      <option value="pending">CI pending</option>
+      <option value="failure">CI failure</option>
+      <option value="cancelled">CI cancelled</option>
+    </select>
+
+    <select [ngModel]="review()" (ngModelChange)="review.set($event)">
+      <option value="all">Any review</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="changesRequested">Changes requested</option>
+    </select>
+
+    <select [ngModel]="sortKey()" (ngModelChange)="sortKey.set($event)">
+      <option value="updated">Sort: updated</option>
+      <option value="number">Sort: number</option>
+      <option value="title">Sort: title</option>
+      <option value="additions">Sort: size</option>
+    </select>
+
+    <label class="check">
+      <input type="checkbox" [ngModel]="mineOnly()" (ngModelChange)="mineOnly.set($event)" />
+      Mine
+    </label>
+    <label class="check">
+      <input
+        type="checkbox"
+        [ngModel]="needsMyReview()"
+        (ngModelChange)="needsMyReview.set($event)"
+      />
+      Needs my review
+    </label>
+
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="clearFilters()"
+      title="Reset PR filters"
+    >
+      Reset
+    </button>
+  </div>
+
+  <div class="list-tools">
+    <label class="check">
+      <input
+        type="checkbox"
+        [checked]="allFilteredSelected()"
+        (change)="toggleSelectAllFiltered()"
+      />
+      Select all filtered ({{ filtered().length }})
+    </label>
+    <span class="muted">
+      Bulk actions use selection when checked, otherwise the full filtered list.
+    </span>
+  </div>
+
+  <div class="list">
+    @for (pr of filtered(); track pr.id) {
+      <article class="row bl-glass" [class.selected]="selected().has(pr.id)">
+        <label class="pick">
+          <input
+            type="checkbox"
+            [checked]="selected().has(pr.id)"
+            (change)="toggleSelect(pr.id)"
+            [attr.aria-label]="'Select pull request #' + pr.number"
+          />
+        </label>
+
+        <div class="main">
+          <div class="title-line">
+            <span class="num mono">#{{ pr.number }}</span>
+            <strong>{{ pr.title }}</strong>
+            @if (pr.draft) {
+              <span class="bl-chip">draft</span>
+            }
+            <span class="bl-chip" [attr.data-status]="pr.status">{{ pr.status }}</span>
+            <span class="bl-chip" [attr.data-ci]="pr.pipelineStatus">{{ pr.pipelineStatus }}</span>
+            <span class="bl-chip" [attr.data-review]="pr.reviewState">{{ reviewLabel(pr.reviewState) }}</span>
+          </div>
+          <div class="meta">
+            <span>{{ pr.repo }}</span>
+            <span>{{ pr.team }}</span>
+            <span>{{ pr.author }} → {{ pr.assignees.join(', ') || 'unassigned' }}</span>
+            <span class="mono">{{ pr.sourceBranch }} → {{ pr.targetBranch }}</span>
+            <span class="diffstat">
+              <span class="bl-status-added">+{{ pr.additions }}</span>
+              <span class="bl-status-deleted">−{{ pr.deletions }}</span>
+            </span>
+            <span>{{ pr.commentCount }} comments</span>
+            <span>{{ time(pr.updatedAt) }}</span>
+          </div>
+          <div class="labels">
+            @for (l of pr.labels; track l) {
+              <span class="tag">{{ l }}</span>
+            }
+            @for (r of pr.reviewers; track r) {
+              <span class="tag reviewer">@{{ r }}</span>
+            }
+          </div>
+
+          @if (pr.status === 'open') {
+            <div class="review-bar">
+              @if (pr.draft) {
+                <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
+                  Mark ready
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [class.done]="pr.reviewState === 'approved'"
+                  [disabled]="pr.reviewState === 'approved'"
+                  (click)="approve(pr)"
+                >
+                  <ng-icon name="lucideCheck" size="13" />
+                  Approve
+                </button>
+                <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
+                  Request changes
+                </button>
+                <button type="button" class="bl-btn" (click)="startComment(pr)">
+                  <ng-icon name="lucideMessageSquare" size="13" />
+                  Comment
+                </button>
+                <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
+                  <ng-icon name="lucideGitMerge" size="13" />
+                  Merge
+                </button>
+              }
+              <span class="sep" aria-hidden="true"></span>
+              <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
+              @if (!pr.draft) {
+                <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
+                  Request my review
+                </button>
+              }
+              <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
+            </div>
+          }
+
+          @if (commentDraftId() === pr.id) {
+            <div class="composer">
+              <textarea
+                rows="3"
+                [attr.aria-label]="'Comment on pull request #' + pr.number"
+                [attr.placeholder]="'Leave a comment on #' + pr.number + '…'"
+                [ngModel]="commentText()"
+                (ngModelChange)="commentText.set($event)"
+              ></textarea>
+              <div class="composer-actions">
+                <button type="button" class="bl-btn bl-btn-primary" (click)="submitComment(pr)">
+                  Post comment
+                </button>
+                <button type="button" class="bl-btn" (click)="cancelComment()">Cancel</button>
+              </div>
+            </div>
+          }
+
+          @if (changesDraftId() === pr.id) {
+            <div class="composer">
+              <textarea
+                rows="3"
+                [attr.aria-label]="'Request changes on pull request #' + pr.number"
+                [attr.placeholder]="'What needs to change on #' + pr.number + '?'"
+                [ngModel]="changesText()"
+                (ngModelChange)="changesText.set($event)"
+              ></textarea>
+              <div class="composer-actions">
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-danger"
+                  (click)="submitRequestChanges(pr)"
+                >
+                  Request changes
+                </button>
+                <button type="button" class="bl-btn" (click)="cancelRequestChanges()">Cancel</button>
+              </div>
+            </div>
+          }
+        </div>
+
+        <div class="actions">
+          <button type="button" class="bl-btn" (click)="copyOneLink(pr)">Copy link</button>
+          <button type="button" class="bl-btn" (click)="openBrowser(pr)">Open</button>
+          <button type="button" class="bl-btn" (click)="checkoutPr(pr)">Checkout</button>
+        </div>
+      </article>
+    } @empty {
+      <div class="empty">
+        @if (showingDummy()) {
+          No pull requests match these filters.
+        } @else {
+          Dummy PRs cleared. Live host sync is not wired yet.
+        }
+      </div>
+    }
+  </div>
+</section>

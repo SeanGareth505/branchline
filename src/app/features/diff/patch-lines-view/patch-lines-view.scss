@@ -1,0 +1,122 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.patch-lines {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  outline: none;
+}
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.selection-actions .danger,
+.hunk-actions .danger {
+  color: var(--git-deleted);
+}
+
+.hunk-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.hunk-actions {
+  display: flex;
+  gap: 0.15rem;
+  padding-right: 0.4rem;
+}
+
+.patch-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.patch-empty {
+  margin: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pline {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  padding: 0 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: default;
+  user-select: none;
+}
+
+.pline.inert {
+  cursor: default;
+}
+
+.pline.selectable {
+  cursor: pointer;
+}
+
+.pline.selectable:hover {
+  filter: brightness(1.04);
+}
+
+.pline.selected {
+  border-left-color: var(--accent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -1px;
+}
+
+.pline[data-kind='add'] {
+  background: var(--diff-add-bg);
+  color: color-mix(in srgb, var(--git-added) 35%, var(--text-primary));
+}
+
+.pline[data-kind='del'] {
+  background: var(--diff-del-bg);
+  color: color-mix(in srgb, var(--git-deleted) 35%, var(--text-primary));
+}
+
+.pline[data-kind='hunk'] {
+  color: var(--accent);
+  background: transparent;
+}
+
+.pline[data-kind='meta'] {
+  color: var(--text-muted);
+}

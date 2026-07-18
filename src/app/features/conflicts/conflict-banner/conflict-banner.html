@@ -1,0 +1,55 @@
+<div class="banner">
+  <div class="info">
+    <ng-icon name="lucideCircleAlert" size="16" />
+    <div>
+      <strong>{{ store.status()?.conflicted?.length }} conflicted file(s)</strong>
+      <div class="files">
+        @for (f of store.status()?.conflicted ?? []; track f.path) {
+          <span class="mono">{{ f.path }}</span>
+        }
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="open('cursor')"
+      title="Open conflicted files in Cursor"
+    >
+      Resolve in Cursor
+    </button>
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="open('vscode')"
+      title="Open conflicted files in VS Code"
+    >
+      Resolve in VS Code
+    </button>
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="continueOp()"
+      title="Continue merge, rebase, or cherry-pick after resolving"
+    >
+      Continue
+    </button>
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="abortOp()"
+      title="Abort the in-progress merge, rebase, or cherry-pick"
+    >
+      Abort
+    </button>
+    <button
+      type="button"
+      class="bl-btn bl-btn-primary"
+      (click)="open('merge')"
+      title="Open the configured merge tool"
+    >
+      Merge tool
+    </button>
+  </div>
+</div>

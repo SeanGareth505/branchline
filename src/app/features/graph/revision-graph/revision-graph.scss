@@ -1,0 +1,38 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-base);
+}
+
+.wrap {
+  position: relative;
+  min-height: 100%;
+}
+
+canvas {
+  display: block;
+  cursor: pointer;
+}
+
+.menu {
+  position: absolute;
+  z-index: 5;
+  min-width: 190px;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+}
+
+.menu button:hover {
+  background: var(--bg-hover);
+}

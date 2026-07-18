@@ -1,0 +1,182 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <div class="title-row">
+        <h1>Jira</h1>
+        @if (showingDummy()) {
+          <span class="dummy-badge">DUMMY DATA</span>
+        }
+      </div>
+      <p>{{ connectionLabel() }}</p>
+    </div>
+    <div class="hero-actions">
+      @if (showingDummy()) {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="signIn()">
+          <ng-icon name="lucideLink" size="14" />
+          Sign in
+        </button>
+      } @else {
+        <button type="button" class="bl-btn" (click)="reload()" [disabled]="loading()">
+          <ng-icon name="lucideRefreshCw" size="14" />
+          Refresh
+        </button>
+        <button type="button" class="bl-btn" (click)="goSettings()">Manage</button>
+      }
+    </div>
+  </header>
+
+  <div class="stats">
+    <span><strong>{{ stats().total }}</strong> matching</span>
+    <span><strong>{{ stats().todo }}</strong> to do</span>
+    <span class="accent"><strong>{{ stats().inProgress }}</strong> in progress</span>
+    <span class="ok"><strong>{{ stats().done }}</strong> done</span>
+    @if (store.activeJiraKey(); as key) {
+      <span class="active-key">Active: {{ key }}</span>
+    }
+  </div>
+
+  @if (!showingDummy()) {
+    <div class="jql-bar bl-glass">
+      <label>
+        <span>JQL</span>
+        <input
+          type="text"
+          [ngModel]="jql()"
+          (ngModelChange)="jql.set($event)"
+          (keydown.enter)="reload()"
+          placeholder="assignee = currentUser() ORDER BY updated DESC"
+        />
+      </label>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="reload()" [disabled]="loading()">
+        Run
+      </button>
+    </div>
+  }
+
+  <div class="filters bl-glass">
+    <label class="search">
+      <ng-icon name="lucideSearch" size="14" />
+      <input
+        type="search"
+        placeholder="Search key, summary, label…"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+      />
+    </label>
+
+    <select [ngModel]="status()" (ngModelChange)="status.set($event)">
+      <option value="all">All statuses</option>
+      @for (s of statuses(); track s) {
+        <option [value]="s">{{ s }}</option>
+      }
+    </select>
+
+    <select [ngModel]="type()" (ngModelChange)="type.set($event)">
+      <option value="all">All types</option>
+      @for (t of types(); track t) {
+        <option [value]="t">{{ t }}</option>
+      }
+    </select>
+
+    <select [ngModel]="assignee()" (ngModelChange)="assignee.set($event)">
+      <option value="all">All assignees</option>
+      @for (a of assignees(); track a) {
+        <option [value]="a">{{ a }}</option>
+      }
+    </select>
+
+    <select [ngModel]="priority()" (ngModelChange)="priority.set($event)">
+      <option value="all">All priorities</option>
+      @for (p of priorities(); track p) {
+        <option [value]="p">{{ p }}</option>
+      }
+    </select>
+
+    <label class="toggle">
+      <input type="checkbox" [ngModel]="mineOnly()" (ngModelChange)="mineOnly.set($event)" />
+      Mine
+    </label>
+  </div>
+
+  @if (loading()) {
+    <p class="empty">Loading issues…</p>
+  } @else if (error(); as err) {
+    <p class="empty error">{{ err }}</p>
+  } @else {
+    <div class="list">
+      @for (issue of filtered(); track issue.key) {
+        <article class="card bl-glass" [class.active]="store.activeJiraKey() === issue.key">
+          <div class="card-main">
+            <div class="title-row">
+              <span class="bl-chip">{{ issue.key }}</span>
+              <span class="status" [attr.data-status]="issue.status">{{ issue.status }}</span>
+              <span class="prio" [attr.data-priority]="issue.priority">{{ issue.priority }}</span>
+            </div>
+            <h2>{{ issue.summary }}</h2>
+            <div class="meta">
+              <span>{{ issue.issueType }}</span>
+              <span class="dot" aria-hidden="true"></span>
+              <span>{{ issue.assignee }}</span>
+              @if (time(issue.updatedAt); as ago) {
+                <span class="dot" aria-hidden="true"></span>
+                <span>{{ ago }}</span>
+              }
+              @for (label of issue.labels; track label) {
+                <span class="label">{{ label }}</span>
+              }
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="bl-btn bl-btn-primary" (click)="startWork(issue)" title="Create branch from issue">
+              <ng-icon name="lucideGitBranch" size="14" />
+              Start
+            </button>
+            <button type="button" class="bl-btn" (click)="useForCommit(issue)" title="Use key in commit templates">
+              Commit
+            </button>
+            <button type="button" class="bl-btn" (click)="openBrowser(issue)" title="Open in browser">
+              Open
+            </button>
+            <button type="button" class="bl-btn" (click)="copyKey(issue)" title="Copy issue key">
+              Copy
+            </button>
+            <button type="button" class="bl-btn" (click)="copyCommitLine(issue)" title="Copy key + summary">
+              Subject
+            </button>
+            <button type="button" class="bl-btn" (click)="openTransitions(issue)" title="Change status">
+              Status
+            </button>
+          </div>
+
+          @if (transitionKey() === issue.key) {
+            <div class="transitions">
+              @if (transitionsLoading()) {
+                <span>Loading transitions…</span>
+              } @else if (!transitions().length) {
+                <span>No transitions available</span>
+              } @else {
+                @for (t of transitions(); track t.id) {
+                  <button type="button" class="bl-btn" (click)="applyTransition(issue, t)">
+                    {{ t.name }}
+                    @if (t.toStatus) {
+                      <em>→ {{ t.toStatus }}</em>
+                    }
+                  </button>
+                }
+              }
+            </div>
+          }
+        </article>
+      } @empty {
+        <p class="empty">
+          @if (showingDummy()) {
+            No issues to show.
+          } @else {
+            No issues matched. Adjust JQL or filters.
+          }
+        </p>
+      }
+    </div>
+  }
+</section>

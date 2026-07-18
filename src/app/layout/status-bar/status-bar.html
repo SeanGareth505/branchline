@@ -1,0 +1,38 @@
+<footer class="bar">
+  <div class="left">
+    @if (store.isDummyBackend) {
+      <span class="dummy-pill" title="Browser preview is using fake Git data">DUMMY DATA</span>
+    }
+    @if (store.status(); as status) {
+      <span class="pill">
+        <ng-icon name="lucideGitBranch" size="14" />
+        {{ status.branch }}
+      </span>
+      <span class="meta">↑{{ status.ahead }} ↓{{ status.behind }}</span>
+      <span class="meta">{{ store.changeCount() }} changes</span>
+    } @else {
+      <span class="meta">No repository open</span>
+    }
+  </div>
+  <div class="right">
+    <button
+      type="button"
+      class="bl-btn"
+      [class.focus-on]="store.settings().focusMode"
+      [attr.aria-pressed]="store.settings().focusMode"
+      (click)="store.toggleFocusMode()"
+      title="Dim commits unrelated to HEAD in the graph"
+    >
+      <ng-icon name="lucideFocus" size="14" />
+      Focus {{ store.settings().focusMode ? 'on' : 'off' }}
+    </button>
+    <button
+      type="button"
+      class="bl-btn bl-btn-primary"
+      (click)="store.runNextAction()"
+      title="Suggested next step for this repository"
+    >
+      {{ store.nextAction() }}
+    </button>
+  </div>
+</footer>

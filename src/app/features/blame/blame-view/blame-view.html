@@ -1,0 +1,34 @@
+<div class="blame">
+  <header>
+    <span>Blame · {{ displayPath }} · {{ visibleLines().length }}{{ mineOnly() ? ' of ' + lines().length : '' }} lines</span>
+    <label class="mine" title="Show only lines authored by you">
+      <input type="checkbox" [ngModel]="mineOnly()" (ngModelChange)="mineOnly.set($event)" />
+      Mine
+      @if (lines().length) {
+        <span class="count">({{ mineCount() }})</span>
+      }
+    </label>
+  </header>
+  @if (loading()) {
+    <p class="empty">Loading blame…</p>
+  } @else {
+    <div class="rows mono">
+      @for (line of visibleLines(); track line.lineNumber) {
+        <div class="row" [class.mine]="store.isMine(line.author, line.email)">
+          <span class="sha">{{ line.sha.slice(0, 7) }}</span>
+          <span class="author">{{ line.author }}</span>
+          <span class="num">{{ line.lineNumber }}</span>
+          <span class="content">{{ line.content }}</span>
+        </div>
+      } @empty {
+        <p class="empty">
+          @if (mineOnly() && lines().length) {
+            No lines by you in this file
+          } @else {
+            Select a file to blame
+          }
+        </p>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,334 @@
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 40%, transparent);
+}
+
+.search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-base) 55%, transparent);
+  color: var(--text-muted);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.ghost {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 0.3rem 0.45rem;
+  border-radius: 6px;
+}
+
+.ghost:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.chips button strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.chips button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chips button.on {
+  background: var(--current-bg);
+  border-color: var(--selection-border);
+  color: var(--accent);
+}
+
+.chips button.on strong {
+  color: var(--accent);
+}
+
+.chips button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem 0.4rem 0.75rem;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: 8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.empty span {
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 1.85rem;
+  padding: 0.15rem 0.4rem 0.15rem calc(0.35rem + var(--depth, 0) * 1rem);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.row.dir {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.row.dir:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  border-color: var(--glass-border);
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.folder {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.row.dir .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
+}
+
+.count {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+  border: 1px solid var(--glass-border);
+}
+
+.row.file {
+  gap: 0.25rem;
+}
+
+.row.file:hover {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+}
+
+.row.file.selected {
+  background: var(--selection-bg);
+  border-color: var(--selection-border);
+  box-shadow: inset 2px 0 0 var(--selection-rail);
+}
+
+.file-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0.1rem 0;
+  cursor: pointer;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  line-height: 1;
+}
+
+.st-modified {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
+}
+
+.st-added {
+  color: var(--git-added);
+  background: color-mix(in srgb, var(--git-added) 16%, transparent);
+}
+
+.st-deleted {
+  color: var(--git-deleted);
+  background: color-mix(in srgb, var(--git-deleted) 16%, transparent);
+}
+
+.st-renamed {
+  color: var(--git-renamed);
+  background: color-mix(in srgb, var(--git-renamed) 16%, transparent);
+}
+
+.st-conflict {
+  color: var(--git-conflict);
+  background: color-mix(in srgb, var(--git-conflict) 18%, transparent);
+}
+
+.file-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.file-main .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  letter-spacing: -0.02em;
+}
+
+.area {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.row.file:hover .actions,
+.row.file.selected .actions,
+.row.file:focus-within .actions {
+  opacity: 1;
+}
+
+.link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+}
+
+.link:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.link.resolve {
+  color: var(--git-conflict);
+}
+
+.link.resolve:hover {
+  background: color-mix(in srgb, var(--git-conflict) 14%, transparent);
+}

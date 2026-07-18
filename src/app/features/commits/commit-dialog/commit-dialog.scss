@@ -1,0 +1,646 @@
+:host {
+  display: contents;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--bg-base);
+}
+
+.dialog {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-base);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.6rem;
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  flex-shrink: 0;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.toolbar-left {
+  flex: 1;
+}
+
+.toolbar-mid {
+  display: flex;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+.toolbar h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.who {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--git-modified);
+}
+
+.stat.staged {
+  color: var(--git-added);
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 0.28rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.icon-btn {
+  padding: 0.3rem;
+  min-width: 1.9rem;
+  justify-content: center;
+}
+
+.conflict-strip {
+  padding: 0.4rem 0.75rem;
+  background: color-mix(in srgb, var(--git-conflict) 16%, transparent);
+  color: var(--git-conflict);
+  font-size: 12px;
+  font-weight: 650;
+  border-bottom: 1px solid color-mix(in srgb, var(--git-conflict) 28%, transparent);
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 34%) 1fr;
+}
+
+.files-column {
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  min-height: 0;
+  border-right: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-surface) 55%, transparent);
+}
+
+.file-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+
+.file-pane.focused {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.unstaged-pane {
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  flex-shrink: 0;
+}
+
+.pane-head h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.unstaged-pane .pane-head h3 {
+  color: color-mix(in srgb, var(--git-modified) 45%, var(--text-primary));
+}
+
+.staged-pane .pane-head h3 {
+  color: color-mix(in srgb, var(--git-added) 45%, var(--text-primary));
+}
+
+.count {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.pane-actions {
+  margin-left: auto;
+}
+
+.transfer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border-top: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+  flex-shrink: 0;
+}
+
+.transfer .bl-btn {
+  min-width: 5.5rem;
+  justify-content: center;
+  font-size: 11.5px;
+  padding: 0.28rem 0.5rem;
+}
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem;
+  overflow: auto;
+  flex: 1;
+  outline: none;
+}
+
+.file-list li {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, auto) minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.22rem 0.35rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.25;
+  user-select: none;
+}
+
+.file-list li .status {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 11px;
+  text-align: center;
+}
+
+.file-list li .name {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-list li .dir {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.file-list li:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
+.file-list li.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.file-list li.current:not(.active) {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.file-list li.empty {
+  display: block;
+  color: var(--text-muted);
+  font-style: italic;
+  cursor: default;
+  padding: 0.75rem 0.5rem;
+}
+
+.st-added {
+  color: var(--git-added);
+}
+
+.st-modified {
+  color: var(--git-modified);
+}
+
+.st-deleted {
+  color: var(--git-deleted);
+}
+
+.st-renamed {
+  color: var(--accent);
+}
+
+.st-conflict {
+  color: var(--git-conflict);
+}
+
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg-base);
+}
+
+.diff-pane app-patch-lines-view {
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.15rem;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  flex-shrink: 0;
+}
+
+.diff-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.diff-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.area-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.area-chip.staged {
+  color: var(--git-added);
+  background: color-mix(in srgb, var(--git-added) 14%, transparent);
+  border-color: color-mix(in srgb, var(--git-added) 30%, transparent);
+}
+
+.area-chip.unstaged {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+  border-color: color-mix(in srgb, var(--git-modified) 30%, transparent);
+}
+
+.path-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.3rem 0.65rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hunk-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.hunk-actions {
+  display: flex;
+  gap: 0.15rem;
+  padding-right: 0.4rem;
+}
+
+.hunk-actions .danger,
+.diff-actions .danger,
+.transfer .danger {
+  color: var(--git-deleted);
+}
+
+.patch-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.patch-empty {
+  margin: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pline {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  padding: 0 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: default;
+}
+
+.pline:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.pline.selectable {
+  cursor: pointer;
+}
+
+.pline.selectable:hover {
+  filter: brightness(1.04);
+}
+
+.pline.selected {
+  border-left-color: var(--accent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -1px;
+}
+
+.pline[data-kind='add'] {
+  background: var(--diff-add-bg);
+  color: color-mix(in srgb, var(--git-added) 35%, var(--text-primary));
+}
+
+.pline[data-kind='del'] {
+  background: var(--diff-del-bg);
+  color: color-mix(in srgb, var(--git-deleted) 35%, var(--text-primary));
+}
+
+.pline[data-kind='hunk'] {
+  color: var(--accent);
+  background: transparent;
+}
+
+.pline[data-kind='meta'] {
+  color: var(--text-muted);
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 280px);
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+  flex-shrink: 0;
+}
+
+.composer-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.type-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.type-sep {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.15rem;
+  background: var(--glass-border);
+}
+
+.type-chip {
+  border: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 5px;
+  padding: 0.15rem 0.4rem;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.type-chip.on {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.type-chip.add {
+  min-width: 1.5rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.type-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.type-add-input {
+  width: 5.5rem;
+  padding: 0.18rem 0.4rem;
+  border-radius: 5px;
+  border: 1px solid var(--glass-border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.message {
+  width: 100%;
+  min-height: 5.5rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.message:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--glass-border));
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.hint.warn {
+  color: var(--git-modified);
+}
+
+.composer-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 12px;
+}
+
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.commit-btn {
+  min-width: 8.5rem;
+}
+
+.kbd {
+  margin-left: 0.3rem;
+  opacity: 0.75;
+  font-size: 10.5px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.bl-btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  padding: 0.18rem 0.4rem;
+  font-size: 11px;
+}
+
+.bl-btn.quiet:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 40%) 1fr;
+  }
+
+  .files-column {
+    border-right: 0;
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .composer {
+    grid-template-columns: 1fr;
+  }
+}

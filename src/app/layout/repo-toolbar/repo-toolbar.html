@@ -1,0 +1,187 @@
+<div class="strip" role="toolbar" aria-label="Repository actions">
+  <button type="button" class="tool" title="Refresh" (click)="store.refreshRepo()">
+    <ng-icon name="lucideRefreshCw" size="14" />
+    <span>Refresh</span>
+  </button>
+
+  <span class="sep" aria-hidden="true"></span>
+
+  <button
+    type="button"
+    class="tool primary"
+    title="Commit"
+    (click)="store.focusCommitPanel()"
+  >
+    <ng-icon name="lucideGitCommitHorizontal" size="14" />
+    <span>Commit</span>
+  </button>
+
+  <span class="sep" aria-hidden="true"></span>
+
+  <div class="split" [class.open]="menu() === 'pull'">
+    <button type="button" class="tool" [title]="pullTitle()" (click)="runDefaultPull()">
+      <ng-icon [name]="pullIcon()" size="14" />
+      <span>{{ pullLabel() }}</span>
+    </button>
+    <button
+      type="button"
+      class="chev"
+      title="Pull options"
+      aria-label="Pull options"
+      aria-haspopup="menu"
+      [attr.aria-expanded]="menu() === 'pull'"
+      cdkOverlayOrigin
+      #pullOrigin="cdkOverlayOrigin"
+      (click)="toggleMenu('pull', $event)"
+    >
+      <ng-icon name="lucideChevronDown" size="11" />
+    </button>
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="pullOrigin"
+      [cdkConnectedOverlayOpen]="menu() === 'pull'"
+      [cdkConnectedOverlayPositions]="menuPositions"
+      [cdkConnectedOverlayPush]="true"
+      (overlayOutsideClick)="closeMenu()"
+    >
+      <div class="bl-menu" role="menu">
+        <div class="bl-menu-label">Default pull action</div>
+        <button
+          type="button"
+          role="menuitemradio"
+          [attr.aria-checked]="store.settings().defaultPullAction === 'merge'"
+          (click)="choosePull('merge')"
+        >
+          <span class="check">
+            @if (store.settings().defaultPullAction === 'merge') {
+              <ng-icon name="lucideCheck" size="14" />
+            }
+          </span>
+          Pull and merge
+        </button>
+        <button
+          type="button"
+          role="menuitemradio"
+          [attr.aria-checked]="store.settings().defaultPullAction === 'rebase'"
+          (click)="choosePull('rebase')"
+        >
+          <span class="check">
+            @if (store.settings().defaultPullAction === 'rebase') {
+              <ng-icon name="lucideCheck" size="14" />
+            }
+          </span>
+          Pull and rebase
+        </button>
+        <button
+          type="button"
+          role="menuitemradio"
+          [attr.aria-checked]="store.settings().defaultPullAction === 'fetch'"
+          (click)="choosePull('fetch')"
+        >
+          <span class="check">
+            @if (store.settings().defaultPullAction === 'fetch') {
+              <ng-icon name="lucideCheck" size="14" />
+            }
+          </span>
+          Fetch
+        </button>
+      </div>
+    </ng-template>
+  </div>
+
+  <div class="split" [class.open]="menu() === 'push'">
+    <button
+      type="button"
+      class="tool"
+      [class.locked]="store.currentBranchLocked()"
+      [disabled]="store.currentBranchLocked()"
+      [title]="
+        store.currentBranchLocked()
+          ? store.currentBranchLockReason()
+            ? 'Branch locked: ' + store.currentBranchLockReason()
+            : 'Branch is locked — unlock to push'
+          : 'Push'
+      "
+      (click)="runPush()"
+    >
+      <ng-icon [name]="store.currentBranchLocked() ? 'lucideLock' : 'lucideUpload'" size="14" />
+      <span>{{ store.currentBranchLocked() ? 'Locked' : 'Push' }}</span>
+    </button>
+    <button
+      type="button"
+      class="chev"
+      title="Push options"
+      aria-label="Push options"
+      aria-haspopup="menu"
+      [attr.aria-expanded]="menu() === 'push'"
+      [disabled]="store.currentBranchLocked()"
+      cdkOverlayOrigin
+      #pushOrigin="cdkOverlayOrigin"
+      (click)="toggleMenu('push', $event)"
+    >
+      <ng-icon name="lucideChevronDown" size="11" />
+    </button>
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="pushOrigin"
+      [cdkConnectedOverlayOpen]="menu() === 'push'"
+      [cdkConnectedOverlayPositions]="menuPositions"
+      [cdkConnectedOverlayPush]="true"
+      (overlayOutsideClick)="closeMenu()"
+    >
+      <div class="bl-menu" role="menu">
+        <button type="button" role="menuitem" (click)="runPush()">Push</button>
+        <button type="button" role="menuitem" (click)="runForcePush()">Force push…</button>
+        <button type="button" role="menuitem" (click)="runSync()">Sync (pull + push)</button>
+      </div>
+    </ng-template>
+  </div>
+
+  <span class="sep" aria-hidden="true"></span>
+
+  <div class="split" [class.open]="menu() === 'stash'">
+    <button type="button" class="tool" title="Stash changes" (click)="runStash()">
+      <ng-icon name="lucideLayers" size="14" />
+      <span>Stash</span>
+    </button>
+    <button
+      type="button"
+      class="chev"
+      title="Stash options"
+      aria-label="Stash options"
+      aria-haspopup="menu"
+      [attr.aria-expanded]="menu() === 'stash'"
+      cdkOverlayOrigin
+      #stashOrigin="cdkOverlayOrigin"
+      (click)="toggleMenu('stash', $event)"
+    >
+      <ng-icon name="lucideChevronDown" size="11" />
+    </button>
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="stashOrigin"
+      [cdkConnectedOverlayOpen]="menu() === 'stash'"
+      [cdkConnectedOverlayPositions]="menuPositions"
+      [cdkConnectedOverlayPush]="true"
+      (overlayOutsideClick)="closeMenu()"
+    >
+      <div class="bl-menu" role="menu">
+        <button type="button" role="menuitem" (click)="runStash()">Stash changes</button>
+        <button type="button" role="menuitem" (click)="runStashPop()">Pop latest stash</button>
+      </div>
+    </ng-template>
+  </div>
+
+  <button type="button" class="tool" title="Undo last action" (click)="store.softUndoLastCommit()">
+    <ng-icon name="lucideUndo2" size="14" />
+    <span>Undo</span>
+  </button>
+  <button type="button" class="tool" title="Extract changelog" (click)="store.openChangelogModal()">
+    <ng-icon name="lucideScrollText" size="14" />
+    <span>Log</span>
+  </button>
+  <button type="button" class="tool" title="Git console" (click)="openConsole()">
+    <ng-icon name="lucideTerminal" size="14" />
+    <span>Console</span>
+  </button>
+</div>

@@ -1,0 +1,86 @@
+<div class="panel" [class.has-selection]="!!store.selectedCommit()">
+  <div class="toolbar-row">
+    <h3>Commit info</h3>
+    <button type="button" class="bl-btn bl-btn-primary" (click)="openCommitModal()">
+      Open commit dialog
+    </button>
+  </div>
+
+  @if (store.selectedCommit(); as commit) {
+    <div class="commit-meta">
+      <div class="commit-head">
+        <div class="title-block">
+          <h3>{{ commit.subject }}</h3>
+          <p class="byline">
+            {{ commit.author }}
+            <span class="sep">·</span>
+            {{ time(commit.timestamp) }}
+            <span class="sep">·</span>
+            <button type="button" class="sha mono" (click)="copySha(commit.sha)" [title]="commit.sha">
+              {{ commit.shortSha }}
+            </button>
+          </p>
+        </div>
+        @if (commit.refs.length) {
+          <div class="refs">
+            @for (ref of commit.refs; track ref) {
+              <span [class]="chipClass(ref)">{{ ref }}</span>
+            }
+          </div>
+        }
+      </div>
+
+      @if (commit.message !== commit.subject) {
+        <pre class="body">{{ commit.message }}</pre>
+      }
+
+      <div class="lineage">
+        <div class="lineage-label">Parents</div>
+        @if (parentEntries().length) {
+          <div class="parents">
+            @for (parent of parentEntries(); track parent.raw; let i = $index) {
+              <button
+                type="button"
+                class="parent"
+                [disabled]="!parent.sha"
+                (click)="parent.sha && goToCommit(parent.sha)"
+                [title]="parent.sha ? 'Select parent ' + parent.sha : parent.raw"
+              >
+                <span class="parent-role">{{ parentRole(i, parentEntries().length) }}</span>
+                <span class="mono">{{ parent.short }}</span>
+                @if (parent.subject) {
+                  <span class="parent-subject">{{ parent.subject }}</span>
+                }
+              </button>
+            }
+          </div>
+        } @else {
+          <span class="root-note">Root commit — no parents</span>
+        }
+
+        @if (childEntries().length) {
+          <div class="lineage-label children-label">Children</div>
+          <div class="parents">
+            @for (child of childEntries(); track child.sha) {
+              <button
+                type="button"
+                class="parent"
+                (click)="goToCommit(child.sha)"
+                [title]="'Select child ' + child.sha"
+              >
+                <span class="parent-role">Child</span>
+                <span class="mono">{{ child.short }}</span>
+                <span class="parent-subject">{{ child.subject }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="empty-inspector">
+      <p>Select a commit in the revision grid to inspect it.</p>
+      <p class="muted">Use the Commit button to stage files and create a new commit.</p>
+    </div>
+  }
+</div>

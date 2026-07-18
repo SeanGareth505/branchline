@@ -1,0 +1,95 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+  background: color-mix(in srgb, #0f172a 32%, transparent);
+  backdrop-filter: blur(12px) saturate(1.25);
+  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+}
+
+:host-context([data-theme='dark']) .backdrop {
+  background: color-mix(in srgb, #0b1220 42%, transparent);
+}
+
+.palette {
+  width: min(560px, calc(100vw - 2rem));
+  max-height: 60vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+  animation: pop 200ms var(--ease-out);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem 1.05rem;
+  border-bottom: 1px solid var(--glass-border);
+  color: var(--text-muted);
+}
+
+input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 15px;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem;
+  overflow: auto;
+}
+
+button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  text-align: left;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  border-color: var(--glass-border);
+}
+
+.group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.empty {
+  padding: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+}

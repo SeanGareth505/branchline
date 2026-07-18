@@ -1,0 +1,134 @@
+<div class="shell" [class.dummy-backend]="store.isDummyBackend">
+  @if (store.isDummyBackend) {
+    <div class="dummy-banner" role="status">
+      <strong>DUMMY DATA</strong>
+      <span>Browser preview — commits, branches, and files are fake. Run the desktop app and open a real repository to use live Git.</span>
+    </div>
+  }
+
+  @if (store.view() !== 'onboarding') {
+    <header class="top" [class.browsing]="store.view() === 'browse' && store.currentRepo()">
+      <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home">
+        <app-brand-mark [size]="18" />
+        <span>Branchline</span>
+      </button>
+      <app-project-switcher />
+      <app-repo-tabs />
+
+      <nav>
+        <button type="button" [class.active]="isActive('prs')" (click)="nav('prs')">
+          <ng-icon name="lucideGitPullRequest" size="14" />
+          PRs
+        </button>
+        <button type="button" [class.active]="isActive('jira')" (click)="nav('jira')">
+          <ng-icon name="lucideTicket" size="14" />
+          Jira
+        </button>
+        @if (!store.settings().simpleMode) {
+          <button type="button" [class.active]="isActive('profiles')" (click)="nav('profiles')">
+            <ng-icon name="lucideUser" size="14" />
+            Profiles
+          </button>
+          <button type="button" [class.active]="isActive('automation')" (click)="nav('automation')">
+            <ng-icon name="lucideWorkflow" size="14" />
+            Automation
+          </button>
+          <button type="button" [class.active]="isActive('templates')" (click)="nav('templates')">
+            <ng-icon name="lucideFileText" size="14" />
+            Templates
+          </button>
+        }
+        <button
+          type="button"
+          [class.active]="isActive('settings')"
+          (click)="nav('settings')"
+        >
+          <ng-icon name="lucideSettings" size="14" />
+          Settings
+        </button>
+      </nav>
+
+      @if (store.view() === 'browse' && store.currentRepo()) {
+        <app-repo-toolbar class="repo-tools" />
+      }
+
+      <div class="top-actions">
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="store.toggleSimpleMode()"
+          [title]="
+            store.settings().simpleMode
+              ? 'Simple mode: Profiles, Automation, and Templates are hidden. Click for Advanced.'
+              : 'Advanced mode: all navigation is shown. Click for Simple.'
+          "
+        >
+          {{ store.settings().simpleMode ? 'Simple' : 'Advanced' }}
+        </button>
+          <button
+          type="button"
+          class="bl-btn"
+          (click)="store.toggleTheme()"
+          [attr.aria-label]="themeToggleLabel()"
+          [title]="themeToggleLabel()"
+        >
+          <ng-icon [name]="themeToggleIcon()" size="15" />
+        </button>
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="store.paletteOpen.set(true)"
+          aria-label="Command palette (⌘K)"
+          title="Command palette (⌘K)"
+        >
+          <ng-icon name="lucideCommand" size="15" />
+        </button>
+      </div>
+    </header>
+  }
+
+  <main class="main">
+    @switch (store.view()) {
+      @case ('onboarding') {
+        <app-onboarding-wizard />
+      }
+      @case ('browse') {
+        <app-browse-shell />
+      }
+      @case ('settings') {
+        <app-settings-page />
+      }
+      @case ('prs') {
+        <app-pr-panel />
+      }
+      @case ('jira') {
+        <app-jira-panel />
+      }
+      @case ('profiles') {
+        <app-profiles-page />
+      }
+      @case ('automation') {
+        <app-workflows-page />
+      }
+      @case ('templates') {
+        <app-templates-page />
+      }
+    }
+  </main>
+
+  @if (store.view() !== 'onboarding') {
+    <app-status-bar />
+  }
+
+  <app-command-palette />
+  <app-toast-host />
+  <app-safety-dialog />
+  <app-prompt-dialog />
+  <app-cherry-pick-preview />
+  <app-commit-dialog />
+  <app-changelog-dialog />
+  <app-clone-dialog />
+  <app-create-branch-dialog />
+  <app-interactive-rebase-dialog />
+  <app-ignore-editor-dialog />
+</div>

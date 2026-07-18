@@ -1,0 +1,199 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  background: transparent;
+}
+
+.shell.dummy-backend {
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.dummy-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  padding: 0.45rem 0.85rem;
+  background: color-mix(in srgb, var(--git-modified) 18%, var(--bg-elevated));
+  border-bottom: 1px solid color-mix(in srgb, var(--git-modified) 40%, var(--glass-border));
+  color: var(--text-primary);
+  font-size: 12.5px;
+  line-height: 1.35;
+  z-index: 25;
+}
+
+.dummy-banner strong {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  color: var(--git-modified);
+}
+
+.dummy-banner span {
+  color: var(--text-secondary);
+}
+
+.top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.85rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--glass-highlight) 55%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 7%, transparent),
+      transparent 28%,
+      transparent 72%,
+      color-mix(in srgb, var(--lane-2) 6%, transparent)
+    ),
+    color-mix(in srgb, var(--glass-bg-strong) 78%, transparent);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
+  box-shadow:
+    0 1px 0 var(--glass-highlight) inset,
+    0 8px 28px color-mix(in srgb, #0b1220 12%, transparent);
+  z-index: 20;
+}
+
+.top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 28%, transparent) 35%,
+    color-mix(in srgb, var(--lane-2) 22%, transparent) 65%,
+    transparent
+  );
+  opacity: 0.55;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  font-size: 0.92rem;
+  padding: 0.12rem 0.28rem;
+  border-radius: var(--radius-control);
+  transition: background var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.brand:hover {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+}
+
+app-project-switcher {
+  flex-shrink: 0;
+}
+
+app-repo-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  gap: 0.08rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.38rem 0.55rem;
+  border-radius: var(--radius-control);
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+nav button:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  color: var(--text-primary);
+}
+
+nav button.active {
+  background: color-mix(in srgb, var(--accent-muted) 70%, var(--bg-active));
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
+}
+
+.repo-tools {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-right: 0.15rem;
+}
+
+.top-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 0.35rem;
+  border-left: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
+}
+
+.top.browsing .top-actions {
+  margin-left: 0;
+}
+
+.top-actions .bl-btn {
+  min-height: 1.9rem;
+  padding: 0.28rem 0.55rem;
+  font-size: 12.5px;
+}
+
+.main {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.main > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .top.browsing .brand span {
+    display: none;
+  }
+}
