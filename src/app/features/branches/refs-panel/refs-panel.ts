@@ -409,12 +409,22 @@ export class RefsPanel {
       });
     }
 
-    if (branch.tipSha) {
-      this.store.selectCommit(branch.tipSha);
-      this.store.setBrowseTab('diff');
-    }
-
+    this.locateBranch(branch);
     this.scrollToBranch(branch.name);
+  }
+
+  locateBranch(branch: BranchInfo, event?: Event): void {
+    event?.stopPropagation();
+    if (!branch.tipSha) return;
+    this.store.selectCommit(branch.tipSha);
+    this.store.setBrowseTab('diff');
+  }
+
+  checkoutBranch(branch: BranchInfo, event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (branch.isCurrent) return;
+    void this.store.checkoutBranch(branch.name);
   }
 
   onQueryChange(value: string): void {
@@ -690,17 +700,21 @@ export class RefsPanel {
   branchTitle(branch: BranchInfo): string {
     if (branch.isCurrent) {
       const sync = this.syncLabel();
-      if (sync?.statusTooltip) return `${branch.name} (checked out) · ${sync.statusTooltip}`;
-      return `${branch.name} (checked out)`;
+      const base = sync?.statusTooltip
+        ? `${branch.name} (checked out) · ${sync.statusTooltip}`
+        : `${branch.name} (checked out)`;
+      return `${base} · Click to show tip in the graph`;
     }
     const wt = this.store.worktrees().find((w) => !w.isMain && w.branch === branch.name);
-    if (wt) return `${branch.name} (checked out in another worktree)`;
+    if (wt) {
+      return `${branch.name} (checked out in another worktree) · Click to show tip · Double-click to switch here`;
+    }
     if (branch.upstream) {
       return branch.upstreamGone
-        ? `Checkout ${branch.name} · upstream gone (${branch.upstream})`
-        : `Checkout ${branch.name} · tracks ${branch.upstream}`;
+        ? `${branch.name} · upstream gone (${branch.upstream}) · Click to show tip · Double-click to checkout`
+        : `${branch.name} · tracks ${branch.upstream} · Click to show tip · Double-click to checkout`;
     }
-    return `Checkout ${branch.name}`;
+    return `${branch.name} · Click to show tip · Double-click to checkout`;
   }
 
   upstreamLabel(branch: BranchInfo): string | null {

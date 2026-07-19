@@ -1,50 +1,85 @@
 <div class="diff">
-  <header>
-    <div class="meta">
-      <span class="source-chip" [attr.data-source]="store.diffSource()">{{ sourceLabel() }}</span>
-      <div class="files">
-        @for (f of files(); track f.path) {
-          <button
-            type="button"
-            class="bl-chip file-chip"
-            [class.on]="store.selectedDiffPath() === f.path"
-            (click)="selectFile(f.path)"
-            [title]="f.path"
-          >
-            {{ f.path }}
-          </button>
-        }
-      </div>
-    </div>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="openDiffTool()"
-      title="Open selected file in the configured git difftool"
-    >
-      Diff tool
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="toggleSideBySide()"
-      [title]="sideBySide() ? 'Switch to unified diff' : 'Switch to side-by-side diff'"
-    >
-      {{ sideBySide() ? 'Unified' : 'Side by side' }}
-    </button>
-  </header>
+  <as-split
+    class="diff-split"
+    direction="horizontal"
+    [gutterSize]="6"
+    unit="percent"
+    (dragEnd)="onSplitDragEnd($event)"
+  >
+    <as-split-area [size]="splitSizes()[0]" [minSize]="16">
+      <aside class="files-pane">
+        <header class="files-head">
+          <span class="source-chip" [attr.data-source]="store.diffSource()">{{ sourceLabel() }}</span>
+          <span class="file-count">{{ files().length }}</span>
+        </header>
+        <ul class="file-list" role="listbox" aria-label="Changed files">
+          @for (f of files(); track f.path) {
+            <li
+              role="option"
+              [class.active]="store.selectedDiffPath() === f.path"
+              [attr.aria-selected]="store.selectedDiffPath() === f.path"
+              (click)="selectFile(f.path)"
+              [title]="f.path"
+            >
+              <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+              <span class="name">{{ fileName(f.path) }}</span>
+              <span class="dir">{{ fileDir(f.path) }}</span>
+            </li>
+          } @empty {
+            <li class="empty-row">No files in this diff</li>
+          }
+        </ul>
+      </aside>
+    </as-split-area>
 
-  @if (loading() && !patch()) {
-    <p class="empty">Loading diff…</p>
-  } @else if (!patch()) {
-    <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
-  } @else {
-    <app-patch-lines-view
-      [patch]="patch()"
-      [mode]="linesMode()"
-      [layout]="sideBySide() ? 'sideBySide' : 'unified'"
-      emptyMessage="No changes in this diff."
-      (applied)="onApplied()"
-    />
-  }
+    <as-split-area [size]="splitSizes()[1]" [minSize]="40">
+      <section class="diff-pane">
+        <header class="diff-head">
+          <div class="path-meta">
+            @if (store.selectedDiffPath(); as path) {
+              <span class="selected-path" [title]="path">{{ path }}</span>
+            } @else {
+              <span class="selected-path muted">Select a file</span>
+            }
+          </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="bl-btn"
+              (click)="openDiffTool()"
+              title="Open selected file in the configured git difftool"
+            >
+              Diff tool
+            </button>
+            <button
+              type="button"
+              class="bl-btn"
+              (click)="toggleSideBySide()"
+              [title]="sideBySide() ? 'Switch to unified diff' : 'Switch to side-by-side diff'"
+            >
+              {{ sideBySide() ? 'Unified' : 'Side by side' }}
+            </button>
+          </div>
+        </header>
+
+        @if (loading() && !patch()) {
+          <p class="empty">Loading diff…</p>
+        } @else if (!files().length && !patch()) {
+          <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
+        } @else if (!store.selectedDiffPath()) {
+          <p class="empty">Select a file from the list to view its diff.</p>
+        } @else if (!patch()) {
+          <p class="empty">No changes in this file.</p>
+        } @else {
+          <app-patch-lines-view
+            [patch]="patch()"
+            [mode]="linesMode()"
+            [layout]="sideBySide() ? 'sideBySide' : 'unified'"
+            emptyMessage="No changes in this diff."
+            (applied)="onApplied()"
+          />
+        }
+      </section>
+    </as-split-area>
+  </as-split>
 </div>

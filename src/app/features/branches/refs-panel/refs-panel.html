@@ -168,7 +168,8 @@
                 <button
                   type="button"
                   class="name"
-                  (click)="store.checkoutBranch(row.branch.name)"
+                  (click)="locateBranch(row.branch, $event)"
+                  (dblclick)="checkoutBranch(row.branch, $event)"
                   [title]="branchTitle(row.branch)"
                 >
                   <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
@@ -286,8 +287,9 @@
                   <button
                     type="button"
                     class="name"
-                    (click)="store.checkoutBranch(row.branch.name)"
-                    [title]="row.branch.name"
+                    (click)="locateBranch(row.branch, $event)"
+                    (dblclick)="checkoutBranch(row.branch, $event)"
+                    [title]="branchTitle(row.branch)"
                   >
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label">{{ row.name }}</span>
