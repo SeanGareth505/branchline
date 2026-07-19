@@ -1,0 +1,82 @@
+@if (store.publishGithubDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="publish-github-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">GitHub</span>
+          <h2 id="publish-github-title">Publish repository</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <p class="lead">
+        Create a GitHub repo, push this project, and optionally open a Release download page —
+        no CLI login required.
+      </p>
+
+      @if (!linked()) {
+        <div class="sign-in">
+          <p>Link GitHub once with a personal access token.</p>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="signIn()">
+            Sign in with code
+          </button>
+        </div>
+      } @else {
+        <label class="field">
+          <span>Repository name</span>
+          <input [ngModel]="name()" (ngModelChange)="name.set($event)" />
+        </label>
+
+        <label class="field">
+          <span>Description</span>
+          <input [ngModel]="description()" (ngModelChange)="description.set($event)" />
+        </label>
+
+        <label class="check">
+          <input
+            type="checkbox"
+            [ngModel]="isPrivate()"
+            (ngModelChange)="isPrivate.set($event)"
+          />
+          <span>Private repository</span>
+        </label>
+
+        <label class="check">
+          <input
+            type="checkbox"
+            [ngModel]="createRelease()"
+            (ngModelChange)="createRelease.set($event)"
+          />
+          <span>Create version tag + GitHub Release (download link)</span>
+        </label>
+
+        @if (createRelease()) {
+          <label class="field">
+            <span>Tag</span>
+            <input [ngModel]="tagName()" (ngModelChange)="tagName.set($event)" placeholder="v0.1.0" />
+          </label>
+        }
+
+        <footer>
+          <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="!canPublish()"
+            (click)="publish()"
+          >
+            {{ busy() ? 'Publishing…' : 'Publish to GitHub' }}
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}

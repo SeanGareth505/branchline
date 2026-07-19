@@ -52,6 +52,10 @@ export class App implements OnInit {
         this.store.closeChangelogModal();
       } else if (this.store.createBranchDialogOpen()) {
         this.store.closeCreateBranchDialog();
+      } else if (this.store.publishGithubDialogOpen()) {
+        this.store.closePublishGithubDialog();
+      } else if (this.store.githubDeviceLoginOpen()) {
+        this.store.closeGithubDeviceLogin();
       } else if (this.store.safety()) {
         this.store.closeSafety();
       } else if (this.store.cherryPreviewOpen()) {

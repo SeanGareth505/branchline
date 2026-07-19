@@ -17,11 +17,14 @@ import type {
   IgnoreKind,
   MockJiraIssue,
   MockPullRequest,
-  MutationOutput,
   HostRepository,
   JiraIssue,
   JiraTransition,
+  MutationOutput,
   OnboardingStatusOutput,
+  PublishToGithubOutput,
+  GithubDeviceStartOutput,
+  GithubDevicePollOutput,
   ProfileInfo,
   RecentRepo,
   RebasePreview,
@@ -496,6 +499,30 @@ export class TauriService {
     });
   }
 
+  publishToGithub(input: {
+    path: string;
+    name: string;
+    description?: string;
+    private?: boolean;
+    remoteName?: string;
+    createReleaseTag?: boolean;
+    tagName?: string;
+  }) {
+    return this.invoke<PublishToGithubOutput>('publish_to_github', { input });
+  }
+
+  githubDeviceLoginStart(clientId: string, scope?: string) {
+    return this.invoke<GithubDeviceStartOutput>('github_device_login_start', {
+      input: { clientId, scope },
+    });
+  }
+
+  githubDeviceLoginPoll(clientId: string, deviceCode: string) {
+    return this.invoke<GithubDevicePollOutput>('github_device_login_poll', {
+      input: { clientId, deviceCode },
+    });
+  }
+
   listMockJiraIssues() {
     return this.invoke<JiraIssue[]>('list_mock_jira_issues');
   }
@@ -563,6 +590,51 @@ export class TauriService {
       const input = (args?.['input'] as AppSettings | undefined) ?? this.mockSettings();
       this.persistMockSettings(input);
       return { ...input } as T;
+    }
+
+    if (cmd === 'publish_to_github') {
+      const input = (args?.['input'] as {
+        name?: string;
+        createReleaseTag?: boolean;
+        tagName?: string;
+      }) ?? {};
+      const name = (input.name || 'branchline').trim() || 'branchline';
+      const tag = input.createReleaseTag
+        ? input.tagName?.startsWith('v')
+          ? input.tagName
+          : `v${input.tagName || '0.1.0'}`
+        : null;
+      return {
+        ok: true,
+        message: `Published demo/${name} to GitHub (mock)`,
+        fullName: `demo/${name}`,
+        htmlUrl: `https://github.com/demo/${name}`,
+        cloneUrl: `https://github.com/demo/${name}.git`,
+        releaseUrl: tag ? `https://github.com/demo/${name}/releases/tag/${tag}` : null,
+        tagName: tag,
+      } as T;
+    }
+
+    if (cmd === 'github_device_login_start') {
+      return {
+        deviceCode: 'mock-device-code',
+        userCode: 'ABCD-1234',
+        verificationUri: 'https://github.com/login/device',
+        verificationUriComplete: 'https://github.com/login/device?user_code=ABCD-1234',
+        expiresIn: 900,
+        interval: 5,
+      } as T;
+    }
+
+    if (cmd === 'github_device_login_poll') {
+      return {
+        status: 'complete',
+        accessToken: 'ghp_mock_token_for_browser_preview',
+        tokenType: 'bearer',
+        scope: 'repo workflow read:user',
+        errorDescription: null,
+        interval: null,
+      } as T;
     }
 
     if (cmd === 'list_branch_locks') {
@@ -1942,6 +2014,7 @@ export class TauriService {
         { id: 'chore', label: 'chore', description: 'Maintenance' },
         { id: 'revert', label: 'revert', description: 'Revert a previous commit' },
       ],
+      githubOAuthClientId: '',
     };
 
     try {

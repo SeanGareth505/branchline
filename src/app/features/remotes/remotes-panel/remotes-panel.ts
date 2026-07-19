@@ -59,6 +59,11 @@ export class RemotesPanel {
     if (!this.expanded()) this.expandedChange.emit(true);
   }
 
+  publish(event?: Event): void {
+    event?.stopPropagation();
+    this.store.openPublishGithubDialog();
+  }
+
   async add(): Promise<void> {
     const name = this.name().trim();
     const url = this.url().trim();

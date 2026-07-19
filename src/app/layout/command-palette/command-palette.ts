@@ -59,7 +59,15 @@ export class CommandPalette {
         id: 'connect-github',
         label: 'Connect GitHub',
         group: 'Integrations',
-        run: () => store.openSettings('connections', 'github'),
+        run: () => store.openGithubDeviceLogin(),
+      },
+      {
+        id: 'publish-github',
+        label: 'Publish to GitHub…',
+        group: 'Repository',
+        run: () => {
+          if (store.currentRepo()) store.openPublishGithubDialog();
+        },
       },
       {
         id: 'connect-gitlab',

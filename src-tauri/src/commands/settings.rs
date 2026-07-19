@@ -74,6 +74,8 @@ pub struct AppSettings {
     pub connections: Vec<ConnectionConfig>,
     #[serde(default = "default_commit_types")]
     pub commit_types: Vec<CommitTypeOption>,
+    #[serde(default)]
+    pub github_oauth_client_id: String,
 }
 
 fn default_pull_action() -> String {
@@ -239,6 +241,7 @@ impl Default for AppSettings {
             ssh_client: default_ssh_client(),
             connections: default_connections(),
             commit_types: default_commit_types(),
+            github_oauth_client_id: String::new(),
         }
     }
 }

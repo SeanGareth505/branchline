@@ -164,13 +164,17 @@ export class SettingsPage implements OnInit {
   async connect(conn: ConnectionConfig): Promise<void> {
     this.connectingId.set(conn.id);
     try {
-      if (conn.provider === 'github' || conn.provider === 'gitlab') {
-        const label = conn.provider === 'github' ? 'GitHub' : 'GitLab';
+      if (conn.provider === 'github') {
+        this.store.openGithubDeviceLogin();
+        return;
+      }
+
+      if (conn.provider === 'gitlab') {
         const token = await this.prompts.ask({
-          title: `Connect ${label}`,
+          title: 'Connect GitLab',
           message: this.providerHint(conn.provider),
           label: 'Personal access token',
-          placeholder: conn.provider === 'github' ? 'ghp_…' : 'glpat-…',
+          placeholder: 'glpat-…',
           confirmLabel: 'Connect',
           mono: true,
         });

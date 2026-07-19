@@ -18,6 +18,8 @@ import { CloneDialog } from '../../features/repositories/clone-dialog/clone-dial
 import { CreateBranchDialog } from '../../features/branches/create-branch-dialog/create-branch-dialog';
 import { InteractiveRebaseDialog } from '../../features/rebase/interactive-rebase-dialog/interactive-rebase-dialog';
 import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/ignore-editor-dialog';
+import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
+import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
 import { BrowseShell } from '../browse-shell/browse-shell';
 import { CommandPalette } from '../command-palette/command-palette';
 import { ProjectSwitcher } from '../project-switcher/project-switcher';
@@ -54,6 +56,8 @@ import { ToastHost } from '../toast-host/toast-host';
     CreateBranchDialog,
     InteractiveRebaseDialog,
     IgnoreEditorDialog,
+    PublishGithubDialog,
+    GithubDeviceLoginDialog,
   ],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',

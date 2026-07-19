@@ -19,6 +19,15 @@
     >
       <ng-icon name="lucidePlus" size="11" />
     </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="publish($event)"
+      aria-label="Publish to GitHub"
+      title="Publish to GitHub"
+    >
+      <ng-icon name="lucideUpload" size="11" />
+    </button>
   </div>
 
   @if (open()) {

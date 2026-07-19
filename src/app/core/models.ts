@@ -197,6 +197,34 @@ export interface HostRepository {
   updatedAt?: string | null;
 }
 
+export interface PublishToGithubOutput {
+  ok: boolean;
+  message: string;
+  fullName: string;
+  htmlUrl: string;
+  cloneUrl: string;
+  releaseUrl?: string | null;
+  tagName?: string | null;
+}
+
+export interface GithubDeviceStartOutput {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string | null;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface GithubDevicePollOutput {
+  status: string;
+  accessToken?: string | null;
+  tokenType?: string | null;
+  scope?: string | null;
+  errorDescription?: string | null;
+  interval?: number | null;
+}
+
 export interface CommitTypeOption {
   id: string;
   label: string;
@@ -226,6 +254,7 @@ export interface AppSettings {
   sshClient: SshClientPreference | string;
   connections: ConnectionConfig[];
   commitTypes: CommitTypeOption[];
+  githubOAuthClientId: string;
 }
 
 export interface GitEnvSnapshot {

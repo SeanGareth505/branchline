@@ -122,6 +122,7 @@ export class AppStore {
     sshClient: 'openssh',
     connections: defaultConnections(),
     commitTypes: DEFAULT_COMMIT_TYPES.map((t) => ({ ...t })),
+    githubOAuthClientId: '',
   });
   readonly loading = signal(false);
   readonly nextAction = signal('Open a repository');
@@ -145,6 +146,8 @@ export class AppStore {
   readonly hostReposLoading = signal(false);
   readonly hostReposError = signal<string | null>(null);
   readonly createBranchDialogOpen = signal(false);
+  readonly publishGithubDialogOpen = signal(false);
+  readonly githubDeviceLoginOpen = signal(false);
   readonly createBranchStartPoint = signal<string | null>(null);
   readonly createBranchSuggestedName = signal('');
   readonly activeJiraKey = signal<string | null>(null);
@@ -790,6 +793,68 @@ export class AppStore {
     this.createBranchDialogOpen.set(false);
     this.createBranchStartPoint.set(null);
     this.createBranchSuggestedName.set('');
+  }
+
+  openPublishGithubDialog(): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first.');
+      return;
+    }
+    this.publishGithubDialogOpen.set(true);
+  }
+
+  closePublishGithubDialog(): void {
+    this.publishGithubDialogOpen.set(false);
+  }
+
+  openGithubDeviceLogin(): void {
+    this.githubDeviceLoginOpen.set(true);
+  }
+
+  closeGithubDeviceLogin(): void {
+    this.githubDeviceLoginOpen.set(false);
+  }
+
+  hasLinkedGithub(): boolean {
+    return this.settings().connections.some(
+      (c) => c.provider === 'github' && c.enabled && !!(c.hasToken || c.token.trim()),
+    );
+  }
+
+  async publishToGithub(opts: {
+    name: string;
+    description?: string;
+    private?: boolean;
+    createReleaseTag?: boolean;
+    tagName?: string;
+  }): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first.');
+      return false;
+    }
+    try {
+      const result = await this.tauri.publishToGithub({
+        path,
+        name: opts.name,
+        description: opts.description,
+        private: opts.private,
+        createReleaseTag: opts.createReleaseTag,
+        tagName: opts.tagName,
+      });
+      await this.refreshRepo();
+      this.showSuccess(result.message);
+      if (result.releaseUrl) {
+        window.open(result.releaseUrl, '_blank', 'noopener');
+      } else if (result.htmlUrl) {
+        window.open(result.htmlUrl, '_blank', 'noopener');
+      }
+      this.closePublishGithubDialog();
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
   }
 
   setActiveJiraKey(key: string | null): void {
@@ -2080,5 +2145,6 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     sshClient: raw.sshClient || 'openssh',
     connections,
     commitTypes: normalizeCommitTypes(raw.commitTypes),
+    githubOAuthClientId: (raw.githubOAuthClientId ?? '').trim(),
   };
 }

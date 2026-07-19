@@ -342,15 +342,17 @@ export class ProjectSwitcher {
   }
 
   async signIn(provider: 'github' | 'gitlab'): Promise<void> {
-    const label = provider === 'github' ? 'GitHub' : 'GitLab';
+    if (provider === 'github') {
+      this.close();
+      this.store.openGithubDeviceLogin();
+      return;
+    }
     const token = await this.prompts.ask({
-      title: `Sign in to ${label}`,
+      title: 'Sign in to GitLab',
       message:
-        provider === 'github'
-          ? 'Paste a GitHub personal access token with repo scope. Stored only on this machine.'
-          : 'Paste a GitLab personal access token with read_api / read_repository. Stored only on this machine.',
+        'Paste a GitLab personal access token with read_api / read_repository. Stored only on this machine.',
       label: 'Personal access token',
-      placeholder: provider === 'github' ? 'ghp_…' : 'glpat-…',
+      placeholder: 'glpat-…',
       confirmLabel: 'Sign in',
       mono: true,
     });

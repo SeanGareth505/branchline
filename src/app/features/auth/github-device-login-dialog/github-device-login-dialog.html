@@ -1,0 +1,83 @@
+@if (store.githubDeviceLoginOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="github-device-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">GitHub</span>
+          <h2 id="github-device-title">Sign in</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      @if (step() === 'setup') {
+        <p class="lead">
+          One-time setup: create a GitHub OAuth App with <strong>Device Flow</strong> enabled, then
+          paste the Client ID. After that, sign-in is just the code screen.
+        </p>
+        <ol class="steps">
+          <li>Open GitHub → Developer settings → OAuth Apps → New</li>
+          <li>Name: <code>Branchline</code>, Homepage: any URL, Callback: <code>http://127.0.0.1</code></li>
+          <li>Enable <strong>Device Flow</strong>, register, copy Client ID</li>
+        </ol>
+        <div class="row">
+          <button type="button" class="bl-btn" (click)="openCreateOAuthApp()">Open GitHub</button>
+        </div>
+        <label class="field">
+          <span>OAuth Client ID</span>
+          <input
+            [ngModel]="clientIdDraft()"
+            (ngModelChange)="clientIdDraft.set($event)"
+            placeholder="Ov23li…"
+            class="mono"
+          />
+        </label>
+        @if (errorText()) {
+          <p class="error">{{ errorText() }}</p>
+        }
+        <footer>
+          <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="busy() || !clientIdDraft().trim()"
+            (click)="saveClientIdAndStart()"
+          >
+            {{ busy() ? 'Starting…' : 'Continue' }}
+          </button>
+        </footer>
+      } @else if (step() === 'code') {
+        <p class="lead">Enter this code on GitHub, then approve Branchline.</p>
+        <div class="code-block" aria-live="polite">
+          <span class="code">{{ userCode() }}</span>
+        </div>
+        <p class="status">{{ statusText() }}</p>
+        <div class="row">
+          <button type="button" class="bl-btn bl-btn-primary" (click)="openDevicePage()">
+            Open github.com/login/device
+          </button>
+        </div>
+        <footer>
+          <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+        </footer>
+      } @else if (step() === 'done') {
+        <p class="lead success">{{ statusText() }}</p>
+      } @else {
+        <p class="error">{{ errorText() || 'Something went wrong.' }}</p>
+        <footer>
+          <button type="button" class="bl-btn" (click)="close()">Close</button>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="startDeviceFlow()">
+            Try again
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}
