@@ -72,7 +72,6 @@
   width: 100%;
   margin: 0;
   border: 0;
-  border-left: 2px solid transparent;
   background: transparent;
   text-align: left;
   color: inherit;
@@ -94,15 +93,12 @@
 
 .pline.selectable:hover:not(.selected) {
   filter: brightness(1.06);
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .pline.selected {
-  border-left-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 28%, transparent) !important;
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--text-primary);
 }
 

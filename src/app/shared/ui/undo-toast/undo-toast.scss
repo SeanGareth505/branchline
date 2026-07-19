@@ -72,11 +72,20 @@
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-:host-context([data-theme='light']) .toast[data-kind='success'],
-:host-context([data-theme='light']) .toast[data-kind='warning'],
-:host-context([data-theme='light']) .toast[data-kind='error'],
+:host-context([data-theme='light']) .toast[data-kind='success'] {
+  background: color-mix(in srgb, var(--git-added) 10%, #fff);
+}
+
+:host-context([data-theme='light']) .toast[data-kind='warning'] {
+  background: color-mix(in srgb, var(--git-modified) 10%, #fff);
+}
+
+:host-context([data-theme='light']) .toast[data-kind='error'] {
+  background: color-mix(in srgb, var(--git-deleted) 10%, #fff);
+}
+
 :host-context([data-theme='light']) .toast[data-kind='info'] {
-  background: color-mix(in srgb, currentColor 6%, #fff);
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
 }
 
 .icon {

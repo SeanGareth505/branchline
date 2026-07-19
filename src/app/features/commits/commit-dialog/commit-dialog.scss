@@ -469,7 +469,6 @@
   width: 100%;
   margin: 0;
   border: 0;
-  border-left: 2px solid transparent;
   background: transparent;
   text-align: left;
   color: inherit;
@@ -491,12 +490,13 @@
 
 .pline.selectable:hover {
   filter: brightness(1.04);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .pline.selected {
-  border-left-color: var(--accent);
   outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .pline[data-kind='add'] {
