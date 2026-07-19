@@ -1,0 +1,30 @@
+{
+  "productName": "Branchline",
+  "tagPrefix": "v",
+  "branch": "main",
+  "requireClean": true,
+  "push": false,
+  "commitMessage": "Release {{version}}",
+  "tagMessage": "{{productName}} {{version}}",
+  "files": [
+    {
+      "path": "package.json",
+      "kind": "json",
+      "keys": ["version"]
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "kind": "json",
+      "keys": ["version"]
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "kind": "toml-package-version"
+    },
+    {
+      "path": "src-tauri/Cargo.lock",
+      "kind": "cargo-lock-package",
+      "package": "app"
+    }
+  ]
+}

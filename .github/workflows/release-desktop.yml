@@ -59,25 +59,50 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # Only export Apple signing vars when import succeeds.
+          # Empty APPLE_CERTIFICATE in the environment still makes Tauri try to
+          # codesign and fail — so we must not set those env vars at all when skipping.
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
-            echo "No APPLE_CERTIFICATE secret; skipping macOS code signing import"
+            echo "No APPLE_CERTIFICATE secret; building unsigned macOS artifacts"
             exit 0
           fi
           KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-branchline-ci-$(date +%s)}"
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          if ! security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain; then
+            echo "Failed to create keychain; building unsigned macOS artifacts"
+            exit 0
+          fi
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          if ! security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+            echo "Certificate import failed; building unsigned macOS artifacts"
+            exit 0
+          fi
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           security find-identity -v -p codesigning build.keychain
           CERT_ID=$(security find-identity -v -p codesigning build.keychain | awk -F'"' '/Developer ID Application/{print $2; exit}')
           if [ -z "$CERT_ID" ]; then
             CERT_ID=$(security find-identity -v -p codesigning build.keychain | awk -F'"' '/Apple Development|Apple Distribution/{print $2; exit}')
           fi
-          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          if [ -z "$CERT_ID" ]; then
+            echo "No signing identity found; building unsigned macOS artifacts"
+            exit 0
+          fi
+          {
+            echo "APPLE_SIGNING_IDENTITY=$CERT_ID"
+            echo "APPLE_CERTIFICATE<<EOF"
+            echo "$APPLE_CERTIFICATE"
+            echo "EOF"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            if [ -n "${APPLE_ID:-}" ]; then echo "APPLE_ID=$APPLE_ID"; fi
+            if [ -n "${APPLE_PASSWORD:-}" ]; then echo "APPLE_PASSWORD=$APPLE_PASSWORD"; fi
+            if [ -n "${APPLE_TEAM_ID:-}" ]; then echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"; fi
+          } >> "$GITHUB_ENV"
           echo "Imported signing identity: $CERT_ID"
 
       - uses: tauri-apps/tauri-action@v1
@@ -85,12 +110,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: Branchline ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}

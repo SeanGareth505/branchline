@@ -1,0 +1,67 @@
+// Starter template for release.config.json.
+//
+// This file is documentation only — scripts/release.mjs never reads it.
+// Copy it (or run `node scripts/release.mjs --init`) to create a real,
+// comment-free release.config.json, then edit the fields below.
+{
+  // Shown in the default tag message ("{{productName}} {{version}}").
+  // Falls back to src-tauri/tauri.conf.json's productName, then package.json's
+  // name, if omitted.
+  "productName": "My App",
+
+  // Prefix used when building the git tag, e.g. "v1.2.3".
+  "tagPrefix": "v",
+
+  // Branch the release script requires you to be on before committing/tagging.
+  // Skip the check per-run with --branch <name> or --allow-dirty-style overrides.
+  "branch": "main",
+
+  // Refuse to release with uncommitted changes. Override per-run with --allow-dirty.
+  "requireClean": true,
+
+  // Push the commit + tag to origin automatically after tagging.
+  // Leave false to always require an explicit --push (recommended default).
+  // Override per-run with --push / --no-push.
+  "push": false,
+
+  // Commit message for the version bump. Placeholders: {{version}}, {{previousVersion}},
+  // {{tag}}, {{productName}}. Override per-run with --message.
+  "commitMessage": "Release {{version}}",
+
+  // Annotated tag message. Same placeholders as commitMessage.
+  // Override per-run with --tag-message.
+  "tagMessage": "{{productName}} {{version}}",
+
+  // Every file that stores a version number, applied in order for every release.
+  // Supported "kind" values:
+  //   "json"                 — set one or more dot-path keys to the new version.
+  //                            Use "keys": ["version"] or nested paths like
+  //                            "keys": ["some.nested.version"].
+  //   "toml-package-version" — set version = "x.y.z" under the first [package]
+  //                            table in a TOML file (e.g. Cargo.toml).
+  //   "cargo-lock-package"   — set version for a named package entry in a
+  //                            Cargo.lock file. Set "package" to the crate name.
+  "files": [
+    {
+      "path": "package.json",
+      "kind": "json",
+      "keys": ["version"]
+    }
+
+    // Tauri desktop app? Uncomment to keep these in sync too:
+    // {
+    //   "path": "src-tauri/tauri.conf.json",
+    //   "kind": "json",
+    //   "keys": ["version"]
+    // },
+    // {
+    //   "path": "src-tauri/Cargo.toml",
+    //   "kind": "toml-package-version"
+    // },
+    // {
+    //   "path": "src-tauri/Cargo.lock",
+    //   "kind": "cargo-lock-package",
+    //   "package": "app"
+    // }
+  ]
+}

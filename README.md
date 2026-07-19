@@ -37,16 +37,64 @@ npm run build
 npm run tauri:build
 ```
 
-## Release (GitHub download link)
+## Release tooling
 
-Push a version tag to build installers and publish a GitHub Release with downloadable assets:
+A small, config-driven, dependency-free release script (`scripts/release.mjs`) bumps every
+version file, commits, and tags in one step. It's generic — nothing about it is
+Branchline-specific — so forks and other projects can reuse it as-is.
+
+### Setup (new project or fork)
+
+1. Bootstrap a starter config:
+
+   ```bash
+   npm run release:init
+   ```
+
+   This writes `release.config.json` with `productName` inferred from `src-tauri/tauri.conf.json`
+   (if present) or `package.json`, and a single `files` entry for `package.json`'s `version`.
+   It won't overwrite an existing config — pass `--force` if you really want to regenerate it.
+
+2. Open `release.config.json` and add every other file that stores a version number (e.g. a
+   Tauri `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, or any other JSON file). See
+   [`release.config.example.jsonc`](release.config.example.jsonc) for a fully annotated
+   reference of every field and file `kind`.
+3. Make sure `package.json` has `release`, `release:patch`, `release:minor`, `release:major`
+   scripts pointing at `node scripts/release.mjs` (already set up in this repo — copy them as-is).
+4. Try it: `npm run release -- patch --dry-run`.
+
+### Customize (`release.config.json`)
+
+| Field | Default | Purpose |
+|---|---|---|
+| `productName` | inferred | Used in `{{productName}}` placeholder (e.g. tag message) |
+| `tagPrefix` | `"v"` | Prefix for the git tag, e.g. `v1.2.3` |
+| `branch` | `"main"` | Branch required before committing/tagging |
+| `requireClean` | `true` | Refuse to release with uncommitted changes |
+| `push` | `false` | Push automatically after tagging (override per-run with `--push`/`--no-push`) |
+| `commitMessage` | `"Release {{version}}"` | Commit message template |
+| `tagMessage` | `"{{productName}} {{version}}"` | Annotated tag message template |
+| `files` | — | List of files to bump; see example file for supported `kind`s |
+
+Template placeholders available in `commitMessage`/`tagMessage`: `{{version}}`,
+`{{previousVersion}}`, `{{tag}}`, `{{productName}}`.
+
+### Everyday commands
 
 ```bash
-# 1. Bump version in package.json + src-tauri/tauri.conf.json + src-tauri/Cargo.toml
-# 2. Commit, then:
-git tag v0.1.0
-git push origin main --tags
+npm run release -- patch --dry-run    # preview, writes nothing
+npm run release -- patch --push       # ship a patch (0.1.3 → 0.1.4)
+npm run release -- minor --push
+npm run release -- 1.0.0 --push       # explicit version
+npm run release -- patch --preid beta # prerelease: 0.2.0-beta.0
+npm run release -- patch --no-push    # commit + tag, skip push
+npm run release -- patch --no-commit  # bump files only, no git
 ```
+
+Run `node scripts/release.mjs --help` for the full flag list (branch/message overrides,
+`--allow-dirty`, etc).
+
+Tag push builds installers and publishes a GitHub Release with downloadable assets.
 
 Public download page (GitHub Pages):
 
