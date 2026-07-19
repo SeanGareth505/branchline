@@ -138,6 +138,10 @@ export class AppStore {
   readonly conflictResolverPath = signal<string | null>(null);
   readonly conflictResolver = signal<ConflictSidesOutput | null>(null);
   readonly conflictResolverDraft = signal('');
+  readonly conflictIdeBusy = signal(false);
+  readonly conflictIdeLabel = signal<string | null>(null);
+  private conflictFocusBound = false;
+  private conflictSyncInFlight = false;
   readonly selectedSha = signal<string | null>(null);
   readonly selectedShas = signal<string[]>([]);
   readonly compareSha = signal<string | null>(null);
@@ -576,6 +580,7 @@ export class AppStore {
       if (typeof window !== 'undefined') {
         window.addEventListener('beforeunload', () => this.flushSession());
         window.addEventListener('pagehide', () => this.flushSession());
+        this.bindConflictFocusWatch();
       }
       void this.bindRepoFsWatcher();
       try {
@@ -820,6 +825,8 @@ export class AppStore {
     this.conflictResolverPath.set(null);
     this.conflictResolver.set(null);
     this.conflictResolverDraft.set('');
+    this.conflictIdeBusy.set(false);
+    this.conflictIdeLabel.set(null);
     this.selectedSha.set(null);
     this.selectedShas.set([]);
     this.compareSha.set(null);
@@ -1133,6 +1140,7 @@ export class AppStore {
       this.artificial.set(artificialFromStatus(status));
       this.updateNextAction(status);
       this.maybeNotifyStatusChanges(prev, status);
+      void this.syncConflictManager(prev, status);
     } catch (err) {
       this.showError(err);
     }
@@ -1201,6 +1209,7 @@ export class AppStore {
     }
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
+    void this.syncConflictManager(prev, status);
     if (opts?.notify) {
       const changed =
         status.staged.length + status.unstaged.length + status.untracked.length;
@@ -1275,8 +1284,8 @@ export class AppStore {
 
   updateNextAction(status: RepoStatus): void {
     if (status.conflicted.length) {
-      const op = status.operation?.label?.replace(/ in progress$/i, '') || 'Conflicts';
-      this.nextAction.set(`Resolve ${status.conflicted.length} ${op.toLowerCase()} conflict${status.conflicted.length === 1 ? '' : 's'}`);
+      const n = status.conflicted.length;
+      this.nextAction.set(`Resolve ${n} conflict${n === 1 ? '' : 's'}`);
       return;
     }
     if (status.operation) {
@@ -3220,15 +3229,27 @@ export class AppStore {
       this.showToast('No conflicted file to open', { kind: 'info' });
       return;
     }
+    if (this.conflictIdeBusy()) {
+      this.showInfo('Waiting for the editor to close…');
+      return;
+    }
+    const label =
+      editor === 'cursor' ? 'Cursor' : editor === 'vscode' ? 'VS Code' : 'editor';
+    this.conflictIdeBusy.set(true);
+    this.conflictIdeLabel.set(label);
     try {
       await this.refreshDetectedEditors();
       const detected = this.detectedEditors();
+      this.showInfo(`Waiting for ${label} — close the file/tab when done`);
       const result = await this.tauri.openConflictInIde(repo, target, {
         editor,
         mode,
         cursorPath: detected?.cursorPath,
         vscodePath: detected?.vscodePath,
+        wait: true,
+        stageIfResolved: true,
       });
+      await this.refreshRepo();
       if (!result.ok) {
         this.showWarning(result.message);
         return;
@@ -3236,6 +3257,9 @@ export class AppStore {
       this.showSuccess(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.conflictIdeBusy.set(false);
+      this.conflictIdeLabel.set(null);
     }
   }
 
@@ -3313,18 +3337,8 @@ export class AppStore {
       }
       await this.stagePaths([path]);
       this.showSuccess(`Took ${side} for ${path}`);
-      if (this.conflictResolverOpen() && this.conflictResolverPath() === path) {
-        await this.refreshRepo();
-        const remaining = this.status()?.conflicted ?? [];
-        if (remaining.length) {
-          await this.openConflictResolver(remaining[0].path);
-        } else {
-          this.closeConflictResolver();
-          if (this.status()?.operation) {
-            this.showInfo('All conflicts resolved — Continue when ready');
-          }
-        }
-      }
+      await this.refreshRepo();
+      await this.advanceConflictResolverAfter(path);
     } catch (err) {
       this.showError(err);
     }
@@ -3398,19 +3412,135 @@ export class AppStore {
       }
       await this.refreshRepo();
       this.showSuccess(result.message);
-      const remaining = this.status()?.conflicted ?? [];
-      const next = remaining.find((f) => f.path !== filePath) ?? remaining[0];
-      if (next) {
-        await this.openConflictResolver(next.path);
-      } else {
-        this.closeConflictResolver();
-        if (this.status()?.operation) {
-          this.showInfo('All conflicts resolved — Continue when ready');
-        }
-      }
+      await this.advanceConflictResolverAfter(filePath);
     } catch (err) {
       this.showError(err);
     }
+  }
+
+  async stageConflictFile(path?: string): Promise<void> {
+    const target = path?.trim() || this.conflictResolverPath();
+    if (!target) return;
+    await this.stagePaths([target]);
+    this.showSuccess(`Marked ${target} as resolved`);
+    if (this.conflictResolverOpen() && this.conflictResolverPath() === target) {
+      await this.refreshRepo();
+      await this.advanceConflictResolverAfter(target);
+    }
+  }
+
+  private bindConflictFocusWatch(): void {
+    if (this.conflictFocusBound || typeof document === 'undefined') return;
+    this.conflictFocusBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!this.showConflictBanner() && !this.conflictResolverOpen()) return;
+      if (this.conflictIdeBusy()) return;
+      void this.refreshWorkingTree();
+    });
+    window.addEventListener('focus', () => {
+      if (!this.showConflictBanner() && !this.conflictResolverOpen()) return;
+      if (this.conflictIdeBusy()) return;
+      void this.refreshWorkingTree();
+    });
+  }
+
+  private async syncConflictManager(
+    prev: RepoStatus | null,
+    next: RepoStatus,
+  ): Promise<void> {
+    if (this.conflictSyncInFlight || this.conflictIdeBusy()) return;
+    this.conflictSyncInFlight = true;
+    try {
+      const prevPaths = new Set((prev?.conflicted ?? []).map((f) => f.path));
+      const nextPaths = new Set(next.conflicted.map((f) => f.path));
+      const resolvedExternally = [...prevPaths].filter((p) => !nextPaths.has(p));
+
+      if (
+        resolvedExternally.length &&
+        !this.conflictResolverOpen() &&
+        prev &&
+        prev.conflicted.length > next.conflicted.length
+      ) {
+        const n = resolvedExternally.length;
+        this.showInfo(
+          n === 1
+            ? `Conflict cleared: ${resolvedExternally[0]}`
+            : `${n} conflicts cleared externally`,
+        );
+      }
+
+      if (!this.conflictResolverOpen()) return;
+
+      const current = this.conflictResolverPath();
+      if (current && !nextPaths.has(current)) {
+        this.showSuccess(`${this.fileBaseName(current)} resolved`);
+        await this.advanceConflictResolverAfter(current, next);
+        return;
+      }
+
+      if (current && nextPaths.has(current)) {
+        await this.reloadConflictResolverFromDisk(current);
+      }
+    } finally {
+      this.conflictSyncInFlight = false;
+    }
+  }
+
+  private async reloadConflictResolverFromDisk(path: string): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    if (!repo || !this.conflictResolverOpen()) return;
+    try {
+      const sides = await this.tauri.getConflictSides(repo, path);
+      const prev = this.conflictResolver();
+      if (
+        prev &&
+        prev.path === sides.path &&
+        prev.working === sides.working &&
+        prev.binary === sides.binary &&
+        prev.hasMarkers === sides.hasMarkers &&
+        prev.unmerged === sides.unmerged
+      ) {
+        return;
+      }
+      this.conflictResolverPath.set(path);
+      this.conflictResolver.set(sides);
+      this.conflictResolverDraft.set(
+        sides.binary ? '' : sides.working || sides.ours || sides.theirs || sides.base,
+      );
+      if (
+        prev?.hasMarkers === true &&
+        sides.hasMarkers === false &&
+        sides.unmerged !== false
+      ) {
+        this.showInfo('Markers cleared — Stage to mark this file resolved');
+      }
+    } catch {
+      /* keep previous sides if disk read fails mid-edit */
+    }
+  }
+
+  private async advanceConflictResolverAfter(
+    resolvedPath: string,
+    statusOverride?: RepoStatus,
+  ): Promise<void> {
+    if (!this.conflictResolverOpen()) return;
+    const status = statusOverride ?? this.status();
+    const remaining = status?.conflicted ?? [];
+    const next = remaining.find((f) => f.path !== resolvedPath) ?? remaining[0];
+    if (next) {
+      await this.openConflictResolver(next.path);
+      return;
+    }
+    this.closeConflictResolver();
+    if (status?.operation) {
+      this.showInfo('All conflicts resolved — Continue when ready');
+    }
+  }
+
+  private fileBaseName(path: string): string {
+    const parts = path.split('/');
+    return parts[parts.length - 1] || path;
   }
 
   async handleGraphDrop(sourceSha: string, targetSha: string): Promise<void> {
@@ -3523,8 +3653,7 @@ export class AppStore {
   }
 
   async markConflictResolved(path: string): Promise<void> {
-    await this.stagePaths([path]);
-    this.showSuccess(`Marked ${path} as resolved`);
+    await this.stageConflictFile(path);
   }
 
   private async handleConflictResult(result: MutationOutput): Promise<void> {

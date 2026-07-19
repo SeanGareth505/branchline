@@ -27,6 +27,8 @@ pub struct ConflictSidesOutput {
     pub has_ours: bool,
     pub has_theirs: bool,
     pub binary: bool,
+    pub unmerged: bool,
+    pub has_markers: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +53,12 @@ pub struct OpenConflictInIdeInput {
     pub cursor_path: Option<String>,
     #[serde(default)]
     pub vscode_path: Option<String>,
+    /// Wait for the editor process to exit (code/cursor --wait).
+    #[serde(default)]
+    pub wait: Option<bool>,
+    /// After wait, stage the file when markers are gone and it is still unmerged.
+    #[serde(default)]
+    pub stage_if_resolved: Option<bool>,
 }
 
 fn normalize_repo_rel(path: &str) -> AppResult<String> {
@@ -88,6 +96,46 @@ fn stage_blob(repo: &Path, stage: u8, rel: &str) -> (bool, String) {
 
 fn looks_binary(s: &str) -> bool {
     s.bytes().take(8192).any(|b| b == 0)
+}
+
+fn working_has_markers(content: &str) -> bool {
+    content.lines().any(|line| {
+        line.starts_with("<<<<<<< ")
+            || line == "<<<<<<<"
+            || line.starts_with(">>>>>>> ")
+            || line == ">>>>>>>"
+    })
+}
+
+fn path_is_unmerged(repo: &Path, rel: &str) -> bool {
+    let (ok, out, _) = git_cli::run_git_allow_fail(repo, &["ls-files", "-u", "--", rel]);
+    ok && !out.trim().is_empty()
+}
+
+fn read_working(repo: &Path, rel: &str) -> String {
+    let file = repo.join(rel);
+    if file.exists() {
+        fs::read_to_string(&file).unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+fn try_stage_if_resolved(repo: &Path, rel: &str) -> Option<String> {
+    if !path_is_unmerged(repo, rel) {
+        return Some(format!("{rel} is already marked resolved"));
+    }
+    let working = read_working(repo, rel);
+    if looks_binary(&working) {
+        return None;
+    }
+    if working_has_markers(&working) {
+        return None;
+    }
+    match git_cli::run_git(repo, &["add", "--", rel]) {
+        Ok(_) => Some(format!("Staged {rel} — conflict resolved")),
+        Err(_) => None,
+    }
 }
 
 fn resolve_ide_bin(
@@ -155,6 +203,56 @@ fn dirs_home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
 
+fn finish_after_ide(
+    repo: &Path,
+    rel: &str,
+    label: &str,
+    wait: bool,
+    stage_if_resolved: bool,
+    launched_ok: bool,
+    launch_err: Option<String>,
+) -> MutationOutput {
+    if !launched_ok {
+        return MutationOutput {
+            ok: false,
+            message: launch_err.unwrap_or_else(|| format!("Could not launch {label}")),
+        };
+    }
+    if !wait {
+        return MutationOutput {
+            ok: true,
+            message: format!("Opened {rel} in {label} — save there; Branchline will detect when it is resolved"),
+        };
+    }
+    if stage_if_resolved {
+        if let Some(msg) = try_stage_if_resolved(repo, rel) {
+            return MutationOutput { ok: true, message: msg };
+        }
+    }
+    let working = read_working(repo, rel);
+    let unmerged = path_is_unmerged(repo, rel);
+    if !unmerged {
+        return MutationOutput {
+            ok: true,
+            message: format!("{rel} is resolved"),
+        };
+    }
+    if working_has_markers(&working) {
+        return MutationOutput {
+            ok: true,
+            message: format!(
+                "{label} closed — {rel} still has conflict markers"
+            ),
+        };
+    }
+    MutationOutput {
+        ok: true,
+        message: format!(
+            "{label} closed — {rel} looks resolved; stage it to mark complete"
+        ),
+    }
+}
+
 #[command]
 pub fn get_conflict_sides(input: ConflictFileInput) -> AppResult<ConflictSidesOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
@@ -162,14 +260,11 @@ pub fn get_conflict_sides(input: ConflictFileInput) -> AppResult<ConflictSidesOu
         let (has_base, base) = stage_blob(path, 1, &rel);
         let (has_ours, ours) = stage_blob(path, 2, &rel);
         let (has_theirs, theirs) = stage_blob(path, 3, &rel);
-        let file = path.join(&rel);
-        let working = if file.exists() {
-            fs::read_to_string(&file).unwrap_or_default()
-        } else {
-            String::new()
-        };
+        let working = read_working(path, &rel);
         let binary =
             looks_binary(&base) || looks_binary(&ours) || looks_binary(&theirs) || looks_binary(&working);
+        let unmerged = path_is_unmerged(path, &rel);
+        let has_markers = !binary && working_has_markers(&working);
         Ok(ConflictSidesOutput {
             path: rel,
             base: if binary { String::new() } else { base },
@@ -180,6 +275,8 @@ pub fn get_conflict_sides(input: ConflictFileInput) -> AppResult<ConflictSidesOu
             has_ours,
             has_theirs,
             binary,
+            unmerged,
+            has_markers,
         })
     })
 }
@@ -224,16 +321,13 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
         .unwrap_or("file")
         .trim()
         .to_ascii_lowercase();
+    let wait = input.wait.unwrap_or(true);
+    let stage_if_resolved = input.stage_if_resolved.unwrap_or(true);
     let abs = repo.join(&rel);
     if !abs.exists() {
-        // Ensure working tree file exists so the IDE can open markers / result.
         let (_, ours) = stage_blob(&repo, 2, &rel);
         let (_, theirs) = stage_blob(&repo, 3, &rel);
-        let content = if !ours.is_empty() {
-            ours
-        } else {
-            theirs
-        };
+        let content = if !ours.is_empty() { ours } else { theirs };
         if let Some(parent) = abs.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -271,35 +365,108 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
             crate::AppError::msg(format!("Could not write theirs side: {e}"))
         })?;
 
-        // VS Code / Cursor: --merge <current> <incoming> <base> <result>
-        let status = Command::new(&bin)
-            .arg("--merge")
+        let mut cmd = Command::new(&bin);
+        if wait {
+            cmd.arg("--wait");
+        }
+        cmd.arg("--merge")
             .arg(&ours_path)
             .arg(&theirs_path)
             .arg(&base_path)
-            .arg(&abs)
-            .spawn();
-        return match status {
-            Ok(_) => Ok(MutationOutput {
-                ok: true,
-                message: format!("Opened {rel} in {label} merge editor — save there, then Continue"),
-            }),
-            Err(e) => Ok(MutationOutput {
-                ok: false,
-                message: format!("Could not launch {label}: {e}"),
-            }),
+            .arg(&abs);
+
+        if wait {
+            return match cmd.status() {
+                Ok(_) => Ok(finish_after_ide(
+                    &repo,
+                    &rel,
+                    label,
+                    true,
+                    stage_if_resolved,
+                    true,
+                    None,
+                )),
+                Err(e) => Ok(finish_after_ide(
+                    &repo,
+                    &rel,
+                    label,
+                    true,
+                    stage_if_resolved,
+                    false,
+                    Some(format!("Could not launch {label}: {e}")),
+                )),
+            };
+        }
+
+        return match cmd.spawn() {
+            Ok(_) => Ok(finish_after_ide(
+                &repo,
+                &rel,
+                label,
+                false,
+                stage_if_resolved,
+                true,
+                None,
+            )),
+            Err(e) => Ok(finish_after_ide(
+                &repo,
+                &rel,
+                label,
+                false,
+                stage_if_resolved,
+                false,
+                Some(format!("Could not launch {label}: {e}")),
+            )),
         };
     }
 
-    let status = Command::new(&bin).arg(&abs).spawn();
-    match status {
-        Ok(_) => Ok(MutationOutput {
-            ok: true,
-            message: format!("Opened {rel} in {label}"),
-        }),
-        Err(e) => Ok(MutationOutput {
-            ok: false,
-            message: format!("Could not launch {label}: {e}"),
-        }),
+    let mut cmd = Command::new(&bin);
+    if wait {
+        cmd.arg("--wait");
+    }
+    cmd.arg(&abs);
+
+    if wait {
+        return match cmd.status() {
+            Ok(_) => Ok(finish_after_ide(
+                &repo,
+                &rel,
+                label,
+                true,
+                stage_if_resolved,
+                true,
+                None,
+            )),
+            Err(e) => Ok(finish_after_ide(
+                &repo,
+                &rel,
+                label,
+                true,
+                stage_if_resolved,
+                false,
+                Some(format!("Could not launch {label}: {e}")),
+            )),
+        };
+    }
+
+    match cmd.spawn() {
+        Ok(_) => Ok(finish_after_ide(
+            &repo,
+            &rel,
+            label,
+            false,
+            stage_if_resolved,
+            true,
+            None,
+        )),
+        Err(e) => Ok(finish_after_ide(
+            &repo,
+            &rel,
+            label,
+            false,
+            stage_if_resolved,
+            false,
+            Some(format!("Could not launch {label}: {e}")),
+        )),
     }
 }

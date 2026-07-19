@@ -54,10 +54,20 @@ footer {
 .path,
 .progress,
 .op,
-.hint {
+.hint,
+.watching {
   margin: 0.15rem 0 0;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.watching {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.watching.ready {
+  color: var(--accent);
 }
 
 .hint.warn {
@@ -80,7 +90,7 @@ footer {
   top: calc(100% + 4px);
   left: 0;
   z-index: 5;
-  min-width: 180px;
+  min-width: 210px;
   display: flex;
   flex-direction: column;
   padding: 0.35rem;
@@ -99,16 +109,36 @@ footer {
   color: var(--text-primary);
   cursor: pointer;
   font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .menu button:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.file-tabs {
+.opt-hint {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.file-tabs,
+.file-rail {
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+}
+
+.file-rail.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 0.2rem;
 }
 
 .tab {
@@ -122,11 +152,23 @@ footer {
   display: inline-flex;
   gap: 0.35rem;
   align-items: center;
+  flex-shrink: 0;
+  max-width: 12rem;
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tab.on {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
+}
+
+.tab.ready {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border));
 }
 
 .kind,
@@ -136,6 +178,10 @@ footer {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.kind.ready {
+  color: var(--accent);
 }
 
 .badge.pending {

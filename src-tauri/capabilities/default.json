@@ -13,11 +13,17 @@
       "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://github.com/*" },
-        { "url": "https://docs.github.com/*" }
+        { "url": "https://docs.github.com/*" },
+        { "url": "cursor://*" },
+        { "url": "vscode://*" }
       ]
     },
     "shell:allow-open",
     "notification:default",
-    "fs:default"
+    "fs:default",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

@@ -38,6 +38,9 @@ pub struct SquashInput {
 pub struct RunGitInput {
     pub path: String,
     pub args: Vec<String>,
+    /// When true, only read-only console commands are allowed.
+    #[serde(default)]
+    pub console: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +88,31 @@ const BLOCKED_ARG_PREFIXES: &[&str] = &[
     "--noglob-pathspecs",
     "--icase-pathspecs",
 ];
+
+const BLOCKED_APP_ARG_PREFIXES: &[&str] = &[
+    "--exec-path",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--upload-pack",
+    "--receive-pack",
+];
+
+fn args_block_dangerous_globals(args: &[String]) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("No command provided".into());
+    }
+    for arg in args {
+        let lower = arg.to_ascii_lowercase();
+        if BLOCKED_APP_ARG_PREFIXES
+            .iter()
+            .any(|p| lower == *p || lower.starts_with(&format!("{p}=")))
+        {
+            return Err(format!("Argument '{arg}' is not allowed"));
+        }
+    }
+    Ok(())
+}
 
 fn args_are_safe(args: &[String]) -> Result<(), String> {
     if args.is_empty() {
@@ -211,7 +239,16 @@ pub fn squash_commits(input: SquashInput) -> AppResult<MutationOutput> {
 #[command]
 pub fn run_git_command(input: RunGitInput) -> AppResult<RunGitOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        if let Err(stderr) = args_are_safe(&input.args) {
+        let console = input.console.unwrap_or(false);
+        if console {
+            if let Err(stderr) = args_are_safe(&input.args) {
+                return Ok(RunGitOutput {
+                    ok: false,
+                    stdout: String::new(),
+                    stderr,
+                });
+            }
+        } else if let Err(stderr) = args_block_dangerous_globals(&input.args) {
             return Ok(RunGitOutput {
                 ok: false,
                 stdout: String::new(),

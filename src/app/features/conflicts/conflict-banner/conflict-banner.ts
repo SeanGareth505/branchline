@@ -1,10 +1,9 @@
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
-import {
-  preferredEditorLabel,
-  resolvePreferredEditor,
-} from '../../../shared/git/open-in-editor';
+import { preferredEditorLabel } from '../../../shared/git/open-in-editor';
+
+const PREVIEW_LIMIT = 3;
 
 @Component({
   selector: 'app-conflict-banner',
@@ -26,12 +25,26 @@ export class ConflictBanner {
   readonly operation = computed(() => this.store.status()?.operation ?? null);
   readonly conflictCount = computed(() => this.store.status()?.conflicted?.length ?? 0);
   readonly readyToContinue = computed(() => this.store.operationNeedsContinue());
+  readonly readyToStageCount = computed(
+    () => this.store.status()?.conflicted?.filter((f) => f.markersCleared).length ?? 0,
+  );
+
+  readonly previewFiles = computed(() => (this.store.status()?.conflicted ?? []).slice(0, PREVIEW_LIMIT));
+
+  readonly hiddenFileCount = computed(() => Math.max(0, this.conflictCount() - PREVIEW_LIMIT));
 
   readonly title = computed(() => {
     const op = this.operation();
     const n = this.conflictCount();
+    const ready = this.readyToStageCount();
+    const kind = op?.label?.replace(/ in progress$/i, '') || 'merge';
     if (n > 0) {
-      const kind = op?.label?.replace(/ in progress$/i, '') || 'Operation';
+      if (ready > 0 && ready === n) {
+        return `${n} file${n === 1 ? '' : 's'} ready to stage · ${kind.toLowerCase()}`;
+      }
+      if (ready > 0) {
+        return `${n} conflicted · ${ready} ready to stage · ${kind.toLowerCase()}`;
+      }
       return `${n} conflicted file${n === 1 ? '' : 's'} · ${kind.toLowerCase()}`;
     }
     if (op) {
@@ -42,8 +55,17 @@ export class ConflictBanner {
   });
 
   readonly hint = computed(() => {
+    if (this.store.conflictIdeBusy()) {
+      return `Waiting for ${this.store.conflictIdeLabel() || 'the editor'} — close the tab when finished.`;
+    }
     if (this.readyToContinue()) {
       return 'Nothing left unmerged — Continue to finish, or Abort to cancel.';
+    }
+    if (this.readyToStageCount() > 0) {
+      return 'Some files have no conflict markers left — Stage them to mark resolved.';
+    }
+    if (this.conflictCount() > PREVIEW_LIMIT) {
+      return 'Open Resolve to work through the list, or use Files → Conflicts.';
     }
     const op = this.operation();
     if (op?.kind === 'rebase') {
@@ -58,6 +80,11 @@ export class ConflictBanner {
   @HostListener('document:click')
   onDocClick(): void {
     if (this.toolsOpen()) this.toolsOpen.set(false);
+  }
+
+  fileName(path: string): string {
+    const parts = path.split(/[/\\]/);
+    return parts[parts.length - 1] || path;
   }
 
   toggleTools(): void {
@@ -79,30 +106,19 @@ export class ConflictBanner {
     void this.store.openConflictInIde('cursor', 'file');
   }
 
+  openCursorMerge(): void {
+    this.toolsOpen.set(false);
+    void this.store.openConflictInIde('cursor', 'merge');
+  }
+
   openVscode(): void {
     this.toolsOpen.set(false);
     void this.store.openConflictInIde('vscode', 'file');
   }
 
-  openIdeMerge(): void {
+  openVscodeMerge(): void {
     this.toolsOpen.set(false);
-    const resolved = resolvePreferredEditor(
-      this.store.settings().preferredEditor,
-      this.store.detectedEditors(),
-    );
-    if (resolved === 'vscode') {
-      void this.store.openConflictInIde('vscode', 'merge');
-      return;
-    }
-    if (resolved === 'cursor' || this.hasCursor()) {
-      void this.store.openConflictInIde('cursor', 'merge');
-      return;
-    }
-    if (this.hasVscode()) {
-      void this.store.openConflictInIde('vscode', 'merge');
-      return;
-    }
-    void this.store.openMergeToolForPaths();
+    void this.store.openConflictInIde('vscode', 'merge');
   }
 
   openMergeTool(): void {

@@ -1,6 +1,7 @@
 use crate::infrastructure::git_cli;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +14,8 @@ pub struct FileStatusEntry {
     pub conflict_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conflict_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markers_cleared: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -138,6 +141,7 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
                     original_path: None,
                     conflict_kind: None,
                     conflict_label: None,
+                    markers_cleared: None,
                 });
             }
         } else if let Some(rest) = line.strip_prefix("u ") {
@@ -157,6 +161,10 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
         }
     }
 
+    for entry in &mut conflicted {
+        entry.markers_cleared = Some(conflict_markers_cleared(path, &entry.path));
+    }
+
     let operation = detect_git_operation(path);
 
     Ok(RepoStatus {
@@ -172,6 +180,31 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
         conflicted,
         operation,
     })
+}
+
+fn conflict_working_has_markers(content: &str) -> bool {
+    content.lines().any(|line| {
+        line.starts_with("<<<<<<< ")
+            || line == "<<<<<<<"
+            || line.starts_with(">>>>>>> ")
+            || line == ">>>>>>>"
+    })
+}
+
+fn conflict_markers_cleared(repo: &Path, rel: &str) -> bool {
+    let file = repo.join(rel);
+    if !file.exists() {
+        return true;
+    }
+    match fs::read_to_string(&file) {
+        Ok(content) => {
+            if content.bytes().take(8192).any(|b| b == 0) {
+                return true;
+            }
+            !conflict_working_has_markers(&content)
+        }
+        Err(_) => false,
+    }
 }
 
 fn detect_git_operation(path: &Path) -> Option<GitOperationInfo> {
@@ -263,6 +296,7 @@ fn parse_unmerged_change(rest: &str) -> Option<FileStatusEntry> {
         original_path: None,
         conflict_kind: Some(kind.into()),
         conflict_label: Some(label.into()),
+        markers_cleared: None,
     })
 }
 
@@ -300,6 +334,7 @@ fn parse_ordinary_change(
             original_path: None,
             conflict_kind: None,
             conflict_label: None,
+            markers_cleared: None,
         });
     }
     if y != '.' {
@@ -309,6 +344,7 @@ fn parse_ordinary_change(
             original_path: None,
             conflict_kind: None,
             conflict_label: None,
+            markers_cleared: None,
         });
     }
 }
@@ -340,6 +376,7 @@ fn parse_rename_change(
             original_path: old_path.clone(),
             conflict_kind: None,
             conflict_label: None,
+            markers_cleared: None,
         });
     }
     if y != '.' {
@@ -349,6 +386,7 @@ fn parse_rename_change(
             original_path: old_path,
             conflict_kind: None,
             conflict_label: None,
+            markers_cleared: None,
         });
     }
 }

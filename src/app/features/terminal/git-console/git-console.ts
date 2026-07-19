@@ -42,7 +42,7 @@ export class GitConsole {
     this.running.set(true);
     const next = [...this.lines(), `$ git ${raw}`];
     try {
-      const result = await this.tauri.runGitCommand(path, args);
+      const result = await this.tauri.runGitCommand(path, args, { console: true });
       const out = (result.stdout || result.stderr || (result.ok ? '(no output)' : 'failed'))
         .replace(/\r\n/g, '\n')
         .trimEnd();

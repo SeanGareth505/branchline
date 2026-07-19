@@ -63,7 +63,7 @@ export class ConflictResolverDialog {
         this.syncedKey = '';
         return;
       }
-      const key = `${path}::${sides.working.length}::${sides.binary}`;
+      const key = `${path}::${sides.working}::${sides.binary}::${sides.hasMarkers}::${sides.unmerged}`;
       if (key === this.syncedKey) return;
       this.syncedKey = key;
       this.syncFromSides();
@@ -123,6 +123,14 @@ export class ConflictResolverDialog {
   readonly isDeleteConflict = computed(() => {
     const kind = this.currentFile()?.conflictKind ?? '';
     return kind === 'deletedByUs' || kind === 'deletedByThem' || kind === 'bothDeleted';
+  });
+
+  readonly markersClearedUnstaged = computed(() => {
+    const file = this.currentFile();
+    if (file?.markersCleared) return true;
+    const sides = this.sides();
+    if (!sides || sides.binary) return false;
+    return sides.hasMarkers === false && sides.unmerged !== false;
   });
 
   readonly remaining = computed(() => remainingConflictIds(this.conflicts(), this.choices()));

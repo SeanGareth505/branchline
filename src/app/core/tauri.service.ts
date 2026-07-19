@@ -360,7 +360,50 @@ export class TauriService {
   getConflictSides(path: string, filePath: string) {
     return this.invoke<ConflictSidesOutput>('get_conflict_sides', {
       input: { path, filePath },
+    }).catch(async (err: unknown) => {
+      if (!isMissingTauriCommand(err, 'get_conflict_sides')) throw err;
+      return this.getConflictSidesFallback(path, filePath);
     });
+  }
+
+  private async getConflictSidesFallback(
+    path: string,
+    filePath: string,
+  ): Promise<ConflictSidesOutput> {
+    const stage = async (n: 1 | 2 | 3): Promise<string> => {
+      const result = await this.runGitCommand(path, ['show', `:${n}:${filePath}`]);
+      return result.ok ? result.stdout : '';
+    };
+    const [base, ours, theirs] = await Promise.all([stage(1), stage(2), stage(3)]);
+    let working = '';
+    try {
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+      const sep = path.includes('\\') ? '\\' : '/';
+      working = await readTextFile(`${path.replace(/[/\\]$/, '')}${sep}${filePath}`);
+    } catch {
+      working = ours || theirs || base;
+    }
+    const binary =
+      looksBinaryText(base) ||
+      looksBinaryText(ours) ||
+      looksBinaryText(theirs) ||
+      looksBinaryText(working);
+    const hasMarkers =
+      !binary &&
+      (/^<<<<<<< /m.test(working) || /^>>>>>>> /m.test(working) || /^=======\s*$/m.test(working));
+    return {
+      path: filePath,
+      base: binary ? '' : base,
+      ours: binary ? '' : ours,
+      theirs: binary ? '' : theirs,
+      working: binary ? '' : working,
+      hasBase: base.length > 0,
+      hasOurs: ours.length > 0,
+      hasTheirs: theirs.length > 0,
+      binary,
+      unmerged: true,
+      hasMarkers,
+    };
   }
 
   resolveConflictFile(path: string, filePath: string, content: string) {
@@ -377,6 +420,8 @@ export class TauriService {
       mode?: 'file' | 'merge';
       cursorPath?: string | null;
       vscodePath?: string | null;
+      wait?: boolean;
+      stageIfResolved?: boolean;
     } = {},
   ) {
     return this.invoke<MutationOutput>('open_conflict_in_ide', {
@@ -387,6 +432,8 @@ export class TauriService {
         mode: opts.mode ?? 'file',
         cursorPath: opts.cursorPath ?? null,
         vscodePath: opts.vscodePath ?? null,
+        wait: opts.wait ?? true,
+        stageIfResolved: opts.stageIfResolved ?? true,
       },
     });
   }
@@ -600,8 +647,10 @@ export class TauriService {
     return this.invoke<MutationOutput>('squash_commits', { input: { path, count, message } });
   }
 
-  runGitCommand(path: string, args: string[]) {
-    return this.invoke<RunGitOutput>('run_git_command', { input: { path, args } });
+  runGitCommand(path: string, args: string[], opts?: { console?: boolean }) {
+    return this.invoke<RunGitOutput>('run_git_command', {
+      input: { path, args, console: opts?.console ?? false },
+    });
   }
 
   cherryPickPreview(path: string, shas: string[]) {
@@ -1844,6 +1893,8 @@ export class TauriService {
           hasOurs: true,
           hasTheirs: false,
           binary: false,
+          unmerged: true,
+          hasMarkers: false,
         } as T;
       }
       return {
@@ -1860,6 +1911,8 @@ export class TauriService {
         hasOurs: true,
         hasTheirs: true,
         binary: false,
+        unmerged: true,
+        hasMarkers: true,
       } as T;
     }
 
@@ -1868,10 +1921,17 @@ export class TauriService {
     }
 
     if (cmd === 'open_conflict_in_ide') {
-      const input = args?.['input'] as { filePath?: string; editor?: string; mode?: string } | undefined;
+      const input = args?.['input'] as {
+        filePath?: string;
+        editor?: string;
+        mode?: string;
+        wait?: boolean;
+      } | undefined;
       return {
         ok: true,
-        message: `Opened ${input?.filePath ?? 'file'} in ${input?.editor ?? 'editor'} (${input?.mode ?? 'file'})`,
+        message: input?.wait
+          ? `Resolved ${input?.filePath ?? 'file'} after ${input?.editor ?? 'editor'} closed`
+          : `Opened ${input?.filePath ?? 'file'} in ${input?.editor ?? 'editor'} (${input?.mode ?? 'file'})`,
       } as T;
     }
 
@@ -2570,6 +2630,35 @@ export class TauriService {
       /* ignore */
     }
   }
+}
+
+function isMissingTauriCommand(err: unknown, command: string): boolean {
+  const text =
+    typeof err === 'string'
+      ? err
+      : err instanceof Error
+        ? err.message
+        : err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : String(err ?? '');
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('not found') &&
+    (lower.includes(command.toLowerCase()) || lower.includes('command'))
+  );
+}
+
+function looksBinaryText(value: string): boolean {
+  if (!value) return false;
+  if (value.includes('\0')) return true;
+  const sample = value.slice(0, 8000);
+  let weird = 0;
+  for (let i = 0; i < sample.length; i += 1) {
+    const code = sample.charCodeAt(i);
+    if (code === 9 || code === 10 || code === 13) continue;
+    if (code < 32) weird += 1;
+  }
+  return weird / Math.max(sample.length, 1) > 0.3;
 }
 
 function readMockPreviewFlags(): { conflicts: boolean; onboarding: boolean } {

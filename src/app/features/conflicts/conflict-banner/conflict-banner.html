@@ -1,23 +1,32 @@
 <div class="banner" [class.ready]="readyToContinue()">
   <div class="info">
     <ng-icon [name]="readyToContinue() ? 'lucideCheck' : 'lucideCircleAlert'" size="16" />
-    <div>
+    <div class="copy">
       <strong>{{ title() }}</strong>
       <p class="hint">{{ hint() }}</p>
-      @if (conflictCount() > 0 && conflictCount() <= 8) {
+      @if (previewFiles().length) {
         <div class="files">
-          @for (f of store.status()?.conflicted ?? []; track f.path) {
-            <button type="button" class="file" (click)="store.openConflictResolver(f.path)">
-              <span class="mono">{{ f.path }}</span>
-              @if (f.conflictLabel) {
+          @for (f of previewFiles(); track f.path) {
+            <button
+              type="button"
+              class="file"
+              [class.ready]="f.markersCleared"
+              (click)="store.openConflictResolver(f.path)"
+              [title]="f.path"
+            >
+              <span class="mono">{{ fileName(f.path) }}</span>
+              @if (f.markersCleared) {
+                <span class="kind ready">ready</span>
+              } @else if (f.conflictLabel) {
                 <span class="kind">{{ f.conflictLabel }}</span>
               }
             </button>
           }
-        </div>
-      } @else if (conflictCount() > 8) {
-        <div class="files">
-          <span class="more">{{ conflictCount() }} files — open Resolve to work through them</span>
+          @if (hiddenFileCount() > 0) {
+            <button type="button" class="more-btn" (click)="openResolver()" title="Open resolver">
+              +{{ hiddenFileCount() }} more
+            </button>
+          }
         </div>
       }
     </div>
@@ -46,15 +55,26 @@
         @if (toolsOpen()) {
           <div class="menu" role="menu">
             <button type="button" role="menuitem" (click)="openInEditor()">
-              {{ preferredLabel() }}
+              Preferred ({{ preferredLabel() }})
             </button>
-            @if (hasCursor()) {
-              <button type="button" role="menuitem" (click)="openCursor()">Cursor</button>
-            }
-            @if (hasVscode()) {
-              <button type="button" role="menuitem" (click)="openVscode()">VS Code</button>
-            }
-            <button type="button" role="menuitem" (click)="openIdeMerge()">IDE 3-way merge</button>
+            <button type="button" role="menuitem" (click)="openCursor()">
+              Cursor
+              @if (!hasCursor()) {
+                <span class="opt-hint">try anyway</span>
+              }
+            </button>
+            <button type="button" role="menuitem" (click)="openCursorMerge()">
+              Cursor 3-way merge
+            </button>
+            <button type="button" role="menuitem" (click)="openVscode()">
+              VS Code
+              @if (!hasVscode()) {
+                <span class="opt-hint">try anyway</span>
+              }
+            </button>
+            <button type="button" role="menuitem" (click)="openVscodeMerge()">
+              VS Code 3-way merge
+            </button>
             <button type="button" role="menuitem" (click)="openMergeTool()">Git mergetool</button>
           </div>
         }

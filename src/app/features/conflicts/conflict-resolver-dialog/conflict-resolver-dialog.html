@@ -17,6 +17,13 @@
           @if (operation(); as op) {
             <p class="op">{{ op.label }}@if (op.detail) { · {{ op.detail }} }</p>
           }
+          @if (store.conflictIdeBusy()) {
+            <p class="watching">
+              Waiting for {{ store.conflictIdeLabel() || 'editor' }} — close the tab when done
+            </p>
+          } @else if (markersClearedUnstaged()) {
+            <p class="watching ready">Markers cleared — stage to mark this file resolved</p>
+          }
         </div>
         <button type="button" class="bl-btn" (click)="store.closeConflictResolver()" aria-label="Close">
           <ng-icon name="lucideX" size="14" />
@@ -24,17 +31,27 @@
       </header>
 
       @if (conflicted().length > 1) {
-        <div class="file-tabs">
+        <div class="file-rail" [class.scroll]="conflicted().length > 8">
           @for (f of conflicted(); track f.path) {
             <button
               type="button"
               class="tab"
               [class.on]="f.path === store.conflictResolverPath()"
+              [class.ready]="f.markersCleared"
               (click)="pickFile(f.path)"
-              [title]="f.path + (f.conflictLabel ? ' · ' + f.conflictLabel : '')"
+              [title]="
+                f.path +
+                (f.markersCleared
+                  ? ' · ready to stage'
+                  : f.conflictLabel
+                    ? ' · ' + f.conflictLabel
+                    : '')
+              "
             >
-              {{ fileName(f.path) }}
-              @if (f.conflictLabel) {
+              <span class="tab-name">{{ fileName(f.path) }}</span>
+              @if (f.markersCleared) {
+                <span class="kind ready">ready</span>
+              } @else if (f.conflictLabel) {
                 <span class="kind">{{ f.conflictLabel }}</span>
               }
             </button>
@@ -45,22 +62,27 @@
       <div class="editor-bar">
         <div class="menu-wrap">
           <button type="button" class="bl-btn" (click)="$event.stopPropagation(); toggleMenu('tools')">
-            Open in {{ preferredLabel() }}
+            Open in
             <ng-icon name="lucideChevronDown" size="12" />
           </button>
           @if (openMenu() === 'tools') {
             <div class="menu" (click)="$event.stopPropagation()">
-              <button type="button" (click)="openPreferred()">{{ preferredLabel() }}</button>
-              @if (hasCursor()) {
-                <button type="button" (click)="openCursor('file')">Cursor</button>
-                <button type="button" (click)="openCursor('merge')">Cursor merge</button>
-              }
-              @if (hasVscode()) {
-                <button type="button" (click)="openVscode('file')">VS Code</button>
-                <button type="button" (click)="openVscode('merge')">VS Code merge</button>
-              }
-              <button type="button" (click)="openIdeMerge()">IDE merge</button>
-              <button type="button" (click)="openMergetool()">Mergetool</button>
+              <button type="button" (click)="openPreferred()">Preferred ({{ preferredLabel() }})</button>
+              <button type="button" (click)="openCursor('file')">
+                Cursor
+                @if (!hasCursor()) {
+                  <span class="opt-hint">try anyway</span>
+                }
+              </button>
+              <button type="button" (click)="openCursor('merge')">Cursor 3-way merge</button>
+              <button type="button" (click)="openVscode('file')">
+                VS Code
+                @if (!hasVscode()) {
+                  <span class="opt-hint">try anyway</span>
+                }
+              </button>
+              <button type="button" (click)="openVscode('merge')">VS Code 3-way merge</button>
+              <button type="button" (click)="openMergetool()">Git mergetool</button>
             </div>
           }
         </div>
@@ -74,6 +96,15 @@
             (click)="resultMode.set(resultMode() === 'edit' ? 'guided' : 'edit')"
           >
             {{ resultMode() === 'edit' ? 'Guided view' : 'Edit result' }}
+          </button>
+        }
+        @if (markersClearedUnstaged()) {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            (click)="store.stageConflictFile()"
+          >
+            Stage resolved file
           </button>
         }
       </div>

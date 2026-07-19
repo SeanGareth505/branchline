@@ -70,6 +70,7 @@ export interface FileStatusEntry {
   originalPath?: string | null;
   conflictKind?: string | null;
   conflictLabel?: string | null;
+  markersCleared?: boolean | null;
 }
 
 export interface GitOperationInfo {
@@ -580,6 +581,8 @@ export interface ConflictSidesOutput {
   hasOurs: boolean;
   hasTheirs: boolean;
   binary: boolean;
+  unmerged?: boolean;
+  hasMarkers?: boolean;
 }
 
 export interface CreatePullRequestOutput {
