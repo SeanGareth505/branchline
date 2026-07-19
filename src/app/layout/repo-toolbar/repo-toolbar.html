@@ -3,7 +3,7 @@
     <button
       type="button"
       class="tool"
-      title="Refresh repository"
+      title="Reload status, branches, and history from disk"
       [disabled]="store.refreshingRepo()"
       [attr.aria-busy]="store.refreshingRepo()"
       (click)="store.refreshRepo({ notify: true })"
@@ -58,6 +58,7 @@
             type="button"
             role="menuitemradio"
             [attr.aria-checked]="store.settings().defaultPullAction === 'merge'"
+            title="Pull and merge remote commits into your branch"
             (click)="choosePull('merge')"
           >
             <span class="check">
@@ -71,6 +72,7 @@
             type="button"
             role="menuitemradio"
             [attr.aria-checked]="store.settings().defaultPullAction === 'rebase'"
+            title="Pull and replay your commits on top of remote"
             (click)="choosePull('rebase')"
           >
             <span class="check">
@@ -84,6 +86,7 @@
             type="button"
             role="menuitemradio"
             [attr.aria-checked]="store.settings().defaultPullAction === 'fetch'"
+            title="Download remote updates without merging"
             (click)="choosePull('fetch')"
           >
             <span class="check">
@@ -108,7 +111,7 @@
             ? store.currentBranchLockReason()
               ? 'Branch locked: ' + store.currentBranchLockReason()
               : 'Branch is locked — unlock to push'
-            : 'Push'
+            : 'Push commits to the tracked remote'
         "
         (click)="runPush()"
       >
@@ -118,7 +121,7 @@
       <button
         type="button"
         class="chev"
-        title="Push options"
+        title="More push options"
         aria-label="Push options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'push'"
@@ -138,18 +141,32 @@
         (overlayOutsideClick)="closeMenu()"
       >
         <div class="bl-menu" role="menu">
-          <button type="button" role="menuitem" (click)="runPush()">Push</button>
-          <button type="button" role="menuitem" (click)="runForcePush()">Force push…</button>
-          <button type="button" role="menuitem" (click)="runSync()">Sync (pull + push)</button>
+          <button type="button" role="menuitem" title="Push commits to the tracked remote" (click)="runPush()">Push</button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Overwrite remote history if needed — use carefully"
+            (click)="runForcePush()"
+          >
+            Force push…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Pull latest changes, then push yours"
+            (click)="runSync()"
+          >
+            Sync (pull + push)
+          </button>
         </div>
       </ng-template>
     </div>
 
     <div class="split" [class.open]="menu() === 'stash'">
-      <button type="button" class="tool" title="Stash changes" (click)="runStash()">
-        <ng-icon name="lucideLayers" size="14" />
-        <span>Stash</span>
-      </button>
+    <button type="button" class="tool" title="Temporarily shelve uncommitted changes" (click)="runStash()">
+      <ng-icon name="lucideLayers" size="14" />
+      <span>Stash</span>
+    </button>
       <button
         type="button"
         class="chev"
@@ -172,13 +189,32 @@
         (overlayOutsideClick)="closeMenu()"
       >
         <div class="bl-menu" role="menu">
-          <button type="button" role="menuitem" (click)="runStash()">Stash changes</button>
-          <button type="button" role="menuitem" (click)="runStashPop()">Pop latest stash</button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Shelve uncommitted changes so you can switch branches cleanly"
+            (click)="runStash()"
+          >
+            Stash changes
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Restore the latest stash and remove it from the stash list"
+            (click)="runStashPop()"
+          >
+            Pop latest stash
+          </button>
         </div>
       </ng-template>
     </div>
 
-    <button type="button" class="tool" title="Undo last action" (click)="store.softUndoLastCommit()">
+    <button
+      type="button"
+      class="tool"
+      title="Undo the last Branchline action (often undoes the last commit, keeps your files)"
+      (click)="store.softUndoLastCommit()"
+    >
       <ng-icon name="lucideUndo2" size="14" />
       <span>Undo</span>
     </button>
@@ -188,7 +224,7 @@
     <button
       type="button"
       class="tool icon-only"
-      title="Create pull request in browser"
+      title="Create a pull request on the host in your browser"
       aria-label="Create pull request"
       (click)="createPullRequest()"
     >
@@ -197,7 +233,7 @@
     <button
       type="button"
       class="tool icon-only"
-      title="Extract changelog"
+      title="Build a changelog from recent commits"
       aria-label="Extract changelog"
       (click)="store.openChangelogModal()"
     >
@@ -206,7 +242,7 @@
     <button
       type="button"
       class="tool icon-only"
-      title="Git console"
+      title="Open the Git command console"
       aria-label="Git console"
       (click)="openConsole()"
     >

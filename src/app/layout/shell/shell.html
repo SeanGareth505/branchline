@@ -7,8 +7,8 @@
     <div class="dummy-banner" role="status">
       <strong>DUMMY DATA</strong>
       <span
-        >Browser preview — commits, branches, and files are fake. Run the desktop app and open a real
-        repository to use live Git.</span
+        >Browser preview — commits, branches, and files are fake. Append
+        <code>?mockConflicts=1</code> or <code>?mockOnboarding=1</code> to exercise those flows.</span
       >
     </div>
   }
@@ -19,7 +19,7 @@
     <header class="chrome">
       <div class="chrome-nav">
         <div class="chrome-left">
-          <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home">
+          <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home" title="Go to repository view">
             <app-brand-mark [size]="18" />
             <span>Branchline</span>
           </button>
@@ -33,7 +33,7 @@
               type="button"
               [class.active]="isActive('browse')"
               (click)="nav('browse')"
-              title="Repository"
+              title="Browse branches, commits, and files"
             >
               <ng-icon name="lucideGitBranch" size="14" />
               <span>Repo</span>
@@ -42,7 +42,7 @@
               type="button"
               [class.active]="isActive('prs')"
               (click)="nav('prs')"
-              title="Pull requests"
+              title="Pull requests for this repository"
             >
               <ng-icon name="lucideGitPullRequest" size="14" />
               <span>PRs</span>
@@ -51,26 +51,26 @@
               type="button"
               [class.active]="isActive('jira')"
               (click)="nav('jira')"
-              title="Jira"
+              title="Linked Jira issues for this repository"
             >
               <ng-icon name="lucideTicket" size="14" />
               <span>Jira</span>
             </button>
+            <button
+              type="button"
+              [class.active]="isActive('profiles')"
+              (click)="nav('profiles')"
+              title="Git author name and email used for commits"
+            >
+              <ng-icon name="lucideUser" size="14" />
+              <span>Profiles</span>
+            </button>
             @if (!store.settings().simpleMode) {
-              <button
-                type="button"
-                [class.active]="isActive('profiles')"
-                (click)="nav('profiles')"
-                title="Profiles"
-              >
-                <ng-icon name="lucideUser" size="14" />
-                <span>Profiles</span>
-              </button>
               <button
                 type="button"
                 [class.active]="isActive('automation')"
                 (click)="nav('automation')"
-                title="Automation"
+                title="Run and edit multi-step Git workflows"
               >
                 <ng-icon name="lucideWorkflow" size="14" />
                 <span>Automation</span>
@@ -79,7 +79,7 @@
                 type="button"
                 [class.active]="isActive('templates')"
                 (click)="nav('templates')"
-                title="Templates"
+                title="Commit message and branch name templates"
               >
                 <ng-icon name="lucideFileText" size="14" />
                 <span>Templates</span>
@@ -94,7 +94,7 @@
             class="util icon-only"
             [class.active]="isActive('settings')"
             (click)="nav('settings')"
-            title="Settings"
+            title="App settings"
             aria-label="Settings"
           >
             <ng-icon name="lucideSettings" size="15" />
@@ -106,8 +106,8 @@
             [attr.aria-pressed]="store.settings().simpleMode"
             [title]="
               store.settings().simpleMode
-                ? 'Simple mode on — click for Advanced'
-                : 'Advanced mode on — click for Simple'
+                ? 'Simple mode: fewer views. Click for Advanced (Automation & Templates)'
+                : 'Advanced mode: more views. Click for Simple'
             "
           >
             {{ store.settings().simpleMode ? 'Simple' : 'Advanced' }}

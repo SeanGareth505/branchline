@@ -19,6 +19,14 @@
     <button
       type="button"
       class="bl-btn"
+      (click)="openDiffTool()"
+      title="Open selected file in the configured git difftool"
+    >
+      Diff tool
+    </button>
+    <button
+      type="button"
+      class="bl-btn"
       (click)="toggleSideBySide()"
       [title]="sideBySide() ? 'Switch to unified diff' : 'Switch to side-by-side diff'"
     >

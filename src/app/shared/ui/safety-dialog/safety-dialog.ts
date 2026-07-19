@@ -3,8 +3,11 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { SafetyAnalysis } from '../../../core/models';
+import { isMainlineBranch } from '../../git/mainline-branch';
 
 type PushMode = 'lease' | 'force';
+
+type ConfirmPart = { kind: 'text' | 'target'; value: string };
 
 @Component({
   selector: 'app-safety-dialog',
@@ -57,6 +60,28 @@ export class SafetyDialog {
   needsTyped(safety: SafetyAnalysis): boolean {
     if (this.isForcePush(safety) && this.pushMode() === 'force') return true;
     return safety.requireTypedConfirm;
+  }
+
+  confirmParts(safety: SafetyAnalysis): ConfirmPart[] {
+    const prompt = safety.confirmPrompt;
+    const target = safety.target?.trim();
+    if (!target) return [{ kind: 'text', value: prompt }];
+
+    const quoted = `'${target}'`;
+    const index = prompt.indexOf(quoted);
+    if (index < 0) return [{ kind: 'text', value: prompt }];
+
+    const parts: ConfirmPart[] = [];
+    const before = prompt.slice(0, index).replace(/\s+$/, ' ');
+    const after = prompt.slice(index + quoted.length);
+    if (before) parts.push({ kind: 'text', value: before });
+    parts.push({ kind: 'target', value: target });
+    if (after) parts.push({ kind: 'text', value: after });
+    return parts;
+  }
+
+  isMainlineTarget(name: string): boolean {
+    return isMainlineBranch(name);
   }
 
   typedOk(safety: SafetyAnalysis): boolean {

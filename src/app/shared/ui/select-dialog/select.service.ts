@@ -16,6 +16,8 @@ export interface SelectPromptOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   initialValue?: string;
+  /** Show the filter box. Defaults to true when there are more than 6 options. */
+  filterable?: boolean;
 }
 
 interface SelectRequest extends SelectPromptOptions {

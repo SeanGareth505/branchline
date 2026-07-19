@@ -108,6 +108,9 @@ pub fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
     let mut line_number = 0usize;
 
     for raw in out.lines() {
+        if lines.len() >= 5_000 {
+            break;
+        }
         if raw.starts_with('\t') {
             line_number += 1;
             lines.push(BlameLine {

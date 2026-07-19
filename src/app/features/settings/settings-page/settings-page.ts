@@ -14,6 +14,7 @@ import type {
 import { Dashboard } from '../../../layout/dashboard/dashboard';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
+import { DiagnosticsService } from '../../../core/diagnostics.service';
 
 @Component({
   selector: 'app-settings-page',
@@ -24,6 +25,7 @@ import { UpdateService } from '../../../core/update.service';
 export class SettingsPage implements OnInit {
   readonly store = inject(AppStore);
   readonly updates = inject(UpdateService);
+  readonly diagnostics = inject(DiagnosticsService);
   private readonly tauri = inject(TauriService);
   private readonly prompts = inject(PromptService);
 
@@ -41,7 +43,7 @@ export class SettingsPage implements OnInit {
   readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
     { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
     { id: 'appearance', label: 'Appearance', hint: 'Theme, accent, and UI modes' },
-    { id: 'git', label: 'Git', hint: 'Identity, pull/push, safety, commit types' },
+    { id: 'git', label: 'Git', hint: 'Identity, pull/push, confirmations, commit types' },
     {
       id: 'notifications',
       label: 'Notifications',
@@ -50,7 +52,7 @@ export class SettingsPage implements OnInit {
     { id: 'connections', label: 'Connections', hint: 'Link GitHub, GitLab, Azure DevOps, and Jira' },
     { id: 'ssh', label: 'SSH', hint: 'Keys and credential helper' },
     { id: 'tools', label: 'Tools', hint: 'Editor, diff, and merge tools' },
-    { id: 'about', label: 'About', hint: 'Version and updates' },
+    { id: 'about', label: 'About', hint: 'Version, updates, and crash diagnostics' },
   ];
 
   readonly sectionMeta = computed(
@@ -80,11 +82,48 @@ export class SettingsPage implements OnInit {
     const id = this.store.identity();
     this.identityName.set(id?.name ?? '');
     this.identityEmail.set(id?.email ?? '');
+    if (this.section() === 'about') {
+      void this.refreshDiagnostics();
+    }
   }
 
   setSection(section: SettingsSection): void {
     this.section.set(section);
     this.store.setSettingsSection(section);
+    if (section === 'about') {
+      void this.refreshDiagnostics();
+    }
+  }
+
+  async refreshDiagnostics(): Promise<void> {
+    await this.diagnostics.refresh();
+  }
+
+  async copyDiagnostics(): Promise<void> {
+    try {
+      const text = await this.diagnostics.copyReport();
+      await navigator.clipboard.writeText(text);
+      this.store.showSuccess('Diagnostics copied to clipboard');
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
+  async openDiagnosticsFolder(): Promise<void> {
+    try {
+      await this.diagnostics.openFolder();
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
+  async clearDiagnostics(): Promise<void> {
+    try {
+      await this.diagnostics.clear();
+      this.store.showSuccess('Cleared local crash and error history');
+    } catch (err) {
+      this.store.showError(err);
+    }
   }
 
   setTheme(theme: string): void {

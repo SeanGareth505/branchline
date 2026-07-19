@@ -1,7 +1,7 @@
 use crate::infrastructure::{mock_providers, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
-use mock_providers::WorkflowInfo;
+use mock_providers::{WorkflowInfo, WorkflowStep};
 use serde::Deserialize;
 use tauri::{command, State};
 
@@ -13,7 +13,7 @@ pub struct SaveWorkflowInput {
     pub id: Option<String>,
     pub name: String,
     pub description: String,
-    pub steps: Vec<String>,
+    pub steps: Vec<WorkflowStep>,
     pub enabled: Option<bool>,
 }
 

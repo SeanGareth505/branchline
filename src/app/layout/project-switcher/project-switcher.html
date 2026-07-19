@@ -35,7 +35,7 @@
           <button
             type="button"
             class="icon-btn disconnect"
-            title="Disconnect"
+            title="Close this repository"
             aria-label="Disconnect"
             (click)="disconnect()"
           >
@@ -50,15 +50,20 @@
       }
 
       <div class="actions">
-        <button type="button" role="menuitem" (click)="openFolder()" title="Open local repository">
+        <button type="button" role="menuitem" (click)="openFolder()" title="Open a local Git repository folder">
           <ng-icon name="lucideFolderOpen" size="14" />
           Open
         </button>
-        <button type="button" role="menuitem" (click)="startClone()" title="Clone from URL">
+        <button type="button" role="menuitem" (click)="startClone()" title="Clone a repository from a URL">
           <ng-icon name="lucideDownload" size="14" />
           Clone
         </button>
-        <button type="button" role="menuitem" (click)="initRepo()" title="Initialize new repository">
+        <button
+          type="button"
+          role="menuitem"
+          (click)="initRepo()"
+          title="Create a new Git repository in an empty folder"
+        >
           <ng-icon name="lucidePlus" size="14" />
           Init
         </button>

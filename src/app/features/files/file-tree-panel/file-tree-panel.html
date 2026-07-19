@@ -198,8 +198,40 @@
               @if (row.file.area === 'conflicted') {
                 <button
                   type="button"
+                  class="link"
+                  title="Open in preferred editor"
+                  (click)="openInEditor(row.path)"
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  class="link"
+                  title="Keep ours"
+                  (click)="takeOurs(row.path)"
+                >
+                  Ours
+                </button>
+                <button
+                  type="button"
+                  class="link"
+                  title="Keep theirs"
+                  (click)="takeTheirs(row.path)"
+                >
+                  Theirs
+                </button>
+                <button
+                  type="button"
+                  class="link"
+                  title="Open merge tool for this file"
+                  (click)="openMergeTool(row.path)"
+                >
+                  Mergetool
+                </button>
+                <button
+                  type="button"
                   class="link resolve"
-                  title="Mark conflict resolved"
+                  title="Mark conflict resolved (stage)"
                   (click)="markResolved(row.path)"
                 >
                   Resolve

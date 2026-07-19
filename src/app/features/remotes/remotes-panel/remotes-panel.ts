@@ -73,7 +73,6 @@ export class RemotesPanel {
   }
 
   async remove(name: string): Promise<void> {
-    if (!window.confirm(`Remove remote "${name}"?`)) return;
     await this.store.removeRemote(name);
   }
 }

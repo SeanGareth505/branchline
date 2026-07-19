@@ -8,7 +8,7 @@
         <ng-icon name="lucideGitBranch" size="14" />
         <span class="branch-name">{{ status.branch }}</span>
         @if (syncStatus()?.upstreamShort; as up) {
-          <span class="upstream">↔ {{ up }}</span>
+          <span class="upstream" [title]="'Tracking remote branch ' + up">↔ {{ up }}</span>
         }
       </span>
       @if (syncStatus(); as sync) {
@@ -31,7 +31,7 @@
         <button
           type="button"
           class="meta action"
-          title="Open commit dialog"
+          title="Open the commit dialog to review and commit changes"
           (click)="onChanges()"
         >
           {{ store.changeCount() }} change{{ store.changeCount() === 1 ? '' : 's' }}
@@ -48,7 +48,7 @@
       [class.focus-on]="store.settings().focusMode"
       [attr.aria-pressed]="store.settings().focusMode"
       (click)="store.toggleFocusMode()"
-      title="Dim commits unrelated to HEAD in the graph"
+      title="Dim commits not related to your current branch in the graph"
     >
       <ng-icon name="lucideFocus" size="14" />
       Focus {{ store.settings().focusMode ? 'on' : 'off' }}
@@ -58,7 +58,7 @@
         type="button"
         class="bl-btn bl-btn-primary"
         (click)="store.runNextAction()"
-        title="Suggested next step for this repository"
+        [title]="'Suggested next step: ' + store.nextAction()"
       >
         {{ store.nextAction() }}
       </button>

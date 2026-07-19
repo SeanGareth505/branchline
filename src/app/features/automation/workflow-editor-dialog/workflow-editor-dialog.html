@@ -11,7 +11,10 @@
         <div class="copy">
           <p class="eyebrow">Automation</p>
           <h2 id="workflow-editor-title">{{ title() }}</h2>
-          <p>Name it, click steps to add them, then save. Interactive steps prompt you when you run.</p>
+          <p>
+            Add steps, then configure create-branch names with placeholders like
+            <code>{{ '{' }}date{{ '}' }}</code> so runs stay hands-off.
+          </p>
         </div>
         <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close" title="Close">
           <ng-icon name="lucideX" size="16" />
@@ -62,55 +65,176 @@
         </div>
       </section>
 
-      <section class="block">
-        <div class="block-head">
-          <h3>Sequence</h3>
-          <p>{{ steps().length }} step{{ steps().length === 1 ? '' : 's' }}</p>
-        </div>
-        @if (steps().length === 0) {
-          <div class="empty">Pick steps above to build your workflow.</div>
-        } @else {
-          <ol class="sequence">
-            @for (id of steps(); track $index; let i = $index) {
-              <li>
-                <span class="num">{{ i + 1 }}</span>
-                <span class="label">{{ stepLabel(id) }}</span>
-                <div class="row-actions">
+      <div class="editor-grid">
+        <section class="block">
+          <div class="block-head">
+            <h3>Sequence</h3>
+            <p>{{ steps().length }} step{{ steps().length === 1 ? '' : 's' }}</p>
+          </div>
+          @if (steps().length === 0) {
+            <div class="empty">Pick steps above to build your workflow.</div>
+          } @else {
+            <ol class="sequence">
+              @for (step of steps(); track $index; let i = $index) {
+                <li [class.active]="selectedIndex() === i">
+                  <button type="button" class="step-select" (click)="selectStep(i)">
+                    <span class="num">{{ i + 1 }}</span>
+                    <span class="label">{{ stepSummary(step) }}</span>
+                  </button>
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      (click)="moveStep(i, -1)"
+                      [disabled]="i === 0"
+                      title="Move up"
+                      aria-label="Move up"
+                    >
+                      <ng-icon name="lucideArrowUp" size="14" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      (click)="moveStep(i, 1)"
+                      [disabled]="i === steps().length - 1"
+                      title="Move down"
+                      aria-label="Move down"
+                    >
+                      <ng-icon name="lucideArrowDown" size="14" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn danger"
+                      (click)="removeStep(i)"
+                      title="Remove step"
+                      aria-label="Remove step"
+                    >
+                      <ng-icon name="lucideTrash2" size="14" />
+                    </button>
+                  </div>
+                </li>
+              }
+            </ol>
+          }
+        </section>
+
+        <section class="block config-panel">
+          <div class="block-head">
+            <h3>Step settings</h3>
+            <p>
+              @if (selectedStep(); as step) {
+                {{ stepLabel(step.id) }}
+              } @else {
+                Select a step
+              }
+            </p>
+          </div>
+
+          @if (!selectedStep()) {
+            <div class="empty">Select a step in the sequence to configure it.</div>
+          } @else if (!selectedDef()?.configurable) {
+            <div class="empty quiet">
+              This step runs automatically — nothing to configure.
+            </div>
+          } @else if (selectedStep()!.id === 'createBranch') {
+            <div class="config-fields">
+              <label class="field">
+                <span>Branch name pattern</span>
+                <input
+                  type="text"
+                  [ngModel]="selectedStep()!.config?.namePattern ?? ''"
+                  (ngModelChange)="setNamePattern($event)"
+                  [placeholder]="'feature/{jira}/{date}'"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+              <div class="tokens">
+                @for (item of placeholders; track item.token) {
                   <button
                     type="button"
-                    class="icon-btn"
-                    (click)="moveStep(i, -1)"
-                    [disabled]="i === 0"
-                    title="Move up"
-                    aria-label="Move up"
+                    class="token"
+                    (click)="insertPlaceholder(item.token)"
+                    [title]="item.hint"
                   >
-                    <ng-icon name="lucideArrowUp" size="14" />
+                    {{ item.token }}
                   </button>
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    (click)="moveStep(i, 1)"
-                    [disabled]="i === steps().length - 1"
-                    title="Move down"
-                    aria-label="Move down"
-                  >
-                    <ng-icon name="lucideArrowDown" size="14" />
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-btn danger"
-                    (click)="removeStep(i)"
-                    title="Remove step"
-                    aria-label="Remove step"
-                  >
-                    <ng-icon name="lucideTrash2" size="14" />
-                  </button>
-                </div>
-              </li>
-            }
-          </ol>
-        }
-      </section>
+                }
+              </div>
+              @if (namePreview()) {
+                <p class="preview">
+                  Preview <strong>{{ namePreview() }}</strong>
+                </p>
+              } @else {
+                <p class="preview muted">Leave blank to pick the name when the workflow runs.</p>
+              }
+              <label class="field">
+                <span>Create from</span>
+                <select
+                  [ngModel]="selectedStep()!.config?.startPoint ?? ''"
+                  (ngModelChange)="setStartPoint($event)"
+                >
+                  <option value="">Current HEAD</option>
+                  @for (branch of localBranchNames(); track branch) {
+                    <option [value]="branch">{{ branch }}</option>
+                  }
+                </select>
+              </label>
+              <label class="check">
+                <input
+                  type="checkbox"
+                  [ngModel]="selectedStep()!.config?.checkout !== false"
+                  (ngModelChange)="setCheckout($event)"
+                />
+                <span>Check out the new branch</span>
+              </label>
+            </div>
+          } @else if (selectedStep()!.id === 'checkoutBranch') {
+            <div class="config-fields">
+              <label class="field">
+                <span>Branch</span>
+                <input
+                  type="text"
+                  list="workflow-checkout-branches"
+                  [ngModel]="selectedStep()!.config?.branch ?? ''"
+                  (ngModelChange)="setBranch($event)"
+                  placeholder="Leave blank to pick when running"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <datalist id="workflow-checkout-branches">
+                  @for (branch of localBranchNames(); track branch) {
+                    <option [value]="branch"></option>
+                  }
+                </datalist>
+              </label>
+              <p class="preview muted">Set a branch to switch automatically with no prompt.</p>
+            </div>
+          } @else if (selectedStep()!.id === 'stash') {
+            <div class="config-fields">
+              <label class="check">
+                <input
+                  type="checkbox"
+                  [ngModel]="!!selectedStep()!.config?.skipPrompt"
+                  (ngModelChange)="setSkipPrompt($event)"
+                />
+                <span>Skip prompt and stash automatically</span>
+              </label>
+              <label class="field">
+                <span>Stash message <em>optional</em></span>
+                <input
+                  type="text"
+                  [ngModel]="selectedStep()!.config?.stashMessage ?? ''"
+                  (ngModelChange)="setStashMessage($event)"
+                  placeholder="WIP…"
+                  autocomplete="off"
+                  [disabled]="!selectedStep()!.config?.skipPrompt"
+                />
+              </label>
+            </div>
+          }
+        </section>
+      </div>
 
       <footer>
         <button type="button" class="bl-btn" (click)="close()">Cancel</button>

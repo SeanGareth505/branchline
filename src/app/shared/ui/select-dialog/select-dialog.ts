@@ -39,6 +39,13 @@ export class SelectDialog {
     );
   });
 
+  readonly showFilter = computed(() => {
+    const req = this.selects.request();
+    if (!req) return false;
+    if (typeof req.filterable === 'boolean') return req.filterable;
+    return req.options.length > 6;
+  });
+
   constructor() {
     effect(() => {
       const req = this.selects.request();
@@ -47,7 +54,11 @@ export class SelectDialog {
       const initial = req.initialValue;
       const match = req.options.find((o) => o.value === initial && !o.disabled);
       this.selected.set(match?.value ?? req.options.find((o) => !o.disabled)?.value ?? '');
-      queueMicrotask(() => this.filterRef()?.nativeElement.focus());
+      queueMicrotask(() => {
+        if (this.showFilter()) {
+          this.filterRef()?.nativeElement.focus();
+        }
+      });
     });
   }
 

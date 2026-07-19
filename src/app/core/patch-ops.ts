@@ -1,4 +1,4 @@
-export type DiffLineKind = 'meta' | 'hunk' | 'ctx' | 'add' | 'del';
+export type DiffLineKind = 'meta' | 'hunk' | 'ctx' | 'add' | 'del' | 'conflict';
 
 export interface DiffLine {
   index: number;
@@ -38,7 +38,14 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
 
   texts.forEach((text, index) => {
     let kind: DiffLineKind = 'ctx';
-    if (text.startsWith('@@')) kind = 'hunk';
+    if (
+      text.startsWith('<<<<<<<') ||
+      text.startsWith('=======') ||
+      text.startsWith('>>>>>>>') ||
+      text.startsWith('|||||||')
+    ) {
+      kind = 'conflict';
+    } else if (text.startsWith('@@')) kind = 'hunk';
     else if (text.startsWith('+') && !text.startsWith('+++')) kind = 'add';
     else if (text.startsWith('-') && !text.startsWith('---')) kind = 'del';
     else if (

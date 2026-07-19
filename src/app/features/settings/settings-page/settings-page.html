@@ -56,7 +56,7 @@
             <div class="setting">
               <div class="setting-label">
                 <strong>Simple mode</strong>
-                <span>Hide Profiles, Automation, Templates</span>
+                <span>Hide Automation and Templates</span>
               </div>
               <div class="setting-control">
                 <label class="switch">
@@ -138,9 +138,9 @@
               </div>
               <div class="setting-control">
                 <div class="seg">
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'merge'" (click)="setPullAction('merge')">Merge</button>
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'rebase'" (click)="setPullAction('rebase')">Rebase</button>
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'fetch'" (click)="setPullAction('fetch')">Fetch</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'merge'" title="Pull and merge remote commits into your branch" (click)="setPullAction('merge')">Merge</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'rebase'" title="Pull and replay your commits on top of remote" (click)="setPullAction('rebase')">Rebase</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPullAction === 'fetch'" title="Download remote updates without merging" (click)="setPullAction('fetch')">Fetch</button>
                 </div>
               </div>
             </div>
@@ -150,9 +150,9 @@
               </div>
               <div class="setting-control">
                 <div class="seg">
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'upstream'" (click)="setPushAction('upstream')">Upstream</button>
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'current'" (click)="setPushAction('current')">Current</button>
-                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'matching'" (click)="setPushAction('matching')">Matching</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'upstream'" title="Push the current branch to its tracked remote branch" (click)="setPushAction('upstream')">Upstream</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'current'" title="Push the current branch, creating the remote branch if needed" (click)="setPushAction('current')">Current</button>
+                  <button type="button" class="seg-btn" [class.on]="store.settings().defaultPushAction === 'matching'" title="Push all local branches that have the same name on the remote" (click)="setPushAction('matching')">Matching</button>
                 </div>
               </div>
             </div>
@@ -171,38 +171,6 @@
                     type="checkbox"
                     [ngModel]="store.settings().autoFetchOnOpen"
                     (ngModelChange)="store.saveSettings({ autoFetchOnOpen: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Confirm force push</strong>
-                <span>Always show safety dialog for force-with-lease</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmForcePush"
-                    (ngModelChange)="store.saveSettings({ confirmForcePush: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Confirm discard</strong>
-                <span>Ask before discarding working-tree changes</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmDiscard"
-                    (ngModelChange)="store.saveSettings({ confirmDiscard: $event })"
                   />
                   <span></span>
                 </label>
@@ -235,6 +203,171 @@
                     type="checkbox"
                     [ngModel]="store.settings().pushAfterCommit"
                     (ngModelChange)="store.saveSettings({ pushAfterCommit: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Confirmations</h2>
+            <p class="block-hint">Ask before risky Git actions. Turn off only what you do often.</p>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Force push</strong>
+                <span>Safety dialog for force-with-lease / force</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmForcePush"
+                    (ngModelChange)="store.saveSettings({ confirmForcePush: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Discard changes</strong>
+                <span>Ask before discarding working-tree changes</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmDiscard"
+                    (ngModelChange)="store.saveSettings({ confirmDiscard: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Push a new branch</strong>
+                <span>Warn when the remote branch does not exist yet</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmPushNewBranch"
+                    (ngModelChange)="store.saveSettings({ confirmPushNewBranch: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Add tracking reference</strong>
+                <span>Ask whether to set upstream on first push</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmAddTrackingRef"
+                    (ngModelChange)="store.saveSettings({ confirmAddTrackingRef: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Amend last commit</strong>
+                <span>Warn that amending rewrites branch history</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmAmend"
+                    (ngModelChange)="store.saveSettings({ confirmAmend: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Undo last action</strong>
+                <span>Confirm before undoing from the journal</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmUndoLastCommit"
+                    (ngModelChange)="store.saveSettings({ confirmUndoLastCommit: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Drop stash</strong>
+                <span>Confirm before permanently deleting a stash</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmStashDrop"
+                    (ngModelChange)="store.saveSettings({ confirmStashDrop: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Abort merge / rebase</strong>
+                <span>Warn before aborting an in-progress operation</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmAbortOperation"
+                    (ngModelChange)="store.saveSettings({ confirmAbortOperation: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Second abort confirmation</strong>
+                <span>Ask again before aborting (Git Extensions–style)</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmAbortSecond"
+                    (ngModelChange)="store.saveSettings({ confirmAbortSecond: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Remove remote</strong>
+                <span>Confirm before deleting a remote entry</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().confirmRemoveRemote"
+                    (ngModelChange)="store.saveSettings({ confirmRemoveRemote: $event })"
                   />
                   <span></span>
                 </label>
@@ -719,11 +852,25 @@
             <p class="block-hint">Stored in Branchline; optionally written to global Git config.</p>
             <div class="fields compact">
               <label>
+                Preferred editor
+                <select
+                  [ngModel]="store.settings().preferredEditor"
+                  (ngModelChange)="store.saveSettings({ preferredEditor: $event })"
+                >
+                  <option value="auto">Auto (detect Cursor / VS Code)</option>
+                  <option value="cursor">Cursor</option>
+                  <option value="vscode">VS Code</option>
+                  <option value="system">System default</option>
+                  <option value="command">Custom command below</option>
+                </select>
+              </label>
+              <label>
                 Editor command
                 <input
                   [ngModel]="store.settings().editorCommand"
                   (ngModelChange)="store.saveSettings({ editorCommand: $event })"
                   placeholder="code --wait"
+                  [disabled]="store.settings().preferredEditor !== 'command'"
                 />
               </label>
               <label>
@@ -733,6 +880,7 @@
                   (ngModelChange)="store.saveSettings({ diffTool: $event })"
                   placeholder="vscode"
                 />
+                <span class="field-hint">Used by Diff → Diff tool (git difftool)</span>
               </label>
               <label>
                 Merge tool
@@ -741,6 +889,7 @@
                   (ngModelChange)="store.saveSettings({ mergeTool: $event })"
                   placeholder="vscode"
                 />
+                <span class="field-hint">Used by conflict banner and file Resolve → Mergetool</span>
               </label>
             </div>
             <div class="row tight">
@@ -832,6 +981,73 @@
                 <button type="button" class="bl-btn" (click)="updates.openDownloadPage()">
                   Download page
                 </button>
+              </div>
+            }
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Crash &amp; diagnostics</h2>
+            <p class="block-hint">
+              Local crash reports and recent errors stay on this machine. Use these tools when
+              Branchline freezes or quits unexpectedly.
+            </p>
+            @if (diagnostics.summary(); as diag) {
+              <div class="setting">
+                <div class="setting-label">
+                  <strong>Diagnostics folder</strong>
+                  <span class="mono small">{{ diag.diagnosticsDir }}</span>
+                </div>
+                <div class="setting-control update-actions">
+                  <button type="button" class="bl-btn" (click)="openDiagnosticsFolder()">Open folder</button>
+                  <button type="button" class="bl-btn" (click)="copyDiagnostics()">Copy report</button>
+                </div>
+              </div>
+              <div class="setting">
+                <div class="setting-label">
+                  <strong>Log location</strong>
+                  <span>{{ diag.logHint }}</span>
+                </div>
+              </div>
+              @if (diag.lastCrash; as crash) {
+                <div class="setting">
+                  <div class="setting-label">
+                    <strong>Last crash</strong>
+                    <span>{{ crash.at }} · {{ crash.message }}</span>
+                    @if (crash.location) {
+                      <span class="mono small">{{ crash.location }}</span>
+                    }
+                  </div>
+                </div>
+              } @else if (diag.lastUncleanShutdown) {
+                <div class="setting">
+                  <div class="setting-label">
+                    <strong>Unclean shutdown</strong>
+                    <span>{{ diag.lastUncleanShutdown }}</span>
+                  </div>
+                </div>
+              } @else {
+                <p class="block-hint">No native crash recorded yet.</p>
+              }
+              @if (diag.recentErrors.length) {
+                <div class="diag-errors">
+                  <strong>Recent errors</strong>
+                  <ul>
+                    @for (entry of diag.recentErrors; track entry.at + entry.message) {
+                      <li>
+                        <span class="mono small">{{ entry.source }}</span>
+                        {{ entry.message }}
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+              <div class="setting-control update-actions">
+                <button type="button" class="bl-btn" (click)="refreshDiagnostics()">Refresh</button>
+                <button type="button" class="bl-btn" (click)="clearDiagnostics()">Clear history</button>
+              </div>
+            } @else {
+              <div class="setting-control update-actions">
+                <button type="button" class="bl-btn" (click)="refreshDiagnostics()">Load diagnostics</button>
               </div>
             }
           </article>

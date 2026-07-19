@@ -9,6 +9,8 @@ pub use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    infrastructure::diagnostics::install_panic_hook();
+
     let app_state = AppState::new().expect("failed to initialize Branchline app state");
 
     let mut builder = tauri::Builder::default()
@@ -27,19 +29,32 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            let log_level = if cfg!(debug_assertions) {
+                log::LevelFilter::Debug
+            } else {
+                log::LevelFilter::Info
+            };
+            app.handle().plugin(
+                tauri_plugin_log::Builder::new()
+                    .level(log_level)
+                    .max_file_size(5_000_000)
+                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                    .build(),
+            )?;
+            log::info!(
+                "Branchline {} starting on {}",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS
+            );
+            infrastructure::diagnostics::mark_session_start();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::git_detect::detect_git,
+            commands::git_detect::detect_editors,
             commands::identity::get_git_identity,
             commands::identity::set_git_identity,
+            commands::identity::list_identity_contexts,
             commands::onboarding::get_onboarding_status,
             commands::onboarding::complete_onboarding,
             commands::onboarding::skip_onboarding,
@@ -102,6 +117,7 @@ pub fn run() {
             commands::advanced::list_reflog,
             commands::advanced::squash_commits,
             commands::advanced::run_git_command,
+            commands::advanced::open_path_with_command,
             commands::cherry_pick::cherry_pick_preview,
             commands::cherry_pick::cherry_pick,
             commands::cherry_pick::revert_commit,
@@ -124,13 +140,22 @@ pub fn run() {
             commands::ssh_setup::generate_ssh_key,
             commands::list_mock_pull_requests,
             commands::list_mock_jira_issues,
-            commands::list_profiles,
             commands::workflows::list_workflows,
             commands::workflows::save_workflow,
             commands::workflows::delete_workflow,
             commands::workflows::set_workflow_enabled,
             commands::list_templates,
+            commands::diagnostics::get_diagnostics_summary,
+            commands::diagnostics::record_client_error,
+            commands::diagnostics::get_diagnostics_text,
+            commands::diagnostics::clear_diagnostics,
+            commands::diagnostics::open_diagnostics_folder,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                infrastructure::diagnostics::mark_session_clean_exit();
+            }
+        });
 }

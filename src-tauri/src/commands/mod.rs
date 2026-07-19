@@ -2,6 +2,7 @@ pub mod advanced;
 pub mod branch;
 pub mod cherry_pick;
 pub mod commit;
+pub mod diagnostics;
 pub mod diff;
 pub mod git_detect;
 pub mod git_env;
@@ -40,11 +41,6 @@ pub fn list_mock_pull_requests() -> AppResult<Vec<mock_providers::MockPullReques
 #[command]
 pub fn list_mock_jira_issues() -> AppResult<Vec<mock_providers::MockJiraIssue>> {
     Ok(mock_providers::list_mock_jira_issues())
-}
-
-#[command]
-pub fn list_profiles() -> AppResult<Vec<mock_providers::ProfileInfo>> {
-    Ok(mock_providers::list_profiles())
 }
 
 #[command]

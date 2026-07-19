@@ -40,6 +40,10 @@ pub struct SafetyAnalysis {
     pub require_typed_confirm: bool,
     pub blocked: bool,
     pub can_proceed: bool,
+    #[serde(default)]
+    pub also_delete_target: Option<String>,
+    #[serde(default)]
+    pub also_delete_label: Option<String>,
 }
 
 pub fn analyze_with_lock(
@@ -65,6 +69,10 @@ fn analyze_delete_branch(
     lock_reason: Option<String>,
 ) -> SafetyAnalysis {
     let branch = target.clone().unwrap_or_default();
+    if git2_repo::is_remote_tracking_name(path, &branch) {
+        return analyze_delete_remote_branch(path, target, &branch);
+    }
+
     let current = git2_repo::current_branch(path).unwrap_or_default();
     let is_current = !branch.is_empty() && branch == current;
     let merged = !branch.is_empty() && git2_repo::is_branch_merged(path, &branch);
@@ -171,7 +179,118 @@ fn analyze_delete_branch(
         git_command: format!("git branch -d {branch}"),
         proceed_git_command: format!("git branch -D {branch}"),
         confirm_prompt: format!("I understand I am deleting local branch '{branch}'"),
-        require_typed_confirm: !merged && !blocked,
+        require_typed_confirm: false,
+        blocked,
+        can_proceed: !blocked,
+    }
+}
+
+fn analyze_delete_remote_branch(
+    path: &Path,
+    target: Option<String>,
+    remote_tracking: &str,
+) -> SafetyAnalysis {
+    let (remote, branch) = git2_repo::parse_remote_tracking_name(remote_tracking)
+        .unwrap_or_else(|| ("origin".into(), remote_tracking.to_string()));
+    let merged = git2_repo::is_remote_tracking_merged(path, remote_tracking);
+    let protected = matches!(
+        branch.as_str(),
+        "main" | "master" | "develop" | "release" | "trunk"
+    );
+
+    let checks = vec![
+        SafetyCheck {
+            id: "not_protected".into(),
+            label: "Not a protected branch".into(),
+            ok: !protected,
+            detail: if protected {
+                format!("Refusing to delete protected branch '{branch}' on {remote}")
+            } else {
+                "Branch is not a protected mainline name".into()
+            },
+        },
+        SafetyCheck {
+            id: "merged".into(),
+            label: "Merged into HEAD".into(),
+            ok: merged,
+            detail: if merged {
+                "Remote-tracking tip is reachable from HEAD".into()
+            } else {
+                "Remote branch contains commits not in HEAD — they may be hard to recover".into()
+            },
+        },
+        SafetyCheck {
+            id: "remote_delete".into(),
+            label: format!("Deletes on remote '{remote}'"),
+            ok: true,
+            detail: format!("Runs git push {remote} --delete {branch}"),
+        },
+    ];
+
+    let blocked = protected;
+    let severity = if blocked {
+        "danger"
+    } else if merged {
+        "warning"
+    } else {
+        "danger"
+    };
+
+    let (recommended_label, recommended_action, proceed_label) = if blocked {
+        ("Close".into(), "keep".into(), "Close".into())
+    } else if merged {
+        (
+            format!("Delete on {remote}"),
+            "delete_remote".into(),
+            "Delete tracking only".into(),
+        )
+    } else {
+        (
+            "Keep branch".into(),
+            "keep".into(),
+            format!("Delete on {remote} (backup first)"),
+        )
+    };
+
+    let advice = if blocked {
+        "Protected remote branches cannot be deleted from Branchline.".into()
+    } else if merged {
+        "This removes the branch on the remote and cleans up the local remote-tracking ref.".into()
+    } else {
+        "Consider backing up commits you still need before deleting the remote branch.".into()
+    };
+
+    SafetyAnalysis {
+        action: SafetyAction::DeleteBranch,
+        title: format!("Delete remote branch '{branch}' on {remote}?"),
+        severity: severity.into(),
+        target,
+        consequence: if blocked {
+            format!("Protected branch '{remote}/{branch}' cannot be deleted.")
+        } else if merged {
+            format!(
+                "Delete '{branch}' on remote '{remote}' and remove local tracking ref '{remote_tracking}'."
+            )
+        } else {
+            format!(
+                "Delete unmerged '{branch}' on remote '{remote}'. Commits may become harder to find."
+            )
+        },
+        advice,
+        checks,
+        recommended_label,
+        recommended_action,
+        proceed_label,
+        git_command: format!("git push {remote} --delete {branch}"),
+        proceed_git_command: if merged {
+            format!("git branch -dr {remote_tracking}")
+        } else {
+            format!("git branch backup/… {remote_tracking} && git push {remote} --delete {branch}")
+        },
+        confirm_prompt: format!(
+            "I understand I am deleting remote branch '{remote}/{branch}'"
+        ),
+        require_typed_confirm: false,
         blocked,
         can_proceed: !blocked,
     }
@@ -472,6 +591,15 @@ pub fn execute(
     match analysis.action {
         SafetyAction::DeleteBranch => {
             let branch = analysis.target.clone().unwrap_or_default();
+            if analysis.recommended_action == "delete_remote"
+                || (analysis.recommended_action == "keep"
+                    && analysis
+                        .checks
+                        .iter()
+                        .any(|c| c.id == "remote_delete"))
+            {
+                return execute_delete_remote_branch(path, analysis, &branch, use_recommended);
+            }
             if !use_recommended {
                 if analysis.recommended_action == "keep" {
                     let backup = format!(
@@ -572,17 +700,23 @@ pub fn execute(
             let pathspec = analysis.target.clone().unwrap_or_else(|| ".".into());
             let paths = split_pathspecs(&pathspec);
             if use_recommended {
+                let whole_tree = paths.iter().any(|p| {
+                    let t = p.trim();
+                    t.is_empty() || t == "."
+                });
                 let mut args = vec![
                     "stash".into(),
                     "push".into(),
-                    "-u".into(),
                     "-m".into(),
                     format!(
                         "branchline-undo-discard {}",
                         chrono::Utc::now().to_rfc3339()
                     ),
-                    "--".into(),
                 ];
+                if !whole_tree {
+                    args.push("-u".into());
+                }
+                args.push("--".into());
                 args.extend(paths.iter().map(|s| (*s).to_string()));
                 let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
                 git_cli::run_git(path, &arg_refs)?;
@@ -616,6 +750,54 @@ pub fn execute(
             Ok(outcome_msg(git_cli::run_git(path, &["tag", "-d", &tag])?))
         }
     }
+}
+
+fn execute_delete_remote_branch(
+    path: &Path,
+    analysis: &SafetyAnalysis,
+    remote_tracking: &str,
+    use_recommended: bool,
+) -> crate::AppResult<ExecuteOutcome> {
+    use crate::infrastructure::git_cli;
+
+    if use_recommended && analysis.recommended_action == "keep" {
+        return Ok(outcome_msg("Kept branch — nothing deleted"));
+    }
+
+    let (remote, branch) = git2_repo::parse_remote_tracking_name(remote_tracking)
+        .ok_or_else(|| crate::AppError::msg(format!("Invalid remote-tracking ref '{remote_tracking}'")))?;
+
+    let merged = analysis.checks.iter().any(|c| c.id == "merged" && c.ok);
+
+    if !use_recommended && merged {
+        let msg = git_cli::run_git(path, &["branch", "-D", "-r", remote_tracking])?;
+        return Ok(outcome_msg(if msg.trim().is_empty() {
+            format!("Removed local tracking ref '{remote_tracking}'")
+        } else {
+            msg
+        }));
+    }
+
+    let backup = if !use_recommended && !merged {
+        let name = format!(
+            "backup/{}-{}",
+            remote_tracking.replace('/', "-"),
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        );
+        git_cli::run_git(path, &["branch", &name, remote_tracking])?;
+        Some(name)
+    } else {
+        None
+    };
+
+    git_cli::run_git(path, &["push", &remote, "--delete", &branch])?;
+    let _ = git_cli::run_git(path, &["branch", "-dr", remote_tracking]);
+
+    let message = match backup {
+        Some(b) => format!("Deleted '{remote}/{branch}' on remote (backup: {b})"),
+        None => format!("Deleted '{remote}/{branch}' on remote"),
+    };
+    Ok(outcome_msg(message))
 }
 
 #[derive(Debug, Clone)]

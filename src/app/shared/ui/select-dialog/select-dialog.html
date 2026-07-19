@@ -19,18 +19,22 @@
         </button>
       </header>
 
-      <label class="field">
-        <span>{{ prompt.label || 'Choose' }}</span>
-        <input
-          #filterField
-          type="search"
-          [placeholder]="prompt.placeholder || 'Filter…'"
-          [ngModel]="filter()"
-          (ngModelChange)="filter.set($event)"
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </label>
+      @if (showFilter()) {
+        <label class="field">
+          <span>{{ prompt.label || 'Choose' }}</span>
+          <input
+            #filterField
+            type="search"
+            [placeholder]="prompt.placeholder || 'Filter…'"
+            [ngModel]="filter()"
+            (ngModelChange)="filter.set($event)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+      } @else if (prompt.label) {
+        <p class="field-label">{{ prompt.label }}</p>
+      }
 
       <ul class="options" role="listbox" [attr.aria-label]="prompt.label || 'Options'">
         @for (option of visibleOptions(); track option.value) {

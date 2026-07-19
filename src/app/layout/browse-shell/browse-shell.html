@@ -6,7 +6,7 @@
   @if (store.compareSha(); as compare) {
     <div class="compare-bar">
       Comparing selection ↔ <span class="mono">{{ compare.slice(0, 7) }}</span>
-      <button type="button" class="bl-btn" (click)="store.compareSha.set(null)">Clear</button>
+      <button type="button" class="bl-btn" title="Stop comparing commits" (click)="store.compareSha.set(null)">Clear</button>
     </div>
   }
 
@@ -32,25 +32,60 @@
         <as-split-area [size]="store.splitNested()[1]" [minSize]="18">
           <div class="bottom">
             <div class="tabs">
-              <button type="button" [class.active]="store.browseTab() === 'commit'" (click)="setTab('commit')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'commit'"
+                title="Details for the selected commit"
+                (click)="setTab('commit')"
+              >
                 Commit info
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'diff'" (click)="setTab('diff')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'diff'"
+                title="Show code changes for the selection"
+                (click)="setTab('diff')"
+              >
                 Diff
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'files'" (click)="setTab('files')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'files'"
+                title="Browse changed files in a tree"
+                (click)="setTab('files')"
+              >
                 File tree
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'blame'" (click)="setTab('blame')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'blame'"
+                title="Line-by-line authorship for the selected file"
+                (click)="setTab('blame')"
+              >
                 Blame
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'history'" (click)="setTab('history')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'history'"
+                title="Commits that changed the selected file"
+                (click)="setTab('history')"
+              >
                 File history
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'reflog'" (click)="setTab('reflog')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'reflog'"
+                title="Recent HEAD moves (checkouts, resets, amends)"
+                (click)="setTab('reflog')"
+              >
                 Reflog
               </button>
-              <button type="button" [class.active]="store.browseTab() === 'console'" (click)="setTab('console')">
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'console'"
+                title="Run raw Git commands"
+                (click)="setTab('console')"
+              >
                 Console
               </button>
             </div>

@@ -174,7 +174,23 @@ export class FileTreePanel {
   }
 
   markResolved(path: string): void {
-    void this.store.stagePaths([path]);
+    void this.store.markConflictResolved(path);
+  }
+
+  openInEditor(path: string): void {
+    void this.store.openPathsInEditor([path]);
+  }
+
+  takeOurs(path: string): void {
+    void this.store.takeConflictSide(path, 'ours');
+  }
+
+  takeTheirs(path: string): void {
+    void this.store.takeConflictSide(path, 'theirs');
+  }
+
+  openMergeTool(path: string): void {
+    void this.store.openMergeToolForPaths([path]);
   }
 
   stageFile(path: string): void {

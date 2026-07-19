@@ -258,10 +258,106 @@ pre {
 .confirm,
 .typed {
   display: flex;
-  gap: 0.55rem;
+  gap: 0.7rem;
   align-items: flex-start;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.confirm {
+  position: relative;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg-soft);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition:
+    border-color 160ms var(--ease-out),
+    background 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+
+.confirm:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--bg-hover) 55%, var(--glass-bg-soft));
+}
+
+.confirm.on {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--glass-bg-soft));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.confirm input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.confirm .tick {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.12rem;
+  border-radius: 5px;
+  border: 1.5px solid color-mix(in srgb, var(--text-muted) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-base) 55%, transparent);
+  color: transparent;
+  display: grid;
+  place-items: center;
+  transition:
+    border-color 160ms var(--ease-out),
+    background 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+
+.confirm.on .tick {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.confirm:focus-within .tick {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.confirm-copy {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.confirm-copy code {
+  display: inline;
+  margin: 0 0.15rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 5px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  word-break: break-all;
+}
+
+.confirm-copy code.mainline {
+  color: color-mix(in srgb, var(--git-modified) 92%, var(--text-primary));
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+  border-color: color-mix(in srgb, var(--git-modified) 28%, transparent);
 }
 
 .typed {

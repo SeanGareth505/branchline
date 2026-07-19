@@ -1,7 +1,6 @@
 use crate::infrastructure::git_cli;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,22 +118,30 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
                 behind = parts[1].trim_start_matches('-').parse().unwrap_or(0);
             }
         } else if let Some(rest) = line.strip_prefix("? ") {
-            untracked.push(FileStatusEntry {
-                path: rest.to_string(),
-                status: FileStatusKind::Untracked,
-                original_path: None,
-            });
+            if untracked.len() < 5_000 {
+                untracked.push(FileStatusEntry {
+                    path: rest.to_string(),
+                    status: FileStatusKind::Untracked,
+                    original_path: None,
+                });
+            }
         } else if let Some(rest) = line.strip_prefix("u ") {
-            let path_part = rest.split_whitespace().last().unwrap_or("").to_string();
-            conflicted.push(FileStatusEntry {
-                path: path_part,
-                status: FileStatusKind::Conflicted,
-                original_path: None,
-            });
+            if conflicted.len() < 2_000 {
+                let path_part = rest.split_whitespace().last().unwrap_or("").to_string();
+                conflicted.push(FileStatusEntry {
+                    path: path_part,
+                    status: FileStatusKind::Conflicted,
+                    original_path: None,
+                });
+            }
         } else if let Some(rest) = line.strip_prefix("1 ") {
-            parse_ordinary_change(rest, &mut staged, &mut unstaged);
+            if staged.len() + unstaged.len() < 8_000 {
+                parse_ordinary_change(rest, &mut staged, &mut unstaged);
+            }
         } else if let Some(rest) = line.strip_prefix("2 ") {
-            parse_rename_change(rest, &mut staged, &mut unstaged);
+            if staged.len() + unstaged.len() < 8_000 {
+                parse_rename_change(rest, &mut staged, &mut unstaged);
+            }
         }
     }
 
@@ -236,12 +243,17 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
     let repo = git2::Repository::open(path).map_err(|e| AppError::git(e.message()))?;
     let head_oid = repo.head().ok().and_then(|h| h.target());
 
-    let mut relative = HashSet::new();
+    // Cap the ancestry walk — never materialize the entire history.
+    let mut relative = std::collections::HashSet::new();
     if let Some(oid) = head_oid {
         if let Ok(mut walk) = repo.revwalk() {
             let _ = walk.push(oid);
-            for oid in walk.flatten() {
-                relative.insert(oid);
+            let walk_limit = limit.saturating_mul(3).clamp(64, 2_000);
+            for (i, walked) in walk.flatten().enumerate() {
+                if i >= walk_limit {
+                    break;
+                }
+                relative.insert(walked);
             }
         }
     }
@@ -258,7 +270,7 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
         }
     }
 
-    let format = "%H%x1f%h%x1f%s%x1f%b%x1f%an%x1f%ae%x1f%at%x1f%P%x1e";
+    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1e";
     let out = git_cli::run_git(
         path,
         &[
@@ -278,12 +290,12 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             continue;
         }
         let parts: Vec<&str> = entry.split('\x1f').collect();
-        if parts.len() < 8 {
+        if parts.len() < 7 {
             continue;
         }
         let sha = parts[0].to_string();
         let oid = git2::Oid::from_str(&sha).ok();
-        let parents: Vec<String> = parts[7]
+        let parents: Vec<String> = parts[6]
             .split_whitespace()
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
@@ -293,20 +305,15 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             .unwrap_or_default();
         let is_relative = oid.map(|o| relative.contains(&o)).unwrap_or(false);
         let subject = parts[2].to_string();
-        let body = parts[3].trim().to_string();
-        let message = if body.is_empty() {
-            subject.clone()
-        } else {
-            format!("{subject}\n\n{body}")
-        };
+        let message = subject.clone();
         commits.push(CommitInfo {
             sha,
             short_sha: parts[1].to_string(),
             subject,
             message,
-            author: parts[4].to_string(),
-            email: parts[5].to_string(),
-            timestamp: parts[6].parse().unwrap_or(0),
+            author: parts[3].to_string(),
+            email: parts[4].to_string(),
+            timestamp: parts[5].parse().unwrap_or(0),
             parents,
             refs,
             lane_hint: lane % 8,
@@ -521,8 +528,45 @@ pub fn is_branch_merged(path: &Path, branch: &str) -> bool {
         .any(|l| l.trim().trim_start_matches('*').trim() == branch)
 }
 
-pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
-    let (ok, _, _) = git_cli::run_git_allow_fail(
+pub fn is_remote_tracking_merged(path: &Path, remote_tracking: &str) -> bool {
+    let (ok, out, _) = git_cli::run_git_allow_fail(path, &["branch", "-r", "--merged"]);
+    ok && out.lines().any(|l| {
+        let name = l.trim().trim_start_matches('*').trim();
+        name == remote_tracking || name.strip_prefix("remotes/") == Some(remote_tracking)
+    })
+}
+
+pub fn ref_exists(path: &Path, full_ref: &str) -> bool {
+    let (ok, _, _) = git_cli::run_git_allow_fail(path, &["show-ref", "--verify", "--quiet", full_ref]);
+    ok
+}
+
+pub fn is_remote_tracking_name(path: &Path, name: &str) -> bool {
+    if name.is_empty() || name == "HEAD" {
+        return false;
+    }
+    ref_exists(path, &format!("refs/remotes/{name}"))
+}
+
+pub fn parse_remote_tracking_name(name: &str) -> Option<(String, String)> {
+    let name = name
+        .strip_prefix("refs/remotes/")
+        .or_else(|| name.strip_prefix("remotes/"))
+        .unwrap_or(name);
+    let slash = name.find('/')?;
+    if slash == 0 || slash + 1 >= name.len() {
+        return None;
+    }
+    let remote = name[..slash].to_string();
+    let branch = name[slash + 1..].to_string();
+    if remote.is_empty() || branch.is_empty() || branch == "HEAD" {
+        return None;
+    }
+    Some((remote, branch))
+}
+
+pub fn branch_upstream_name(path: &Path, branch: &str) -> Option<String> {
+    let (ok, out, _) = git_cli::run_git_allow_fail(
         path,
         &[
             "rev-parse",
@@ -530,7 +574,35 @@ pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
             &format!("{branch}@{{upstream}}"),
         ],
     );
-    ok
+    if !ok {
+        return None;
+    }
+    let name = out.trim();
+    if name.is_empty() || name == "@{upstream}" {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+pub fn local_branch_for_remote_tracking(path: &Path, remote_tracking: &str) -> Option<String> {
+    if let Ok(branches) = list_branches(path) {
+        if let Some(local) = branches.iter().find(|b| {
+            !b.is_remote && b.upstream.as_deref() == Some(remote_tracking)
+        }) {
+            return Some(local.name.clone());
+        }
+    }
+    let (_, branch) = parse_remote_tracking_name(remote_tracking)?;
+    if ref_exists(path, &format!("refs/heads/{branch}")) {
+        Some(branch)
+    } else {
+        None
+    }
+}
+
+pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
+    branch_upstream_name(path, branch).is_some()
 }
 
 pub fn ahead_behind(path: &Path) -> (i32, i32) {
@@ -543,6 +615,20 @@ pub fn ahead_behind(path: &Path) -> (i32, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_remote_tracking_name_splits_remote_and_branch() {
+        assert_eq!(
+            parse_remote_tracking_name("origin/demo/graph-left"),
+            Some(("origin".into(), "demo/graph-left".into()))
+        );
+        assert_eq!(
+            parse_remote_tracking_name("refs/remotes/origin/feature/x"),
+            Some(("origin".into(), "feature/x".into()))
+        );
+        assert_eq!(parse_remote_tracking_name("origin"), None);
+        assert_eq!(parse_remote_tracking_name("origin/HEAD"), None);
+    }
 
     #[test]
     fn parse_ordinary_unstaged_modified_path() {

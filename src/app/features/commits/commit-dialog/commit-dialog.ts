@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
@@ -490,14 +490,9 @@ export class CommitDialog {
   }
 
   async openSelected(): Promise<void> {
-    const repo = this.store.currentRepo()?.path;
     const rel = this.selectedPath();
-    if (!repo || !rel) return;
-    try {
-      await openPath(`${repo}/${rel}`);
-    } catch (err) {
-      this.store.showError(err);
-    }
+    if (!rel) return;
+    await this.store.openPathsInEditor([rel]);
   }
 
   async revealSelected(): Promise<void> {
@@ -825,7 +820,7 @@ export class CommitDialog {
   private async bootstrap(): Promise<void> {
     const [templates, identity] = await Promise.all([
       this.tauri.listTemplates(),
-      this.tauri.getGitIdentity(),
+      this.tauri.getGitIdentity(this.store.currentRepo()?.path ?? null),
     ]);
     this.templates.set(templates.filter((t) => t.kind === 'commit'));
     this.identity.set(identity);

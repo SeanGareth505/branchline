@@ -67,11 +67,26 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let name_refs: Vec<&str> = name_args.iter().map(|s| s.as_str()).collect();
 
-    let unified = git_cli::run_git(&path, &arg_refs).unwrap_or_default();
+    const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
+    let mut unified = git_cli::run_git(&path, &arg_refs).unwrap_or_default();
+    if unified.len() > MAX_DIFF_BYTES {
+        let mut truncated = unified;
+        truncated.truncate(MAX_DIFF_BYTES);
+        if let Some(idx) = truncated.rfind('\n') {
+            truncated.truncate(idx);
+        }
+        truncated.push_str(
+            "\n\n… diff truncated — select a single file to view the full patch safely",
+        );
+        unified = truncated;
+    }
     let names = git_cli::run_git(&path, &name_refs).unwrap_or_default();
 
     let mut files = Vec::new();
     for line in names.lines() {
+        if files.len() >= 2_000 {
+            break;
+        }
         let mut parts = line.split_whitespace();
         let status = parts.next().unwrap_or("M").to_string();
         let file_path = parts.next().unwrap_or("").to_string();

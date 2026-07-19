@@ -1,6 +1,7 @@
 import { Component, HostListener, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppStore } from './core/app.store';
+import { DiagnosticsService } from './core/diagnostics.service';
 import { UpdateService } from './core/update.service';
 import { PromptService } from './shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from './shared/ui/select-dialog/select.service';
@@ -15,12 +16,14 @@ import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 export class App implements OnInit {
   private readonly store = inject(AppStore);
   private readonly updates = inject(UpdateService);
+  private readonly diagnostics = inject(DiagnosticsService);
   private readonly tooltips = inject(TooltipService);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
 
   ngOnInit(): void {
     this.tooltips.init();
+    this.diagnostics.bindGlobalHandlers();
     void this.store.init().then(() => void this.updates.init());
   }
 

@@ -1,46 +1,242 @@
 <section class="page">
   <header class="hero">
     <div>
-      <p class="kicker">Identity</p>
       <h1>Profiles</h1>
-      <p>Switch Git author identity by repository context.</p>
+      <p>Choose who Git commits as in this repo, or set your global default.</p>
     </div>
-    <div class="count">
-      <strong>{{ profiles().length }}</strong>
-      profiles
-    </div>
+    <button
+      type="button"
+      class="bl-btn"
+      [disabled]="loading()"
+      (click)="reload()"
+      title="Re-read Git config and commit authors"
+    >
+      <ng-icon name="lucideRefreshCw" size="14" />
+      Refresh
+    </button>
   </header>
 
-  <div class="grid">
-    @for (p of profiles(); track p.id) {
-      <article class="card">
-        <div class="card-top">
-          <div class="identity">
-            <span class="icon" [attr.data-kind]="p.kind">
-              <ng-icon name="lucideUser" size="18" />
-            </span>
-            <div>
-              <div class="title-row">
-                <h2>{{ p.name }}</h2>
-                <span class="bl-chip">{{ p.kind }}</span>
-              </div>
-              <p class="email">
-                <ng-icon name="lucideMail" size="13" />
-                {{ p.email }}
-              </p>
-            </div>
-          </div>
+  @if (loading() && !contexts()) {
+    <div class="loading-panel">
+      <ng-icon name="lucideRefreshCw" size="22" />
+      <p>Reading Git identity…</p>
+    </div>
+  } @else if (contexts(); as ctx) {
+    <section class="current" aria-label="Current identity">
+      <span class="avatar" aria-hidden="true">
+        {{ initials(ctx.effective.name, ctx.effective.email) }}
+      </span>
+      <div class="current-copy">
+        @if (ctx.effective.name || ctx.effective.email) {
+          <strong>{{ ctx.effective.name || 'Unnamed' }}</strong>
+          <span class="email">{{ ctx.effective.email || 'No email set' }}</span>
+        } @else {
+          <strong>No identity set</strong>
+          <span class="email">Add a name and email below to start committing.</span>
+        }
+      </div>
+      <span class="scope" [attr.data-scope]="ctx.effectiveScope">{{ scopeLabel() }}</span>
+      @if (!ctx.hasRepo) {
+        <p class="current-hint">
+          <ng-icon name="lucideInfo" size="13" />
+          Open a repository to set a local identity for just that project.
+        </p>
+      }
+    </section>
+
+    <div class="toolbar">
+      <div class="filters" role="tablist" aria-label="Filter profiles">
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'all'"
+          (click)="filter.set('all')"
+        >
+          All
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'config'"
+          (click)="filter.set('config')"
+        >
+          Git config
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'history'"
+          (click)="filter.set('history')"
+        >
+          History
+        </button>
+      </div>
+      <p class="toolbar-meta">
+        {{ visibleCandidates().length }} of {{ candidateCount() }}
+        · {{ filterHint() }}
+      </p>
+    </div>
+
+    @if (visibleCandidates().length === 0) {
+      <div class="empty-panel">
+        <ng-icon name="lucideUser" size="28" />
+        <h2>No profiles here yet</h2>
+        <p>
+          @if (filter() === 'history') {
+            This repository has no commit authors to suggest. Set one below.
+          } @else if (filter() === 'config') {
+            No local or global Git identity found. Enter one below.
+          } @else {
+            Nothing in Git config or commit history yet. Set a name and email below.
+          }
+        </p>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table class="profiles-table">
+          <thead>
+            <tr>
+              <th scope="col">Identity</th>
+              <th scope="col">Source</th>
+              <th scope="col">Commits</th>
+              <th scope="col" class="col-status">Status</th>
+              <th scope="col" class="col-actions">
+                <span class="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of visibleCandidates(); track c.id) {
+              <tr
+                [class.active]="c.isActive"
+                [class.applying]="applyingId() === c.id"
+                (click)="fillDraft(c)"
+              >
+                <td>
+                  <div class="identity">
+                    <span class="avatar small" [attr.data-source]="c.source" aria-hidden="true">
+                      {{ initials(c.name, c.email) }}
+                    </span>
+                    <div class="identity-copy">
+                      <span class="name">{{ c.name || 'Unnamed' }}</span>
+                      <span class="email">{{ c.email || 'No email' }}</span>
+                      @if (c.aliases; as aliases) {
+                        @if (aliases.length > 0) {
+                          <span class="aliases" [title]="'Also as ' + aliases.join(', ')">
+                            Also as {{ aliases.join(', ') }}
+                          </span>
+                        }
+                      }
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="source" [attr.data-source]="c.source">
+                    <ng-icon [name]="sourceIcon(c.source)" size="12" />
+                    {{ sourceLabel(c) }}
+                  </span>
+                </td>
+                <td class="col-commits">
+                  @if (c.commitCount; as n) {
+                    {{ n }}
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+                <td class="col-status">
+                  @if (c.isActive) {
+                    <span class="status on">Active</span>
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+                <td class="col-actions" (click)="$event.stopPropagation()">
+                  <div class="row-actions">
+                    @if (ctx.hasRepo) {
+                      <button
+                        type="button"
+                        class="bl-btn"
+                        [class.bl-btn-primary]="!c.isActive"
+                        [disabled]="c.isActive || applyingId() === c.id"
+                        (click)="useForRepo(c)"
+                        title="Set this name and email for this repository only"
+                      >
+                        {{ c.isActive ? 'In use' : 'This repo' }}
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="bl-btn"
+                      [class.bl-btn-primary]="!ctx.hasRepo && !(c.isActive && ctx.effectiveScope === 'global')"
+                      [disabled]="applyingId() === c.id || (c.isActive && ctx.effectiveScope === 'global')"
+                      (click)="useGlobal(c)"
+                      title="Write to global Git config (all repos)"
+                    >
+                      {{ c.isActive && ctx.effectiveScope === 'global' ? 'Default' : 'Global' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <section class="composer" aria-label="Set identity">
+      <header class="composer-head">
+        <h2>Set identity</h2>
+        <p>
+          <span><ng-icon name="lucideFolderGit2" size="12" /> This repo — current project only</span>
+          <span><ng-icon name="lucideGlobe" size="12" /> Global — default for every repository</span>
+        </p>
+      </header>
+      <div class="composer-form">
+        <label>
+          <span>Name</span>
+          <input
+            type="text"
+            autocomplete="name"
+            [ngModel]="draftName()"
+            (ngModelChange)="draftName.set($event)"
+            placeholder="Your name"
+          />
+        </label>
+        <label>
+          <span>Email</span>
+          <input
+            type="email"
+            autocomplete="email"
+            [ngModel]="draftEmail()"
+            (ngModelChange)="draftEmail.set($event)"
+            placeholder="you@example.com"
+          />
+        </label>
+        <div class="composer-actions">
           <button
             type="button"
-            class="bl-btn action"
-            title="Apply this profile as your Git identity"
-            [disabled]="applyingId() === p.id"
-            (click)="useProfile(p)"
+            class="bl-btn bl-btn-primary"
+            [disabled]="!canSave() || !ctx.hasRepo"
+            (click)="saveForRepo()"
+            [title]="
+              ctx.hasRepo
+                ? 'Write user.name / user.email for this repository only'
+                : 'Open a repository first'
+            "
           >
-            {{ applyingId() === p.id ? 'Applying…' : 'Use' }}
+            Use for this repo
+          </button>
+          <button
+            type="button"
+            class="bl-btn"
+            [disabled]="!canSave()"
+            (click)="saveGlobal()"
+            title="Write global user.name / user.email"
+          >
+            Save as global
           </button>
         </div>
-      </article>
-    }
-  </div>
+      </div>
+    </section>
+  }
 </section>

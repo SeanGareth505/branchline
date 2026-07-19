@@ -6,6 +6,9 @@ export interface BranchSyncInfo {
   kind: BranchSyncKind;
   label: string | null;
   short: string;
+  /** Status text for non-clickable chips */
+  statusTooltip: string;
+  /** Action text for clickable sync controls */
   tooltip: string;
   icon: 'lucideRefreshCw' | 'lucideCloudUpload';
   upstreamShort: string | null;
@@ -30,6 +33,7 @@ export function describeBranchSync(
       kind: 'publish',
       label: null,
       short: 'publish',
+      statusTooltip: `Local branch '${status.branch}' is not on a remote yet`,
       tooltip: `Publish branch '${status.branch}' to remote`,
       icon: 'lucideCloudUpload',
       upstreamShort: null,
@@ -44,7 +48,8 @@ export function describeBranchSync(
       kind: 'diverged',
       label: `${behind}↓ ${ahead}↑`,
       short: `${behind}↓ ${ahead}↑`,
-      tooltip: `Diverged from ${up} · ${behind} behind, ${ahead} ahead · Click to sync`,
+      statusTooltip: `Diverged from ${up} · ${behind} behind, ${ahead} ahead`,
+      tooltip: `Diverged from ${up} · ${behind} behind, ${ahead} ahead · Click to pull, then push`,
       icon: 'lucideRefreshCw',
       upstreamShort: up,
     };
@@ -55,6 +60,7 @@ export function describeBranchSync(
       kind: 'ahead',
       label: `${ahead}↑`,
       short: `${ahead}↑`,
+      statusTooltip: `${ahead} commit${ahead === 1 ? '' : 's'} ahead of ${up}`,
       tooltip: `${ahead} commit${ahead === 1 ? '' : 's'} ahead of ${up} · Click to push`,
       icon: 'lucideRefreshCw',
       upstreamShort: up,
@@ -66,6 +72,7 @@ export function describeBranchSync(
       kind: 'behind',
       label: `${behind}↓`,
       short: `${behind}↓`,
+      statusTooltip: `${behind} commit${behind === 1 ? '' : 's'} behind ${up}`,
       tooltip: `${behind} commit${behind === 1 ? '' : 's'} behind ${up} · Click to pull`,
       icon: 'lucideRefreshCw',
       upstreamShort: up,
@@ -76,6 +83,7 @@ export function describeBranchSync(
     kind: 'synced',
     label: null,
     short: 'synced',
+    statusTooltip: `In sync with ${up}`,
     tooltip: `In sync with ${up} · Click to sync`,
     icon: 'lucideRefreshCw',
     upstreamShort: up,

@@ -50,6 +50,22 @@ pub struct AppSettings {
     pub confirm_force_push: bool,
     #[serde(default = "default_true")]
     pub confirm_discard: bool,
+    #[serde(default = "default_true")]
+    pub confirm_push_new_branch: bool,
+    #[serde(default = "default_true")]
+    pub confirm_add_tracking_ref: bool,
+    #[serde(default = "default_true")]
+    pub confirm_amend: bool,
+    #[serde(default = "default_true")]
+    pub confirm_undo_last_commit: bool,
+    #[serde(default = "default_true")]
+    pub confirm_stash_drop: bool,
+    #[serde(default = "default_true")]
+    pub confirm_abort_operation: bool,
+    #[serde(default = "default_true")]
+    pub confirm_abort_second: bool,
+    #[serde(default = "default_true")]
+    pub confirm_remove_remote: bool,
     #[serde(default)]
     pub sign_off_by_default: bool,
     #[serde(default)]
@@ -60,8 +76,10 @@ pub struct AppSettings {
     pub branch_prefix_enabled: bool,
     #[serde(default = "default_branch_prefix")]
     pub branch_prefix: String,
-    #[serde(default = "default_branch_prefixes")]
+    #[serde(default)]
     pub branch_prefixes: Vec<String>,
+    #[serde(default = "default_preferred_editor")]
+    pub preferred_editor: String,
     #[serde(default)]
     pub editor_command: String,
     #[serde(default)]
@@ -130,6 +148,10 @@ fn default_branch_prefixes() -> Vec<String> {
         "chore".into(),
         "release".into(),
     ]
+}
+
+fn default_preferred_editor() -> String {
+    "auto".into()
 }
 
 fn default_commit_types() -> Vec<CommitTypeOption> {
@@ -253,12 +275,21 @@ impl Default for AppSettings {
             auto_fetch_on_open: false,
             confirm_force_push: true,
             confirm_discard: true,
+            confirm_push_new_branch: true,
+            confirm_add_tracking_ref: true,
+            confirm_amend: true,
+            confirm_undo_last_commit: true,
+            confirm_stash_drop: true,
+            confirm_abort_operation: true,
+            confirm_abort_second: true,
+            confirm_remove_remote: true,
             sign_off_by_default: false,
             push_after_commit: false,
             my_branches_only: false,
             branch_prefix_enabled: true,
             branch_prefix: default_branch_prefix(),
             branch_prefixes: default_branch_prefixes(),
+            preferred_editor: default_preferred_editor(),
             editor_command: String::new(),
             diff_tool: String::new(),
             merge_tool: String::new(),
@@ -316,6 +347,9 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
                 .branch_prefixes
                 .insert(0, settings.branch_prefix.clone());
         }
+    }
+    if settings.preferred_editor.trim().is_empty() {
+        settings.preferred_editor = default_preferred_editor();
     }
     if settings.commit_types.is_empty() {
         settings.commit_types = default_commit_types();

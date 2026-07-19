@@ -92,13 +92,24 @@
       }
 
       @if (!safety.blocked) {
-        <label class="confirm">
+        <label class="confirm" [class.on]="acknowledged()">
           <input
             type="checkbox"
             [ngModel]="acknowledged()"
             (ngModelChange)="acknowledged.set($event)"
           />
-          <span>{{ safety.confirmPrompt }}</span>
+          <span class="tick" aria-hidden="true">
+            <ng-icon name="lucideCheck" size="12" />
+          </span>
+          <span class="confirm-copy">
+            @for (part of confirmParts(safety); track $index) {
+              @if (part.kind === 'text') {
+                <span>{{ part.value }}</span>
+              } @else {
+                <code [class.mainline]="isMainlineTarget(part.value)">{{ part.value }}</code>
+              }
+            }
+          </span>
         </label>
 
         @if (needsTyped(safety)) {

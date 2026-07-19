@@ -37,3 +37,28 @@ pub fn detect_git() -> AppResult<DetectGitOutput> {
         }),
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectEditorsOutput {
+    pub cursor: bool,
+    pub vscode: bool,
+    pub cursor_path: Option<String>,
+    pub vscode_path: Option<String>,
+}
+
+#[command]
+pub fn detect_editors() -> AppResult<DetectEditorsOutput> {
+    let cursor_path = which::which("cursor")
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+    let vscode_path = which::which("code")
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+    Ok(DetectEditorsOutput {
+        cursor: cursor_path.is_some(),
+        vscode: vscode_path.is_some(),
+        cursor_path,
+        vscode_path,
+    })
+}

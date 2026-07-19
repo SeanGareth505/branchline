@@ -11,6 +11,7 @@
         class="filter-query"
         type="search"
         placeholder="Filter commits (message, SHA, ref)…"
+        title="Filter by commit message, SHA, or branch/tag name"
         [ngModel]="queryDraft()"
         (ngModelChange)="onQueryInput($event)"
       />
@@ -21,13 +22,18 @@
         [ngModel]="authorDraft()"
         (ngModelChange)="onAuthorInput($event)"
         [disabled]="store.historyFilter().mineOnly"
+        [title]="
+          store.historyFilter().mineOnly
+            ? 'Turn off Mine to filter by a different author'
+            : 'Filter commits by author name or email'
+        "
       />
       <div class="filter-toggles">
         <button
           type="button"
           class="filter-toggle"
           [class.on]="store.historyFilter().mineOnly"
-          title="Show only commits by your Git identity"
+          title="Show only commits you authored"
           (click)="store.toggleMineFilter(); $event.stopPropagation()"
         >
           Mine
@@ -36,7 +42,7 @@
           type="button"
           class="filter-toggle"
           [class.on]="store.historyFilter().currentBranchOnly"
-          title="Show only commits reachable from the current branch"
+          title="Hide commits that are not on the current branch"
           (click)="store.toggleCurrentBranchFilter(); $event.stopPropagation()"
         >
           Branch
@@ -142,7 +148,14 @@
         </div>
 
         @if (row.art; as a) {
-          <div class="col-message artificial-msg">
+          <div
+            class="col-message artificial-msg"
+            [title]="
+              a.kind === 'staged'
+                ? 'Staged changes ready to commit — not a real commit yet'
+                : 'Uncommitted working-tree changes — not a real commit yet'
+            "
+          >
             <span class="wd-dot" [class.staged]="a.kind === 'staged'"></span>
             <span class="subject">{{ a.label }}</span>
             <span class="meta">{{ a.fileCount }} files · +{{ a.added }} ~{{ a.modified }} −{{ a.deleted }}</span>
@@ -201,19 +214,79 @@
     (overlayOutsideClick)="onMenuDismiss($event)"
   >
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
-      <button type="button" (click)="applyHere()">Cherry-pick onto HEAD</button>
-      <button type="button" (click)="undoCommit()">Revert with undo commit</button>
-      <button type="button" (click)="interactiveRebase()">Interactive rebase from here…</button>
-      <button type="button" (click)="checkoutCommit()">
+      <button
+        type="button"
+        title="Copy this commit onto your current branch as a new commit"
+        (click)="applyHere()"
+      >
+        Cherry-pick onto HEAD
+      </button>
+      <button
+        type="button"
+        title="Create a new commit that undoes this commit’s changes"
+        (click)="undoCommit()"
+      >
+        Revert with undo commit
+      </button>
+      <button
+        type="button"
+        title="Reorder, edit, squash, or drop commits from this point upward"
+        (click)="interactiveRebase()"
+      >
+        Interactive rebase from here…
+      </button>
+      <button
+        type="button"
+        title="Create and check out a new branch pointing at this commit"
+        (click)="checkoutCommit()"
+      >
         New branch at {{ menu().sha.slice(0, 7) }}
       </button>
-      <button type="button" (click)="createTagHere()">Create tag here…</button>
-      <button type="button" (click)="extractChangelog(); closeMenu()">Extract changelog…</button>
-      <button type="button" (click)="squashInto()">Squash recent commits…</button>
-      <button type="button" (click)="resetSoft()">Reset soft (keep changes staged)</button>
-      <button type="button" (click)="resetMixed()">Reset mixed (keep changes unstaged)</button>
-      <button type="button" (click)="resetHard()">Hard reset…</button>
-      <button type="button" (click)="copySha(menu().sha, $event); closeMenu()">Copy full SHA</button>
+      <button type="button" title="Create a tag on this commit" (click)="createTagHere()">
+        Create tag here…
+      </button>
+      <button
+        type="button"
+        title="Build a changelog from commits up to this point"
+        (click)="extractChangelog(); closeMenu()"
+      >
+        Extract changelog…
+      </button>
+      <button
+        type="button"
+        title="Combine several recent commits into one"
+        (click)="squashInto()"
+      >
+        Squash recent commits…
+      </button>
+      <button
+        type="button"
+        title="Move branch tip here; keep all file changes staged"
+        (click)="resetSoft()"
+      >
+        Reset soft (keep changes staged)
+      </button>
+      <button
+        type="button"
+        title="Move branch tip here; keep file changes unstaged"
+        (click)="resetMixed()"
+      >
+        Reset mixed (keep changes unstaged)
+      </button>
+      <button
+        type="button"
+        title="Move branch tip here and discard all later changes — destructive"
+        (click)="resetHard()"
+      >
+        Hard reset…
+      </button>
+      <button
+        type="button"
+        title="Copy the full commit hash to the clipboard"
+        (click)="copySha(menu().sha, $event); closeMenu()"
+      >
+        Copy full SHA
+      </button>
     </div>
   </ng-template>
 </div>

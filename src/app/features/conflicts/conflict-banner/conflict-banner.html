@@ -14,24 +14,16 @@
     <button
       type="button"
       class="bl-btn"
-      (click)="open('cursor')"
-      title="Open conflicted files in Cursor"
+      (click)="openInEditor()"
+      [title]="'Open conflicted files in ' + store.preferredEditorButtonLabel()"
     >
-      Resolve in Cursor
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="open('vscode')"
-      title="Open conflicted files in VS Code"
-    >
-      Resolve in VS Code
+      Open in {{ store.preferredEditorButtonLabel() }}
     </button>
     <button
       type="button"
       class="bl-btn"
       (click)="continueOp()"
-      title="Continue merge, rebase, or cherry-pick after resolving"
+      title="Continue merge, rebase, cherry-pick, or revert after resolving"
     >
       Continue
     </button>
@@ -39,14 +31,14 @@
       type="button"
       class="bl-btn"
       (click)="abortOp()"
-      title="Abort the in-progress merge, rebase, or cherry-pick"
+      title="Abort the in-progress merge, rebase, cherry-pick, or revert"
     >
       Abort
     </button>
     <button
       type="button"
       class="bl-btn bl-btn-primary"
-      (click)="open('merge')"
+      (click)="openMergeTool()"
       title="Open the configured merge tool"
     >
       Merge tool

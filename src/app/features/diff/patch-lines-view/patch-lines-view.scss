@@ -131,6 +131,12 @@
   color: var(--text-muted);
 }
 
+.pline[data-kind='conflict'] {
+  background: color-mix(in srgb, var(--warning, #d97706) 18%, transparent);
+  color: var(--warning, #b45309);
+  font-weight: 600;
+}
+
 .pline.spacer {
   min-height: 1.4em;
   opacity: 0;

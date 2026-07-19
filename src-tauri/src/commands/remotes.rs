@@ -101,24 +101,24 @@ pub fn remove_remote(input: RemoveRemoteInput) -> AppResult<MutationOutput> {
 
 #[command]
 pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let remote = input.remote.as_deref().unwrap_or("origin");
-    let out = if input.rebase.unwrap_or(false) {
-        git_cli::run_git(&path, &["pull", "--rebase", remote])?
-    } else {
-        git_cli::run_git(&path, &["pull", remote])?
-    };
-    Ok(MutationOutput {
-        ok: true,
-        message: if out.is_empty() {
-            if input.rebase.unwrap_or(false) {
-                "Pulled with rebase".into()
-            } else {
-                "Pulled".into()
-            }
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let remote = input.remote.as_deref().unwrap_or("origin");
+        let out = if input.rebase.unwrap_or(false) {
+            git_cli::run_git(path, &["pull", "--rebase", remote])?
         } else {
-            out
-        },
+            git_cli::run_git(path, &["pull", remote])?
+        };
+        Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                if input.rebase.unwrap_or(false) {
+                    "Pulled with rebase".into()
+                } else {
+                    "Pulled".into()
+                }
+            } else {
+                out
+            },
+        })
     })
 }

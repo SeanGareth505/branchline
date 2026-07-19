@@ -53,6 +53,8 @@ pub struct RemoteActionInput {
     pub path: String,
     pub force_with_lease: Option<bool>,
     pub remote: Option<String>,
+    #[serde(default)]
+    pub set_upstream: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +155,18 @@ pub fn delete_branch(
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
     ensure_not_locked(&state, &input.path, &input.name)?;
+
+    if git2_repo::is_remote_tracking_name(&path, &input.name) {
+        let (remote, branch) = git2_repo::parse_remote_tracking_name(&input.name)
+            .ok_or_else(|| AppError::msg(format!("Invalid remote-tracking ref '{}'", input.name)))?;
+        git_cli::run_git(&path, &["push", &remote, "--delete", &branch])?;
+        let _ = git_cli::run_git(&path, &["branch", "-dr", &input.name]);
+        return Ok(MutationOutput {
+            ok: true,
+            message: format!("Deleted '{remote}/{branch}' on remote"),
+        });
+    }
+
     let flag = if input.force.unwrap_or(false) {
         "-D"
     } else {
@@ -196,29 +210,29 @@ pub fn rename_branch(
 
 #[command]
 pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let remote = input.remote.as_deref().unwrap_or("origin");
-    let out = git_cli::run_git(&path, &["fetch", remote])?;
-    Ok(MutationOutput {
-        ok: true,
-        message: if out.is_empty() {
-            "Fetched".into()
-        } else {
-            out
-        },
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let remote = input.remote.as_deref().unwrap_or("origin");
+        let out = git_cli::run_git(path, &["fetch", remote])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                "Fetched".into()
+            } else {
+                out
+            },
+        })
     })
 }
 
 #[command]
 pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let remote = input.remote.as_deref().unwrap_or("origin");
-    let out = git_cli::run_git(&path, &["pull", remote])?;
-    Ok(MutationOutput {
-        ok: true,
-        message: if out.is_empty() { "Pulled".into() } else { out },
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let remote = input.remote.as_deref().unwrap_or("origin");
+        let out = git_cli::run_git(path, &["pull", remote])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() { "Pulled".into() } else { out },
+        })
     })
 }
 
@@ -229,7 +243,8 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
     let branch = git2_repo::current_branch(&path)?;
     ensure_not_locked(&state, &input.path, &branch)?;
     let remote = input.remote.as_deref().unwrap_or("origin");
-    let set_upstream = !git2_repo::branch_has_upstream(&path, &branch);
+    let needs_upstream = !git2_repo::branch_has_upstream(&path, &branch);
+    let set_upstream = needs_upstream && input.set_upstream.unwrap_or(true);
 
     let mut args = Vec::with_capacity(6);
     args.push("push");

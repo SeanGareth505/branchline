@@ -10,10 +10,13 @@ import type {
   CherryPickPreview,
   CommitInfo,
   DiffOutput,
+  DetectedEditors,
+  DiagnosticsSummary,
   FileHistoryEntry,
   GitDetectOutput,
   GitEnvSnapshot,
   GitIdentity,
+  IdentityContexts,
   IgnoreFileOutput,
   IgnoreKind,
   MockJiraIssue,
@@ -26,7 +29,6 @@ import type {
   PublishToGithubOutput,
   GithubDeviceStartOutput,
   GithubDevicePollOutput,
-  ProfileInfo,
   RecentRepo,
   RebasePreview,
   RebaseStep,
@@ -45,12 +47,14 @@ import type {
   UndoEntry,
   WorkflowInfo,
   WorktreeInfo,
+  FileStatusEntry,
 } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class TauriService {
   readonly isDummyBackend =
     typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window);
+  private readonly mockPreviewFlags = readMockPreviewFlags();
   private readonly mockLocks = new Map<string, { reason: string | null; lockedAt: string }>();
   private mockCustomWorkflows: WorkflowInfo[] = [];
   private mockDisabledBuiltinWorkflows = new Set<string>();
@@ -60,8 +64,14 @@ export class TauriService {
       {
         id: 'wf-feature',
         name: 'Create feature branch',
-        description: 'Pick a base, create a branch, then open commit',
-        steps: ['createBranch', 'openCommit'],
+        description: 'Create feature/{jira}/{date}, then open commit',
+        steps: [
+          {
+            id: 'createBranch',
+            config: { namePattern: 'feature/{jira}/{date}', checkout: true },
+          },
+          'openCommit',
+        ],
         builtin: true,
         enabled: true,
       },
@@ -92,8 +102,15 @@ export class TauriService {
       {
         id: 'wf-hotfix',
         name: 'Hotfix release',
-        description: 'Branch, commit, and push a quick fix',
-        steps: ['createBranch', 'openCommit', 'push'],
+        description: 'Create hotfix/{date}, commit, and push',
+        steps: [
+          {
+            id: 'createBranch',
+            config: { namePattern: 'hotfix/{date}', checkout: true },
+          },
+          'openCommit',
+          'push',
+        ],
         builtin: true,
         enabled: true,
       },
@@ -142,12 +159,32 @@ export class TauriService {
     return this.invoke<GitDetectOutput>('detect_git');
   }
 
-  getGitIdentity() {
-    return this.invoke<GitIdentity>('get_git_identity');
+  detectEditors() {
+    return this.invoke<DetectedEditors>('detect_editors');
   }
 
-  setGitIdentity(name: string, email: string) {
-    return this.invoke<GitIdentity>('set_git_identity', { input: { name, email } });
+  openPathWithCommand(command: string, path: string) {
+    return this.invoke<MutationOutput>('open_path_with_command', {
+      input: { command, path },
+    });
+  }
+
+  getGitIdentity(path?: string | null) {
+    return this.invoke<GitIdentity>('get_git_identity', {
+      input: { path: path ?? null },
+    });
+  }
+
+  setGitIdentity(name: string, email: string, scope: 'global' | 'local' = 'global', path?: string) {
+    return this.invoke<GitIdentity>('set_git_identity', {
+      input: { name, email, scope, path: path ?? null },
+    });
+  }
+
+  listIdentityContexts(path?: string | null) {
+    return this.invoke<IdentityContexts>('list_identity_contexts', {
+      input: { path: path ?? null },
+    });
   }
 
   getOnboardingStatus() {
@@ -249,7 +286,7 @@ export class TauriService {
     return this.invoke<StashEntry[]>('list_stashes', { input: { path } });
   }
 
-  stashPush(path: string, message?: string, includeUntracked = true) {
+  stashPush(path: string, message?: string, includeUntracked = false) {
     return this.invoke<MutationOutput>('stash_push', {
       input: { path, message: message ?? null, includeUntracked },
     });
@@ -375,8 +412,8 @@ export class TauriService {
     return this.invoke<MutationOutput>('checkout_branch', { input: { path, name } });
   }
 
-  deleteBranch(path: string, name: string) {
-    return this.invoke<MutationOutput>('delete_branch', { input: { path, name } });
+  deleteBranch(path: string, name: string, force = false) {
+    return this.invoke<MutationOutput>('delete_branch', { input: { path, name, force } });
   }
 
   renameBranch(path: string, from: string, to: string) {
@@ -415,9 +452,21 @@ export class TauriService {
     });
   }
 
-  push(path: string, forceWithLease = false) {
+  push(
+    path: string,
+    opts: boolean | { forceWithLease?: boolean; setUpstream?: boolean; remote?: string } = false,
+  ) {
+    const options =
+      typeof opts === 'boolean'
+        ? { forceWithLease: opts }
+        : opts;
     return this.invoke<MutationOutput>('push', {
-      input: { path, forceWithLease },
+      input: {
+        path,
+        forceWithLease: options.forceWithLease ?? false,
+        setUpstream: options.setUpstream ?? null,
+        remote: options.remote ?? null,
+      },
     });
   }
 
@@ -516,6 +565,28 @@ export class TauriService {
     return this.invoke<AppSettings>('save_settings', { input: settings });
   }
 
+  getDiagnosticsSummary() {
+    return this.invoke<DiagnosticsSummary>('get_diagnostics_summary');
+  }
+
+  recordClientError(source: string, message: string, detail?: string) {
+    return this.invoke<void>('record_client_error', {
+      input: { source, message, detail: detail ?? null },
+    });
+  }
+
+  getDiagnosticsText() {
+    return this.invoke<string>('get_diagnostics_text');
+  }
+
+  clearDiagnostics() {
+    return this.invoke<void>('clear_diagnostics');
+  }
+
+  openDiagnosticsFolder() {
+    return this.invoke<void>('open_diagnostics_folder');
+  }
+
   getGitEnv() {
     return this.invoke<GitEnvSnapshot>('get_git_env');
   }
@@ -593,10 +664,6 @@ export class TauriService {
     });
   }
 
-  listProfiles() {
-    return this.invoke<ProfileInfo[]>('list_profiles');
-  }
-
   listWorkflows() {
     return this.invoke<WorkflowInfo[]>('list_workflows');
   }
@@ -605,7 +672,7 @@ export class TauriService {
     id?: string;
     name: string;
     description: string;
-    steps: string[];
+    steps: WorkflowInfo['steps'];
     enabled?: boolean;
   }) {
     return this.invoke<WorkflowInfo>('save_workflow', { input });
@@ -762,44 +829,16 @@ export class TauriService {
         version: '2.49.0',
         message: 'Git 2.49.0 detected (browser preview)',
       },
+      open_path_with_command: mutation,
+      detect_editors: {
+        cursor: true,
+        vscode: true,
+        cursorPath: '/usr/local/bin/cursor',
+        vscodePath: '/usr/local/bin/code',
+      },
       get_git_identity: { name: 'Sean', email: 'sean@example.com' },
       set_git_identity: args?.['input'] ?? { name: '', email: '' },
-      get_onboarding_status: {
-        completed: true,
-        skipped: false,
-        items: [
-          {
-            id: 'git',
-            label: 'Git installed',
-            description: 'Git detected in browser preview mode',
-            status: 'verified',
-          },
-          {
-            id: 'identity',
-            label: 'Git identity',
-            description: 'Name and email are set',
-            status: 'verified',
-          },
-          {
-            id: 'ssh',
-            label: 'SSH for Git remotes',
-            description: 'Preview mode — connect in the desktop app',
-            status: 'needsAttention',
-          },
-          {
-            id: 'credential',
-            label: 'Credential helper',
-            description: 'Preview mode',
-            status: 'needsAttention',
-          },
-          {
-            id: 'tools',
-            label: 'Merge & diff tools',
-            description: 'Optional — configure later',
-            status: 'skipped',
-          },
-        ],
-      },
+      get_onboarding_status: this.mockOnboardingStatus(),
       complete_onboarding: { completed: true, skipped: false, items: [] },
       skip_onboarding: { completed: false, skipped: true, items: [] },
       list_recent_repos: [
@@ -953,11 +992,25 @@ export class TauriService {
         },
       ],
       squash_commits: { ok: true, message: 'Squashed commits' },
-      run_git_command: {
-        ok: true,
-        stdout: '## main...origin/main [behind 1]\n M src/app.ts\n?? notes.md\n',
-        stderr: '',
-      },
+      run_git_command: (() => {
+        const input = args?.['input'] as { args?: string[] } | undefined;
+        const gitArgs = input?.args ?? [];
+        if (gitArgs[0] === 'rev-list' && gitArgs.includes('--left-right')) {
+          return { ok: true, stdout: '0\t1\n', stderr: '' };
+        }
+        if (gitArgs[0] === 'pull') {
+          return {
+            ok: true,
+            stdout: 'Updating a1b2c3d..b2c3d4e\nFast-forward\n',
+            stderr: '',
+          };
+        }
+        return {
+          ok: true,
+          stdout: '## main...origin/main [behind 1]\n M src/app.ts\n?? notes.md\n',
+          stderr: '',
+        };
+      })(),
       get_repo_status: this.mockStatus(),
       get_commit_log: this.mockCommits(),
       get_commit_range: this.mockCommits(),
@@ -981,11 +1034,7 @@ export class TauriService {
           deleted: 0,
         },
       ],
-      get_diff: {
-        files: [{ path: 'src/app.ts', status: 'modified', additions: 1, deletions: 0 }],
-        unified:
-          'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,3 +1,4 @@\n export class App {\n+  title = "Branchline";\n }\n',
-      },
+      get_diff: this.mockDiff(args),
       stage_paths: mutation,
       unstage_paths: mutation,
       discard_paths: mutation,
@@ -1028,6 +1077,19 @@ export class TauriService {
         restored: true,
       },
       list_undo_journal: [],
+      get_diagnostics_summary: {
+        version: '0.1.6',
+        os: 'browser',
+        diagnosticsDir: '/Users/demo/Library/Application Support/branchline/diagnostics',
+        logHint: 'Browser preview — diagnostics are mocked',
+        lastCrash: null,
+        recentErrors: [],
+        lastUncleanShutdown: null,
+      },
+      record_client_error: null,
+      get_diagnostics_text: 'Branchline diagnostics\nversion: 0.1.6\n(browser preview)\n',
+      clear_diagnostics: null,
+      open_diagnostics_folder: null,
       get_settings: {
         theme: 'light',
         accent: '#0EA5E9',
@@ -1039,12 +1101,21 @@ export class TauriService {
         autoFetchOnOpen: false,
         confirmForcePush: true,
         confirmDiscard: true,
+        confirmPushNewBranch: true,
+        confirmAddTrackingRef: true,
+        confirmAmend: true,
+        confirmUndoLastCommit: true,
+        confirmStashDrop: true,
+        confirmAbortOperation: true,
+        confirmAbortSecond: true,
+        confirmRemoveRemote: true,
         signOffByDefault: false,
         pushAfterCommit: false,
         myBranchesOnly: false,
         branchPrefixEnabled: true,
         branchPrefix: 'feature',
         branchPrefixes: ['feature', 'bugfix', 'hotfix', 'chore', 'release'],
+        preferredEditor: 'auto',
         editorCommand: '',
         diffTool: '',
         mergeTool: '',
@@ -1521,13 +1592,38 @@ export class TauriService {
         { id: '31', name: 'Stop Progress', toStatus: 'To Do' },
       ],
       transition_jira_issue: null,
-      list_profiles: [
-        { id: 'work', name: 'Work', email: 'work@company.com', kind: 'work' },
-        { id: 'personal', name: 'Personal', email: 'me@home.dev', kind: 'personal' },
-      ],
+      list_identity_contexts: {
+        effective: { name: 'Sean Nortje', email: 'sean@company.com' },
+        effectiveScope: 'global',
+        local: null,
+        global: { name: 'Sean Nortje', email: 'sean@company.com' },
+        hasRepo: true,
+        candidates: [
+          {
+            id: 'global:sean@company.com',
+            name: 'Sean Nortje',
+            email: 'sean@company.com',
+            source: 'global',
+            label: 'Global Git default',
+            commitCount: 24,
+            isActive: true,
+            aliases: ['Sean'],
+          },
+          {
+            id: 'history:sean@gmail.com',
+            name: 'Sean Nortje',
+            email: 'sean@gmail.com',
+            source: 'history',
+            label: 'Seen in commits',
+            commitCount: 17,
+            isActive: false,
+            aliases: ['Sean Gareth'],
+          },
+        ],
+      },
       list_workflows: this.mockMergedWorkflows(),
       list_templates: [
-        { id: 'b1', kind: 'branch', name: 'Feature', pattern: 'feature/{jira}/{name}' },
+        { id: 'b1', kind: 'branch', name: 'Feature', pattern: 'feature/{jira}/{date}' },
         { id: 'c1', kind: 'commit', name: 'Conventional', pattern: '{type}: {summary}' },
       ],
       remove_recent_repo: [],
@@ -1547,7 +1643,7 @@ export class TauriService {
         id?: string;
         name?: string;
         description?: string;
-        steps?: string[];
+        steps?: WorkflowInfo['steps'];
         enabled?: boolean;
       };
       const name = (input?.name ?? '').trim();
@@ -1921,6 +2017,12 @@ export class TauriService {
   }
 
   private mockStatus(): RepoStatus {
+    const conflicted = this.mockPreviewFlags.conflicts
+      ? [
+          { path: 'src/app.ts', status: 'conflicted' as const },
+          { path: 'README.md', status: 'conflicted' as const },
+        ]
+      : [];
     return {
       path: '/Users/demo/projects/navigo',
       branch: 'main',
@@ -1932,17 +2034,113 @@ export class TauriService {
         { path: 'src/styles.scss', status: 'modified' },
         { path: 'src/app/layout/shell/shell.html', status: 'modified' },
       ],
-      unstaged: [
-        { path: 'src/app.ts', status: 'modified' },
-        { path: 'src/app/features/files/file-tree-panel/file-tree-panel.ts', status: 'added' },
-        { path: 'src/app/core/app.store.ts', status: 'modified' },
-        { path: 'README.md', status: 'modified' },
-      ],
+      unstaged: (
+        [
+          { path: 'src/app.ts', status: 'modified' },
+          { path: 'src/app/features/files/file-tree-panel/file-tree-panel.ts', status: 'added' },
+          { path: 'src/app/core/app.store.ts', status: 'modified' },
+          { path: 'README.md', status: 'modified' },
+        ] as FileStatusEntry[]
+      ).filter((f) => !conflicted.some((c) => c.path === f.path)),
       untracked: [
         { path: 'notes.md', status: 'untracked' },
         { path: 'docs/workflows.md', status: 'untracked' },
       ],
-      conflicted: [],
+      conflicted,
+    };
+  }
+
+  private mockOnboardingStatus(): OnboardingStatusOutput {
+    if (this.mockPreviewFlags.onboarding) {
+      return {
+        completed: false,
+        skipped: false,
+        items: [
+          {
+            id: 'git',
+            label: 'Git installed',
+            description: 'Git detected in browser preview mode',
+            status: 'verified',
+          },
+          {
+            id: 'identity',
+            label: 'Git identity',
+            description: 'Set your name and email',
+            status: 'needsAttention',
+          },
+          {
+            id: 'ssh',
+            label: 'SSH for Git remotes',
+            description: 'Add a key for GitHub / GitLab',
+            status: 'needsAttention',
+          },
+          {
+            id: 'credentialHelper',
+            label: 'Credential helper',
+            description: 'Configure git credential.helper',
+            status: 'needsAttention',
+          },
+          {
+            id: 'defaultTools',
+            label: 'Editor & merge tools',
+            description: 'Optional — configure in Settings → Tools',
+            status: 'skipped',
+          },
+        ],
+      };
+    }
+    return {
+      completed: true,
+      skipped: false,
+      items: [
+        {
+          id: 'git',
+          label: 'Git installed',
+          description: 'Git detected in browser preview mode',
+          status: 'verified',
+        },
+        {
+          id: 'identity',
+          label: 'Git identity',
+          description: 'Name and email are set',
+          status: 'verified',
+        },
+        {
+          id: 'ssh',
+          label: 'SSH for Git remotes',
+          description: 'Preview mode — connect in the desktop app',
+          status: 'needsAttention',
+        },
+        {
+          id: 'credentialHelper',
+          label: 'Credential helper',
+          description: 'Preview mode',
+          status: 'needsAttention',
+        },
+        {
+          id: 'defaultTools',
+          label: 'Editor & merge tools',
+          description: 'Optional — configure later',
+          status: 'skipped',
+        },
+      ],
+    };
+  }
+
+  private mockDiff(args?: Record<string, unknown>): DiffOutput {
+    const input = (args?.['input'] ?? args ?? {}) as { pathspec?: string };
+    const pathspec = input.pathspec ?? 'src/app.ts';
+    if (this.mockPreviewFlags.conflicts && (pathspec === 'src/app.ts' || pathspec === 'README.md')) {
+      return {
+        files: [{ path: pathspec, status: 'conflicted', additions: 2, deletions: 1 }],
+        unified:
+          `diff --git a/${pathspec} b/${pathspec}\n--- a/${pathspec}\n+++ b/${pathspec}\n@@ -1,4 +1,7 @@\n export class App {\n<<<<<<< HEAD\n-  title = "Old";\n=======\n+  title = "Branchline";\n>>>>>>> feature/auth\n }\n`,
+      };
+    }
+    return {
+      files: [{ path: 'src/app.ts', status: 'modified', additions: 1, deletions: 0 }],
+      unified:
+        'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,3 +1,4 @@\n export class App {\n+  title = "Branchline";\n }\n',
     };
   }
 
@@ -2024,12 +2222,21 @@ export class TauriService {
       autoFetchOnOpen: false,
       confirmForcePush: true,
       confirmDiscard: true,
+      confirmPushNewBranch: true,
+      confirmAddTrackingRef: true,
+      confirmAmend: true,
+      confirmUndoLastCommit: true,
+      confirmStashDrop: true,
+      confirmAbortOperation: true,
+      confirmAbortSecond: true,
+      confirmRemoveRemote: true,
       signOffByDefault: false,
       pushAfterCommit: false,
       myBranchesOnly: false,
       branchPrefixEnabled: true,
       branchPrefix: 'feature',
       branchPrefixes: ['feature', 'bugfix', 'hotfix', 'chore', 'release'],
+      preferredEditor: 'auto',
       editorCommand: '',
       diffTool: '',
       mergeTool: '',
@@ -2133,5 +2340,23 @@ export class TauriService {
     } catch {
       /* ignore */
     }
+  }
+}
+
+function readMockPreviewFlags(): { conflicts: boolean; onboarding: boolean } {
+  if (typeof window === 'undefined') {
+    return { conflicts: false, onboarding: false };
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const conflicts =
+      params.get('mockConflicts') === '1' ||
+      window.localStorage.getItem('branchline.mockConflicts') === '1';
+    const onboarding =
+      params.get('mockOnboarding') === '1' ||
+      window.localStorage.getItem('branchline.mockOnboarding') === '1';
+    return { conflicts, onboarding };
+  } catch {
+    return { conflicts: false, onboarding: false };
   }
 }

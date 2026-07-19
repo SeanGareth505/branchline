@@ -64,7 +64,7 @@ fn default_tools_ok() -> bool {
 
 fn build_items() -> Vec<OnboardingChecklistItem> {
     let git = detect_git().ok();
-    let identity = get_git_identity().ok();
+    let identity = get_git_identity(None).ok();
 
     let git_status = if git.as_ref().map(|g| g.installed).unwrap_or(false) {
         ChecklistStatus::Verified

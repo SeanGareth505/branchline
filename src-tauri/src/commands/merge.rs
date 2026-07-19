@@ -37,61 +37,61 @@ pub struct ResetInput {
 
 #[command]
 pub fn merge_branch(input: MergeInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let mut args = vec!["merge"];
-    if input.no_ff.unwrap_or(false) {
-        args.push("--no-ff");
-    }
-    args.push(&input.branch);
-    match git_cli::run_git(&path, &args) {
-        Ok(out) => Ok(MutationOutput {
-            ok: true,
-            message: if out.is_empty() {
-                format!("Merged {}", input.branch)
-            } else {
-                out
-            },
-        }),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.to_lowercase().contains("conflict") {
-                Ok(MutationOutput {
-                    ok: false,
-                    message: format!("Merge conflicts — resolve files, then Continue. {msg}"),
-                })
-            } else {
-                Err(e)
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let mut args = vec!["merge"];
+        if input.no_ff.unwrap_or(false) {
+            args.push("--no-ff");
+        }
+        args.push(&input.branch);
+        match git_cli::run_git(path, &args) {
+            Ok(out) => Ok(MutationOutput {
+                ok: true,
+                message: if out.is_empty() {
+                    format!("Merged {}", input.branch)
+                } else {
+                    out
+                },
+            }),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("conflict") {
+                    Ok(MutationOutput {
+                        ok: false,
+                        message: format!("Merge conflicts — resolve files, then Continue. {msg}"),
+                    })
+                } else {
+                    Err(e)
+                }
             }
         }
-    }
+    })
 }
 
 #[command]
 pub fn rebase_onto(input: RebaseInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    match git_cli::run_git(&path, &["rebase", &input.onto]) {
-        Ok(out) => Ok(MutationOutput {
-            ok: true,
-            message: if out.is_empty() {
-                format!("Rebased onto {}", input.onto)
-            } else {
-                out
-            },
-        }),
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.to_lowercase().contains("conflict") {
-                Ok(MutationOutput {
-                    ok: false,
-                    message: format!("Rebase conflicts — resolve files, then Continue. {msg}"),
-                })
-            } else {
-                Err(e)
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        match git_cli::run_git(path, &["rebase", &input.onto]) {
+            Ok(out) => Ok(MutationOutput {
+                ok: true,
+                message: if out.is_empty() {
+                    format!("Rebased onto {}", input.onto)
+                } else {
+                    out
+                },
+            }),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("conflict") {
+                    Ok(MutationOutput {
+                        ok: false,
+                        message: format!("Rebase conflicts — resolve files, then Continue. {msg}"),
+                    })
+                } else {
+                    Err(e)
+                }
             }
         }
-    }
+    })
 }
 
 #[command]
@@ -143,9 +143,23 @@ pub fn abort_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
         });
     }
 
+    let (has_revert, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]);
+    if has_revert {
+        let out = git_cli::run_git(&path, &["revert", "--abort"])?;
+        return Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                "Revert aborted".into()
+            } else {
+                out
+            },
+        });
+    }
+
     Ok(MutationOutput {
         ok: false,
-        message: "No merge, rebase, or cherry-pick in progress".into(),
+        message: "No merge, rebase, cherry-pick, or revert in progress".into(),
     })
 }
 
@@ -171,6 +185,20 @@ pub fn continue_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
             ok: true,
             message: if out.is_empty() {
                 "Cherry-pick continued".into()
+            } else {
+                out
+            },
+        });
+    }
+
+    let (has_revert, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REVERT_HEAD"]);
+    if has_revert {
+        let out = git_cli::run_git(&path, &["revert", "--continue"])?;
+        return Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                "Revert continued".into()
             } else {
                 out
             },
@@ -209,7 +237,7 @@ pub fn continue_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
 
     Ok(MutationOutput {
         ok: false,
-        message: "No merge, rebase, or cherry-pick in progress".into(),
+        message: "No merge, rebase, cherry-pick, or revert in progress".into(),
     })
 }
 

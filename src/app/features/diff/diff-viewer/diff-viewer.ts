@@ -51,6 +51,10 @@ export class DiffViewer {
     this.sideBySide.update((v) => !v);
   }
 
+  openDiffTool(): void {
+    void this.store.openDiffToolForPaths();
+  }
+
   selectFile(path: string): void {
     this.store.selectedDiffPath.set(path);
   }

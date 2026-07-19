@@ -374,30 +374,35 @@
 
         <div class="composer-side">
           <div class="options">
-            <label>
+            <label title="Replace the latest commit instead of creating a new one">
               <input type="checkbox" [ngModel]="amend()" (ngModelChange)="toggleAmend($event)" />
               Amend Commit
             </label>
-            <label>
+            <label title="Append a Signed-off-by line to the commit message">
               <input type="checkbox" [ngModel]="signOff()" (ngModelChange)="signOff.set($event)" />
               Signed-off-by
             </label>
-            <label>
+            <label title="Push to the remote right after a successful commit">
               <input type="checkbox" [ngModel]="pushAfter()" (ngModelChange)="pushAfter.set($event)" />
               Push after commit
             </label>
-            <label title="Commit with no staged changes and/or an empty message">
+            <label title="Allow a commit with no staged changes and/or an empty message">
               <input type="checkbox" [ngModel]="allowEmpty()" (ngModelChange)="allowEmpty.set($event)" />
               Allow empty
             </label>
           </div>
           <div class="composer-actions">
             <div class="composer-actions-secondary">
-              <button type="button" class="bl-btn" (click)="store.softUndoLastCommit()">
+              <button
+                type="button"
+                class="bl-btn"
+                title="Undo the last Branchline action (often undoes the last commit)"
+                (click)="store.softUndoLastCommit()"
+              >
                 <ng-icon name="lucideUndo2" size="14" />
                 Undo
               </button>
-              <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+              <button type="button" class="bl-btn" title="Close without committing" (click)="close()">Cancel</button>
             </div>
             <button
               type="button"

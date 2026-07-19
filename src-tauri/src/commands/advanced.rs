@@ -223,3 +223,62 @@ pub fn run_git_command(input: RunGitInput) -> AppResult<RunGitOutput> {
         Ok(RunGitOutput { ok, stdout, stderr })
     })
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenWithCommandInput {
+    pub command: String,
+    pub path: String,
+}
+
+#[command]
+pub fn open_path_with_command(input: OpenWithCommandInput) -> AppResult<MutationOutput> {
+    let command = input.command.trim();
+    if command.is_empty() {
+        return Ok(MutationOutput {
+            ok: false,
+            message: "No editor command configured".into(),
+        });
+    }
+    let parts = split_command_line(command);
+    if parts.is_empty() {
+        return Ok(MutationOutput {
+            ok: false,
+            message: "Could not parse editor command".into(),
+        });
+    }
+    let bin = &parts[0];
+    let mut args: Vec<String> = parts[1..].to_vec();
+    args.push(input.path);
+    match std::process::Command::new(bin).args(&args).spawn() {
+        Ok(_) => Ok(MutationOutput {
+            ok: true,
+            message: format!("Opened with {bin}"),
+        }),
+        Err(e) => Ok(MutationOutput {
+            ok: false,
+            message: format!("Could not launch editor: {e}"),
+        }),
+    }
+}
+
+fn split_command_line(command: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    for ch in command.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            c if c.is_whitespace() && !in_quotes => {
+                if !current.is_empty() {
+                    parts.push(std::mem::take(&mut current));
+                }
+            }
+            c => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
+}

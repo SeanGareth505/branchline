@@ -9,12 +9,12 @@ import {
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
-import type { BranchInfo, WorkflowInfo } from '../../../core/models';
+import type { BranchInfo, WorkflowInfo, WorkflowStep, WorkflowStepConfig } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { SelectService, type SelectOption } from '../../../shared/ui/select-dialog/select.service';
 import { WorkflowEditorDialog } from '../workflow-editor-dialog/workflow-editor-dialog';
-import { stepLabel } from '../workflow-steps';
+import { asWorkflowStep, createBranchIsAutomatic, stepIdOf, stepSummary } from '../workflow-steps';
 
 class WorkflowCancelled extends Error {
   constructor() {
@@ -60,13 +60,14 @@ export class WorkflowsPage implements OnInit {
     this.workflows.set(await this.tauri.listWorkflows());
   }
 
-  stepLabel = stepLabel;
+  stepSummary = stepSummary;
 
   iconFor(workflow: WorkflowInfo): string {
     if (!workflow.builtin) return 'lucideSparkles';
-    if (workflow.steps.includes('checkoutBranch')) return 'lucideGitBranch';
-    if (workflow.id.includes('hotfix') || workflow.steps.includes('push')) return 'lucideZap';
-    if (workflow.steps.includes('createBranch')) return 'lucideGitBranch';
+    const ids = workflow.steps.map(stepIdOf);
+    if (ids.includes('checkoutBranch')) return 'lucideGitBranch';
+    if (workflow.id.includes('hotfix') || ids.includes('push')) return 'lucideZap';
+    if (ids.includes('createBranch')) return 'lucideGitBranch';
     return 'lucideWorkflow';
   }
 
@@ -112,15 +113,18 @@ export class WorkflowsPage implements OnInit {
       this.store.showError('Enable this workflow before running it');
       return;
     }
-    if (!this.store.currentRepo() && workflow.steps.some((s) => s !== 'refresh')) {
+    if (
+      !this.store.currentRepo() &&
+      workflow.steps.some((s) => stepIdOf(s) !== 'refresh')
+    ) {
       this.store.showError('Open a repository first');
       return;
     }
 
     this.runningId.set(workflow.id);
     try {
-      for (const stepId of workflow.steps) {
-        await this.runStep(stepId);
+      for (const raw of workflow.steps) {
+        await this.runStep(asWorkflowStep(raw));
       }
       this.store.showSuccess(`Finished “${workflow.name}”`);
     } catch (e) {
@@ -134,10 +138,10 @@ export class WorkflowsPage implements OnInit {
     }
   }
 
-  private async runStep(stepId: string): Promise<void> {
-    switch (stepId) {
+  private async runStep(step: WorkflowStep): Promise<void> {
+    switch (step.id) {
       case 'checkoutBranch':
-        await this.runCheckoutBranch();
+        await this.runCheckoutBranch(step.config);
         return;
       case 'fetch':
         await this.store.fetchRemote();
@@ -152,7 +156,7 @@ export class WorkflowsPage implements OnInit {
         await this.store.pushRemote();
         return;
       case 'createBranch':
-        await this.runCreateBranch();
+        await this.runCreateBranch(step.config);
         return;
       case 'openCommit': {
         this.store.setView('browse');
@@ -161,17 +165,25 @@ export class WorkflowsPage implements OnInit {
         return;
       }
       case 'stash':
-        await this.runStash();
+        await this.runStash(step.config);
         return;
       case 'refresh':
         await this.store.refreshRepo();
         return;
       default:
-        throw new Error(`Unknown step: ${stepId}`);
+        throw new Error(`Unknown step: ${step.id}`);
     }
   }
 
-  private async runCheckoutBranch(): Promise<void> {
+  private async runCheckoutBranch(config?: WorkflowStepConfig): Promise<void> {
+    const fixed = config?.branch?.trim();
+    if (fixed) {
+      const current = this.store.status()?.branch;
+      if (fixed === current) return;
+      await this.store.checkoutBranch(fixed);
+      return;
+    }
+
     const branches = this.store.localBranches();
     if (branches.length === 0) {
       throw new Error('No local branches to switch to');
@@ -191,10 +203,28 @@ export class WorkflowsPage implements OnInit {
     await this.store.checkoutBranch(picked);
   }
 
-  private async runCreateBranch(): Promise<void> {
+  private async runCreateBranch(config?: WorkflowStepConfig): Promise<void> {
+    if (createBranchIsAutomatic(config)) {
+      const pattern = config!.namePattern!.trim();
+      const name = this.store.resolveBranchPattern(pattern);
+      if (!name) {
+        throw new Error('Branch name pattern resolved to an empty name');
+      }
+      if (/[{}]/.test(name)) {
+        throw new Error(`Branch name still has unresolved placeholders: ${name}`);
+      }
+      const startRaw = config?.startPoint?.trim() || '';
+      const startPoint = !startRaw || startRaw === '__current__' ? undefined : startRaw;
+      const checkout = config?.checkout !== false;
+      const ok = await this.store.createBranch(name, startPoint, checkout);
+      if (!ok) throw new Error(`Failed to create branch “${name}”`);
+      return;
+    }
+
     const locals = this.store.localBranches();
     const remotes = this.store.remoteBranches();
     const current = this.store.status()?.branch ?? 'HEAD';
+    const preferredBase = config?.startPoint?.trim() || '__current__';
     const options: SelectOption[] = [
       {
         value: '__current__',
@@ -214,7 +244,7 @@ export class WorkflowsPage implements OnInit {
       label: 'Base',
       placeholder: 'Filter branches…',
       confirmLabel: 'Continue',
-      initialValue: '__current__',
+      initialValue: options.some((o) => o.value === preferredBase) ? preferredBase : '__current__',
       options,
     });
     if (!picked) throw new WorkflowCancelled();
@@ -225,7 +255,13 @@ export class WorkflowsPage implements OnInit {
     if (!created) throw new WorkflowCancelled();
   }
 
-  private async runStash(): Promise<void> {
+  private async runStash(config?: WorkflowStepConfig): Promise<void> {
+    if (config?.skipPrompt) {
+      const message = config.stashMessage?.trim();
+      await this.store.stashPush(message || undefined);
+      return;
+    }
+
     const message = await this.prompts.ask({
       title: 'Stash changes',
       message: 'Optional message for this stash. Leave blank to use the default.',
@@ -233,6 +269,7 @@ export class WorkflowsPage implements OnInit {
       placeholder: 'WIP…',
       confirmLabel: 'Stash',
       required: false,
+      initialValue: config?.stashMessage ?? '',
     });
     if (message === null) throw new WorkflowCancelled();
     await this.store.stashPush(message.trim() || undefined);

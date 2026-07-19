@@ -7,7 +7,7 @@
       [attr.aria-expanded]="open()"
     >
       <ng-icon class="chev" [name]="chevron()" size="13" />
-      <span class="kind">Worktrees</span>
+      <span class="kind" title="Extra checkouts of this repo in other folders">Worktrees</span>
       <span class="count">{{ filtered().length }}</span>
     </button>
     <button
@@ -34,7 +34,7 @@
           (ngModelChange)="branchName.set($event)"
           placeholder="Branch name"
         />
-        <label class="check">
+        <label class="check" title="Also create a new branch for the worktree instead of checking out an existing one">
           <input
             type="checkbox"
             [ngModel]="createBranch()"

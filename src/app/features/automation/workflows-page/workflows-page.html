@@ -3,7 +3,7 @@
     <div>
       <p class="kicker">Workflows</p>
       <h1>Automation</h1>
-      <p>One-click Git sequences — pick branches, commit, and keep going through each step.</p>
+      <p>One-click Git sequences — configure branch names with date and Jira placeholders so create-branch runs hands-off.</p>
     </div>
     <div class="hero-actions">
       <div class="count">
@@ -92,7 +92,7 @@
             @for (step of w.steps; track $index; let i = $index; let last = $last) {
               <li>
                 <span class="num">{{ i + 1 }}</span>
-                <span class="label">{{ stepLabel(step) }}</span>
+                <span class="label">{{ stepSummary(step) }}</span>
                 @if (!last) {
                   <span class="connector" aria-hidden="true"></span>
                 }

@@ -241,6 +241,15 @@ export interface CommitTypeOption {
   description?: string;
 }
 
+export type PreferredEditor = 'auto' | 'cursor' | 'vscode' | 'system' | 'command';
+
+export interface DetectedEditors {
+  cursor: boolean;
+  vscode: boolean;
+  cursorPath: string | null;
+  vscodePath: string | null;
+}
+
 export interface AppSettings {
   theme: string;
   accent: string;
@@ -252,12 +261,21 @@ export interface AppSettings {
   autoFetchOnOpen: boolean;
   confirmForcePush: boolean;
   confirmDiscard: boolean;
+  confirmPushNewBranch: boolean;
+  confirmAddTrackingRef: boolean;
+  confirmAmend: boolean;
+  confirmUndoLastCommit: boolean;
+  confirmStashDrop: boolean;
+  confirmAbortOperation: boolean;
+  confirmAbortSecond: boolean;
+  confirmRemoveRemote: boolean;
   signOffByDefault: boolean;
   pushAfterCommit: boolean;
   myBranchesOnly: boolean;
   branchPrefixEnabled: boolean;
   branchPrefix: string;
   branchPrefixes: string[];
+  preferredEditor: PreferredEditor;
   editorCommand: string;
   diffTool: string;
   mergeTool: string;
@@ -350,18 +368,49 @@ export interface JiraTransition {
   toStatus: string;
 }
 
-export interface ProfileInfo {
+export type IdentitySource = 'local' | 'global' | 'history';
+
+export interface IdentityCandidate {
   id: string;
   name: string;
   email: string;
-  kind: string;
+  source: IdentitySource | string;
+  label: string;
+  commitCount: number | null;
+  isActive: boolean;
+  aliases?: string[];
 }
+
+export interface IdentityContexts {
+  effective: GitIdentity;
+  effectiveScope: 'local' | 'global' | 'unset' | string;
+  local: GitIdentity | null;
+  global: GitIdentity | null;
+  candidates: IdentityCandidate[];
+  hasRepo: boolean;
+}
+
+export interface WorkflowStepConfig {
+  namePattern?: string;
+  startPoint?: string;
+  checkout?: boolean;
+  branch?: string;
+  stashMessage?: string;
+  skipPrompt?: boolean;
+}
+
+export interface WorkflowStep {
+  id: string;
+  config?: WorkflowStepConfig;
+}
+
+export type WorkflowStepJson = string | WorkflowStep;
 
 export interface WorkflowInfo {
   id: string;
   name: string;
   description: string;
-  steps: string[];
+  steps: WorkflowStepJson[];
   builtin: boolean;
   enabled: boolean;
 }
@@ -502,4 +551,29 @@ export interface IgnoreFileOutput {
   filePath: string;
   content: string;
   exists: boolean;
+}
+
+export interface CrashReport {
+  at: string;
+  message: string;
+  location?: string | null;
+  version: string;
+  os: string;
+}
+
+export interface ClientErrorEntry {
+  at: string;
+  source: string;
+  message: string;
+  detail?: string | null;
+}
+
+export interface DiagnosticsSummary {
+  version: string;
+  os: string;
+  diagnosticsDir: string;
+  logHint: string;
+  lastCrash: CrashReport | null;
+  recentErrors: ClientErrorEntry[];
+  lastUncleanShutdown?: string | null;
 }

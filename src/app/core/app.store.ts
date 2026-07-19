@@ -7,12 +7,15 @@ import type {
   CherryPickPreview,
   CommitInfo,
   ConnectionConfig,
+  DetectedEditors,
   GitIdentity,
   HistoryFilter,
   HostRepository,
   IgnoreFileOutput,
   IgnoreKind,
   JiraIssue,
+  MutationOutput,
+  PreferredEditor,
   RecentRepo,
   RebasePreview,
   RebaseStep,
@@ -29,8 +32,22 @@ import type {
   WorktreeInfo,
 } from './models';
 import { TauriService } from './tauri.service';
+import { DiagnosticsService } from './diagnostics.service';
 import { NotificationService } from './notification.service';
+import { PromptService } from '../shared/ui/prompt-dialog/prompt.service';
+import { SelectService } from '../shared/ui/select-dialog/select.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
+import {
+  openPathsInPreferredEditor,
+  preferredEditorLabel,
+} from '../shared/git/open-in-editor';
+import { runConfiguredGitTool } from '../shared/git/git-tools';
+import { parseRemoteRef } from '../shared/git/remote-ref';
+import {
+  resolveWorkflowPattern,
+  sanitizeBranchName,
+  slugifyUser,
+} from './workflow-placeholders';
 
 export type BrowseTab = 'commit' | 'diff' | 'files' | 'blame' | 'history' | 'reflog' | 'console';
 export type AppView =
@@ -83,7 +100,10 @@ export interface ToastOptions {
 @Injectable({ providedIn: 'root' })
 export class AppStore {
   private readonly tauri = inject(TauriService);
+  private readonly diagnostics = inject(DiagnosticsService);
   private readonly notifications = inject(NotificationService);
+  private readonly prompts = inject(PromptService);
+  private readonly selects = inject(SelectService);
 
   readonly isDummyBackend = this.tauri.isDummyBackend;
   readonly view = signal<AppView>('settings');
@@ -136,12 +156,21 @@ export class AppStore {
     autoFetchOnOpen: false,
     confirmForcePush: true,
     confirmDiscard: true,
+    confirmPushNewBranch: true,
+    confirmAddTrackingRef: true,
+    confirmAmend: true,
+    confirmUndoLastCommit: true,
+    confirmStashDrop: true,
+    confirmAbortOperation: true,
+    confirmAbortSecond: true,
+    confirmRemoveRemote: true,
     signOffByDefault: false,
     pushAfterCommit: false,
     myBranchesOnly: false,
     branchPrefixEnabled: true,
     branchPrefix: 'feature',
     branchPrefixes: DEFAULT_BRANCH_PREFIXES.slice(),
+    preferredEditor: 'auto',
     editorCommand: '',
     diffTool: '',
     mergeTool: '',
@@ -162,6 +191,7 @@ export class AppStore {
     notifyPrActivity: true,
     notifyPrCi: true,
   });
+  readonly detectedEditors = signal<DetectedEditors | null>(null);
   readonly loading = signal(false);
   readonly nextAction = signal('Open a repository');
   readonly safety = signal<SafetyAnalysis | null>(null);
@@ -206,6 +236,9 @@ export class AppStore {
   private restoringSession = false;
   private repoFsUnlisten: UnlistenFn | null = null;
   private repoFsRefreshTimer: number | null = null;
+  private mutationDepth = 0;
+  private refreshQueued = false;
+  private refreshInFlight: Promise<void> | null = null;
 
   readonly selectedCommit = computed(() => {
     const sha = this.selectedSha();
@@ -483,7 +516,7 @@ export class AppStore {
       return;
     }
     if (
-      (view === 'automation' || view === 'templates' || view === 'profiles') &&
+      (view === 'automation' || view === 'templates') &&
       this.settings().simpleMode
     ) {
       if (hasRepo) this.view.set('browse');
@@ -502,6 +535,7 @@ export class AppStore {
       this.settings.set(normalizeSettings(settings));
       this.myBranchesOnly.set(this.settings().myBranchesOnly);
       this.applyTheme(this.settings());
+      void this.refreshDetectedEditors();
       const session = this.readSession();
       this.applySession(session);
       if (typeof window !== 'undefined') {
@@ -510,7 +544,7 @@ export class AppStore {
       }
       void this.bindRepoFsWatcher();
       try {
-        this.identity.set(await this.tauri.getGitIdentity());
+        this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
       } catch {
         this.identity.set(null);
       }
@@ -760,6 +794,7 @@ export class AppStore {
     this.commitModalOpen.set(false);
     this.commitWaiter?.(false);
     this.commitWaiter = null;
+    this.identity.set(null);
     if (this.createBranchDialogOpen()) {
       this.closeCreateBranchDialog(false);
     }
@@ -1070,52 +1105,81 @@ export class AppStore {
       if (opts?.notify) this.showWarning('Open a repository first');
       return;
     }
+    if (this.mutationDepth > 0) {
+      this.refreshQueued = true;
+      return;
+    }
+    if (this.refreshInFlight) {
+      this.refreshQueued = true;
+      await this.refreshInFlight;
+      return;
+    }
+
     if (opts?.notify) this.refreshingRepo.set(true);
+    this.refreshInFlight = this.runRefreshRepo(path, opts)
+      .catch((err) => this.showError(err))
+      .finally(() => {
+        this.refreshInFlight = null;
+        if (opts?.notify) this.refreshingRepo.set(false);
+        if (this.refreshQueued && this.mutationDepth === 0) {
+          this.refreshQueued = false;
+          void this.refreshRepo();
+        }
+      });
+    await this.refreshInFlight;
+  }
+
+  private async runRefreshRepo(path: string, opts?: { notify?: boolean }): Promise<void> {
+    const prev = this.status();
+    const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
+      await Promise.all([
+        this.tauri.getRepoStatus(path),
+        this.tauri.getCommitLog(path, 300),
+        this.tauri.getArtificialCommits(path),
+        this.tauri.listBranches(path),
+        this.tauri.listStashes(path),
+        this.tauri.listTags(path),
+        this.tauri.listRemotes(path),
+        this.tauri.listWorktrees(path),
+      ]);
+    this.status.set(status);
+    this.commits.set(commits);
+    this.artificial.set(artificial);
+    this.branches.set(branches);
+    this.stashes.set(stashes);
+    this.tags.set(tags);
+    this.remotes.set(remotes);
+    this.worktrees.set(worktrees);
+    void this.refreshIdentity();
+    if (!this.selectedSha() && commits[0]) {
+      this.selectedSha.set(commits[0].sha);
+      this.selectedShas.set([commits[0].sha]);
+    }
+    this.updateNextAction(status);
+    this.maybeNotifyStatusChanges(prev, status);
+    if (opts?.notify) {
+      const changed =
+        status.staged.length + status.unstaged.length + status.untracked.length;
+      const branch = status.branch || 'HEAD';
+      this.showToast(
+        changed
+          ? `Refreshed ${branch} · ${changed} change${changed === 1 ? '' : 's'}`
+          : `Refreshed ${branch} · clean`,
+        { kind: 'success', durationMs: 2500, category: 'general' },
+      );
+    }
+  }
+
+  private async withRepoMutation<T>(fn: () => Promise<T>): Promise<T> {
+    this.mutationDepth++;
     try {
-      const prev = this.status();
-      const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
-        await Promise.all([
-          this.tauri.getRepoStatus(path),
-          this.tauri.getCommitLog(path, 300),
-          this.tauri.getArtificialCommits(path),
-          this.tauri.listBranches(path),
-          this.tauri.listStashes(path),
-          this.tauri.listTags(path),
-          this.tauri.listRemotes(path),
-          this.tauri.listWorktrees(path),
-        ]);
-      this.status.set(status);
-      this.commits.set(commits);
-      this.artificial.set(artificial);
-      this.branches.set(branches);
-      this.stashes.set(stashes);
-      this.tags.set(tags);
-      this.remotes.set(remotes);
-      this.worktrees.set(worktrees);
-      if (!this.identity()) {
-        void this.refreshIdentity();
-      }
-      if (!this.selectedSha() && commits[0]) {
-        this.selectedSha.set(commits[0].sha);
-        this.selectedShas.set([commits[0].sha]);
-      }
-      this.updateNextAction(status);
-      this.maybeNotifyStatusChanges(prev, status);
-      if (opts?.notify) {
-        const changed =
-          status.staged.length + status.unstaged.length + status.untracked.length;
-        const branch = status.branch || 'HEAD';
-        this.showToast(
-          changed
-            ? `Refreshed ${branch} · ${changed} change${changed === 1 ? '' : 's'}`
-            : `Refreshed ${branch} · clean`,
-          { kind: 'success', durationMs: 2500, category: 'general' },
-        );
-      }
-    } catch (err) {
-      this.showError(err);
+      return await fn();
     } finally {
-      if (opts?.notify) this.refreshingRepo.set(false);
+      this.mutationDepth--;
+      if (this.mutationDepth === 0 && this.refreshQueued) {
+        this.refreshQueued = false;
+        void this.refreshRepo();
+      }
     }
   }
 
@@ -1130,13 +1194,21 @@ export class AppStore {
         const current = this.currentRepo()?.path;
         if (!current) return;
         if (!sameRepoPath(current, event.payload.path)) return;
+        if (this.mutationDepth > 0) {
+          this.refreshQueued = true;
+          return;
+        }
         if (this.repoFsRefreshTimer !== null) {
           window.clearTimeout(this.repoFsRefreshTimer);
         }
         this.repoFsRefreshTimer = window.setTimeout(() => {
           this.repoFsRefreshTimer = null;
+          if (this.mutationDepth > 0) {
+            this.refreshQueued = true;
+            return;
+          }
           void this.refreshRepo();
-        }, 250);
+        }, 750);
       });
     } catch {
       /* watch unavailable outside desktop shell */
@@ -1253,7 +1325,9 @@ export class AppStore {
   }
 
   showError(err: unknown): void {
-    this.showToast(this.formatError(err), { kind: 'error', force: true });
+    const message = this.formatError(err);
+    this.showToast(message, { kind: 'error', force: true });
+    void this.diagnostics.record('ui.error', message);
   }
 
   notifyEvent(
@@ -1419,7 +1493,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path || !paths.length) return;
     try {
-      await this.tauri.stagePaths(path, paths);
+      await this.withRepoMutation(() => this.tauri.stagePaths(path, paths));
       await this.refreshWorkingTree();
     } catch (err) {
       this.showError(err);
@@ -1430,7 +1504,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path || !paths.length) return;
     try {
-      await this.tauri.unstagePaths(path, paths);
+      await this.withRepoMutation(() => this.tauri.unstagePaths(path, paths));
       await this.refreshWorkingTree();
     } catch (err) {
       this.showError(err);
@@ -1445,7 +1519,7 @@ export class AppStore {
       return;
     }
     try {
-      const result = await this.tauri.discardPaths(path, paths);
+      const result = await this.withRepoMutation(() => this.tauri.discardPaths(path, paths));
       await this.refreshWorkingTree();
       this.showToast(result.message, () =>
         void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
@@ -1487,6 +1561,14 @@ export class AppStore {
       this.showToast('Stage at least one file before committing', { kind: 'warning' });
       return false;
     }
+    if (amend && !(await this.confirmIfEnabled('confirmAmend', {
+      title: 'Amend last commit?',
+      message:
+        'Amending rewrites the tip of this branch. If that commit was already pushed, you will need a force push with lease afterward.',
+      confirmLabel: 'Amend',
+    }))) {
+      return false;
+    }
     try {
       const result = await this.tauri.createCommit(path, message.trim(), amend, allowEmpty);
       await this.refreshRepo();
@@ -1508,6 +1590,14 @@ export class AppStore {
   async softUndoLastCommit(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!(await this.confirmIfEnabled('confirmUndoLastCommit', {
+      title: 'Undo last action?',
+      message:
+        'This undoes the most recent Branchline action from the undo journal (often a soft reset of the last commit).',
+      confirmLabel: 'Undo',
+    }))) {
+      return;
+    }
     try {
       const entry = await this.tauri.undoLast(path);
       await this.refreshRepo();
@@ -1520,12 +1610,163 @@ export class AppStore {
   async checkoutBranch(name: string): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+
+    const remoteEntry = this.remoteBranches().find((b) => b.name === name);
+    const parsed = remoteEntry
+      ? parseRemoteRef(remoteEntry.name)
+      : (() => {
+          const candidate = parseRemoteRef(name);
+          if (!candidate) return null;
+          return this.remotes().some((r) => r.name === candidate.remote) ? candidate : null;
+        })();
+
+    if (parsed) {
+      const handled = await this.checkoutRemoteTrackingBranch(
+        path,
+        `${parsed.remote}/${parsed.branch}`,
+        parsed.remote,
+        parsed.branch,
+      );
+      if (handled) return;
+    }
+
     try {
       const result = await this.tauri.checkoutBranch(path, name);
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    }
+  }
+
+  private async checkoutRemoteTrackingBranch(
+    path: string,
+    remoteRef: string,
+    remote: string,
+    branch: string,
+  ): Promise<boolean> {
+    const local = this.localBranches().find((b) => b.name === branch);
+    if (!local) {
+      try {
+        const result = await this.tauri.createBranch(path, branch, true, remoteRef);
+        const tracked = await this.tauri.runGitCommand(path, [
+          'branch',
+          `--set-upstream-to=${remoteRef}`,
+          branch,
+        ]);
+        await this.refreshRepo();
+        if (!tracked.ok) {
+          this.showToast(
+            result.message || `Created and checked out '${branch}' from ${remoteRef}`,
+          );
+          return true;
+        }
+        this.showToast(`Created and checked out '${branch}' tracking ${remoteRef}`, {
+          kind: 'success',
+        });
+      } catch (err) {
+        this.showError(err);
+      }
+      return true;
+    }
+
+    let behind = 0;
+    let ahead = 0;
+    const status = this.status();
+    if (
+      status &&
+      !status.isDetached &&
+      status.branch === branch &&
+      status.upstream === remoteRef
+    ) {
+      behind = status.behind;
+      ahead = status.ahead;
+    } else {
+      const remoteTip = this.remoteBranches().find((b) => b.name === remoteRef)?.tipSha;
+      if (!local.tipSha || !remoteTip || local.tipSha !== remoteTip) {
+        const counts = await this.countAheadBehind(path, branch, remoteRef);
+        if (counts) {
+          ahead = counts.ahead;
+          behind = counts.behind;
+        }
+      }
+    }
+
+    if (behind > 0) {
+      const commitLabel = behind === 1 ? '1 commit' : `${behind} commits`;
+      const extra =
+        ahead > 0
+          ? ` Your local branch is also ${ahead} commit${ahead === 1 ? '' : 's'} ahead — pull may create a merge.`
+          : '';
+      const confirmed = await this.prompts.ask({
+        title: 'Remote is ahead',
+        message: `${remoteRef} is ${commitLabel} ahead of local '${branch}'. Updating will overwrite your local branch with the remote tip.${extra}`,
+        confirmLabel: 'Pull & checkout',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+        required: false,
+      });
+      if (confirmed === null) return true;
+
+      try {
+        if (!local.isCurrent) {
+          await this.tauri.checkoutBranch(path, branch);
+        }
+        const rebase = this.settings().defaultPullAction === 'rebase';
+        const args = rebase
+          ? ['pull', '--rebase', remote, branch]
+          : ['pull', remote, branch];
+        const pulled = await this.tauri.runGitCommand(path, args);
+        await this.refreshRepo();
+        if (!pulled.ok) {
+          this.showError(pulled.stderr.trim() || pulled.stdout.trim() || 'Pull failed');
+          return true;
+        }
+        this.showToast(
+          pulled.stdout.trim() || `Updated '${branch}' from ${remoteRef}`,
+          { kind: 'success', durationMs: 3200, category: 'pull' },
+        );
+      } catch (err) {
+        this.showError(err);
+      }
+      return true;
+    }
+
+    try {
+      if (local.isCurrent) {
+        this.showToast(`Already on '${branch}'`);
+        return true;
+      }
+      const result = await this.tauri.checkoutBranch(path, branch);
+      await this.refreshRepo();
+      this.showToast(result.message || `Checked out '${branch}'`);
+    } catch (err) {
+      this.showError(err);
+    }
+    return true;
+  }
+
+  private async countAheadBehind(
+    path: string,
+    left: string,
+    right: string,
+  ): Promise<{ ahead: number; behind: number } | null> {
+    try {
+      const result = await this.tauri.runGitCommand(path, [
+        'rev-list',
+        '--left-right',
+        '--count',
+        `${left}...${right}`,
+      ]);
+      if (!result.ok) return null;
+      const parts = result.stdout.trim().split(/\s+/);
+      if (parts.length < 2) return null;
+      return {
+        ahead: Number.parseInt(parts[0], 10) || 0,
+        behind: Number.parseInt(parts[1], 10) || 0,
+      };
+    } catch {
+      return null;
     }
   }
 
@@ -1601,7 +1842,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.fetch(path);
+      const result = await this.withRepoMutation(() => this.tauri.fetch(path));
       await this.refreshRepo();
       this.showToast(result.message || 'Fetched from remote', {
         kind: 'success',
@@ -1617,9 +1858,11 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = rebase
-        ? await this.tauri.pullWithOptions(path, { rebase: true })
-        : await this.tauri.pull(path);
+      const result = await this.withRepoMutation(() =>
+        rebase
+          ? this.tauri.pullWithOptions(path, { rebase: true })
+          : this.tauri.pull(path),
+      );
       await this.refreshRepo();
       this.showToast(result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'), {
         kind: 'success',
@@ -1644,13 +1887,34 @@ export class AppStore {
       );
       return;
     }
-    const status = this.status();
+
+    let status = this.status();
     if (status && status.ahead > 0 && status.behind > 0) {
-      await this.openSafety('forcePush', status.branch);
-      return;
+      const choice = await this.resolveDivergedPush(status);
+      if (choice === 'cancel') return;
+      if (choice === 'force') {
+        if (this.settings().confirmForcePush) {
+          await this.openSafety('forcePush', status.branch);
+        } else {
+          await this.runForceWithLease(status.branch);
+        }
+        return;
+      }
+
+      await this.pullRemote(this.settings().defaultPullAction === 'rebase');
+      status = this.status();
+      if (!status || status.ahead === 0) return;
+      if (status.behind > 0) {
+        this.showWarning('Still diverged after pull. Resolve conflicts, then push again.');
+        return;
+      }
     }
+
+    const pushOpts = await this.preparePushOptions(status);
+    if (!pushOpts) return;
+
     try {
-      const result = await this.tauri.push(path);
+      const result = await this.tauri.push(path, pushOpts);
       await this.refreshRepo();
       this.showToast(result.message || 'Pushed to remote', {
         kind: 'success',
@@ -1660,14 +1924,107 @@ export class AppStore {
     } catch (err) {
       const message = this.formatError(err);
       if (/non-fast-forward|rejected|fetch first/i.test(message)) {
-        await this.openSafety('forcePush', status?.branch);
+        if (this.settings().confirmForcePush) {
+          await this.openSafety('forcePush', status?.branch);
+        } else {
+          await this.runForceWithLease(status?.branch);
+        }
         return;
       }
       this.showError(message);
     }
   }
 
+  private async resolveDivergedPush(status: RepoStatus): Promise<'pull' | 'force' | 'cancel'> {
+    const up = status.upstream ?? 'upstream';
+    const choice = await this.selects.ask({
+      title: 'Branch has diverged',
+      message: `'${status.branch}' is ${status.ahead} ahead and ${status.behind} behind ${up}. Pushing now would require overwriting remote history.`,
+      label: 'How to proceed',
+      options: [
+        {
+          value: 'pull',
+          label: 'Pull remote changes first',
+          hint: 'Safer — integrate remote commits, then push yours',
+        },
+        {
+          value: 'force',
+          label: 'Force push with lease',
+          hint: 'Overwrites the remote if nobody else pushed since your last fetch',
+        },
+      ],
+      initialValue: 'pull',
+      confirmLabel: 'Continue',
+    });
+    if (choice === 'pull' || choice === 'force') return choice;
+    return 'cancel';
+  }
+
+  private async preparePushOptions(
+    status: RepoStatus | null,
+  ): Promise<{ setUpstream?: boolean } | null> {
+    const branch = status?.branch;
+    if (!branch) return {};
+
+    const hasUpstream = !!status?.upstream;
+    if (hasUpstream) return {};
+
+    if (!(await this.confirmIfEnabled('confirmPushNewBranch', {
+      title: 'Push new branch?',
+      message: `'${branch}' does not exist on the remote yet. Create it with this push?`,
+      confirmLabel: 'Push new branch',
+    }))) {
+      return null;
+    }
+
+    if (!this.settings().confirmAddTrackingRef) {
+      return { setUpstream: true };
+    }
+
+    const choice = await this.selects.ask({
+      title: 'Remember this remote branch?',
+      message: `'${branch}' isn’t on the remote yet. After pushing, should Branchline link this local branch to origin/${branch} so Pull and Push know where to go?`,
+      label: 'After push',
+      options: [
+        {
+          value: 'yes',
+          label: 'Yes — set upstream (recommended)',
+          hint: 'Links local ↔ origin so future Pull/Push/Sync work without asking again',
+        },
+        {
+          value: 'no',
+          label: 'No — just push once',
+          hint: 'Uploads the branch but doesn’t track it; you’ll need to set upstream later',
+        },
+      ],
+      initialValue: 'yes',
+      confirmLabel: 'Continue',
+    });
+    if (choice === null) return null;
+    return { setUpstream: choice === 'yes' };
+  }
+
+  private async runForceWithLease(branch?: string | null): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.push(path, { forceWithLease: true });
+      await this.refreshRepo();
+      this.showToast(result.message || `Force-pushed ${branch ?? 'branch'} with lease`, {
+        kind: 'success',
+        category: 'push',
+      });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
   async syncRemote(): Promise<void> {
+    const status = this.status();
+    if (status && status.ahead > 0 && status.behind > 0) {
+      await this.pushRemote();
+      return;
+    }
     const action = this.settings().defaultPullAction;
     if (action === 'fetch') {
       await this.fetchRemote();
@@ -1742,6 +2099,13 @@ export class AppStore {
   async removeRemote(name: string): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!(await this.confirmIfEnabled('confirmRemoveRemote', {
+      title: 'Remove remote?',
+      message: `Remove remote "${name}" from this repository? Local branches and commits stay; only the remote entry is deleted.`,
+      confirmLabel: 'Remove remote',
+    }))) {
+      return;
+    }
     try {
       const result = await this.tauri.removeRemote(path, name);
       await this.refreshRepo();
@@ -1803,17 +2167,33 @@ export class AppStore {
       this.showWarning('Open a repository first');
       return;
     }
-    const branch = this.status()?.branch ?? 'main';
-    const jira = this.activeJiraKey() || 'PROJ-0';
-    const name = template.pattern
-      .replaceAll('{type}', 'feat')
-      .replaceAll('{summary}', 'summary')
-      .replaceAll('{name}', branch)
-      .replaceAll('{jira}', jira)
-      .split('\n')[0]
-      .trim();
+    const name = this.resolveBranchPattern(template.pattern);
+    if (!name) {
+      this.showWarning('Branch template resolved to an empty name');
+      return;
+    }
     this.setView('browse');
     this.openCreateBranchDialog(null, name);
+  }
+
+  resolveBranchPattern(pattern: string): string {
+    const settings = this.settings();
+    const branch = this.status()?.branch ?? 'main';
+    const jira = this.activeJiraKey() || '';
+    const prefix = (settings.branchPrefix || settings.branchPrefixes[0] || 'feature')
+      .trim()
+      .replace(/^\/+|\/+$/g, '');
+    const user = slugifyUser(this.identity()?.name);
+    return sanitizeBranchName(
+      resolveWorkflowPattern(pattern, {
+        branch,
+        jira,
+        prefix,
+        user,
+        type: 'feat',
+        summary: 'summary',
+      }),
+    );
   }
 
   async ignorePath(filePath: string): Promise<void> {
@@ -1927,8 +2307,7 @@ export class AppStore {
     }
     const result = await this.tauri.cherryPick(path, shas);
     if (!result.ok) {
-      this.showToast(result.message);
-      await this.refreshRepo();
+      await this.handleConflictResult(result);
       return;
     }
     this.closeCherryPick();
@@ -2016,11 +2395,12 @@ export class AppStore {
         })),
       );
       this.closeInteractiveRebase();
-      await this.refreshRepo();
-      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
       if (!result.ok) {
-        this.setBrowseTab('files');
+        await this.handleConflictResult(result);
+        return;
       }
+      await this.refreshRepo();
+      this.showToast(result.message);
     } catch (err) {
       this.showError(err);
     }
@@ -2105,9 +2485,12 @@ export class AppStore {
     const sha = this.selectedSha();
     if (!path || !sha) return;
     const result = await this.tauri.revertCommit(path, sha);
+    if (!result.ok) {
+      await this.handleConflictResult(result);
+      return;
+    }
     await this.refreshRepo();
     this.showToast(result.message);
-    if (!result.ok) return;
   }
 
   async pinRepo(path: string, pinned: boolean): Promise<void> {
@@ -2165,7 +2548,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.stashPush(path, message);
+      const result = await this.withRepoMutation(() => this.tauri.stashPush(path, message));
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
@@ -2177,7 +2560,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.stashPop(path, index);
+      const result = await this.withRepoMutation(() => this.tauri.stashPop(path, index));
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
@@ -2189,7 +2572,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.stashApply(path, index);
+      const result = await this.withRepoMutation(() => this.tauri.stashApply(path, index));
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
@@ -2200,8 +2583,17 @@ export class AppStore {
   async stashDrop(index: number): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    const entry = this.stashes().find((s) => s.index === index);
+    const label = entry?.id ?? `stash@{${index}}`;
+    if (!(await this.confirmIfEnabled('confirmStashDrop', {
+      title: 'Drop stash?',
+      message: `Permanently delete ${label}? This cannot be undone from Branchline.`,
+      confirmLabel: 'Drop stash',
+    }))) {
+      return;
+    }
     try {
-      const result = await this.tauri.stashDrop(path, index);
+      const result = await this.withRepoMutation(() => this.tauri.stashDrop(path, index));
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
@@ -2213,10 +2605,13 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.mergeBranch(path, name, noFf);
+      const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, name, noFf));
+      if (!result.ok) {
+        await this.handleConflictResult(result);
+        return;
+      }
       await this.refreshRepo();
       this.showToast(result.message);
-      if (!result.ok) this.setBrowseTab('files');
     } catch (err) {
       this.showError(err);
     }
@@ -2226,10 +2621,13 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.tauri.rebaseOnto(path, onto);
+      const result = await this.withRepoMutation(() => this.tauri.rebaseOnto(path, onto));
+      if (!result.ok) {
+        await this.handleConflictResult(result);
+        return;
+      }
       await this.refreshRepo();
       this.showToast(result.message);
-      if (!result.ok) this.setBrowseTab('files');
     } catch (err) {
       this.showError(err);
     }
@@ -2238,6 +2636,21 @@ export class AppStore {
   async abortOperation(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!(await this.confirmIfEnabled('confirmAbortOperation', {
+      title: 'Abort in-progress operation?',
+      message:
+        'Aborting a merge, rebase, cherry-pick, or revert discards the in-progress resolution and returns the repo to the pre-operation state.',
+      confirmLabel: 'Abort',
+    }))) {
+      return;
+    }
+    if (!(await this.confirmIfEnabled('confirmAbortSecond', {
+      title: 'Are you sure?',
+      message: 'This is the second confirmation. Conflict resolutions in progress will be lost.',
+      confirmLabel: 'Yes, abort',
+    }))) {
+      return;
+    }
     try {
       const result = await this.tauri.abortOperation(path);
       await this.refreshRepo();
@@ -2253,10 +2666,146 @@ export class AppStore {
     try {
       const result = await this.tauri.continueOperation(path);
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
     } catch (err) {
       this.showError(err);
     }
+  }
+
+  async refreshDetectedEditors(): Promise<void> {
+    try {
+      this.detectedEditors.set(await this.tauri.detectEditors());
+    } catch {
+      this.detectedEditors.set(null);
+    }
+  }
+
+  preferredEditorButtonLabel(): string {
+    return preferredEditorLabel(this.settings().preferredEditor, this.detectedEditors());
+  }
+
+  async openPathsInEditor(relativePaths: string[]): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    if (!repo) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    const cleaned = relativePaths.map((p) => p.trim()).filter(Boolean);
+    const abs = cleaned.length
+      ? cleaned.map((p) => `${repo.replace(/\/+$/, '')}/${p.replace(/^\/+/, '')}`)
+      : [repo];
+    try {
+      const result = await openPathsInPreferredEditor(abs, {
+        preferred: this.settings().preferredEditor,
+        editorCommand: this.settings().editorCommand,
+        detected: this.detectedEditors(),
+        openExternalUrl: (url) => this.tauri.openExternalUrl(url),
+        openWithCommand: async (command, path) => {
+          const opened = await this.tauri.openPathWithCommand(command, path);
+          if (!opened.ok) throw new Error(opened.message);
+        },
+      });
+      if (result.opened > 1) {
+        this.showInfo(`Opened ${result.opened} files in ${this.preferredEditorButtonLabel()}`);
+      }
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openConflictedInEditor(): Promise<void> {
+    const conflicted = this.status()?.conflicted.map((f) => f.path) ?? [];
+    await this.openPathsInEditor(conflicted);
+  }
+
+  async openMergeToolForPaths(paths?: string[]): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    if (!repo) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    const targets =
+      paths?.length ? paths : (this.status()?.conflicted.map((f) => f.path) ?? []);
+    try {
+      const result = await runConfiguredGitTool({
+        kind: 'merge',
+        repoPath: repo,
+        toolName: this.settings().mergeTool,
+        paths: targets,
+        runGitCommand: (path, args) => this.tauri.runGitCommand(path, args),
+      });
+      if (!result.ok) {
+        this.showWarning(
+          result.stderr ||
+            result.stdout ||
+            'No merge tool configured — set one in Settings → Tools',
+        );
+      } else {
+        this.showSuccess(result.stdout || 'Opened merge tool');
+      }
+      await this.refreshRepo();
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openDiffToolForPaths(paths?: string[]): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    if (!repo) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    const targets = paths?.filter(Boolean) ?? [];
+    const selected = this.selectedDiffPath();
+    const pathArgs = targets.length ? targets : selected ? [selected] : [];
+    try {
+      const result = await runConfiguredGitTool({
+        kind: 'diff',
+        repoPath: repo,
+        toolName: this.settings().diffTool,
+        paths: pathArgs,
+        runGitCommand: (path, args) => this.tauri.runGitCommand(path, args),
+      });
+      if (!result.ok) {
+        this.showWarning(
+          result.stderr ||
+            result.stdout ||
+            'No diff tool configured — set one in Settings → Tools',
+        );
+      } else {
+        this.showSuccess(result.stdout || 'Opened diff tool');
+      }
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async takeConflictSide(path: string, side: 'ours' | 'theirs'): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    if (!repo || !path) return;
+    try {
+      const flag = side === 'ours' ? '--ours' : '--theirs';
+      const result = await this.tauri.runGitCommand(repo, ['checkout', flag, '--', path]);
+      if (!result.ok) {
+        this.showWarning(result.stderr || result.stdout || `Could not take ${side}`);
+        return;
+      }
+      await this.stagePaths([path]);
+      this.showSuccess(`Took ${side} for ${path}`);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async markConflictResolved(path: string): Promise<void> {
+    await this.stagePaths([path]);
+    this.showSuccess(`Marked ${path} as resolved`);
+  }
+
+  private async handleConflictResult(result: MutationOutput): Promise<void> {
+    await this.refreshRepo();
+    this.showToast(result.message, { kind: 'warning' });
+    this.setBrowseTab('files');
   }
 
   async resetTo(target: string, mode: ResetMode): Promise<void> {
@@ -2303,7 +2852,33 @@ export class AppStore {
       return;
     }
     const branch = this.status()?.branch;
-    await this.openSafety('forcePush', branch ?? undefined);
+    if (this.settings().confirmForcePush) {
+      await this.openSafety('forcePush', branch ?? undefined);
+      return;
+    }
+    await this.runForceWithLease(branch);
+  }
+
+  private async confirmIfEnabled(
+    setting:
+      | 'confirmAmend'
+      | 'confirmUndoLastCommit'
+      | 'confirmStashDrop'
+      | 'confirmAbortOperation'
+      | 'confirmAbortSecond'
+      | 'confirmRemoveRemote'
+      | 'confirmPushNewBranch',
+    options: { title: string; message: string; confirmLabel?: string },
+  ): Promise<boolean> {
+    if (!this.settings()[setting]) return true;
+    const result = await this.prompts.ask({
+      title: options.title,
+      message: options.message,
+      confirmLabel: options.confirmLabel ?? 'Continue',
+      cancelLabel: 'Cancel',
+      confirmOnly: true,
+    });
+    return result !== null;
   }
 
   openFileHistory(filePath: string): void {
@@ -2329,6 +2904,98 @@ export class AppStore {
     } catch (err) {
       this.showError(err);
     }
+  }
+
+  async deleteOtherLocalBranches(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+
+    const current = this.status()?.branch ?? null;
+    const worktreeBranches = new Set(
+      this.worktrees()
+        .filter((w) => !w.isMain && !!w.branch?.trim())
+        .map((w) => w.branch!.trim()),
+    );
+
+    const targets = this.localBranches().filter((b) => {
+      if (b.isCurrent || b.locked) return false;
+      if (current && b.name === current) return false;
+      if (worktreeBranches.has(b.name)) return false;
+      return true;
+    });
+
+    if (targets.length === 0) {
+      this.showToast('No other local branches to delete', { kind: 'info' });
+      return;
+    }
+
+    const mode = await this.selects.ask({
+      title: 'Clean up local branches',
+      message: `Delete ${targets.length} local branch${targets.length === 1 ? '' : 'es'}? Keeps your current branch${current ? ` (${current})` : ''}, locked branches, and branches checked out in other worktrees. Remotes are not deleted.`,
+      label: 'What to delete',
+      options: [
+        {
+          value: 'merged',
+          label: 'Merged only',
+          hint: 'Safer — skips branches with commits not in HEAD',
+        },
+        {
+          value: 'all',
+          label: 'All except current',
+          hint: 'Also deletes unmerged branches (harder to recover)',
+        },
+      ],
+      initialValue: 'merged',
+      confirmLabel: 'Continue',
+    });
+    if (mode !== 'merged' && mode !== 'all') return;
+
+    if (mode === 'all') {
+      const ok = await this.prompts.ask({
+        title: 'Delete unmerged branches too?',
+        message: `Force-delete ${targets.length} local branch${targets.length === 1 ? '' : 'es'}. Commits that only exist on those branches may be hard to recover.`,
+        confirmLabel: 'Delete all',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+        required: false,
+      });
+      if (ok === null) return;
+    }
+
+    const force = mode === 'all';
+    let deleted = 0;
+    const skipped: string[] = [];
+    for (const branch of targets) {
+      try {
+        await this.tauri.deleteBranch(path, branch.name, force);
+        deleted += 1;
+      } catch {
+        skipped.push(branch.name);
+      }
+    }
+
+    await this.refreshRepo();
+    if (deleted === 0 && skipped.length > 0) {
+      this.showWarning(
+        mode === 'merged'
+          ? 'Nothing deleted — remaining branches are unmerged. Choose “All except current” to force-delete them.'
+          : `Could not delete ${skipped.length} branch${skipped.length === 1 ? '' : 'es'}.`,
+      );
+      return;
+    }
+
+    const parts = [`Deleted ${deleted} local branch${deleted === 1 ? '' : 'es'}`];
+    if (skipped.length > 0) {
+      parts.push(
+        mode === 'merged'
+          ? `skipped ${skipped.length} unmerged`
+          : `failed ${skipped.length}`,
+      );
+    }
+    this.showToast(parts.join(' · '), { kind: 'success' });
   }
 
   async lockBranch(name: string, reason?: string): Promise<void> {
@@ -2361,7 +3028,7 @@ export class AppStore {
 
   async refreshIdentity(): Promise<void> {
     try {
-      this.identity.set(await this.tauri.getGitIdentity());
+      this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
     } catch {
       this.identity.set(null);
     }
@@ -2558,12 +3225,21 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     autoFetchOnOpen: raw.autoFetchOnOpen ?? false,
     confirmForcePush: raw.confirmForcePush ?? true,
     confirmDiscard: raw.confirmDiscard ?? true,
+    confirmPushNewBranch: raw.confirmPushNewBranch ?? true,
+    confirmAddTrackingRef: raw.confirmAddTrackingRef ?? true,
+    confirmAmend: raw.confirmAmend ?? true,
+    confirmUndoLastCommit: raw.confirmUndoLastCommit ?? true,
+    confirmStashDrop: raw.confirmStashDrop ?? true,
+    confirmAbortOperation: raw.confirmAbortOperation ?? true,
+    confirmAbortSecond: raw.confirmAbortSecond ?? true,
+    confirmRemoveRemote: raw.confirmRemoveRemote ?? true,
     signOffByDefault: raw.signOffByDefault ?? false,
     pushAfterCommit: raw.pushAfterCommit ?? false,
     myBranchesOnly: raw.myBranchesOnly ?? false,
     branchPrefixEnabled: raw.branchPrefixEnabled ?? true,
     branchPrefix: (raw.branchPrefix ?? 'feature').trim() || 'feature',
     branchPrefixes: normalizeBranchPrefixes(raw.branchPrefixes, raw.branchPrefix),
+    preferredEditor: normalizePreferredEditor(raw.preferredEditor),
     editorCommand: raw.editorCommand ?? '',
     diffTool: raw.diffTool ?? '',
     mergeTool: raw.mergeTool ?? '',
@@ -2584,6 +3260,20 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     notifyPrActivity: raw.notifyPrActivity ?? true,
     notifyPrCi: raw.notifyPrCi ?? true,
   };
+}
+
+function normalizePreferredEditor(raw: unknown): PreferredEditor {
+  const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (
+    value === 'auto' ||
+    value === 'cursor' ||
+    value === 'vscode' ||
+    value === 'system' ||
+    value === 'command'
+  ) {
+    return value;
+  }
+  return 'auto';
 }
 
 function sameRepoPath(a: string, b: string): boolean {

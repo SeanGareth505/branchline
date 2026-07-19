@@ -98,14 +98,16 @@ pub fn discard_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult
         }
 
         let path_refs: Vec<&str> = input.paths.iter().map(|s| s.as_str()).collect();
-        let mut stash_args = vec![
-            "stash",
-            "push",
-            "-u",
-            "-m",
-            "branchline-discard-backup",
-            "--",
-        ];
+        // Avoid `stash -u -- .` which can suck in huge untracked trees (node_modules, build/).
+        let whole_tree = path_refs.iter().any(|p| {
+            let t = p.trim();
+            t.is_empty() || t == "."
+        });
+        let mut stash_args = vec!["stash", "push", "-m", "branchline-discard-backup"];
+        if !whole_tree {
+            stash_args.push("-u");
+        }
+        stash_args.push("--");
         stash_args.extend(path_refs.iter().copied());
         let stash_ok = git_cli::run_git(path, &stash_args).is_ok();
         if !stash_ok {
@@ -176,13 +178,16 @@ pub fn apply_patch(
         let repo_key = path.to_string_lossy().to_string();
         {
             let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
-                &db,
-                &repo_key,
-                kind,
-                label,
-                json!({ "mode": mode, "patch": patch }),
-            );
+            let mut undo_payload = json!({ "mode": mode });
+            if patch.len() <= 256_000 {
+                undo_payload = json!({ "mode": mode, "patch": patch });
+            } else {
+                log::warn!(
+                    "skipping undo payload for large patch ({} bytes)",
+                    patch.len()
+                );
+            }
+            let _ = undo::push_entry(&db, &repo_key, kind, label, undo_payload);
         }
         Ok(MutationOutput {
             ok: true,

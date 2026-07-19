@@ -7,7 +7,7 @@
       [attr.aria-expanded]="open()"
     >
       <ng-icon class="chev" [name]="chevron()" size="13" />
-      <span class="kind">Stash</span>
+      <span class="kind" title="Temporarily shelved uncommitted changes">Stash</span>
       <span class="count">{{ filtered().length }}</span>
     </button>
     <button
