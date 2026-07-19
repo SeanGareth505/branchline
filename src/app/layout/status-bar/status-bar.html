@@ -1,7 +1,7 @@
 <footer class="bar">
   <div class="left">
     @if (store.isDummyBackend) {
-      <span class="dummy-pill" title="Browser preview is using fake Git data">DUMMY DATA</span>
+      <span class="dummy-pill" title="Browser preview — fake Git data only">DUMMY DATA</span>
     }
     @if (store.status(); as status) {
       <span class="pill" [title]="branchTitle()">
