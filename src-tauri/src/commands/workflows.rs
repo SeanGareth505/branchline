@@ -63,7 +63,10 @@ fn merge_workflows(stored: &StoredWorkflows) -> Vec<WorkflowInfo> {
 
 #[command]
 pub fn list_workflows(state: State<'_, AppState>) -> AppResult<Vec<WorkflowInfo>> {
-    let db = state.db.lock().map_err(|_| AppError::msg("Database lock poisoned"))?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::msg("Database lock poisoned"))?;
     let stored = load_stored(&db)?;
     Ok(merge_workflows(&stored))
 }
@@ -81,7 +84,10 @@ pub fn save_workflow(
         return Err(AppError::msg("Add at least one step"));
     }
 
-    let db = state.db.lock().map_err(|_| AppError::msg("Database lock poisoned"))?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::msg("Database lock poisoned"))?;
     let mut stored = load_stored(&db)?;
 
     let workflow = if let Some(id) = input.id.as_ref().filter(|s| !s.trim().is_empty()) {
@@ -89,7 +95,9 @@ pub fn save_workflow(
             .iter()
             .any(|b| &b.id == id)
         {
-            return Err(AppError::msg("Built-in workflows cannot be edited — duplicate them instead"));
+            return Err(AppError::msg(
+                "Built-in workflows cannot be edited — duplicate them instead",
+            ));
         }
         let Some(existing) = stored.custom.iter_mut().find(|w| &w.id == id) else {
             return Err(AppError::msg("Workflow not found"));
@@ -123,14 +131,19 @@ pub fn delete_workflow(
     state: State<'_, AppState>,
     input: WorkflowIdInput,
 ) -> AppResult<Vec<WorkflowInfo>> {
-    let db = state.db.lock().map_err(|_| AppError::msg("Database lock poisoned"))?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::msg("Database lock poisoned"))?;
     let mut stored = load_stored(&db)?;
 
     if mock_providers::builtin_workflows()
         .iter()
         .any(|b| b.id == input.id)
     {
-        return Err(AppError::msg("Built-in workflows cannot be deleted — disable or duplicate them"));
+        return Err(AppError::msg(
+            "Built-in workflows cannot be deleted — disable or duplicate them",
+        ));
     }
 
     let before = stored.custom.len();
@@ -148,7 +161,10 @@ pub fn set_workflow_enabled(
     state: State<'_, AppState>,
     input: SetWorkflowEnabledInput,
 ) -> AppResult<Vec<WorkflowInfo>> {
-    let db = state.db.lock().map_err(|_| AppError::msg("Database lock poisoned"))?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::msg("Database lock poisoned"))?;
     let mut stored = load_stored(&db)?;
 
     if mock_providers::builtin_workflows()

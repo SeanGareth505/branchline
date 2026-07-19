@@ -64,4 +64,23 @@
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+  align-items: center;
+}
+
+.icon-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }

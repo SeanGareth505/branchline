@@ -14,6 +14,14 @@
   grid-template-rows: auto auto 1fr auto;
 }
 
+.shell.update-available {
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.shell.dummy-backend.update-available {
+  grid-template-rows: auto auto auto 1fr auto;
+}
+
 .dummy-banner {
   display: flex;
   align-items: baseline;
@@ -40,13 +48,10 @@
   color: var(--text-secondary);
 }
 
-.top {
-  position: relative;
+.chrome {
   display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  min-height: 2.85rem;
-  padding: 0.4rem 0.75rem;
+  flex-direction: column;
+  z-index: 20;
   border-bottom: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
   background:
     linear-gradient(
@@ -54,38 +59,37 @@
       color-mix(in srgb, var(--glass-highlight) 55%, transparent),
       transparent 42%
     ),
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent) 7%, transparent),
-      transparent 28%,
-      transparent 72%,
-      color-mix(in srgb, var(--lane-2) 6%, transparent)
-    ),
     color-mix(in srgb, var(--glass-bg-strong) 78%, transparent);
   backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
   -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.45);
   box-shadow:
     0 1px 0 var(--glass-highlight) inset,
     0 8px 28px color-mix(in srgb, #0b1220 12%, transparent);
-  z-index: 20;
 }
 
-.top::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 28%, transparent) 35%,
-    color-mix(in srgb, var(--lane-2) 22%, transparent) 65%,
-    transparent
-  );
-  opacity: 0.55;
+.chrome-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.chrome-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.chrome-left app-project-switcher {
+  flex-shrink: 0;
+}
+
+.chrome-left app-repo-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .brand {
@@ -107,77 +111,108 @@
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
 
-app-project-switcher {
-  flex-shrink: 0;
-}
-
-app-repo-tabs {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-nav {
-  display: flex;
-  align-items: center;
-  gap: 0.08rem;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
-nav button {
+.chrome-views {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.1rem;
+  padding: 0.15rem;
+  border-radius: 9px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  flex-shrink: 0;
+}
+
+.chrome-views button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.7rem;
+  padding: 0 0.55rem;
   border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
-  padding: 0.38rem 0.55rem;
-  border-radius: var(--radius-control);
-  font-size: 12.5px;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   transition:
     background var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out);
 }
 
-nav button:hover {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+.chrome-views button:hover {
+  background: color-mix(in srgb, var(--bg-hover) 90%, transparent);
   color: var(--text-primary);
 }
 
-nav button.active {
-  background: color-mix(in srgb, var(--accent-muted) 70%, var(--bg-active));
+.chrome-views button.active {
+  background: var(--glass-bg-strong);
   color: var(--text-primary);
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
   box-shadow: 0 1px 0 var(--glass-highlight) inset;
 }
 
-.repo-tools {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
-  padding-right: 0.15rem;
+.chrome-views button.active ng-icon {
+  color: var(--accent);
 }
 
-.top-actions {
-  display: flex;
-  gap: 0.25rem;
+.chrome-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
   flex-shrink: 0;
-  margin-left: auto;
-  padding-left: 0.35rem;
-  border-left: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
+  justify-self: end;
 }
 
-.top.browsing .top-actions {
-  margin-left: 0;
+.util {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  height: 1.85rem;
+  padding: 0 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
-.top-actions .bl-btn {
-  min-height: 1.9rem;
-  padding: 0.28rem 0.55rem;
-  font-size: 12.5px;
+.util:hover,
+.util.active {
+  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  color: var(--text-primary);
+  border-color: var(--glass-border);
+}
+
+.util.active {
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.util.icon-only {
+  width: 1.85rem;
+  padding: 0;
+}
+
+.chrome-tools {
+  display: flex;
+  align-items: center;
+  min-height: 2.35rem;
+  padding: 0.2rem 0.75rem 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 65%, transparent);
+  background: color-mix(in srgb, var(--glass-bg) 40%, transparent);
+}
+
+.chrome-tools app-repo-toolbar {
+  width: 100%;
 }
 
 .main {
@@ -192,8 +227,40 @@ nav button.active {
   min-height: 0;
 }
 
-@media (max-width: 1100px) {
-  .top.browsing .brand span {
+@media (max-width: 1180px) {
+  .brand span {
     display: none;
+  }
+
+  .chrome-views button span {
+    display: none;
+  }
+
+  .chrome-views button {
+    padding: 0 0.45rem;
+  }
+
+  .chrome-right .util:not(.icon-only) span {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .chrome-nav {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 0.35rem 0.5rem;
+  }
+
+  .chrome-left {
+    grid-column: 1 / -1;
+  }
+
+  .chrome-views {
+    justify-self: start;
+  }
+
+  .chrome-right {
+    justify-self: end;
   }
 }

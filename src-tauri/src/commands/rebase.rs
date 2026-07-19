@@ -66,7 +66,8 @@ fn short_sha(sha: &str) -> String {
 }
 
 fn write_executable(path: &Path, contents: &str) -> AppResult<()> {
-    fs::write(path, contents).map_err(|e| crate::AppError::msg(format!("Failed to write helper: {e}")))?;
+    fs::write(path, contents)
+        .map_err(|e| crate::AppError::msg(format!("Failed to write helper: {e}")))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -175,10 +176,7 @@ pub fn start_interactive_rebase(input: InteractiveRebaseInput) -> AppResult<Muta
         let mut has_edit = false;
         let mut kept = 0usize;
 
-        let tmp = std::env::temp_dir().join(format!(
-            "branchline-rebase-{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("branchline-rebase-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).map_err(|e| crate::AppError::msg(e.to_string()))?;
         let messages_dir = tmp.join("messages");
@@ -215,10 +213,12 @@ pub fn start_interactive_rebase(input: InteractiveRebaseInput) -> AppResult<Muta
                     .filter(|s| !s.is_empty())
                     .unwrap_or(subject.as_str());
                 let msg_path = messages_dir.join(&full);
-                let mut file = fs::File::create(&msg_path)
-                    .map_err(|e| crate::AppError::msg(format!("Failed to write reword message: {e}")))?;
-                writeln!(file, "{msg}")
-                    .map_err(|e| crate::AppError::msg(format!("Failed to write reword message: {e}")))?;
+                let mut file = fs::File::create(&msg_path).map_err(|e| {
+                    crate::AppError::msg(format!("Failed to write reword message: {e}"))
+                })?;
+                writeln!(file, "{msg}").map_err(|e| {
+                    crate::AppError::msg(format!("Failed to write reword message: {e}"))
+                })?;
             }
             if action == "edit" {
                 has_edit = true;
@@ -287,8 +287,8 @@ exit 0
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let combined = if !stderr.is_empty() { stderr } else { stdout };
 
-        let rebase_in_progress = path.join(".git/rebase-merge").exists()
-            || path.join(".git/rebase-apply").exists();
+        let rebase_in_progress =
+            path.join(".git/rebase-merge").exists() || path.join(".git/rebase-apply").exists();
 
         if output.status.success() && !rebase_in_progress {
             let _ = fs::remove_dir_all(&tmp);

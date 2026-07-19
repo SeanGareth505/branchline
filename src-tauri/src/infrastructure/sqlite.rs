@@ -6,7 +6,8 @@ use std::path::PathBuf;
 pub type Db = Connection;
 
 pub fn app_data_dir() -> AppResult<PathBuf> {
-    let base = dirs::data_dir().ok_or_else(|| AppError::msg("Could not resolve app data directory"))?;
+    let base =
+        dirs::data_dir().ok_or_else(|| AppError::msg("Could not resolve app data directory"))?;
     let dir = base.join("branchline");
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
@@ -184,7 +185,12 @@ pub fn list_recent_repos(conn: &Connection) -> AppResult<Vec<RecentRepoRow>> {
     Ok(rows)
 }
 
-pub fn upsert_recent_repo(conn: &Connection, path: &str, name: &str, opened_at: &str) -> AppResult<()> {
+pub fn upsert_recent_repo(
+    conn: &Connection,
+    path: &str,
+    name: &str,
+    opened_at: &str,
+) -> AppResult<()> {
     conn.execute(
         "INSERT INTO recent_repos (path, name, last_opened_at, pinned, is_last)
          VALUES (?1, ?2, ?3, 0, 0)
@@ -305,7 +311,11 @@ pub fn insert_undo_entry(conn: &Connection, entry: &UndoJournalRow) -> AppResult
     Ok(())
 }
 
-pub fn list_undo_entries(conn: &Connection, repo_path: Option<&str>, limit: i64) -> AppResult<Vec<UndoJournalRow>> {
+pub fn list_undo_entries(
+    conn: &Connection,
+    repo_path: Option<&str>,
+    limit: i64,
+) -> AppResult<Vec<UndoJournalRow>> {
     if let Some(path) = repo_path {
         let mut stmt = conn.prepare(
             "SELECT id, repo_path, action, label, payload_json, created_at, restored

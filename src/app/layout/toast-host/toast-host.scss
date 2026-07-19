@@ -2,8 +2,13 @@
   position: fixed;
   right: 1.25rem;
   bottom: 2.75rem;
-  z-index: 90;
+  z-index: 10050;
   animation: rise 240ms var(--ease-out);
+  pointer-events: none;
+}
+
+.host > * {
+  pointer-events: auto;
 }
 
 @keyframes rise {

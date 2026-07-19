@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type {
   AppSettings,
   ArtificialCommit,
@@ -37,6 +38,7 @@ import type {
   RunGitOutput,
   SafetyAction,
   SafetyAnalysis,
+  SshSetupOutput,
   StashEntry,
   TagInfo,
   TemplateInfo,
@@ -105,6 +107,21 @@ export class TauriService {
     return invoke<T>(cmd, args);
   }
 
+  async openExternalUrl(url: string): Promise<void> {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      throw new Error('No URL to open.');
+    }
+    if (this.isDummyBackend) {
+      const opened = window.open(trimmed, '_blank', 'noopener');
+      if (!opened) {
+        throw new Error('Could not open the browser. Check your popup blocker.');
+      }
+      return;
+    }
+    await openUrl(trimmed);
+  }
+
   detectGit() {
     return this.invoke<GitDetectOutput>('detect_git');
   }
@@ -127,6 +144,16 @@ export class TauriService {
 
   skipOnboarding() {
     return this.invoke<OnboardingStatusOutput>('skip_onboarding');
+  }
+
+  getSshSetup() {
+    return this.invoke<SshSetupOutput>('get_ssh_setup');
+  }
+
+  generateSshKey(comment = '') {
+    return this.invoke<SshSetupOutput>('generate_ssh_key', {
+      input: { comment },
+    });
   }
 
   listRecentRepos() {
@@ -737,7 +764,7 @@ export class TauriService {
           },
           {
             id: 'ssh',
-            label: 'SSH keys',
+            label: 'SSH for Git remotes',
             description: 'Preview mode — connect in the desktop app',
             status: 'needsAttention',
           },
@@ -1071,6 +1098,26 @@ export class TauriService {
         mergeTool: '',
         sshKeysFound: true,
         sshKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+      },
+      get_ssh_setup: {
+        keysFound: true,
+        privateKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+        publicKeyPath: '/Users/demo/.ssh/id_ed25519.pub',
+        publicKey:
+          'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoBranchlinePreviewKey branchline@demo',
+        preferredKeyName: 'id_ed25519',
+        generated: false,
+        message: 'SSH key ready (id_ed25519)',
+      },
+      generate_ssh_key: {
+        keysFound: true,
+        privateKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+        publicKeyPath: '/Users/demo/.ssh/id_ed25519.pub',
+        publicKey:
+          'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoBranchlinePreviewKey branchline@demo',
+        preferredKeyName: 'id_ed25519',
+        generated: true,
+        message: 'Created ~/.ssh/id_ed25519 — copy the public key and add it on GitHub.',
       },
       set_git_config: {
         credentialHelper: 'osxkeychain',

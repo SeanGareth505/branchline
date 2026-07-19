@@ -157,15 +157,11 @@ fn parse_ordinary_change(
     staged: &mut Vec<FileStatusEntry>,
     unstaged: &mut Vec<FileStatusEntry>,
 ) {
-    let mut parts = rest.splitn(9, ' ');
+    let mut parts = rest.splitn(8, ' ');
     let xy = parts.next().unwrap_or("..");
-    let _ = parts.next();
-    let _ = parts.next();
-    let _ = parts.next();
-    let _ = parts.next();
-    let _ = parts.next();
-    let _ = parts.next();
-    let _ = parts.next();
+    for _ in 0..6 {
+        let _ = parts.next();
+    }
     let path = parts.next().unwrap_or("").to_string();
     let chars: Vec<char> = xy.chars().collect();
     let x = chars.first().copied().unwrap_or('.');
@@ -191,9 +187,9 @@ fn parse_rename_change(
     staged: &mut Vec<FileStatusEntry>,
     unstaged: &mut Vec<FileStatusEntry>,
 ) {
-    let mut parts = rest.splitn(10, ' ');
+    let mut parts = rest.splitn(9, ' ');
     let xy = parts.next().unwrap_or("..");
-    for _ in 0..7 {
+    for _ in 0..6 {
         let _ = parts.next();
     }
     let _score = parts.next();
@@ -466,12 +462,27 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
         let name = parts[1].to_string();
         let is_current = parts.get(2).map(|s| *s == "*").unwrap_or(false);
         let is_remote = full_ref.starts_with("refs/remotes/");
-        let upstream = parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string());
+        let upstream = parts
+            .get(3)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
         let track = parts.get(4).copied().unwrap_or("");
-        let tip_short = parts.get(5).filter(|s| !s.is_empty()).map(|s| s.to_string());
-        let tip_sha = parts.get(6).filter(|s| !s.is_empty()).map(|s| s.to_string());
-        let tip_subject = parts.get(7).filter(|s| !s.is_empty()).map(|s| s.to_string());
-        let tip_author = parts.get(8).filter(|s| !s.is_empty()).map(|s| s.to_string());
+        let tip_short = parts
+            .get(5)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let tip_sha = parts
+            .get(6)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let tip_subject = parts
+            .get(7)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let tip_author = parts
+            .get(8)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
         let tip_email = parts
             .get(9)
             .filter(|s| !s.is_empty())
@@ -505,13 +516,19 @@ pub fn current_branch(path: &Path) -> AppResult<String> {
 
 pub fn is_branch_merged(path: &Path, branch: &str) -> bool {
     let (ok, out, _) = git_cli::run_git_allow_fail(path, &["branch", "--merged"]);
-    ok && out.lines().any(|l| l.trim().trim_start_matches('*').trim() == branch)
+    ok && out
+        .lines()
+        .any(|l| l.trim().trim_start_matches('*').trim() == branch)
 }
 
 pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
     let (ok, _, _) = git_cli::run_git_allow_fail(
         path,
-        &["rev-parse", "--abbrev-ref", &format!("{branch}@{{upstream}}")],
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            &format!("{branch}@{{upstream}}"),
+        ],
     );
     ok
 }
@@ -520,5 +537,50 @@ pub fn ahead_behind(path: &Path) -> (i32, i32) {
     match repo_status(path) {
         Ok(s) => (s.ahead, s.behind),
         Err(_) => (0, 0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ordinary_unstaged_modified_path() {
+        let rest = ".M N... 100644 100644 100644 d9ef4bb83307dc82828180265c36387b1fe48e80 d9ef4bb83307dc82828180265c36387b1fe48e80 src/app/features/commits/commit-dialog/commit-dialog.ts";
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+        parse_ordinary_change(rest, &mut staged, &mut unstaged);
+        assert!(staged.is_empty());
+        assert_eq!(unstaged.len(), 1);
+        assert_eq!(
+            unstaged[0].path,
+            "src/app/features/commits/commit-dialog/commit-dialog.ts"
+        );
+        assert_eq!(unstaged[0].status, FileStatusKind::Modified);
+    }
+
+    #[test]
+    fn parse_ordinary_staged_and_unstaged() {
+        let rest = "MM N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb package.json";
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+        parse_ordinary_change(rest, &mut staged, &mut unstaged);
+        assert_eq!(staged[0].path, "package.json");
+        assert_eq!(staged[0].status, FileStatusKind::Modified);
+        assert_eq!(unstaged[0].path, "package.json");
+        assert_eq!(unstaged[0].status, FileStatusKind::Modified);
+    }
+
+    #[test]
+    fn parse_rename_staged_paths() {
+        let rest = "R. N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb R100 new/name.ts\told/name.ts";
+        let mut staged = Vec::new();
+        let mut unstaged = Vec::new();
+        parse_rename_change(rest, &mut staged, &mut unstaged);
+        assert!(unstaged.is_empty());
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].path, "new/name.ts");
+        assert_eq!(staged[0].original_path.as_deref(), Some("old/name.ts"));
+        assert_eq!(staged[0].status, FileStatusKind::Renamed);
     }
 }

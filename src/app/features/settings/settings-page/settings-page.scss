@@ -287,13 +287,29 @@
 
 .switch.labeled {
   width: auto;
+  height: auto;
   gap: 0.5rem;
   font-size: 0.84rem;
   color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.switch.labeled > span:not(.track) {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.switch.labeled > span:not(.track)::after {
+  content: none;
 }
 
 .switch.labeled .track {
   position: relative;
+  flex-shrink: 0;
 }
 
 .inline-fields {

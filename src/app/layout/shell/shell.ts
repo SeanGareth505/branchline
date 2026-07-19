@@ -27,6 +27,8 @@ import { RepoTabs } from '../repo-tabs/repo-tabs';
 import { RepoToolbar } from '../repo-toolbar/repo-toolbar';
 import { StatusBar } from '../status-bar/status-bar';
 import { ToastHost } from '../toast-host/toast-host';
+import { UpdateBanner } from '../../features/updates/update-banner/update-banner';
+import { UpdateService } from '../../core/update.service';
 
 @Component({
   selector: 'app-shell',
@@ -58,12 +60,14 @@ import { ToastHost } from '../toast-host/toast-host';
     IgnoreEditorDialog,
     PublishGithubDialog,
     GithubDeviceLoginDialog,
+    UpdateBanner,
   ],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
 })
 export class Shell {
   readonly store = inject(AppStore);
+  readonly updates = inject(UpdateService);
 
   readonly appliedTheme = computed(() => {
     const preference = this.store.settings().theme;
@@ -88,6 +92,10 @@ export class Shell {
   }
 
   goRepos(): void {
+    if (this.store.currentRepo()) {
+      this.store.setView('browse');
+      return;
+    }
     this.store.goHome();
   }
 

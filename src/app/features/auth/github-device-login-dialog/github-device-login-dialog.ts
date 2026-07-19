@@ -8,10 +8,17 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import {
+  hasGithubOAuthClientId,
+  resolveGithubOAuthClientId,
+} from '../../../core/github-oauth';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 
-type Step = 'setup' | 'code' | 'done' | 'error';
+type Step = 'connect' | 'code' | 'done' | 'error' | 'dev-setup';
+
+const DEVICE_LOGIN_URL = 'https://github.com/login/device';
+const CREATE_OAUTH_APP_URL = 'https://github.com/settings/applications/new';
 
 @Component({
   selector: 'app-github-device-login-dialog',
@@ -24,51 +31,99 @@ export class GithubDeviceLoginDialog {
   readonly store = inject(AppStore);
   private readonly tauri = inject(TauriService);
 
-  readonly step = signal<Step>('setup');
+  readonly step = signal<Step>('connect');
   readonly clientIdDraft = signal('');
   readonly userCode = signal('');
-  readonly verificationUri = signal('https://github.com/login/device');
+  readonly verificationUri = signal(DEVICE_LOGIN_URL);
   readonly verificationUriComplete = signal<string | null>(null);
   readonly statusText = signal('Waiting for GitHub…');
   readonly errorText = signal('');
   readonly busy = signal(false);
+  readonly copiedCode = signal(false);
+  readonly showDevSetup = signal(false);
 
   private deviceCode = '';
   private pollTimer: number | null = null;
   private intervalSec = 5;
   private expiresAt = 0;
+  private sessionOpen = false;
+  private copyResetTimer: number | null = null;
 
-  readonly hasClientId = computed(() => !!this.store.settings().githubOAuthClientId.trim());
+  readonly hasClientId = computed(() =>
+    hasGithubOAuthClientId(this.store.settings().githubOAuthClientId),
+  );
 
   constructor() {
     effect(() => {
-      if (!this.store.githubDeviceLoginOpen()) {
-        this.stopPolling();
+      const open = this.store.githubDeviceLoginOpen();
+      if (!open) {
+        if (this.sessionOpen) {
+          this.stopPolling();
+          this.sessionOpen = false;
+        }
         return;
       }
+      if (this.sessionOpen) {
+        return;
+      }
+      this.sessionOpen = true;
       this.reset();
       if (this.hasClientId()) {
         void this.startDeviceFlow();
       } else {
-        this.step.set('setup');
+        this.step.set('connect');
       }
     });
   }
 
   close(): void {
-    if (this.busy() && this.step() === 'code') {
-      this.stopPolling();
-    }
+    this.stopPolling();
     this.store.closeGithubDeviceLogin();
   }
 
-  openCreateOAuthApp(): void {
-    window.open('https://github.com/settings/applications/new', '_blank', 'noopener');
+  async connect(): Promise<void> {
+    if (!this.hasClientId()) {
+      this.errorText.set(
+        'GitHub sign-in is not configured in this build yet. The app publisher needs to add the OAuth Client ID once.',
+      );
+      this.step.set('error');
+      return;
+    }
+    await this.startDeviceFlow();
   }
 
-  openDevicePage(): void {
+  async openDevicePage(): Promise<void> {
     const complete = this.verificationUriComplete();
-    window.open(complete || this.verificationUri(), '_blank', 'noopener');
+    await this.openUrl(complete || this.verificationUri() || DEVICE_LOGIN_URL);
+  }
+
+  async openCreateOAuthApp(): Promise<void> {
+    await this.openUrl(CREATE_OAUTH_APP_URL);
+  }
+
+  async copyUserCode(): Promise<void> {
+    const code = this.userCode().trim();
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      this.copiedCode.set(true);
+      if (this.copyResetTimer != null) {
+        window.clearTimeout(this.copyResetTimer);
+      }
+      this.copyResetTimer = window.setTimeout(() => this.copiedCode.set(false), 1600);
+    } catch {
+      this.store.showError('Could not copy the code. Select it and copy manually.');
+    }
+  }
+
+  toggleDevSetup(): void {
+    this.showDevSetup.update((v) => !v);
+    if (this.showDevSetup()) {
+      this.clientIdDraft.set(this.store.settings().githubOAuthClientId);
+      this.step.set('dev-setup');
+    } else {
+      this.step.set('connect');
+    }
   }
 
   async saveClientIdAndStart(): Promise<void> {
@@ -78,11 +133,12 @@ export class GithubDeviceLoginDialog {
       return;
     }
     this.busy.set(true);
+    this.errorText.set('');
     try {
       await this.store.saveSettings({ githubOAuthClientId: id });
       await this.startDeviceFlow();
     } catch (err) {
-      this.errorText.set(String((err as { message?: string })?.message ?? err));
+      this.errorText.set(this.formatErr(err));
       this.step.set('error');
     } finally {
       this.busy.set(false);
@@ -90,9 +146,9 @@ export class GithubDeviceLoginDialog {
   }
 
   async startDeviceFlow(): Promise<void> {
-    const clientId = this.store.settings().githubOAuthClientId.trim();
+    const clientId = resolveGithubOAuthClientId(this.store.settings().githubOAuthClientId);
     if (!clientId) {
-      this.step.set('setup');
+      this.step.set('connect');
       return;
     }
 
@@ -103,19 +159,27 @@ export class GithubDeviceLoginDialog {
       const started = await this.tauri.githubDeviceLoginStart(clientId);
       this.deviceCode = started.deviceCode;
       this.userCode.set(started.userCode);
-      this.verificationUri.set(started.verificationUri || 'https://github.com/login/device');
+      this.verificationUri.set(started.verificationUri || DEVICE_LOGIN_URL);
       this.verificationUriComplete.set(started.verificationUriComplete ?? null);
       this.intervalSec = Math.max(1, started.interval || 5);
       this.expiresAt = Date.now() + (started.expiresIn || 900) * 1000;
       this.step.set('code');
       this.statusText.set('Enter this code on GitHub, then return here.');
-      this.openDevicePage();
+      await this.openDevicePage();
       this.schedulePoll(this.intervalSec * 1000);
     } catch (err) {
-      this.errorText.set(String((err as { message?: string })?.message ?? err));
+      this.errorText.set(this.formatErr(err));
       this.step.set('error');
     } finally {
       this.busy.set(false);
+    }
+  }
+
+  private async openUrl(url: string): Promise<void> {
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch (err) {
+      this.store.showError(this.formatErr(err) || 'Could not open the browser.');
     }
   }
 
@@ -139,7 +203,7 @@ export class GithubDeviceLoginDialog {
       return;
     }
 
-    const clientId = this.store.settings().githubOAuthClientId.trim();
+    const clientId = resolveGithubOAuthClientId(this.store.settings().githubOAuthClientId);
     try {
       const result = await this.tauri.githubDeviceLoginPoll(clientId, this.deviceCode);
       if (result.status === 'complete' && result.accessToken) {
@@ -185,21 +249,27 @@ export class GithubDeviceLoginDialog {
       this.errorText.set(result.errorDescription || `GitHub returned: ${result.status}`);
       this.step.set('error');
     } catch (err) {
-      this.errorText.set(String((err as { message?: string })?.message ?? err));
+      this.errorText.set(this.formatErr(err));
       this.step.set('error');
     }
+  }
+
+  private formatErr(err: unknown): string {
+    return String((err as { message?: string })?.message ?? err);
   }
 
   private reset(): void {
     this.stopPolling();
     this.deviceCode = '';
     this.userCode.set('');
-    this.verificationUri.set('https://github.com/login/device');
+    this.verificationUri.set(DEVICE_LOGIN_URL);
     this.verificationUriComplete.set(null);
     this.statusText.set('');
     this.errorText.set('');
     this.busy.set(false);
+    this.copiedCode.set(false);
+    this.showDevSetup.set(false);
     this.clientIdDraft.set(this.store.settings().githubOAuthClientId);
-    this.step.set(this.hasClientId() ? 'code' : 'setup');
+    this.step.set(this.hasClientId() ? 'code' : 'connect');
   }
 }

@@ -111,11 +111,17 @@ h2 {
 
 .row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.row .bl-btn {
+  flex: 1 1 auto;
 }
 
 footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.15rem;
@@ -139,4 +145,22 @@ footer {
 .icon-btn:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.dev-link {
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dev-link:hover {
+  color: var(--text-secondary);
 }

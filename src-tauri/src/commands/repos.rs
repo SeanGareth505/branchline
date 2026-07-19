@@ -1,4 +1,4 @@
-use crate::infrastructure::{git_cli, git2_repo, sqlite};
+use crate::infrastructure::{git2_repo, git_cli, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
 use chrono::Utc;
@@ -77,7 +77,10 @@ pub fn add_recent_repo(state: State<'_, AppState>, input: PathInput) -> AppResul
 }
 
 #[command]
-pub fn remove_recent_repo(state: State<'_, AppState>, input: PathInput) -> AppResult<Vec<RecentRepo>> {
+pub fn remove_recent_repo(
+    state: State<'_, AppState>,
+    input: PathInput,
+) -> AppResult<Vec<RecentRepo>> {
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
         sqlite::remove_recent_repo(&db, &input.path)?;
@@ -145,7 +148,10 @@ pub struct InitRepoInput {
 }
 
 #[command]
-pub fn clone_repository(state: State<'_, AppState>, input: CloneRepoInput) -> AppResult<RepoSummary> {
+pub fn clone_repository(
+    state: State<'_, AppState>,
+    input: CloneRepoInput,
+) -> AppResult<RepoSummary> {
     let url = input.url.trim();
     let dest = PathBuf::from(input.destination.trim());
     if url.is_empty() {

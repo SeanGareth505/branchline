@@ -68,12 +68,7 @@ pub fn get_commit_range(input: CommitRangeInput) -> AppResult<Vec<CommitInfo>> {
     let path = PathBuf::from(&input.path);
     let limit = input.limit.unwrap_or(500).clamp(1, 5000);
     git_cli::with_repo_lock(&path, |resolved| {
-        git2_repo::commit_range(
-            resolved,
-            input.from.as_deref(),
-            input.to.as_deref(),
-            limit,
-        )
+        git2_repo::commit_range(resolved, input.from.as_deref(), input.to.as_deref(), limit)
     })
 }
 
@@ -88,15 +83,7 @@ pub fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
     use crate::infrastructure::git_cli;
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
-    let out = git_cli::run_git(
-        &path,
-        &[
-            "blame",
-            "--line-porcelain",
-            "--",
-            &input.file,
-        ],
-    )?;
+    let out = git_cli::run_git(&path, &["blame", "--line-porcelain", "--", &input.file])?;
 
     let mut lines = Vec::new();
     let mut current_sha = String::new();

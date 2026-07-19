@@ -49,8 +49,22 @@ pub struct RunGitOutput {
 }
 
 const ALLOWED_CONSOLE_COMMANDS: &[&str] = &[
-    "status", "log", "diff", "show", "branch", "tag", "remote", "stash", "reflog", "rev-parse",
-    "ls-files", "shortlog", "describe", "version", "help", "blame",
+    "status",
+    "log",
+    "diff",
+    "show",
+    "branch",
+    "tag",
+    "remote",
+    "stash",
+    "reflog",
+    "rev-parse",
+    "ls-files",
+    "shortlog",
+    "describe",
+    "version",
+    "help",
+    "blame",
 ];
 
 const BLOCKED_ARG_PREFIXES: &[&str] = &[
@@ -110,7 +124,9 @@ fn args_are_safe(args: &[String]) -> Result<(), String> {
             .iter()
             .any(|a| a == "-D" || a == "-d" || a == "--delete" || a == "-m" || a == "--move")
     {
-        return Err("Branch mutations are not allowed from console — use Branchline actions".into());
+        return Err(
+            "Branch mutations are not allowed from console — use Branchline actions".into(),
+        );
     }
     if cmd == "tag" && args.iter().any(|a| a == "-d" || a == "--delete") {
         return Err("Tag deletion is not allowed from console — use Branchline actions".into());

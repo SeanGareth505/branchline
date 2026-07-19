@@ -57,7 +57,10 @@ pub fn list_tags(input: RepoPathInput) -> AppResult<Vec<TagInfo>> {
             name: parts[0].trim().to_string(),
             sha: parts[1].trim().to_string(),
             short_sha: parts[2].trim().to_string(),
-            message: parts.get(3).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            message: parts
+                .get(3)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         });
     }
     Ok(tags)
@@ -75,7 +78,12 @@ pub fn create_tag(input: CreateTagInput) -> AppResult<MutationOutput> {
         });
     }
     let target = input.target.as_deref().unwrap_or("HEAD");
-    if let Some(msg) = input.message.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(msg) = input
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         git_cli::run_git(&path, &["tag", "-a", name, "-m", msg, target])?;
     } else {
         git_cli::run_git(&path, &["tag", name, target])?;

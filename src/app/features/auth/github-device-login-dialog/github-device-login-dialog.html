@@ -17,15 +17,43 @@
         </button>
       </header>
 
-      @if (step() === 'setup') {
+      @if (step() === 'connect') {
         <p class="lead">
-          One-time setup: create a GitHub OAuth App with <strong>Device Flow</strong> enabled, then
-          paste the Client ID. After that, sign-in is just the code screen.
+          Connect your GitHub account to publish repos and work with pull requests.
+        </p>
+        <p class="status">
+          You’ll approve Branchline in your browser — no passwords pasted into the app.
+        </p>
+        @if (errorText()) {
+          <p class="error">{{ errorText() }}</p>
+        }
+        <footer>
+          <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="busy()"
+            (click)="connect()"
+          >
+            {{ busy() ? 'Starting…' : 'Connect with GitHub' }}
+          </button>
+        </footer>
+        <button type="button" class="dev-link" (click)="toggleDevSetup()">
+          Developer: set OAuth Client ID
+        </button>
+      } @else if (step() === 'dev-setup') {
+        <p class="lead">
+          Publisher-only: register one OAuth App with Device Flow, then paste the Client ID so all
+          users can Connect.
         </p>
         <ol class="steps">
-          <li>Open GitHub → Developer settings → OAuth Apps → New</li>
-          <li>Name: <code>Branchline</code>, Homepage: any URL, Callback: <code>http://127.0.0.1</code></li>
+          <li>GitHub → Developer settings → OAuth Apps → New</li>
+          <li>
+            Name: <code>Branchline</code>, Homepage &amp; Callback:
+            <code>http://127.0.0.1</code>
+          </li>
           <li>Enable <strong>Device Flow</strong>, register, copy Client ID</li>
+          <li>Paste below (or bake it into <code>github-oauth.ts</code> for releases)</li>
         </ol>
         <div class="row">
           <button type="button" class="bl-btn" (click)="openCreateOAuthApp()">Open GitHub</button>
@@ -37,20 +65,22 @@
             (ngModelChange)="clientIdDraft.set($event)"
             placeholder="Ov23li…"
             class="mono"
+            autocomplete="off"
+            spellcheck="false"
           />
         </label>
         @if (errorText()) {
           <p class="error">{{ errorText() }}</p>
         }
         <footer>
-          <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+          <button type="button" class="bl-btn" (click)="toggleDevSetup()">Back</button>
           <button
             type="button"
             class="bl-btn bl-btn-primary"
             [disabled]="busy() || !clientIdDraft().trim()"
             (click)="saveClientIdAndStart()"
           >
-            {{ busy() ? 'Starting…' : 'Continue' }}
+            {{ busy() ? 'Starting…' : 'Save &amp; connect' }}
           </button>
         </footer>
       } @else if (step() === 'code') {
@@ -60,6 +90,9 @@
         </div>
         <p class="status">{{ statusText() }}</p>
         <div class="row">
+          <button type="button" class="bl-btn" (click)="copyUserCode()">
+            {{ copiedCode() ? 'Copied' : 'Copy code' }}
+          </button>
           <button type="button" class="bl-btn bl-btn-primary" (click)="openDevicePage()">
             Open github.com/login/device
           </button>

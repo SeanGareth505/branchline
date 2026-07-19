@@ -1,6 +1,7 @@
 import { Component, HostListener, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppStore } from './core/app.store';
+import { UpdateService } from './core/update.service';
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 
 @Component({
@@ -11,11 +12,12 @@ import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 })
 export class App implements OnInit {
   private readonly store = inject(AppStore);
+  private readonly updates = inject(UpdateService);
   private readonly tooltips = inject(TooltipService);
 
   ngOnInit(): void {
     this.tooltips.init();
-    void this.store.init();
+    void this.store.init().then(() => void this.updates.init());
   }
 
   @HostListener('document:contextmenu', ['$event'])

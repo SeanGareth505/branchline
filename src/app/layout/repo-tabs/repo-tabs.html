@@ -4,8 +4,8 @@
       <div
         class="tab"
         role="tab"
-        [class.active]="store.currentRepo()?.path === repo.path && store.view() === 'browse'"
-        [attr.aria-selected]="store.currentRepo()?.path === repo.path && store.view() === 'browse'"
+        [class.active]="store.currentRepo()?.path === repo.path"
+        [attr.aria-selected]="store.currentRepo()?.path === repo.path"
         [title]="tooltip(repo.path, repo.branch)"
       >
         <button type="button" class="tab-main" (click)="select(repo.path)">

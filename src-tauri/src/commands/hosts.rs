@@ -99,7 +99,9 @@ pub fn list_host_repositories(
     input: Option<ListHostReposInput>,
 ) -> AppResult<Vec<HostRepository>> {
     let settings = load_settings_with_tokens(&state)?;
-    let connection_id = input.and_then(|v| v.connection_id).filter(|s| !s.trim().is_empty());
+    let connection_id = input
+        .and_then(|v| v.connection_id)
+        .filter(|s| !s.trim().is_empty());
 
     let connections: Vec<&ConnectionConfig> = settings
         .connections
@@ -218,7 +220,12 @@ pub fn publish_to_github(
     let auth_url = authenticated_https_url(&clone_url, &token)?;
     git_cli::run_git(
         &path,
-        &["push", "-u", &auth_url, &format!("HEAD:refs/heads/{branch}")],
+        &[
+            "push",
+            "-u",
+            &auth_url,
+            &format!("HEAD:refs/heads/{branch}"),
+        ],
     )
     .map_err(|e| {
         AppError::msg(format!(
@@ -233,14 +240,12 @@ pub fn publish_to_github(
         let tag = normalize_tag(&input.tag_name);
         if !tag.is_empty() {
             let _ = git_cli::run_git_allow_fail(&path, &["tag", &tag]);
-            let push_tag = git_cli::run_git(&path, &["push", &auth_url, &format!("refs/tags/{tag}")]);
+            let push_tag =
+                git_cli::run_git(&path, &["push", &auth_url, &format!("refs/tags/{tag}")]);
             if let Err(e) = push_tag {
                 return Ok(PublishToGithubOutput {
                     ok: true,
-                    message: format!(
-                        "Published {}. Tag push failed: {e}",
-                        repo.full_name
-                    ),
+                    message: format!("Published {}. Tag push failed: {e}", repo.full_name),
                     full_name: repo.full_name,
                     html_url: html_url.clone(),
                     clone_url,
@@ -462,19 +467,21 @@ fn fetch_gitlab_repos(connection: &ConnectionConfig) -> AppResult<Vec<HostReposi
             .json()
             .map_err(|e| AppError::msg(format!("Could not parse GitLab response: {e}")))?;
         let count = projects.len();
-        out.extend(projects.into_iter().map(|p| HostRepository {
-            id: format!("gitlab:{}", p.id),
-            name: p.name,
-            full_name: p.path_with_namespace,
-            clone_url: p.http_url_to_repo,
-            ssh_url: p.ssh_url_to_repo,
-            private: p
-                .visibility
-                .as_deref()
-                .map(|v| v != "public")
-                .unwrap_or(true),
-            provider: "gitlab".into(),
-            updated_at: p.last_activity_at,
+        out.extend(projects.into_iter().map(|p| {
+            HostRepository {
+                id: format!("gitlab:{}", p.id),
+                name: p.name,
+                full_name: p.path_with_namespace,
+                clone_url: p.http_url_to_repo,
+                ssh_url: p.ssh_url_to_repo,
+                private: p
+                    .visibility
+                    .as_deref()
+                    .map(|v| v != "public")
+                    .unwrap_or(true),
+                provider: "gitlab".into(),
+                updated_at: p.last_activity_at,
+            }
         }));
         if count < PER_PAGE as usize {
             break;

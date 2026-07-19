@@ -5,7 +5,9 @@
       <span>Branchline</span>
     </div>
     <h1>Set up your Git environment</h1>
-    <p class="lead">A short checklist before you browse repositories.</p>
+    <p class="lead">
+      A short checklist so Branchline can commit locally and sync with remotes like GitHub.
+    </p>
 
     <ul class="checklist">
       @for (item of items(); track item.id) {
@@ -21,6 +23,8 @@
     </ul>
 
     <div class="identity">
+      <h2 class="section-title">Commit identity</h2>
+      <p class="section-hint">Shown on every commit you make.</p>
       <label>
         Name
         <input [ngModel]="name()" (ngModelChange)="name.set($event)" />
@@ -32,9 +36,11 @@
       <button type="button" class="bl-btn" (click)="saveIdentity()">Save identity</button>
     </div>
 
+    <app-ssh-setup-panel [keyComment]="email()" (setupChanged)="refreshChecklist()" />
+
     <footer>
-      <button type="button" class="bl-btn" (click)="skip()">Skip & open</button>
-      <button type="button" class="bl-btn bl-btn-primary" (click)="complete()">Complete setup</button>
+      <button type="button" class="bl-btn" (click)="skip()">Skip for now</button>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="complete()">Continue</button>
     </footer>
   </div>
 </section>

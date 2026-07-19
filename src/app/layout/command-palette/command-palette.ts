@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import Fuse from 'fuse.js';
 import { AppStore, type AppView } from '../../core/app.store';
+import { UpdateService } from '../../core/update.service';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
 
 interface PaletteItem {
@@ -21,11 +22,13 @@ interface PaletteItem {
 export class CommandPalette {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
+  private readonly updates = inject(UpdateService);
   readonly query = signal('');
 
   private readonly actions = computed<PaletteItem[]>(() => {
     const store = this.store;
     const prompts = this.prompts;
+    const updates = this.updates;
     const items: PaletteItem[] = [
       {
         id: 'repos',
@@ -48,6 +51,28 @@ export class CommandPalette {
         label: 'Open Settings',
         group: 'Navigate',
         run: () => store.openSettings('appearance'),
+      },
+      {
+        id: 'about',
+        label: 'Open About / Updates',
+        group: 'Navigate',
+        run: () => store.openSettings('about'),
+      },
+      {
+        id: 'check-updates',
+        label: 'Check for updates',
+        group: 'App',
+        run: () => {
+          void updates.checkForUpdates({ silent: false }).then((found) => {
+            if (found) {
+              store.showInfo(`Update ${updates.availableVersion()} is available`);
+            } else if (updates.phase() === 'error') {
+              store.showError(updates.errorMessage() ?? 'Could not check for updates');
+            } else {
+              store.showSuccess('You are on the latest version');
+            }
+          });
+        },
       },
       {
         id: 'connections',

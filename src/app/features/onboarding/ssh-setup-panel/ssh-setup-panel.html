@@ -1,0 +1,86 @@
+<section class="ssh-panel" aria-labelledby="ssh-setup-title">
+  <header class="ssh-header">
+    <div>
+      <h2 id="ssh-setup-title">Connect with SSH</h2>
+      <p class="why">
+        SSH lets Branchline push and pull to GitHub (and other Git hosts) securely — without typing
+        a password every time. You create a key on this computer, then paste the public half into GitHub.
+      </p>
+    </div>
+    @if (setup(); as s) {
+      <span class="status-pill" [attr.data-ready]="s.keysFound">
+        {{ s.keysFound ? 'Ready' : 'Not set up' }}
+      </span>
+    }
+  </header>
+
+  @if (setup(); as s) {
+    @if (s.keysFound) {
+      <ol class="steps ready">
+        <li class="done">SSH key found on this computer</li>
+        <li>Copy your public key</li>
+        <li>Open GitHub → SSH keys → New SSH key → paste → Save</li>
+      </ol>
+
+      @if (s.preferredKeyName || s.privateKeyPaths.length) {
+        <p class="meta mono">
+          {{ s.preferredKeyName ? '~/.ssh/' + s.preferredKeyName : s.privateKeyPaths[0] }}
+        </p>
+      }
+
+      @if (s.publicKey) {
+        <pre class="pubkey mono" tabindex="0">{{ s.publicKey }}</pre>
+      } @else {
+        <p class="hint">Key files exist, but the .pub file could not be read. Open ~/.ssh and copy it manually.</p>
+      }
+
+      <div class="actions">
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!s.publicKey"
+          (click)="copyPublicKey()"
+        >
+          {{ copied() ? 'Copied' : 'Copy public key' }}
+        </button>
+        <button type="button" class="bl-btn" (click)="openGithubKeys()">
+          Open GitHub SSH settings
+        </button>
+        <button type="button" class="bl-btn" (click)="openGuide()">View guide</button>
+        <button type="button" class="bl-btn" (click)="refresh()">Refresh</button>
+      </div>
+    } @else {
+      <ol class="steps">
+        <li>Generate an SSH key (Branchline can do this)</li>
+        <li>Copy the public key</li>
+        <li>Add it on GitHub under Settings → SSH and GPG keys</li>
+      </ol>
+
+      <div class="actions">
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="busy()"
+          (click)="generateKey()"
+        >
+          {{ busy() ? 'Generating…' : 'Generate SSH key' }}
+        </button>
+        <button type="button" class="bl-btn" (click)="openGuide()">How SSH works</button>
+        <button type="button" class="bl-btn" (click)="openGithubKeys()">
+          Open GitHub SSH settings
+        </button>
+        <button type="button" class="bl-btn" (click)="refresh()">I already have a key</button>
+      </div>
+    }
+
+    @if (s.message && s.generated) {
+      <p class="hint success">{{ s.message }}</p>
+    }
+  } @else if (!errorText()) {
+    <p class="hint">Checking for SSH keys…</p>
+  }
+
+  @if (errorText()) {
+    <p class="error">{{ errorText() }}</p>
+  }
+</section>

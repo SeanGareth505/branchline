@@ -253,11 +253,13 @@
             </label>
           </div>
           <div class="composer-actions">
-            <button type="button" class="bl-btn" (click)="store.softUndoLastCommit()">
-              <ng-icon name="lucideUndo2" size="14" />
-              Undo
-            </button>
-            <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+            <div class="composer-actions-secondary">
+              <button type="button" class="bl-btn" (click)="store.softUndoLastCommit()">
+                <ng-icon name="lucideUndo2" size="14" />
+                Undo
+              </button>
+              <button type="button" class="bl-btn" (click)="close()">Cancel</button>
+            </div>
             <button
               type="button"
               class="bl-btn bl-btn-primary commit-btn"

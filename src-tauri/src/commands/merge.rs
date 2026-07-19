@@ -99,7 +99,8 @@ pub fn abort_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
 
-    let (has_merge, _, _) = git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+    let (has_merge, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
     if has_merge {
         let out = git_cli::run_git(&path, &["merge", "--abort"])?;
         return Ok(MutationOutput {
@@ -112,8 +113,10 @@ pub fn abort_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
         });
     }
 
-    let (has_rebase, _, _) = git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REBASE_HEAD"]);
-    let rebase_dir = path.join(".git/rebase-merge").exists() || path.join(".git/rebase-apply").exists();
+    let (has_rebase, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REBASE_HEAD"]);
+    let rebase_dir =
+        path.join(".git/rebase-merge").exists() || path.join(".git/rebase-apply").exists();
     if has_rebase || rebase_dir {
         let out = git_cli::run_git(&path, &["rebase", "--abort"])?;
         return Ok(MutationOutput {
@@ -174,8 +177,10 @@ pub fn continue_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
         });
     }
 
-    let (has_rebase, _, _) = git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REBASE_HEAD"]);
-    let rebase_dir = path.join(".git/rebase-merge").exists() || path.join(".git/rebase-apply").exists();
+    let (has_rebase, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "REBASE_HEAD"]);
+    let rebase_dir =
+        path.join(".git/rebase-merge").exists() || path.join(".git/rebase-apply").exists();
     if has_rebase || rebase_dir {
         let out = git_cli::run_git(&path, &["rebase", "--continue"])?;
         return Ok(MutationOutput {
@@ -188,7 +193,8 @@ pub fn continue_operation(input: RepoOnlyInput) -> AppResult<MutationOutput> {
         });
     }
 
-    let (has_merge, _, _) = git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+    let (has_merge, _, _) =
+        git_cli::run_git_allow_fail(&path, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
     if has_merge {
         let out = git_cli::run_git(&path, &["commit", "--no-edit"])?;
         return Ok(MutationOutput {
@@ -231,6 +237,10 @@ pub fn reset_to(input: ResetInput) -> AppResult<MutationOutput> {
     git_cli::run_git(&path, &["reset", mode, &input.target])?;
     Ok(MutationOutput {
         ok: true,
-        message: format!("Reset ({}) to {}", input.mode, &input.target[..7.min(input.target.len())]),
+        message: format!(
+            "Reset ({}) to {}",
+            input.mode,
+            &input.target[..7.min(input.target.len())]
+        ),
     })
 }

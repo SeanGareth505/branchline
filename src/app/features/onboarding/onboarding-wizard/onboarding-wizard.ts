@@ -4,10 +4,11 @@ import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { OnboardingChecklistItem } from '../../../core/models';
 import { BrandMark } from '../../../shared/ui/brand-mark/brand-mark';
+import { SshSetupPanel } from '../ssh-setup-panel/ssh-setup-panel';
 
 @Component({
   selector: 'app-onboarding-wizard',
-  imports: [FormsModule, BrandMark],
+  imports: [FormsModule, BrandMark, SshSetupPanel],
   templateUrl: './onboarding-wizard.html',
   styleUrl: './onboarding-wizard.scss',
 })
@@ -33,11 +34,15 @@ export class OnboardingWizard implements OnInit {
     return 'Needs attention';
   }
 
+  async refreshChecklist(): Promise<void> {
+    const status = await this.tauri.getOnboardingStatus();
+    this.items.set(status.items);
+  }
+
   async saveIdentity(): Promise<void> {
     await this.tauri.setGitIdentity(this.name(), this.email());
     await this.store.refreshIdentity();
-    const status = await this.tauri.getOnboardingStatus();
-    this.items.set(status.items);
+    await this.refreshChecklist();
   }
 
   async complete(): Promise<void> {

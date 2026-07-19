@@ -40,7 +40,14 @@ export type AppView =
   | 'profiles'
   | 'automation'
   | 'templates';
-export type SettingsSection = 'repos' | 'appearance' | 'git' | 'connections' | 'ssh' | 'tools';
+export type SettingsSection =
+  | 'repos'
+  | 'appearance'
+  | 'git'
+  | 'connections'
+  | 'ssh'
+  | 'tools'
+  | 'about';
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
 export interface ToastState {
@@ -130,6 +137,7 @@ export class AppStore {
   readonly toast = signal<ToastState | null>(null);
   private toastTimer: number | null = null;
   private toastSeq = 0;
+  readonly refreshingRepo = signal(false);
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -145,6 +153,8 @@ export class AppStore {
   readonly hostRepos = signal<HostRepository[]>([]);
   readonly hostReposLoading = signal(false);
   readonly hostReposError = signal<string | null>(null);
+  private hostReposFetchedAt = 0;
+  private static readonly HOST_REPOS_TTL_MS = 5 * 60 * 1000;
   readonly createBranchDialogOpen = signal(false);
   readonly publishGithubDialogOpen = signal(false);
   readonly githubDeviceLoginOpen = signal(false);
@@ -313,6 +323,7 @@ export class AppStore {
       }
       if (target && ['github', 'gitlab', 'azureDevOps'].includes(target.provider)) {
         this.hostRepos.set([]);
+        this.hostReposFetchedAt = 0;
       }
       this.showSuccess('Disconnected');
     } catch (err) {
@@ -737,20 +748,53 @@ export class AppStore {
     );
   }
 
-  async refreshHostRepositories(connectionId?: string): Promise<void> {
+  async refreshHostRepositories(
+    connectionId?: string,
+    opts?: { force?: boolean; notify?: boolean },
+  ): Promise<void> {
     if (!this.hasLinkedPrHost()) {
       this.hostRepos.set([]);
       this.hostReposError.set(null);
+      this.hostReposFetchedAt = 0;
+      if (opts?.notify) {
+        this.showWarning('Sign in to GitHub or GitLab to load remote repositories');
+      }
       return;
     }
+    const fresh =
+      !opts?.force &&
+      this.hostRepos().length > 0 &&
+      Date.now() - this.hostReposFetchedAt < AppStore.HOST_REPOS_TTL_MS;
+    if (fresh) {
+      if (opts?.notify) {
+        const n = this.hostRepos().length;
+        this.showToast(n === 1 ? '1 remote repository ready' : `${n} remote repositories ready`, {
+          kind: 'success',
+          durationMs: 2200,
+        });
+      }
+      return;
+    }
+
     this.hostReposLoading.set(true);
     this.hostReposError.set(null);
     try {
       const repos = await this.tauri.listHostRepositories(connectionId);
       this.hostRepos.set(repos);
+      this.hostReposFetchedAt = Date.now();
+      if (opts?.notify) {
+        this.showToast(
+          repos.length === 1
+            ? 'Loaded 1 remote repository'
+            : `Loaded ${repos.length} remote repositories`,
+          { kind: 'success', durationMs: 2800 },
+        );
+      }
     } catch (err) {
       this.hostRepos.set([]);
       this.hostReposError.set(this.formatError(err));
+      this.hostReposFetchedAt = 0;
+      if (opts?.notify) this.showError(err);
     } finally {
       this.hostReposLoading.set(false);
     }
@@ -774,7 +818,7 @@ export class AppStore {
     });
     try {
       await this.saveSettings({ connections });
-      await this.refreshHostRepositories(provider);
+      await this.refreshHostRepositories(provider, { force: true });
       this.showSuccess(`Signed in to ${provider === 'github' ? 'GitHub' : 'GitLab'}`);
       return true;
     } catch (err) {
@@ -844,10 +888,15 @@ export class AppStore {
       });
       await this.refreshRepo();
       this.showSuccess(result.message);
-      if (result.releaseUrl) {
-        window.open(result.releaseUrl, '_blank', 'noopener');
-      } else if (result.htmlUrl) {
-        window.open(result.htmlUrl, '_blank', 'noopener');
+      const openUrl = result.releaseUrl || result.htmlUrl;
+      if (openUrl) {
+        try {
+          await this.tauri.openExternalUrl(openUrl);
+        } catch {
+          this.showWarning(
+            `Published, but could not open the browser. Open it manually: ${openUrl}`,
+          );
+        }
       }
       this.closePublishGithubDialog();
       return true;
@@ -959,9 +1008,13 @@ export class AppStore {
     }
   }
 
-  async refreshRepo(): Promise<void> {
+  async refreshRepo(opts?: { notify?: boolean }): Promise<void> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
+    if (!path) {
+      if (opts?.notify) this.showWarning('Open a repository first');
+      return;
+    }
+    if (opts?.notify) this.refreshingRepo.set(true);
     try {
       const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
         await Promise.all([
@@ -990,8 +1043,21 @@ export class AppStore {
         this.selectedShas.set([commits[0].sha]);
       }
       this.updateNextAction(status);
+      if (opts?.notify) {
+        const changed =
+          status.staged.length + status.unstaged.length + status.untracked.length;
+        const branch = status.branch || 'HEAD';
+        this.showToast(
+          changed
+            ? `Refreshed ${branch} · ${changed} change${changed === 1 ? '' : 's'}`
+            : `Refreshed ${branch} · clean`,
+          { kind: 'success', durationMs: 2500 },
+        );
+      }
     } catch (err) {
       this.showError(err);
+    } finally {
+      if (opts?.notify) this.refreshingRepo.set(false);
     }
   }
 
@@ -1332,7 +1398,7 @@ export class AppStore {
     try {
       const result = await this.tauri.fetch(path);
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.showToast(result.message || 'Fetched from remote', { kind: 'success', durationMs: 3200 });
     } catch (err) {
       this.showError(err);
     }
@@ -1346,7 +1412,10 @@ export class AppStore {
         ? await this.tauri.pullWithOptions(path, { rebase: true })
         : await this.tauri.pull(path);
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.showToast(result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'), {
+        kind: 'success',
+        durationMs: 3200,
+      });
     } catch (err) {
       this.showError(err);
     }
@@ -1373,14 +1442,14 @@ export class AppStore {
     try {
       const result = await this.tauri.push(path);
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.showToast(result.message || 'Pushed to remote', { kind: 'success', durationMs: 3200 });
     } catch (err) {
       const message = this.formatError(err);
       if (/non-fast-forward|rejected|fetch first/i.test(message)) {
         await this.openSafety('forcePush', status?.branch);
         return;
       }
-      this.showToast(message);
+      this.showError(message);
     }
   }
 

@@ -16,7 +16,9 @@
 }
 
 .card {
-  width: min(560px, 100%);
+  width: min(640px, 100%);
+  max-height: min(92vh, 920px);
+  overflow: auto;
   padding: 1.85rem;
   display: flex;
   flex-direction: column;
@@ -112,6 +114,19 @@ li[data-status='needsAttention'] .mark {
 .identity {
   display: grid;
   gap: 0.65rem;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.section-hint {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 label {

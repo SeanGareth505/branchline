@@ -577,6 +577,62 @@
             }
           </article>
         }
+
+        @case ('about') {
+          <article class="bl-panel block">
+            <h2 class="block-title">Branchline</h2>
+            <p class="block-hint">Desktop Git client</p>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Version</strong>
+                <span class="mono">{{ updates.currentVersion() || '—' }}</span>
+              </div>
+              <div class="setting-control">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="updates.phase() === 'checking' || updates.phase() === 'downloading'"
+                  (click)="checkForUpdates()"
+                >
+                  @if (updates.phase() === 'checking') {
+                    Checking…
+                  } @else {
+                    Check for updates
+                  }
+                </button>
+              </div>
+            </div>
+            @if (updates.availableVersion(); as next) {
+              <div class="setting">
+                <div class="setting-label">
+                  <strong>Update available</strong>
+                  <span>Version {{ next }}</span>
+                </div>
+                <div class="setting-control">
+                  <button
+                    type="button"
+                    class="bl-btn bl-btn-primary"
+                    [disabled]="updates.phase() === 'downloading'"
+                    (click)="updates.installAndRelaunch()"
+                  >
+                    @if (updates.phase() === 'downloading') {
+                      @if (updates.downloadPercent(); as pct) {
+                        Downloading {{ pct }}%
+                      } @else {
+                        Downloading…
+                      }
+                    } @else {
+                      Update & restart
+                    }
+                  </button>
+                </div>
+              </div>
+            }
+            @if (updates.errorMessage(); as err) {
+              <p class="block-hint warn-inline">{{ err }}</p>
+            }
+          </article>
+        }
       }
     </div>
   </div>

@@ -1,6 +1,6 @@
 use crate::domain::safety::{self, SafetyAction, SafetyAnalysis};
 use crate::domain::undo;
-use crate::infrastructure::{git_cli, git2_repo, sqlite};
+use crate::infrastructure::{git2_repo, git_cli, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -192,7 +192,9 @@ pub fn execute_safe_action(
             });
         }
 
-        if matches!(analysis.action, SafetyAction::ForcePush) && !use_recommended && !allow_bare_force
+        if matches!(analysis.action, SafetyAction::ForcePush)
+            && !use_recommended
+            && !allow_bare_force
         {
             return Ok(ExecuteSafeActionOutput {
                 ok: false,

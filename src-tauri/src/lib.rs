@@ -11,13 +11,21 @@ pub use state::AppState;
 pub fn run() {
     let app_state = AppState::new().expect("failed to initialize Branchline app state");
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(app_state)
+        .manage(app_state);
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -112,6 +120,8 @@ pub fn run() {
             commands::jira::transition_jira_issue,
             commands::git_env::get_git_env,
             commands::git_env::set_git_config,
+            commands::ssh_setup::get_ssh_setup,
+            commands::ssh_setup::generate_ssh_key,
             commands::list_mock_pull_requests,
             commands::list_mock_jira_issues,
             commands::list_profiles,

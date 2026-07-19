@@ -35,7 +35,13 @@ pub struct OnboardingStatusOutput {
 fn ssh_keys_found() -> bool {
     if let Some(home) = dirs::home_dir() {
         let ssh = home.join(".ssh");
-        for name in ["id_ed25519", "id_rsa", "id_ecdsa", "id_ed25519.pub", "id_rsa.pub"] {
+        for name in [
+            "id_ed25519",
+            "id_rsa",
+            "id_ecdsa",
+            "id_ed25519.pub",
+            "id_rsa.pub",
+        ] {
             if ssh.join(name).exists() {
                 return true;
             }
@@ -96,11 +102,11 @@ fn build_items() -> Vec<OnboardingChecklistItem> {
         },
         OnboardingChecklistItem {
             id: "ssh".into(),
-            label: "SSH keys".into(),
+            label: "SSH for Git remotes".into(),
             description: if ssh_keys_found() {
-                "SSH key files found in ~/.ssh".into()
+                "Key found — use it to push/pull to GitHub and other hosts".into()
             } else {
-                "No common SSH keys found (optional)".into()
+                "Needed to push and pull over SSH (optional if you use HTTPS)".into()
             },
             status: if ssh_keys_found() {
                 ChecklistStatus::Verified
@@ -141,7 +147,10 @@ fn build_items() -> Vec<OnboardingChecklistItem> {
 
 #[command]
 pub fn get_onboarding_status(state: State<'_, AppState>) -> AppResult<OnboardingStatusOutput> {
-    let db = state.db.lock().map_err(|e| crate::AppError::msg(e.to_string()))?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|e| crate::AppError::msg(e.to_string()))?;
     let stored = sqlite::get_onboarding(&db)?;
     let items = build_items();
     let _ = sqlite::set_onboarding_checklist(&db, &serde_json::to_string(&items)?);
@@ -155,7 +164,10 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> AppResult<Onboarding
 #[command]
 pub fn complete_onboarding(state: State<'_, AppState>) -> AppResult<OnboardingStatusOutput> {
     {
-        let db = state.db.lock().map_err(|e| crate::AppError::msg(e.to_string()))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| crate::AppError::msg(e.to_string()))?;
         sqlite::set_onboarding_complete(&db, true, false)?;
     }
     get_onboarding_status(state)
@@ -164,7 +176,10 @@ pub fn complete_onboarding(state: State<'_, AppState>) -> AppResult<OnboardingSt
 #[command]
 pub fn skip_onboarding(state: State<'_, AppState>) -> AppResult<OnboardingStatusOutput> {
     {
-        let db = state.db.lock().map_err(|e| crate::AppError::msg(e.to_string()))?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|e| crate::AppError::msg(e.to_string()))?;
         sqlite::set_onboarding_complete(&db, true, true)?;
     }
     let mut status = get_onboarding_status(state)?;

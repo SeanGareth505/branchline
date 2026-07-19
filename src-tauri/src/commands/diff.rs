@@ -37,7 +37,8 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
     git_cli::ensure_repo(&path)?;
 
     let mut args: Vec<String> = vec!["diff".into(), "--no-color".into()];
-    let mut name_args: Vec<String> = vec!["diff".into(), "--name-status".into(), "--no-color".into()];
+    let mut name_args: Vec<String> =
+        vec!["diff".into(), "--name-status".into(), "--no-color".into()];
 
     if input.staged.unwrap_or(false) {
         args.push("--cached".into());

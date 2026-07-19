@@ -1,89 +1,143 @@
-<div class="shell" [class.dummy-backend]="store.isDummyBackend">
+<div
+  class="shell"
+  [class.dummy-backend]="store.isDummyBackend"
+  [class.update-available]="updates.bannerVisible()"
+>
   @if (store.isDummyBackend) {
     <div class="dummy-banner" role="status">
       <strong>DUMMY DATA</strong>
-      <span>Browser preview — commits, branches, and files are fake. Run the desktop app and open a real repository to use live Git.</span>
+      <span
+        >Browser preview — commits, branches, and files are fake. Run the desktop app and open a real
+        repository to use live Git.</span
+      >
     </div>
   }
 
-  @if (store.view() !== 'onboarding') {
-    <header class="top" [class.browsing]="store.view() === 'browse' && store.currentRepo()">
-      <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home">
-        <app-brand-mark [size]="18" />
-        <span>Branchline</span>
-      </button>
-      <app-project-switcher />
-      <app-repo-tabs />
+  <app-update-banner />
 
-      <nav>
-        <button type="button" [class.active]="isActive('prs')" (click)="nav('prs')">
-          <ng-icon name="lucideGitPullRequest" size="14" />
-          PRs
-        </button>
-        <button type="button" [class.active]="isActive('jira')" (click)="nav('jira')">
-          <ng-icon name="lucideTicket" size="14" />
-          Jira
-        </button>
-        @if (!store.settings().simpleMode) {
-          <button type="button" [class.active]="isActive('profiles')" (click)="nav('profiles')">
-            <ng-icon name="lucideUser" size="14" />
-            Profiles
+  @if (store.view() !== 'onboarding') {
+    <header class="chrome">
+      <div class="chrome-nav">
+        <div class="chrome-left">
+          <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home">
+            <app-brand-mark [size]="18" />
+            <span>Branchline</span>
           </button>
-          <button type="button" [class.active]="isActive('automation')" (click)="nav('automation')">
-            <ng-icon name="lucideWorkflow" size="14" />
-            Automation
-          </button>
-          <button type="button" [class.active]="isActive('templates')" (click)="nav('templates')">
-            <ng-icon name="lucideFileText" size="14" />
-            Templates
-          </button>
+          <app-project-switcher />
+          <app-repo-tabs />
+        </div>
+
+        @if (store.currentRepo()) {
+          <nav class="chrome-views" aria-label="Repository views">
+            <button
+              type="button"
+              [class.active]="isActive('browse')"
+              (click)="nav('browse')"
+              title="Repository"
+            >
+              <ng-icon name="lucideGitBranch" size="14" />
+              <span>Repo</span>
+            </button>
+            <button
+              type="button"
+              [class.active]="isActive('prs')"
+              (click)="nav('prs')"
+              title="Pull requests"
+            >
+              <ng-icon name="lucideGitPullRequest" size="14" />
+              <span>PRs</span>
+            </button>
+            <button
+              type="button"
+              [class.active]="isActive('jira')"
+              (click)="nav('jira')"
+              title="Jira"
+            >
+              <ng-icon name="lucideTicket" size="14" />
+              <span>Jira</span>
+            </button>
+            @if (!store.settings().simpleMode) {
+              <button
+                type="button"
+                [class.active]="isActive('profiles')"
+                (click)="nav('profiles')"
+                title="Profiles"
+              >
+                <ng-icon name="lucideUser" size="14" />
+                <span>Profiles</span>
+              </button>
+              <button
+                type="button"
+                [class.active]="isActive('automation')"
+                (click)="nav('automation')"
+                title="Automation"
+              >
+                <ng-icon name="lucideWorkflow" size="14" />
+                <span>Automation</span>
+              </button>
+              <button
+                type="button"
+                [class.active]="isActive('templates')"
+                (click)="nav('templates')"
+                title="Templates"
+              >
+                <ng-icon name="lucideFileText" size="14" />
+                <span>Templates</span>
+              </button>
+            }
+          </nav>
         }
-        <button
-          type="button"
-          [class.active]="isActive('settings')"
-          (click)="nav('settings')"
-        >
-          <ng-icon name="lucideSettings" size="14" />
-          Settings
-        </button>
-      </nav>
+
+        <div class="chrome-right">
+          <button
+            type="button"
+            class="util"
+            [class.active]="isActive('settings')"
+            (click)="nav('settings')"
+            title="Settings"
+          >
+            <ng-icon name="lucideSettings" size="15" />
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            class="util"
+            (click)="store.toggleSimpleMode()"
+            [attr.aria-pressed]="store.settings().simpleMode"
+            [title]="
+              store.settings().simpleMode
+                ? 'Simple mode on — click for Advanced'
+                : 'Advanced mode on — click for Simple'
+            "
+          >
+            {{ store.settings().simpleMode ? 'Simple' : 'Advanced' }}
+          </button>
+          <button
+            type="button"
+            class="util icon-only"
+            (click)="store.toggleTheme()"
+            [attr.aria-label]="themeToggleLabel()"
+            [title]="themeToggleLabel()"
+          >
+            <ng-icon [name]="themeToggleIcon()" size="15" />
+          </button>
+          <button
+            type="button"
+            class="util icon-only"
+            (click)="store.paletteOpen.set(true)"
+            aria-label="Command palette (⌘K)"
+            title="Command palette (⌘K)"
+          >
+            <ng-icon name="lucideCommand" size="15" />
+          </button>
+        </div>
+      </div>
 
       @if (store.view() === 'browse' && store.currentRepo()) {
-        <app-repo-toolbar class="repo-tools" />
+        <div class="chrome-tools">
+          <app-repo-toolbar />
+        </div>
       }
-
-      <div class="top-actions">
-        <button
-          type="button"
-          class="bl-btn"
-          (click)="store.toggleSimpleMode()"
-          [title]="
-            store.settings().simpleMode
-              ? 'Simple mode: Profiles, Automation, and Templates are hidden. Click for Advanced.'
-              : 'Advanced mode: all navigation is shown. Click for Simple.'
-          "
-        >
-          {{ store.settings().simpleMode ? 'Simple' : 'Advanced' }}
-        </button>
-          <button
-          type="button"
-          class="bl-btn"
-          (click)="store.toggleTheme()"
-          [attr.aria-label]="themeToggleLabel()"
-          [title]="themeToggleLabel()"
-        >
-          <ng-icon [name]="themeToggleIcon()" size="15" />
-        </button>
-        <button
-          type="button"
-          class="bl-btn"
-          (click)="store.paletteOpen.set(true)"
-          aria-label="Command palette (⌘K)"
-          title="Command palette (⌘K)"
-        >
-          <ng-icon name="lucideCommand" size="15" />
-        </button>
-      </div>
     </header>
   }
 

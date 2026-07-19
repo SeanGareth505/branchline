@@ -82,8 +82,9 @@ pub fn save_ignore_file(input: SaveIgnoreFileInput) -> AppResult<MutationOutput>
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let (kind, file_path) = resolve_ignore_path(path, &input.kind)?;
         if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| crate::AppError::msg(format!("Failed to create ignore directory: {e}")))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                crate::AppError::msg(format!("Failed to create ignore directory: {e}"))
+            })?;
         }
         let content = if input.content.ends_with('\n') || input.content.is_empty() {
             input.content.clone()

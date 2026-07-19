@@ -77,6 +77,21 @@ Then add GitHub secrets: `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_K
 
 Workflow: `.github/workflows/release-desktop.yml` — same tag push also builds desktop installers onto the Release.
 
+In-app updates (desktop) need a signing key in GitHub Actions. Generate once (already done locally under `.keys/`, gitignored):
+
+```bash
+npm run tauri signer generate -- -w .keys/branchline.key --ci
+```
+
+Add repo secrets:
+
+- `TAURI_SIGNING_PRIVATE_KEY` — full contents of `.keys/branchline.key`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — leave empty if the key has no password
+
+The matching public key is already in `src-tauri/tauri.conf.json`. After a signed release, the desktop app can notify and install updates without a manual reinstall.
+
+Android sideload builds still need a new APK install.
+
 ## Layout
 
 - **Dashboard** — recent / pinned repos, open, clone, init

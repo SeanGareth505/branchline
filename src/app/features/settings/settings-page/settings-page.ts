@@ -13,6 +13,7 @@ import type {
 } from '../../../core/models';
 import { Dashboard } from '../../../layout/dashboard/dashboard';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { UpdateService } from '../../../core/update.service';
 
 @Component({
   selector: 'app-settings-page',
@@ -22,6 +23,7 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 })
 export class SettingsPage implements OnInit {
   readonly store = inject(AppStore);
+  readonly updates = inject(UpdateService);
   private readonly tauri = inject(TauriService);
   private readonly prompts = inject(PromptService);
 
@@ -43,6 +45,7 @@ export class SettingsPage implements OnInit {
     { id: 'connections', label: 'Connections', hint: 'Link GitHub, GitLab, Azure DevOps, and Jira' },
     { id: 'ssh', label: 'SSH', hint: 'Keys and credential helper' },
     { id: 'tools', label: 'Tools', hint: 'Editor, diff, and merge tools' },
+    { id: 'about', label: 'About', hint: 'Version and updates' },
   ];
 
   readonly sectionMeta = computed(
@@ -149,7 +152,7 @@ export class SettingsPage implements OnInit {
   providerHint(provider: string): string {
     switch (provider) {
       case 'github':
-        return 'Personal access token with repo + pull_request scopes.';
+        return 'Connect with GitHub (browser approval), or paste a PAT with repo scope.';
       case 'gitlab':
         return 'Personal access token with api scope. Self-hosted: change base URL.';
       case 'azureDevOps':
@@ -325,6 +328,19 @@ export class SettingsPage implements OnInit {
     } catch (err) {
       this.store.showError(err);
     }
+  }
+
+  async checkForUpdates(): Promise<void> {
+    const found = await this.updates.checkForUpdates({ silent: false });
+    if (found) {
+      this.store.showInfo(`Update ${this.updates.availableVersion()} is available`);
+      return;
+    }
+    if (this.updates.phase() === 'error') {
+      this.store.showError(this.updates.errorMessage() ?? 'Could not check for updates');
+      return;
+    }
+    this.store.showSuccess('You are on the latest version');
   }
 
   async setCredentialHelper(value: string): Promise<void> {

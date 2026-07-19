@@ -1,0 +1,33 @@
+@if (updates.bannerVisible() && updates.availableVersion(); as version) {
+  <div class="update-banner" role="status">
+    <div class="copy">
+      <strong>Update available</strong>
+      <span>
+        Branchline {{ version }} is ready
+        @if (updates.phase() === 'downloading') {
+          @if (updates.downloadPercent(); as pct) {
+            — downloading {{ pct }}%
+          } @else {
+            — downloading…
+          }
+        }
+      </span>
+    </div>
+    <div class="actions">
+      @if (updates.phase() === 'downloading') {
+        <span class="busy">Installing…</span>
+      } @else {
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          (click)="updates.installAndRelaunch()"
+        >
+          Update & restart
+        </button>
+        <button type="button" class="bl-btn quiet" (click)="updates.dismissBanner()">
+          Later
+        </button>
+      }
+    </div>
+  </div>
+}

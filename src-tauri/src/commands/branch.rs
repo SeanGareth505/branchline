@@ -1,5 +1,5 @@
 use crate::domain::undo;
-use crate::infrastructure::{git_cli, git2_repo, sqlite};
+use crate::infrastructure::{git2_repo, git_cli, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -218,19 +218,12 @@ pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
     let out = git_cli::run_git(&path, &["pull", remote])?;
     Ok(MutationOutput {
         ok: true,
-        message: if out.is_empty() {
-            "Pulled".into()
-        } else {
-            out
-        },
+        message: if out.is_empty() { "Pulled".into() } else { out },
     })
 }
 
 #[command]
-pub fn push(
-    state: State<'_, AppState>,
-    input: RemoteActionInput,
-) -> AppResult<MutationOutput> {
+pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<MutationOutput> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
     let branch = git2_repo::current_branch(&path)?;
@@ -243,10 +236,6 @@ pub fn push(
     let out = git_cli::run_git(&path, &args)?;
     Ok(MutationOutput {
         ok: true,
-        message: if out.is_empty() {
-            "Pushed".into()
-        } else {
-            out
-        },
+        message: if out.is_empty() { "Pushed".into() } else { out },
     })
 }

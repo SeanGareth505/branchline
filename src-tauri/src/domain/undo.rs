@@ -158,7 +158,9 @@ fn restore(db: &Db, entry: &UndoEntry) -> AppResult<()> {
         "hard_reset" => {
             if let Some(backup) = entry.payload.get("backupBranch").and_then(|v| v.as_str()) {
                 git_cli::run_git(path, &["reset", "--hard", backup])?;
-            } else if let Some(previous) = entry.payload.get("previousHead").and_then(|v| v.as_str()) {
+            } else if let Some(previous) =
+                entry.payload.get("previousHead").and_then(|v| v.as_str())
+            {
                 git_cli::run_git(path, &["reset", "--hard", previous])?;
             }
         }

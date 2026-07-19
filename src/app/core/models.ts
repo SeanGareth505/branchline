@@ -25,6 +25,16 @@ export interface OnboardingStatusOutput {
   items: OnboardingChecklistItem[];
 }
 
+export interface SshSetupOutput {
+  keysFound: boolean;
+  privateKeyPaths: string[];
+  publicKeyPath: string | null;
+  publicKey: string | null;
+  preferredKeyName: string | null;
+  generated: boolean;
+  message: string;
+}
+
 export interface RecentRepo {
   path: string;
   name: string;

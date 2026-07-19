@@ -60,20 +60,18 @@ pub fn cherry_pick_preview(input: CherryPickInput) -> AppResult<CherryPickPrevie
     let mut estimated_conflicts = false;
 
     for sha in &input.shas {
-        let subject = git_cli::run_git(&path, &["log", "-1", "--pretty=%s", sha]).unwrap_or_default();
-        let author = git_cli::run_git(&path, &["log", "-1", "--pretty=%an", sha]).unwrap_or_default();
+        let subject =
+            git_cli::run_git(&path, &["log", "-1", "--pretty=%s", sha]).unwrap_or_default();
+        let author =
+            git_cli::run_git(&path, &["log", "-1", "--pretty=%an", sha]).unwrap_or_default();
         let short_sha =
             git_cli::run_git(&path, &["rev-parse", "--short", sha]).unwrap_or_else(|_| sha.clone());
-        let (ok, _, _) = git_cli::run_git_allow_fail(
-            &path,
-            &["merge-base", "--is-ancestor", sha, "HEAD"],
-        );
+        let (ok, _, _) =
+            git_cli::run_git_allow_fail(&path, &["merge-base", "--is-ancestor", sha, "HEAD"]);
         let already_applied = ok;
 
-        let (tree_ok, tree_out, _) = git_cli::run_git_allow_fail(
-            &path,
-            &["merge-tree", "--write-tree", "HEAD", sha],
-        );
+        let (tree_ok, tree_out, _) =
+            git_cli::run_git_allow_fail(&path, &["merge-tree", "--write-tree", "HEAD", sha]);
         if !tree_ok || tree_out.to_lowercase().contains("conflict") {
             estimated_conflicts = true;
         }

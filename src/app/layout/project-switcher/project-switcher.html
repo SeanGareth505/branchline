@@ -69,7 +69,7 @@
         <input
           #searchInput
           type="search"
-          placeholder="Search repositories…"
+          placeholder="Search local and remote repos…"
           [ngModel]="filter()"
           (ngModelChange)="onFilterChange($event)"
           (keydown)="onSearchKeydown($event)"
@@ -77,40 +77,165 @@
           aria-label="Search repositories"
         />
         @if (filter()) {
-          <kbd class="count">
-            {{ tab() === 'local' ? localCount() : hostCount() }}
-          </kbd>
+          <kbd class="count">{{ resultCount() }}</kbd>
         }
       </div>
 
-      <div class="tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          [class.active]="tab() === 'local'"
-          [attr.aria-selected]="tab() === 'local'"
-          (click)="setTab('local')"
-        >
-          Local
-          <span class="tab-count">{{ store.repos().length }}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          [class.active]="tab() === 'remote'"
-          [attr.aria-selected]="tab() === 'remote'"
-          [disabled]="!signedIn()"
-          (click)="setTab('remote')"
-        >
-          Remote
-          @if (signedIn()) {
-            <span class="tab-count">{{ store.hostRepos().length }}</span>
-          }
-        </button>
-      </div>
+      @if (!searching()) {
+        <div class="tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            [class.active]="tab() === 'local'"
+            [attr.aria-selected]="tab() === 'local'"
+            (click)="setTab('local')"
+          >
+            Local
+            <span class="tab-count">{{ store.repos().length }}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            [class.active]="tab() === 'remote'"
+            [attr.aria-selected]="tab() === 'remote'"
+            [disabled]="!signedIn()"
+            (click)="setTab('remote')"
+          >
+            Remote
+            @if (signedIn()) {
+              <span class="tab-count">{{ store.hostRepos().length }}</span>
+            }
+          </button>
+        </div>
+      } @else {
+        <div class="results-bar">
+          <span>Results for “{{ filter().trim() }}”</span>
+          <span class="tab-count">{{ resultCount() }}</span>
+        </div>
+      }
 
       <div class="list-scroll">
-        @if (tab() === 'local') {
+        @if (searching()) {
+          @if (!resultCount()) {
+            <p class="empty">No matches for “{{ filter().trim() }}”</p>
+          } @else {
+            @if (localGroups().length) {
+              <div class="section-label">Local</div>
+              @for (group of localGroups(); track group.key) {
+                <div class="group">
+                  <button
+                    type="button"
+                    class="group-head"
+                    [attr.aria-expanded]="!isGroupCollapsed('local', group.key)"
+                    (click)="toggleGroup('local', group.key, $event)"
+                    [title]="group.key"
+                  >
+                    <ng-icon
+                      [name]="
+                        isGroupCollapsed('local', group.key)
+                          ? 'lucideChevronRight'
+                          : 'lucideChevronDown'
+                      "
+                      size="12"
+                    />
+                    <ng-icon name="lucideFolder" size="12" />
+                    <span class="group-label">{{ group.label }}</span>
+                    <span class="group-count">{{ group.repos.length }}</span>
+                  </button>
+                  @if (!isGroupCollapsed('local', group.key)) {
+                    <ul>
+                      @for (repo of group.repos; track repo.path) {
+                        <li [class.active]="isActiveLocal(repo.path)">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            (mouseenter)="setActiveLocal(repo.path)"
+                            (click)="switchTo(repo.path)"
+                          >
+                            <ng-icon
+                              [name]="repo.pinned ? 'lucidePin' : 'lucideFolderGit2'"
+                              size="12"
+                            />
+                            <span>
+                              <strong>{{ repo.name }}</strong>
+                              <em class="path">{{ repo.path }}</em>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            class="row-action pin"
+                            [class.on]="repo.pinned"
+                            [title]="repo.pinned ? 'Unpin' : 'Pin'"
+                            [attr.aria-label]="repo.pinned ? 'Unpin' : 'Pin'"
+                            (click)="togglePin(repo, $event)"
+                          >
+                            <ng-icon name="lucidePin" size="12" />
+                          </button>
+                          <button
+                            type="button"
+                            class="row-action"
+                            title="Remove from list"
+                            aria-label="Remove from list"
+                            (click)="remove(repo.path, $event)"
+                          >
+                            <ng-icon name="lucideTrash2" size="12" />
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </div>
+              }
+            }
+            @if (signedIn() && hostGroups().length) {
+              <div class="section-label">Remote</div>
+              @for (group of hostGroups(); track group.key) {
+                <div class="group">
+                  <button
+                    type="button"
+                    class="group-head"
+                    [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
+                    (click)="toggleGroup('host', group.key, $event)"
+                  >
+                    <ng-icon
+                      [name]="
+                        isGroupCollapsed('host', group.key)
+                          ? 'lucideChevronRight'
+                          : 'lucideChevronDown'
+                      "
+                      size="12"
+                    />
+                    <ng-icon name="lucideFolders" size="12" />
+                    <span class="group-label">{{ group.label }}</span>
+                    <span class="group-count">{{ group.repos.length }}</span>
+                  </button>
+                  @if (!isGroupCollapsed('host', group.key)) {
+                    <ul>
+                      @for (repo of group.repos; track repo.id) {
+                        <li [class.active]="isActiveHost(repo.id)">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            (mouseenter)="setActiveHost(repo.id)"
+                            (click)="chooseHostRepo(repo)"
+                          >
+                            <ng-icon name="lucideDownload" size="12" />
+                            <span>
+                              <strong>{{ repo.fullName || repo.name }}</strong>
+                              <em class="path">
+                                {{ repo.provider }}{{ repo.private ? ' · private' : '' }}
+                              </em>
+                            </span>
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </div>
+              }
+            }
+          }
+        } @else if (tab() === 'local') {
           @if (!store.repos().length) {
             <p class="empty">No local repositories yet. Open or clone one.</p>
           } @else if (!localGroups().length) {
@@ -121,19 +246,23 @@
                 <button
                   type="button"
                   class="group-head"
-                  [attr.aria-expanded]="!isGroupCollapsed(group.key)"
-                  (click)="toggleGroup(group.key, $event)"
+                  [attr.aria-expanded]="!isGroupCollapsed('local', group.key)"
+                  (click)="toggleGroup('local', group.key, $event)"
                   [title]="group.key"
                 >
                   <ng-icon
-                    [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
+                    [name]="
+                      isGroupCollapsed('local', group.key)
+                        ? 'lucideChevronRight'
+                        : 'lucideChevronDown'
+                    "
                     size="12"
                   />
                   <ng-icon name="lucideFolder" size="12" />
                   <span class="group-label">{{ group.label }}</span>
                   <span class="group-count">{{ group.repos.length }}</span>
                 </button>
-                @if (!isGroupCollapsed(group.key)) {
+                @if (!isGroupCollapsed('local', group.key)) {
                   <ul>
                     @for (repo of group.repos; track repo.path) {
                       <li [class.active]="isActiveLocal(repo.path)">
@@ -143,7 +272,10 @@
                           (mouseenter)="setActiveLocal(repo.path)"
                           (click)="switchTo(repo.path)"
                         >
-                          <ng-icon [name]="repo.pinned ? 'lucidePin' : 'lucideFolderGit2'" size="12" />
+                          <ng-icon
+                            [name]="repo.pinned ? 'lucidePin' : 'lucideFolderGit2'"
+                            size="12"
+                          />
                           <span>
                             <strong>{{ repo.name }}</strong>
                             <em class="path">{{ repo.path }}</em>
@@ -187,36 +319,54 @@
                 <button type="button" class="text-btn" (click)="goConnections()">Settings</button>
               </div>
             </div>
-          } @else if (store.hostReposLoading()) {
+          } @else if (store.hostReposLoading() && !store.hostRepos().length) {
             <p class="empty">Loading repositories…</p>
           } @else if (store.hostReposError(); as err) {
             <p class="empty error">{{ err }}</p>
+            <div class="remote-meta">
+              <button type="button" class="text-btn" (click)="refreshRemote()">Retry</button>
+            </div>
           } @else if (!hostGroups().length) {
-            <p class="empty">
-              {{ filter() ? 'No matches for “' + filter() + '”' : 'No repositories found' }}
-            </p>
+            <p class="empty">No repositories found</p>
+            <div class="remote-meta">
+              <button type="button" class="text-btn" (click)="refreshRemote()">Refresh</button>
+            </div>
           } @else {
             <div class="remote-meta">
               <span>{{ linkedHostLabels() }}</span>
-              <button type="button" class="text-btn" (click)="goConnections()">Manage</button>
+              <div class="remote-actions">
+                <button
+                  type="button"
+                  class="text-btn"
+                  [disabled]="store.hostReposLoading()"
+                  (click)="refreshRemote()"
+                >
+                  {{ store.hostReposLoading() ? 'Refreshing…' : 'Refresh' }}
+                </button>
+                <button type="button" class="text-btn" (click)="goConnections()">Manage</button>
+              </div>
             </div>
             @for (group of hostGroups(); track group.key) {
               <div class="group">
                 <button
                   type="button"
                   class="group-head"
-                  [attr.aria-expanded]="!isGroupCollapsed(group.key)"
-                  (click)="toggleGroup(group.key, $event)"
+                  [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
+                  (click)="toggleGroup('host', group.key, $event)"
                 >
                   <ng-icon
-                    [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
+                    [name]="
+                      isGroupCollapsed('host', group.key)
+                        ? 'lucideChevronRight'
+                        : 'lucideChevronDown'
+                    "
                     size="12"
                   />
                   <ng-icon name="lucideFolders" size="12" />
                   <span class="group-label">{{ group.label }}</span>
                   <span class="group-count">{{ group.repos.length }}</span>
                 </button>
-                @if (!isGroupCollapsed(group.key)) {
+                @if (!isGroupCollapsed('host', group.key)) {
                   <ul>
                     @for (repo of group.repos; track repo.id) {
                       <li [class.active]="isActiveHost(repo.id)">
@@ -248,6 +398,7 @@
         <kbd>↑</kbd><kbd>↓</kbd> move
         <kbd>↵</kbd> open
         <kbd>esc</kbd> close
+        · type to search
       </p>
     </div>
   </ng-template>

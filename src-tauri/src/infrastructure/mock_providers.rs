@@ -342,11 +342,7 @@ pub fn builtin_workflows() -> Vec<WorkflowInfo> {
             id: "wf-hotfix".into(),
             name: "Hotfix release".into(),
             description: "Branch, commit, and push a quick fix".into(),
-            steps: vec![
-                "createBranch".into(),
-                "openCommit".into(),
-                "push".into(),
-            ],
+            steps: vec!["createBranch".into(), "openCommit".into(), "push".into()],
             builtin: true,
             enabled: true,
         },

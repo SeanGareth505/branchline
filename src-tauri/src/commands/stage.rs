@@ -98,7 +98,14 @@ pub fn discard_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult
         }
 
         let path_refs: Vec<&str> = input.paths.iter().map(|s| s.as_str()).collect();
-        let mut stash_args = vec!["stash", "push", "-u", "-m", "branchline-discard-backup", "--"];
+        let mut stash_args = vec![
+            "stash",
+            "push",
+            "-u",
+            "-m",
+            "branchline-discard-backup",
+            "--",
+        ];
         stash_args.extend(path_refs.iter().copied());
         let stash_ok = git_cli::run_git(path, &stash_args).is_ok();
         if !stash_ok {
@@ -128,7 +135,10 @@ pub fn discard_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult
 }
 
 #[command]
-pub fn apply_patch(state: State<'_, AppState>, input: ApplyPatchInput) -> AppResult<MutationOutput> {
+pub fn apply_patch(
+    state: State<'_, AppState>,
+    input: ApplyPatchInput,
+) -> AppResult<MutationOutput> {
     let patch = input.patch.trim();
     if patch.is_empty() {
         return Err(AppError::msg("No patch to apply"));

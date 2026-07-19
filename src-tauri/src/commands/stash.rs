@@ -34,10 +34,8 @@ pub struct StashIndexInput {
 pub fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
-    let (ok, out, _) = git_cli::run_git_allow_fail(
-        &path,
-        &["stash", "list", "--pretty=format:%gd|%H|%gs"],
-    );
+    let (ok, out, _) =
+        git_cli::run_git_allow_fail(&path, &["stash", "list", "--pretty=format:%gd|%H|%gs"]);
     if !ok || out.trim().is_empty() {
         return Ok(vec![]);
     }

@@ -1,7 +1,18 @@
 <div class="strip" role="toolbar" aria-label="Repository actions">
-  <button type="button" class="tool" title="Refresh" (click)="store.refreshRepo()">
-    <ng-icon name="lucideRefreshCw" size="14" />
-    <span>Refresh</span>
+  <button
+    type="button"
+    class="tool"
+    title="Refresh repository"
+    [disabled]="store.refreshingRepo()"
+    [attr.aria-busy]="store.refreshingRepo()"
+    (click)="store.refreshRepo({ notify: true })"
+  >
+    <ng-icon
+      name="lucideRefreshCw"
+      size="14"
+      [class.spin]="store.refreshingRepo()"
+    />
+    <span>{{ store.refreshingRepo() ? 'Refreshing…' : 'Refresh' }}</span>
   </button>
 
   <span class="sep" aria-hidden="true"></span>

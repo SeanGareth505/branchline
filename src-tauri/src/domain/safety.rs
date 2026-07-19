@@ -50,9 +50,7 @@ pub fn analyze_with_lock(
     lock_reason: Option<String>,
 ) -> SafetyAnalysis {
     match action {
-        SafetyAction::DeleteBranch => {
-            analyze_delete_branch(path, target, locked, lock_reason)
-        }
+        SafetyAction::DeleteBranch => analyze_delete_branch(path, target, locked, lock_reason),
         SafetyAction::HardReset => analyze_hard_reset(path, target),
         SafetyAction::ForcePush => analyze_force_push(path, target, locked, lock_reason),
         SafetyAction::Discard => analyze_discard(path, target),
@@ -128,11 +126,7 @@ fn analyze_delete_branch(
     };
 
     let (recommended_label, recommended_action, proceed_label) = if blocked {
-        (
-            "Close".into(),
-            "keep".into(),
-            "Close".into(),
-        )
+        ("Close".into(), "keep".into(), "Close".into())
     } else if merged {
         (
             "Delete local branch".into(),
@@ -167,9 +161,7 @@ fn analyze_delete_branch(
         } else if merged {
             format!("Delete local branch '{branch}'. Work appears merged into HEAD.")
         } else {
-            format!(
-                "Delete local branch '{branch}'. Unmerged commits may become harder to find."
-            )
+            format!("Delete local branch '{branch}'. Unmerged commits may become harder to find.")
         },
         advice,
         checks,
@@ -310,12 +302,14 @@ fn analyze_force_push(
             id: "prefer_lease".into(),
             label: "Prefer --force-with-lease".into(),
             ok: true,
-            detail: "Safer than --force: refuses if someone else pushed since your last fetch".into(),
+            detail: "Safer than --force: refuses if someone else pushed since your last fetch"
+                .into(),
         },
     ];
 
     let advice = if locked {
-        "This branch is locked in Branchline. Unlock it from the Branches panel before pushing.".into()
+        "This branch is locked in Branchline. Unlock it from the Branches panel before pushing."
+            .into()
     } else if protected {
         format!(
             "Force-pushing '{branch}' can disrupt the whole team. Prefer a new branch + PR. If you must continue, use --force-with-lease and type the branch name."
@@ -362,9 +356,7 @@ fn analyze_force_push(
         },
         git_command: format!("git push --force-with-lease origin {branch}"),
         proceed_git_command: format!("git push --force origin {branch}"),
-        confirm_prompt: format!(
-            "I understand this rewrites remote history on '{branch}'"
-        ),
+        confirm_prompt: format!("I understand this rewrites remote history on '{branch}'"),
         require_typed_confirm: !locked && (protected || !lease_safe),
         blocked: locked,
         can_proceed: !locked,
@@ -518,7 +510,10 @@ pub fn execute(
             } else {
                 "-D"
             };
-            Ok(outcome_msg(git_cli::run_git(path, &["branch", flag, &branch])?))
+            Ok(outcome_msg(git_cli::run_git(
+                path,
+                &["branch", flag, &branch],
+            )?))
         }
         SafetyAction::HardReset => {
             let target = analysis.target.clone().unwrap_or_else(|| "HEAD".into());
@@ -551,10 +546,9 @@ pub fn execute(
             }
         }
         SafetyAction::ForcePush => {
-            let branch = analysis
-                .target
-                .clone()
-                .unwrap_or_else(|| git2_repo::current_branch(path).unwrap_or_else(|_| "HEAD".into()));
+            let branch = analysis.target.clone().unwrap_or_else(|| {
+                git2_repo::current_branch(path).unwrap_or_else(|_| "HEAD".into())
+            });
             let msg = if use_recommended {
                 git_cli::run_git(path, &["push", "--force-with-lease", "origin", &branch])?
             } else if allow_bare_force {
@@ -583,7 +577,10 @@ pub fn execute(
                     "push".into(),
                     "-u".into(),
                     "-m".into(),
-                    format!("branchline-undo-discard {}", chrono::Utc::now().to_rfc3339()),
+                    format!(
+                        "branchline-undo-discard {}",
+                        chrono::Utc::now().to_rfc3339()
+                    ),
                     "--".into(),
                 ];
                 args.extend(paths.iter().map(|s| (*s).to_string()));

@@ -1,4 +1,5 @@
 import {
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   HostListener,
@@ -20,7 +21,7 @@ import { AppStore } from '../../core/app.store';
 import type { HostRepository, RecentRepo } from '../../core/models';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
 
-type SwitcherTab = 'local' | 'remote';
+type SwitcherTab = 'local' | 'remote' | 'results';
 
 interface LocalGroup {
   key: string;
@@ -43,6 +44,7 @@ type FlatItem =
   imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
   templateUrl: './project-switcher.html',
   styleUrl: './project-switcher.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProjectSwitcher {
   readonly store = inject(AppStore);
@@ -50,7 +52,7 @@ export class ProjectSwitcher {
   readonly menuOpen = signal(false);
   readonly filter = signal('');
   readonly tab = signal<SwitcherTab>('local');
-  readonly activeIndex = signal(0);
+  readonly activeKey = signal('');
   readonly collapsedGroups = signal<Record<string, boolean>>({});
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
@@ -60,7 +62,7 @@ export class ProjectSwitcher {
   ];
 
   readonly triggerLabel = computed(() =>
-    this.store.openRepos().length ? 'Repos' : 'Open repo',
+    this.store.openRepos().length ? 'Switch' : 'Open repo',
   );
 
   readonly triggerTitle = computed(() => {
@@ -74,6 +76,33 @@ export class ProjectSwitcher {
   readonly signedIn = computed(() => this.linkedHosts().length > 0);
   readonly linkedHostLabels = computed(() => this.linkedHosts().map((h) => h.label).join(', '));
 
+  readonly searching = computed(() => this.filter().trim().length > 0);
+
+  private readonly localFuse = computed(() => {
+    const current = this.store.currentRepo()?.path;
+    const repos = this.store.repos().filter((r) => r.path !== current);
+    return new Fuse(repos, {
+      keys: [
+        { name: 'name', weight: 0.7 },
+        { name: 'path', weight: 0.3 },
+      ],
+      threshold: 0.38,
+      ignoreLocation: true,
+    });
+  });
+
+  private readonly hostFuse = computed(() => {
+    return new Fuse(this.store.hostRepos(), {
+      keys: [
+        { name: 'name', weight: 0.45 },
+        { name: 'fullName', weight: 0.45 },
+        { name: 'provider', weight: 0.1 },
+      ],
+      threshold: 0.38,
+      ignoreLocation: true,
+    });
+  });
+
   readonly localRepos = computed(() => {
     const current = this.store.currentRepo()?.path;
     const repos = this.store.repos().filter((r) => r.path !== current);
@@ -84,15 +113,7 @@ export class ProjectSwitcher {
         return b.lastOpenedAt.localeCompare(a.lastOpenedAt);
       });
     }
-    const fuse = new Fuse(repos, {
-      keys: [
-        { name: 'name', weight: 0.7 },
-        { name: 'path', weight: 0.3 },
-      ],
-      threshold: 0.4,
-      ignoreLocation: true,
-    });
-    return fuse.search(q).map((r) => r.item);
+    return this.localFuse().search(q).map((r) => r.item);
   });
 
   readonly localCount = computed(() => this.localRepos().length);
@@ -126,16 +147,7 @@ export class ProjectSwitcher {
     const repos = this.store.hostRepos();
     const q = this.filter().trim();
     if (!q) return repos;
-    const fuse = new Fuse(repos, {
-      keys: [
-        { name: 'name', weight: 0.5 },
-        { name: 'fullName', weight: 0.4 },
-        { name: 'provider', weight: 0.1 },
-      ],
-      threshold: 0.4,
-      ignoreLocation: true,
-    });
-    return fuse.search(q).map((r) => r.item);
+    return this.hostFuse().search(q).map((r) => r.item);
   });
 
   readonly hostCount = computed(() => this.hostReposFiltered().length);
@@ -159,23 +171,27 @@ export class ProjectSwitcher {
       .sort((a, b) => a.label.localeCompare(b.label));
   });
 
+  readonly resultCount = computed(() => this.localCount() + (this.signedIn() ? this.hostCount() : 0));
+
   readonly flatItems = computed((): FlatItem[] => {
     const collapsed = this.collapsedGroups();
-    if (this.tab() === 'local') {
-      const items: FlatItem[] = [];
+    const mode = this.searching() ? 'results' : this.tab();
+    const items: FlatItem[] = [];
+
+    if (mode === 'local' || mode === 'results') {
       for (const group of this.localGroups()) {
-        if (collapsed[group.key]) continue;
+        if (collapsed[`local:${group.key}`]) continue;
         for (const repo of group.repos) {
           items.push({ kind: 'local', repo });
         }
       }
-      return items;
     }
-    const items: FlatItem[] = [];
-    for (const group of this.hostGroups()) {
-      if (collapsed[group.key]) continue;
-      for (const repo of group.repos) {
-        items.push({ kind: 'host', repo });
+    if ((mode === 'remote' || mode === 'results') && this.signedIn()) {
+      for (const group of this.hostGroups()) {
+        if (collapsed[`host:${group.key}`]) continue;
+        for (const repo of group.repos) {
+          items.push({ kind: 'host', repo });
+        }
       }
     }
     return items;
@@ -187,49 +203,63 @@ export class ProjectSwitcher {
   }
 
   toggle(): void {
-    this.menuOpen.update((v) => !v);
-    if (this.menuOpen()) {
+    const next = !this.menuOpen();
+    this.menuOpen.set(next);
+    if (!next) {
       this.filter.set('');
-      this.activeIndex.set(0);
-      this.collapsedGroups.set({});
-      if (this.store.repos().length === 0 && this.signedIn()) {
-        this.tab.set('remote');
-      } else {
-        this.tab.set('local');
-      }
-      if (this.signedIn()) {
-        void this.store.refreshHostRepositories();
-      }
-      queueMicrotask(() => this.searchInput()?.nativeElement.focus());
-    } else {
-      this.filter.set('');
+      this.activeKey.set('');
+      return;
+    }
+
+    this.filter.set('');
+    this.activeKey.set('');
+    this.collapsedGroups.set({});
+    this.tab.set(this.store.repos().length === 0 && this.signedIn() ? 'remote' : 'local');
+
+    requestAnimationFrame(() => {
+      this.searchInput()?.nativeElement.focus();
+    });
+
+    if (this.tab() === 'remote' && this.signedIn()) {
+      void this.store.refreshHostRepositories();
     }
   }
 
   close(): void {
     this.menuOpen.set(false);
     this.filter.set('');
-    this.activeIndex.set(0);
+    this.activeKey.set('');
   }
 
-  setTab(tab: SwitcherTab): void {
+  setTab(tab: 'local' | 'remote'): void {
     this.tab.set(tab);
-    this.activeIndex.set(0);
-    queueMicrotask(() => this.searchInput()?.nativeElement.focus());
+    this.activeKey.set('');
+    requestAnimationFrame(() => this.searchInput()?.nativeElement.focus());
+    if (tab === 'remote' && this.signedIn()) {
+      void this.store.refreshHostRepositories();
+    }
+  }
+
+  refreshRemote(): void {
+    void this.store.refreshHostRepositories(undefined, { force: true, notify: true });
   }
 
   onFilterChange(value: string): void {
     this.filter.set(value);
-    this.activeIndex.set(0);
+    this.activeKey.set('');
+    if (value.trim() && this.signedIn() && this.store.hostRepos().length === 0) {
+      void this.store.refreshHostRepositories();
+    }
   }
 
-  isGroupCollapsed(key: string): boolean {
-    return !!this.collapsedGroups()[key];
+  isGroupCollapsed(prefix: string, key: string): boolean {
+    return !!this.collapsedGroups()[`${prefix}:${key}`];
   }
 
-  toggleGroup(key: string, event: Event): void {
+  toggleGroup(prefix: string, key: string, event: Event): void {
     event.stopPropagation();
-    this.collapsedGroups.update((map) => ({ ...map, [key]: !map[key] }));
+    const id = `${prefix}:${key}`;
+    this.collapsedGroups.update((map) => ({ ...map, [id]: !map[id] }));
   }
 
   onSearchKeydown(event: KeyboardEvent): void {
@@ -238,45 +268,52 @@ export class ProjectSwitcher {
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      this.activeIndex.update((i) => Math.min(i + 1, items.length - 1));
+      const idx = Math.min(this.activeIndex() + 1, items.length - 1);
+      this.setActiveFromItem(items[idx]);
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      this.activeIndex.update((i) => Math.max(i - 1, 0));
+      const idx = Math.max(this.activeIndex() - 1, 0);
+      this.setActiveFromItem(items[idx]);
       return;
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      const item = items[this.activeIndex()];
+      const item = items[this.activeIndex()] ?? items[0];
       if (!item) return;
       if (item.kind === 'local') void this.switchTo(item.repo.path);
       else this.chooseHostRepo(item.repo);
     }
   }
 
-  isActiveLocal(path: string): boolean {
-    if (this.tab() !== 'local') return false;
+  private activeIndex(): number {
+    const key = this.activeKey();
     const items = this.flatItems();
-    const item = items[this.activeIndex()];
-    return item?.kind === 'local' && item.repo.path === path;
+    if (!key) return 0;
+    const idx = items.findIndex((item) => itemKey(item) === key);
+    return idx >= 0 ? idx : 0;
+  }
+
+  private setActiveFromItem(item: FlatItem | undefined): void {
+    if (!item) return;
+    this.activeKey.set(itemKey(item));
+  }
+
+  isActiveLocal(path: string): boolean {
+    return this.activeKey() === `local:${path}`;
   }
 
   isActiveHost(id: string): boolean {
-    if (this.tab() !== 'remote') return false;
-    const items = this.flatItems();
-    const item = items[this.activeIndex()];
-    return item?.kind === 'host' && item.repo.id === id;
+    return this.activeKey() === `host:${id}`;
   }
 
   setActiveLocal(path: string): void {
-    const idx = this.flatItems().findIndex((i) => i.kind === 'local' && i.repo.path === path);
-    if (idx >= 0) this.activeIndex.set(idx);
+    this.activeKey.set(`local:${path}`);
   }
 
   setActiveHost(id: string): void {
-    const idx = this.flatItems().findIndex((i) => i.kind === 'host' && i.repo.id === id);
-    if (idx >= 0) this.activeIndex.set(idx);
+    this.activeKey.set(`host:${id}`);
   }
 
   async switchTo(path: string): Promise<void> {
@@ -361,7 +398,7 @@ export class ProjectSwitcher {
     if (ok) {
       this.tab.set('remote');
       this.menuOpen.set(true);
-      queueMicrotask(() => this.searchInput()?.nativeElement.focus());
+      requestAnimationFrame(() => this.searchInput()?.nativeElement.focus());
     }
   }
 
@@ -399,6 +436,10 @@ export class ProjectSwitcher {
     event.stopPropagation();
     await this.store.pinRepo(repo.path, !repo.pinned);
   }
+}
+
+function itemKey(item: FlatItem): string {
+  return item.kind === 'local' ? `local:${item.repo.path}` : `host:${item.repo.id}`;
 }
 
 function parentDir(path: string): string {

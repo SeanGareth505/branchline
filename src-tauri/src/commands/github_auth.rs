@@ -67,11 +67,13 @@ struct TokenResponse {
 }
 
 #[command]
-pub fn github_device_login_start(input: GithubDeviceStartInput) -> AppResult<GithubDeviceStartOutput> {
+pub fn github_device_login_start(
+    input: GithubDeviceStartInput,
+) -> AppResult<GithubDeviceStartOutput> {
     let client_id = input.client_id.trim();
     if client_id.is_empty() {
         return Err(AppError::msg(
-            "GitHub OAuth Client ID is missing. Create an OAuth App with Device Flow enabled, then paste the Client ID.",
+            "GitHub OAuth Client ID is missing from this build.",
         ));
     }
 
@@ -145,8 +147,11 @@ pub fn github_device_login_poll(input: GithubDevicePollInput) -> AppResult<Githu
         .text()
         .map_err(|e| AppError::msg(format!("Could not read GitHub poll response: {e}")))?;
 
-    let parsed: TokenResponse = serde_json::from_str(&body)
-        .map_err(|e| AppError::msg(format!("Could not parse GitHub poll response: {e} ({body})")))?;
+    let parsed: TokenResponse = serde_json::from_str(&body).map_err(|e| {
+        AppError::msg(format!(
+            "Could not parse GitHub poll response: {e} ({body})"
+        ))
+    })?;
 
     if let Some(token) = parsed.access_token.filter(|t| !t.is_empty()) {
         return Ok(GithubDevicePollOutput {

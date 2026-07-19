@@ -354,7 +354,11 @@ pub fn save_settings(state: State<'_, AppState>, input: AppSettings) -> AppResul
     sqlite::set_setting(&db, "app_settings", &raw)?;
     if let Some(obj) = settings.layout.as_object() {
         if !obj.is_empty() {
-            sqlite::set_setting(&db, "layout_json", &serde_json::to_string(&settings.layout)?)?;
+            sqlite::set_setting(
+                &db,
+                "layout_json",
+                &serde_json::to_string(&settings.layout)?,
+            )?;
         }
     }
     Ok(redact_tokens(settings))

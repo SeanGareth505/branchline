@@ -19,7 +19,9 @@ pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
         .map_err(|e| AppError::git(format!("Failed to run git: {e}")))?;
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_string())
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -59,7 +61,9 @@ pub fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> AppRes
         .map_err(|e| AppError::git(format!("Failed to run git: {e}")))?;
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_string())
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -82,7 +86,9 @@ pub fn run_git_global(args: &[&str]) -> AppResult<String> {
         .map_err(|e| AppError::git(format!("Failed to run git: {e}")))?;
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_string())
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Err(AppError::git(if stderr.is_empty() {
@@ -137,7 +143,10 @@ pub fn config_set(key: &str, value: &str) -> AppResult<()> {
 
 pub fn ensure_repo(path: &Path) -> AppResult<()> {
     if !path.exists() {
-        return Err(AppError::msg(format!("Path does not exist: {}", path.display())));
+        return Err(AppError::msg(format!(
+            "Path does not exist: {}",
+            path.display()
+        )));
     }
     let git_dir = path.join(".git");
     if !git_dir.exists() {
@@ -191,9 +200,7 @@ pub fn validate_pathspecs(paths: &[String]) -> AppResult<()> {
                     )));
                 }
                 Component::RootDir | Component::Prefix(_) => {
-                    return Err(AppError::msg(format!(
-                        "Invalid pathspec: {p}"
-                    )));
+                    return Err(AppError::msg(format!("Invalid pathspec: {p}")));
                 }
                 _ => {}
             }
