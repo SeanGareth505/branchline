@@ -6,13 +6,13 @@
     <title>Branchline — Download</title>
     <meta
       name="description"
-      content="Download Branchline, a dedicated desktop Git GUI. Get the Android APK or desktop installers."
+      content="Download Branchline for macOS, Windows, Linux, and Android."
     />
     <link rel="icon" href="brand/branchline-mark.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Sora:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -25,30 +25,60 @@
         <img class="wordmark" src="brand/branchline-wordmark.svg" alt="Branchline" />
       </header>
 
-      <p class="lede">A dedicated Git GUI. Not an IDE. Not an AI tool.</p>
+      <p class="lede">A dedicated Git GUI for macOS and Windows. Android APK available too.</p>
 
       <section class="cta" aria-labelledby="download-title">
         <h1 id="download-title" class="visually-hidden">Download</h1>
-        <a class="btn primary" id="apk-btn" href="https://github.com/SeanGareth505/branchline/releases/latest">
-          Download Android APK
-        </a>
-        <p class="meta" id="apk-meta">Fetching latest release…</p>
-      </section>
-
-      <section class="platforms" aria-label="Other platforms">
-        <a class="btn ghost" id="mac-btn" hidden href="#">macOS</a>
-        <a class="btn ghost" id="win-btn" hidden href="#">Windows</a>
-        <a class="btn ghost" id="linux-btn" hidden href="#">Linux</a>
         <a
-          class="btn ghost"
+          class="btn primary"
+          id="primary-btn"
           href="https://github.com/SeanGareth505/branchline/releases/latest"
-          >All releases</a
         >
+          Download for your device
+        </a>
+        <p class="meta" id="primary-meta">Detecting your platform…</p>
       </section>
 
-      <footer>
-        <a href="https://github.com/SeanGareth505/branchline">Source on GitHub</a>
-      </footer>
+      <section class="grid" aria-label="All platforms">
+        <article class="card" data-platform="mac">
+          <h2>macOS</h2>
+          <p>Apple Silicon and Intel</p>
+          <div class="card-actions">
+            <a class="btn solid" id="mac-arm-btn" href="#">Apple Silicon</a>
+            <a class="btn solid" id="mac-intel-btn" href="#">Intel</a>
+          </div>
+        </article>
+
+        <article class="card" data-platform="windows">
+          <h2>Windows</h2>
+          <p>Installer for 64-bit PCs</p>
+          <div class="card-actions">
+            <a class="btn solid" id="win-btn" href="#">Download Windows</a>
+          </div>
+        </article>
+
+        <article class="card" data-platform="android">
+          <h2>Android</h2>
+          <p>Sideload the APK</p>
+          <div class="card-actions">
+            <a class="btn solid" id="apk-btn" href="#">Download APK</a>
+          </div>
+        </article>
+
+        <article class="card" data-platform="linux">
+          <h2>Linux</h2>
+          <p>AppImage / deb / rpm</p>
+          <div class="card-actions">
+            <a class="btn solid" id="linux-btn" href="#">Download Linux</a>
+          </div>
+        </article>
+      </section>
+
+      <p class="meta center">
+        <a href="https://github.com/SeanGareth505/branchline/releases/latest">All release files</a>
+        ·
+        <a href="https://github.com/SeanGareth505/branchline">Source</a>
+      </p>
     </main>
     <script src="download.js"></script>
   </body>
