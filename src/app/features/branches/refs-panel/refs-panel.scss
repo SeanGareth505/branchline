@@ -272,6 +272,19 @@
   color: var(--text-secondary);
 }
 
+.kind-local .kind {
+  color: color-mix(in srgb, var(--git-added) 82%, var(--text-primary));
+}
+
+.kind-local .group-head:hover .kind {
+  color: var(--git-added);
+}
+
+.kind-local .chev {
+  color: color-mix(in srgb, var(--git-added) 70%, var(--text-muted));
+  opacity: 1;
+}
+
 .sync-chip {
   flex-shrink: 0;
   font-size: 11px;
@@ -359,8 +372,8 @@ button.sync-chip:hover {
   margin-left: 0.15rem;
   padding: 0.1rem 0.3rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-  color: var(--text-muted);
+  background: color-mix(in srgb, var(--git-added) 14%, transparent);
+  color: color-mix(in srgb, var(--git-added) 88%, var(--text-primary));
   font-size: 10px;
   font-weight: 650;
 }
@@ -570,22 +583,30 @@ button.sync-chip:hover {
 }
 
 .ref-list > li.mainline .leaf-icon {
-  color: color-mix(in srgb, var(--git-modified) 88%, var(--text-primary));
+  color: var(--git-modified);
   opacity: 1;
 }
 
 .ref-list > li.mainline .label {
   font-weight: 700;
   letter-spacing: -0.015em;
-  color: var(--text-primary);
+  color: color-mix(in srgb, var(--git-modified) 78%, var(--text-primary));
 }
 
 .ref-list > li.mainline:not(.current) {
-  background: color-mix(in srgb, var(--git-modified) 9%, transparent);
+  background: color-mix(in srgb, var(--git-modified) 11%, transparent);
+}
+
+.ref-list > li.mainline.current {
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
 }
 
 .ref-list > li.mainline.current .leaf-icon {
-  color: var(--accent);
+  color: var(--git-modified);
+}
+
+.ref-list > li.mainline.current .label {
+  color: color-mix(in srgb, var(--git-modified) 92%, var(--text-primary));
 }
 
 .ref-list > li:hover {
@@ -593,23 +614,27 @@ button.sync-chip:hover {
 }
 
 .ref-list > li.mainline:not(.current):hover {
-  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+  background: color-mix(in srgb, var(--git-modified) 16%, transparent);
+}
+
+.ref-list > li.mainline.current:hover {
+  background: color-mix(in srgb, var(--git-modified) 20%, transparent);
 }
 
 .ref-list > li.tip-selected:not(.current) {
   background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
 }
 
-.ref-list > li.current {
+.ref-list > li.current:not(.mainline) {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.ref-list > li.current .label {
+.ref-list > li.current:not(.mainline) .label {
   font-weight: 650;
   color: var(--accent-hover);
 }
 
-.ref-list > li.current:hover {
+.ref-list > li.current:not(.mainline):hover {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
