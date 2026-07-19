@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import {
@@ -14,6 +14,7 @@ import {
 })
 export class ConflictBanner {
   readonly store = inject(AppStore);
+  readonly toolsOpen = signal(false);
 
   readonly preferredLabel = computed(() =>
     preferredEditorLabel(this.store.settings().preferredEditor, this.store.detectedEditors()),
@@ -46,7 +47,7 @@ export class ConflictBanner {
     }
     const op = this.operation();
     if (op?.kind === 'rebase') {
-      return 'During rebase, “ours” is the branch you rebase onto; “theirs” is the commit being applied.';
+      return 'Resolve each file, then Continue. During rebase, “yours” is the branch you rebase onto.';
     }
     if (op?.kind === 'cherryPick' || op?.kind === 'revert') {
       return 'Resolve each file, then Continue.';
@@ -54,23 +55,37 @@ export class ConflictBanner {
     return 'Resolve each file, then Continue the merge.';
   });
 
+  @HostListener('document:click')
+  onDocClick(): void {
+    if (this.toolsOpen()) this.toolsOpen.set(false);
+  }
+
+  toggleTools(): void {
+    this.toolsOpen.update((v) => !v);
+  }
+
   openResolver(): void {
+    this.toolsOpen.set(false);
     void this.store.openConflictResolver();
   }
 
   openInEditor(): void {
+    this.toolsOpen.set(false);
     void this.store.openConflictedInEditor();
   }
 
   openCursor(): void {
+    this.toolsOpen.set(false);
     void this.store.openConflictInIde('cursor', 'file');
   }
 
   openVscode(): void {
+    this.toolsOpen.set(false);
     void this.store.openConflictInIde('vscode', 'file');
   }
 
   openIdeMerge(): void {
+    this.toolsOpen.set(false);
     const resolved = resolvePreferredEditor(
       this.store.settings().preferredEditor,
       this.store.detectedEditors(),
@@ -91,14 +106,17 @@ export class ConflictBanner {
   }
 
   openMergeTool(): void {
+    this.toolsOpen.set(false);
     void this.store.openMergeToolForPaths();
   }
 
   continueOp(): void {
+    this.toolsOpen.set(false);
     void this.store.continueOperation();
   }
 
   abortOp(): void {
+    this.toolsOpen.set(false);
     void this.store.abortOperation();
   }
 }

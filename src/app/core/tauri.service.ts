@@ -1832,14 +1832,30 @@ export class TauriService {
 
     if (cmd === 'get_conflict_sides') {
       const filePath =
-        (args?.['input'] as { filePath?: string } | undefined)?.filePath ?? 'src/app/app.ts';
+        (args?.['input'] as { filePath?: string } | undefined)?.filePath ?? 'src/app.ts';
+      if (filePath === 'README.md') {
+        return {
+          path: filePath,
+          base: '# Branchline\n\nA calm Git client.\n',
+          ours: '# Branchline\n\nA calm Git client for everyday work.\n',
+          theirs: '',
+          working: '# Branchline\n\nA calm Git client for everyday work.\n',
+          hasBase: true,
+          hasOurs: true,
+          hasTheirs: false,
+          binary: false,
+        } as T;
+      }
       return {
         path: filePath,
-        base: 'export const value = 1;\n',
-        ours: 'export const value = 2;\n',
-        theirs: 'export const value = 3;\n',
+        base:
+          "export const value = 1;\nexport const title = 'App';\n\nexport function greet(name: string) {\n  return `Hi ${name}`;\n}\n",
+        ours:
+          "export const value = 2;\nexport const title = 'Branchline';\n\nexport function greet(name: string) {\n  return `Hello ${name}`;\n}\n",
+        theirs:
+          "export const value = 3;\nexport const title = 'App';\n\nexport function greet(name: string) {\n  return `Welcome ${name}`;\n}\n",
         working:
-          '<<<<<<< HEAD\nexport const value = 2;\n=======\nexport const value = 3;\n>>>>>>> theirs\n',
+          "<<<<<<< HEAD\nexport const value = 2;\n=======\nexport const value = 3;\n>>>>>>> feature/auth\nexport const title = 'Branchline';\n\n<<<<<<< HEAD\nexport function greet(name: string) {\n  return `Hello ${name}`;\n}\n=======\nexport function greet(name: string) {\n  return `Welcome ${name}`;\n}\n>>>>>>> feature/auth\n",
         hasBase: true,
         hasOurs: true,
         hasTheirs: true,

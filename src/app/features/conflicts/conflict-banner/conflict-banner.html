@@ -28,44 +28,37 @@
         type="button"
         class="bl-btn bl-btn-primary"
         (click)="openResolver()"
-        title="Resolve conflicts in Branchline or open an IDE"
+        title="Resolve conflicts one file at a time"
       >
         Resolve
       </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="openInEditor()"
-        [title]="'Open conflicted files in ' + preferredLabel()"
-      >
-        {{ preferredLabel() }}
-      </button>
-      @if (hasCursor()) {
-        <button type="button" class="bl-btn" (click)="openCursor()" title="Open in Cursor">
-          Cursor
+      <div class="menu-wrap" (click)="$event.stopPropagation()">
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="toggleTools()"
+          [attr.aria-expanded]="toolsOpen()"
+          title="Open conflicts in an editor or merge tool"
+        >
+          Open in
+          <ng-icon name="lucideChevronDown" size="12" />
         </button>
-      }
-      @if (hasVscode()) {
-        <button type="button" class="bl-btn" (click)="openVscode()" title="Open in VS Code">
-          VS Code
-        </button>
-      }
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="openIdeMerge()"
-        title="Open Cursor or VS Code 3-way merge editor"
-      >
-        IDE merge
-      </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="openMergeTool()"
-        title="Open the configured merge tool"
-      >
-        Mergetool
-      </button>
+        @if (toolsOpen()) {
+          <div class="menu" role="menu">
+            <button type="button" role="menuitem" (click)="openInEditor()">
+              {{ preferredLabel() }}
+            </button>
+            @if (hasCursor()) {
+              <button type="button" role="menuitem" (click)="openCursor()">Cursor</button>
+            }
+            @if (hasVscode()) {
+              <button type="button" role="menuitem" (click)="openVscode()">VS Code</button>
+            }
+            <button type="button" role="menuitem" (click)="openIdeMerge()">IDE 3-way merge</button>
+            <button type="button" role="menuitem" (click)="openMergeTool()">Git mergetool</button>
+          </div>
+        }
+      </div>
     }
     <button
       type="button"

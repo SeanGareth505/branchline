@@ -216,6 +216,12 @@ export class CommandPalette {
         },
       },
       {
+        id: 'resolve-conflicts',
+        label: 'Resolve conflicts…',
+        group: 'Git',
+        run: () => void store.openConflictResolver(),
+      },
+      {
         id: 'continue',
         label: 'Continue merge / rebase / cherry-pick',
         group: 'Git',

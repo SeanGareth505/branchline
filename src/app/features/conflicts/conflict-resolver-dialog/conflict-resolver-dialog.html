@@ -1,10 +1,22 @@
 @if (store.conflictResolverOpen() && store.conflictResolver(); as sides) {
   <div class="backdrop" (click)="store.closeConflictResolver()">
-    <div class="dialog bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation(); closeMenu()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="conflict-resolve-title"
+    >
       <header>
-        <div>
-          <h2>Resolve conflict</h2>
-          <p class="mono path">{{ store.conflictResolverPath() }}</p>
+        <div class="title-block">
+          <h2 id="conflict-resolve-title">Resolve conflict</h2>
+          <p class="mono path" [title]="store.conflictResolverPath()">
+            {{ store.conflictResolverPath() }}
+          </p>
+          <p class="progress">{{ progressLabel() }}</p>
+          @if (operation(); as op) {
+            <p class="op">{{ op.label }}@if (op.detail) { · {{ op.detail }} }</p>
+          }
         </div>
         <button type="button" class="bl-btn" (click)="store.closeConflictResolver()" aria-label="Close">
           <ng-icon name="lucideX" size="14" />
@@ -19,74 +31,57 @@
               class="tab"
               [class.on]="f.path === store.conflictResolverPath()"
               (click)="pickFile(f.path)"
+              [title]="f.path + (f.conflictLabel ? ' · ' + f.conflictLabel : '')"
             >
-              {{ f.path.split('/').pop() }}
+              {{ fileName(f.path) }}
+              @if (f.conflictLabel) {
+                <span class="kind">{{ f.conflictLabel }}</span>
+              }
             </button>
           }
         </div>
       }
 
       <div class="editor-bar">
-        <span class="label">Open in</span>
-        <button
-          type="button"
-          class="bl-btn"
-          (click)="openPreferred()"
-          [title]="'Open conflicted file in ' + preferredLabel()"
-        >
-          {{ preferredLabel() }}
-        </button>
-        @if (hasCursor()) {
-          <button
-            type="button"
-            class="bl-btn"
-            (click)="openCursor('file')"
-            title="Open with conflict markers in Cursor"
-          >
-            Cursor
+        <div class="menu-wrap">
+          <button type="button" class="bl-btn" (click)="$event.stopPropagation(); toggleMenu('tools')">
+            Open in {{ preferredLabel() }}
+            <ng-icon name="lucideChevronDown" size="12" />
           </button>
+          @if (openMenu() === 'tools') {
+            <div class="menu" (click)="$event.stopPropagation()">
+              <button type="button" (click)="openPreferred()">{{ preferredLabel() }}</button>
+              @if (hasCursor()) {
+                <button type="button" (click)="openCursor('file')">Cursor</button>
+                <button type="button" (click)="openCursor('merge')">Cursor merge</button>
+              }
+              @if (hasVscode()) {
+                <button type="button" (click)="openVscode('file')">VS Code</button>
+                <button type="button" (click)="openVscode('merge')">VS Code merge</button>
+              }
+              <button type="button" (click)="openIdeMerge()">IDE merge</button>
+              <button type="button" (click)="openMergetool()">Mergetool</button>
+            </div>
+          }
+        </div>
+        @if (!sides.binary && conflicts().length) {
+          <button type="button" class="bl-btn" (click)="acceptAll('ours')">Accept all yours</button>
+          <button type="button" class="bl-btn" (click)="acceptAll('theirs')">Accept all incoming</button>
           <button
             type="button"
             class="bl-btn"
-            (click)="openCursor('merge')"
-            title="Open Cursor’s 3-way merge editor"
+            [class.on]="resultMode() === 'edit'"
+            (click)="resultMode.set(resultMode() === 'edit' ? 'guided' : 'edit')"
           >
-            Cursor merge
-          </button>
-        }
-        @if (hasVscode()) {
-          <button
-            type="button"
-            class="bl-btn"
-            (click)="openVscode('file')"
-            title="Open with conflict markers in VS Code"
-          >
-            VS Code
-          </button>
-          <button
-            type="button"
-            class="bl-btn"
-            (click)="openVscode('merge')"
-            title="Open VS Code’s 3-way merge editor"
-          >
-            VS Code merge
+            {{ resultMode() === 'edit' ? 'Guided view' : 'Edit result' }}
           </button>
         }
-        <button
-          type="button"
-          class="bl-btn"
-          (click)="store.openMergeToolForPaths([store.conflictResolverPath()!])"
-          title="Open your configured git mergetool"
-        >
-          Mergetool
-        </button>
       </div>
 
+      <p class="hint">{{ sideHint() }} · Shortcuts: 1 yours · 2 incoming · 3 both · j/k next · ⌘↩ save</p>
+
       @if (sides.binary) {
-        <p class="hint">
-          This looks like a binary file. Take ours / theirs, or open Cursor / VS Code merge / your
-          merge tool.
-        </p>
+        <p class="hint warn">Binary file — take a side or open an IDE merge tool.</p>
         <footer>
           <button type="button" class="bl-btn" (click)="store.closeConflictResolver()">Close</button>
           <button
@@ -94,49 +89,197 @@
             class="bl-btn"
             (click)="store.takeConflictSide(store.conflictResolverPath()!, 'ours')"
           >
-            Take ours
+            Take yours
           </button>
           <button
             type="button"
             class="bl-btn"
             (click)="store.takeConflictSide(store.conflictResolverPath()!, 'theirs')"
           >
-            Take theirs
+            Take incoming
           </button>
-          <button type="button" class="bl-btn bl-btn-primary" (click)="openIdeMerge()">
-            IDE merge
+          <button type="button" class="bl-btn bl-btn-primary" (click)="openIdeMerge()">IDE merge</button>
+        </footer>
+      } @else if (isDeleteConflict()) {
+        <p class="hint warn">
+          Delete/modify conflict
+          @if (currentFile()?.conflictLabel; as label) {
+            ({{ label }})
+          }
+          — keep the file or delete it.
+        </p>
+        <footer>
+          <button type="button" class="bl-btn" (click)="store.closeConflictResolver()">Cancel</button>
+          <button
+            type="button"
+            class="bl-btn"
+            (click)="store.takeConflictSide(store.conflictResolverPath()!, 'ours')"
+          >
+            Keep yours
+          </button>
+          <button
+            type="button"
+            class="bl-btn"
+            (click)="store.takeConflictSide(store.conflictResolverPath()!, 'theirs')"
+          >
+            Take incoming
+          </button>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="openIdeMerge()">IDE merge</button>
+        </footer>
+      } @else if (conflicts().length && resultMode() === 'guided') {
+        <div class="bulk">
+          <button type="button" class="bl-btn" (click)="useWholeFile('ours')" [disabled]="!sides.hasOurs">
+            Whole file: yours
+          </button>
+          <button type="button" class="bl-btn" (click)="useWholeFile('theirs')" [disabled]="!sides.hasTheirs">
+            Whole file: incoming
+          </button>
+          <button
+            type="button"
+            class="bl-btn"
+            [class.on]="showBase()"
+            (click)="showBase.set(!showBase())"
+            [disabled]="!sides.hasBase"
+          >
+            {{ showBase() ? 'Hide base' : 'Show base' }}
+          </button>
+        </div>
+
+        <div class="conflict-list">
+          @for (c of conflicts(); track c.id; let i = $index) {
+            <article
+              #conflictCard
+              class="conflict-card"
+              [class.active]="activeConflictId() === c.id"
+              [class.resolved]="!!choiceFor(c.id)"
+              [attr.data-conflict-id]="c.id"
+              (click)="focusConflictById(c.id)"
+            >
+              <header class="card-head">
+                <strong>Conflict {{ i + 1 }}</strong>
+                <span class="meta">line {{ c.startLine }}</span>
+                @if (choiceFor(c.id); as choice) {
+                  <span class="badge ok">{{ choiceLabel(choice) }}</span>
+                  <button type="button" class="link" (click)="clearChoice(c.id); $event.stopPropagation()">
+                    Clear
+                  </button>
+                } @else {
+                  <span class="badge pending">needs choice</span>
+                }
+              </header>
+              <div class="sides" [class.with-base]="showBase() && c.hasBase">
+                @if (showBase() && c.hasBase) {
+                  <section>
+                    <h3>Base</h3>
+                    <pre>{{ previewLines(c.base).join('\n') }}</pre>
+                  </section>
+                }
+                <section class="side-ours">
+                  <h3>{{ yoursLabel() }}</h3>
+                  <pre>{{ previewLines(c.ours).join('\n') }}</pre>
+                </section>
+                <section class="side-theirs">
+                  <h3>{{ incomingLabel() }}</h3>
+                  <pre>{{ previewLines(c.theirs).join('\n') }}</pre>
+                </section>
+              </div>
+              <div class="choices">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [class.bl-btn-primary]="choiceFor(c.id) === 'ours'"
+                  (click)="accept(c.id, 'ours'); $event.stopPropagation()"
+                >
+                  1 · Yours
+                </button>
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [class.bl-btn-primary]="choiceFor(c.id) === 'theirs'"
+                  (click)="accept(c.id, 'theirs'); $event.stopPropagation()"
+                >
+                  2 · Incoming
+                </button>
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [class.bl-btn-primary]="choiceFor(c.id) === 'both'"
+                  (click)="accept(c.id, 'both'); $event.stopPropagation()"
+                >
+                  3 · Both
+                </button>
+                @if (c.hasBase) {
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    [class.bl-btn-primary]="choiceFor(c.id) === 'base'"
+                    (click)="accept(c.id, 'base'); $event.stopPropagation()"
+                  >
+                    Base
+                  </button>
+                }
+              </div>
+            </article>
+          }
+        </div>
+
+        <div class="result-strip">
+          <div class="result-strip-head">
+            <h3>Merged result</h3>
+            <button type="button" class="link" (click)="resultMode.set('edit')">Edit full file</button>
+          </div>
+          <pre class="result-preview" [class.dirty]="remainingCount() > 0">{{ store.conflictResolverDraft() }}</pre>
+        </div>
+
+        <footer>
+          <button type="button" class="bl-btn" (click)="store.closeConflictResolver()">Cancel</button>
+          <span class="remain">
+            @if (remainingCount()) {
+              {{ remainingCount() }} left
+            } @else {
+              All conflicts chosen
+            }
+          </span>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="!canSave() || saving()"
+            (click)="save()"
+          >
+            {{ saving() ? 'Saving…' : 'Save & stage' }}
           </button>
         </footer>
       } @else {
         <div class="toolbar">
-          <button type="button" class="bl-btn" (click)="store.useConflictSide('ours')" [disabled]="!sides.hasOurs">
-            Use ours
+          <button type="button" class="bl-btn" (click)="useWholeFile('ours')" [disabled]="!sides.hasOurs">
+            Use yours
           </button>
-          <button type="button" class="bl-btn" (click)="store.useConflictSide('theirs')" [disabled]="!sides.hasTheirs">
-            Use theirs
+          <button type="button" class="bl-btn" (click)="useWholeFile('theirs')" [disabled]="!sides.hasTheirs">
+            Use incoming
           </button>
-          <button type="button" class="bl-btn" (click)="store.useConflictSide('base')" [disabled]="!sides.hasBase">
+          <button type="button" class="bl-btn" (click)="useWholeFile('base')" [disabled]="!sides.hasBase">
             Use base
           </button>
-          <button type="button" class="bl-btn" (click)="store.useConflictSide('working')">
-            Reset to markers
-          </button>
+          <button type="button" class="bl-btn" (click)="useWholeFile('working')">Reset to markers</button>
+          @if (conflicts().length) {
+            <button type="button" class="bl-btn" (click)="resultMode.set('guided')">Guided view</button>
+          }
         </div>
 
         <div class="panes">
           <section>
-            <h3>Ours</h3>
+            <h3>{{ yoursLabel() }}</h3>
             <pre>{{ sides.ours || '—' }}</pre>
           </section>
           <section>
-            <h3>Theirs</h3>
+            <h3>{{ incomingLabel() }}</h3>
             <pre>{{ sides.theirs || '—' }}</pre>
           </section>
           <section class="result">
             <h3>Result</h3>
             <textarea
               [ngModel]="store.conflictResolverDraft()"
-              (ngModelChange)="store.setConflictResolverDraft($event)"
+              (ngModelChange)="onDraftEdit($event)"
               spellcheck="false"
               aria-label="Resolved file content"
             ></textarea>
@@ -145,11 +288,14 @@
 
         <footer>
           <button type="button" class="bl-btn" (click)="store.closeConflictResolver()">Cancel</button>
-          <button type="button" class="bl-btn" (click)="openIdeMerge()" title="Resolve in Cursor or VS Code merge UI">
-            IDE merge
-          </button>
-          <button type="button" class="bl-btn bl-btn-primary" (click)="store.saveConflictResolution()">
-            Save &amp; stage
+          <button type="button" class="bl-btn" (click)="openIdeMerge()">IDE merge</button>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="!canSave() || saving()"
+            (click)="save()"
+          >
+            {{ saving() ? 'Saving…' : 'Save & stage' }}
           </button>
         </footer>
       }

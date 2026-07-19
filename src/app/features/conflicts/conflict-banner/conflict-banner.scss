@@ -76,4 +76,41 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   flex-shrink: 0;
+  align-items: center;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 20;
+  min-width: 180px;
+  padding: 0.35rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-dialog);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.menu button {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: calc(var(--radius-control) - 2px);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
