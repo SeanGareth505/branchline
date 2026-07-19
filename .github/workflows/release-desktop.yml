@@ -89,10 +89,70 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: Branchline ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseBody: |
-            Download installers for macOS, Windows, and Linux.
+            ## Download
+            Easy download page: https://seangareth505.github.io/branchline/
 
-            macOS tip: if Gatekeeper says the app is damaged, the build was not notarized yet.
-            Download page: https://seangareth505.github.io/branchline/
+            ### macOS
+            1. Open the `.dmg` and drag Branchline to Applications
+            2. If macOS says the app is damaged, download **Fix & Open** from the download page, or run:
+               `xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app`
+
+            ### Windows
+            Run the setup `.exe`. If SmartScreen appears: More info → Run anyway.
+
+            ### Android
+            Install `Branchline-android.apk` (enable install from this source if asked).
           releaseDraft: ${{ github.ref_type != 'tag' }}
           prerelease: false
           args: ${{ matrix.args }}
+
+  stabilize-names:
+    needs: publish-tauri
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish stable download filenames
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          mkdir -p /tmp/rel
+          gh release download "$TAG" -R "${{ github.repository }}" -D /tmp/rel
+
+          copy_stable() {
+            local pattern="$1"
+            local stable="$2"
+            local src
+            src=$(find /tmp/rel -maxdepth 1 -type f -iname "$pattern" | head -n 1 || true)
+            if [ -n "$src" ]; then
+              cp "$src" "/tmp/rel/$stable"
+              echo "Stable: $stable <- $(basename "$src")"
+            else
+              echo "Skip missing pattern: $pattern"
+            fi
+          }
+
+          copy_stable '*aarch64*.dmg' 'Branchline-mac-arm64.dmg'
+          copy_stable '*x64*.dmg' 'Branchline-mac-x64.dmg'
+          copy_stable '*-setup.exe' 'Branchline-windows-setup.exe'
+          copy_stable '*.AppImage' 'Branchline-linux.AppImage'
+          copy_stable '*.deb' 'Branchline-linux.deb'
+          copy_stable '*-android.apk' 'Branchline-android.apk'
+
+          shopt -s nullglob
+          FILES=(
+            /tmp/rel/Branchline-mac-arm64.dmg
+            /tmp/rel/Branchline-mac-x64.dmg
+            /tmp/rel/Branchline-windows-setup.exe
+            /tmp/rel/Branchline-linux.AppImage
+            /tmp/rel/Branchline-linux.deb
+            /tmp/rel/Branchline-android.apk
+          )
+          EXISTING=()
+          for f in "${FILES[@]}"; do
+            [ -f "$f" ] && EXISTING+=("$f")
+          done
+          if [ "${#EXISTING[@]}" -gt 0 ]; then
+            gh release upload "$TAG" "${EXISTING[@]}" -R "${{ github.repository }}" --clobber
+          fi

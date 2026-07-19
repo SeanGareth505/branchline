@@ -100,13 +100,79 @@ body {
   animation: rise 700ms var(--ease) 140ms both;
 }
 
+.howto {
+  width: min(560px, 100%);
+  text-align: left;
+  padding: 1rem 1.1rem 1.05rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(14, 22, 34, 0.7);
+  backdrop-filter: blur(10px);
+  animation: rise 700ms var(--ease) 160ms both;
+}
+
+.howto-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.howto-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.55rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--accent-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.steps li + li {
+  margin-top: 0.35rem;
+}
+
+.steps code {
+  color: var(--accent-soft);
+  font-size: 0.84em;
+}
+
+.howto-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.howto-actions .btn {
+  cursor: pointer;
+}
+
 .grid {
   width: min(920px, 100%);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem;
-  margin-top: 0.75rem;
-  animation: rise 700ms var(--ease) 200ms both;
+  margin-top: 0.35rem;
+  animation: rise 700ms var(--ease) 220ms both;
 }
 
 .card {
@@ -249,6 +315,7 @@ body {
   .brand,
   .lede,
   .cta,
+  .howto,
   .grid {
     animation: none;
   }
