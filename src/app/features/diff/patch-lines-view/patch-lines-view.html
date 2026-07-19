@@ -45,72 +45,174 @@
 
   <div
     class="patch-scroll mono"
+    [class.split]="sideBySide()"
     (contextmenu)="onPatchContextMenu($event)"
   >
     @if (!patch()) {
       <p class="patch-empty">{{ emptyMessage() }}</p>
     } @else if (parsedDiff(); as diff) {
-      @for (line of diff.lines; track line.index) {
-        @if (line.kind === 'hunk') {
-          <div class="hunk-bar">
-            <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
-            @if (interactive() && line.hunkId) {
-              <div class="hunk-actions">
-                @if (canStage()) {
-                  <button
-                    type="button"
-                    class="bl-btn quiet"
-                    [disabled]="patchBusy()"
-                    (click)="stageHunk(line.hunkId)"
-                  >
-                    Stage hunk
-                  </button>
-                  <button
-                    type="button"
-                    class="bl-btn quiet danger"
-                    [disabled]="patchBusy()"
-                    (click)="discardHunk(line.hunkId)"
-                  >
-                    Reset hunk
-                  </button>
-                } @else if (canUnstage()) {
-                  <button
-                    type="button"
-                    class="bl-btn quiet"
-                    [disabled]="patchBusy()"
-                    (click)="unstageHunk(line.hunkId)"
-                  >
-                    Unstage hunk
-                  </button>
-                } @else if (canReset()) {
-                  <button
-                    type="button"
-                    class="bl-btn quiet danger"
-                    [disabled]="patchBusy()"
-                    (click)="discardHunk(line.hunkId)"
-                  >
-                    Reset hunk
-                  </button>
+      @if (sideBySide()) {
+        <div class="split-rows">
+          @for (row of sideBySideRows(); track $index) {
+            <div class="split-row">
+              <div class="split-cell">
+                @if (row.left.line; as line) {
+                  @if (line.kind === 'hunk') {
+                    <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+                  } @else {
+                    <div
+                      class="pline"
+                      role="button"
+                      tabindex="-1"
+                      [attr.data-kind]="line.kind"
+                      [class.selectable]="interactive() && line.selectable"
+                      [class.selected]="isLineSelected(line.index)"
+                      [class.inert]="!interactive() || !line.selectable"
+                      (mousedown)="onDiffLineMouseDown(line.index, $event)"
+                      (mouseenter)="onDiffLineMouseEnter(line.index)"
+                      (click)="onDiffLineClick(line.index, $event)"
+                      (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+                    >
+                      {{ line.text }}
+                    </div>
+                  }
+                } @else {
+                  <div class="pline spacer" aria-hidden="true">&nbsp;</div>
                 }
               </div>
-            }
-          </div>
-        } @else {
-          <div
-            class="pline"
-            role="button"
-            tabindex="-1"
-            [attr.data-kind]="line.kind"
-            [class.selectable]="interactive() && line.selectable"
-            [class.selected]="isLineSelected(line.index)"
-            [class.inert]="!interactive() || !line.selectable"
-            (mousedown)="onDiffLineMouseDown(line.index, $event)"
-            (mouseenter)="onDiffLineMouseEnter(line.index)"
-            (click)="onDiffLineClick(line.index, $event)"
-            (contextmenu)="onDiffLineContextMenu(line.index, $event)"
-          >
-            {{ line.text }}
-          </div>
+              <div class="split-cell">
+                @if (row.right.line; as line) {
+                  @if (line.kind === 'hunk') {
+                    <div class="hunk-bar">
+                      <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+                      @if (interactive() && line.hunkId) {
+                        <div class="hunk-actions">
+                          @if (canStage()) {
+                            <button
+                              type="button"
+                              class="bl-btn quiet"
+                              [disabled]="patchBusy()"
+                              (click)="stageHunk(line.hunkId)"
+                            >
+                              Stage hunk
+                            </button>
+                            <button
+                              type="button"
+                              class="bl-btn quiet danger"
+                              [disabled]="patchBusy()"
+                              (click)="discardHunk(line.hunkId)"
+                            >
+                              Reset hunk
+                            </button>
+                          } @else if (canUnstage()) {
+                            <button
+                              type="button"
+                              class="bl-btn quiet"
+                              [disabled]="patchBusy()"
+                              (click)="unstageHunk(line.hunkId)"
+                            >
+                              Unstage hunk
+                            </button>
+                          } @else if (canReset()) {
+                            <button
+                              type="button"
+                              class="bl-btn quiet danger"
+                              [disabled]="patchBusy()"
+                              (click)="discardHunk(line.hunkId)"
+                            >
+                              Reset hunk
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div
+                      class="pline"
+                      role="button"
+                      tabindex="-1"
+                      [attr.data-kind]="line.kind"
+                      [class.selectable]="interactive() && line.selectable"
+                      [class.selected]="isLineSelected(line.index)"
+                      [class.inert]="!interactive() || !line.selectable"
+                      (mousedown)="onDiffLineMouseDown(line.index, $event)"
+                      (mouseenter)="onDiffLineMouseEnter(line.index)"
+                      (click)="onDiffLineClick(line.index, $event)"
+                      (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+                    >
+                      {{ line.text }}
+                    </div>
+                  }
+                } @else {
+                  <div class="pline spacer" aria-hidden="true">&nbsp;</div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        @for (line of diff.lines; track line.index) {
+          @if (line.kind === 'hunk') {
+            <div class="hunk-bar">
+              <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+              @if (interactive() && line.hunkId) {
+                <div class="hunk-actions">
+                  @if (canStage()) {
+                    <button
+                      type="button"
+                      class="bl-btn quiet"
+                      [disabled]="patchBusy()"
+                      (click)="stageHunk(line.hunkId)"
+                    >
+                      Stage hunk
+                    </button>
+                    <button
+                      type="button"
+                      class="bl-btn quiet danger"
+                      [disabled]="patchBusy()"
+                      (click)="discardHunk(line.hunkId)"
+                    >
+                      Reset hunk
+                    </button>
+                  } @else if (canUnstage()) {
+                    <button
+                      type="button"
+                      class="bl-btn quiet"
+                      [disabled]="patchBusy()"
+                      (click)="unstageHunk(line.hunkId)"
+                    >
+                      Unstage hunk
+                    </button>
+                  } @else if (canReset()) {
+                    <button
+                      type="button"
+                      class="bl-btn quiet danger"
+                      [disabled]="patchBusy()"
+                      (click)="discardHunk(line.hunkId)"
+                    >
+                      Reset hunk
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          } @else {
+            <div
+              class="pline"
+              role="button"
+              tabindex="-1"
+              [attr.data-kind]="line.kind"
+              [class.selectable]="interactive() && line.selectable"
+              [class.selected]="isLineSelected(line.index)"
+              [class.inert]="!interactive() || !line.selectable"
+              (mousedown)="onDiffLineMouseDown(line.index, $event)"
+              (mouseenter)="onDiffLineMouseEnter(line.index)"
+              (click)="onDiffLineClick(line.index, $event)"
+              (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+            >
+              {{ line.text }}
+            </div>
+          }
         }
       }
     } @else {

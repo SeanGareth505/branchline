@@ -22,14 +22,14 @@
   --bg-surface: rgba(255, 255, 255, 0.55);
   --bg-hover: rgba(255, 255, 255, 0.82);
   --bg-active: rgba(236, 242, 252, 0.95);
-  --border-subtle: rgba(148, 163, 184, 0.28);
-  --border-strong: rgba(100, 116, 139, 0.32);
+  --border-subtle: rgba(100, 116, 139, 0.38);
+  --border-strong: rgba(71, 85, 105, 0.48);
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --accent: #0ea5e9;
-  --accent-muted: rgba(14, 165, 233, 0.14);
-  --accent-hover: #0284c7;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --accent: #0284c7;
+  --accent-muted: rgba(2, 132, 199, 0.16);
+  --accent-hover: #0369a1;
   --git-added: #059669;
   --git-modified: #b45309;
   --git-deleted: #dc2626;
@@ -96,13 +96,13 @@
   --bg-surface: rgba(45, 58, 80, 0.55);
   --bg-hover: rgba(55, 70, 96, 0.72);
   --bg-active: rgba(66, 82, 112, 0.85);
-  --border-subtle: rgba(148, 163, 184, 0.18);
-  --border-strong: rgba(186, 200, 220, 0.28);
-  --text-primary: #f1f5f9;
-  --text-secondary: #b6c2d4;
-  --text-muted: #8796ab;
+  --border-subtle: rgba(148, 163, 184, 0.28);
+  --border-strong: rgba(186, 200, 220, 0.4);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
   --accent: #38bdf8;
-  --accent-muted: rgba(56, 189, 248, 0.16);
+  --accent-muted: rgba(56, 189, 248, 0.2);
   --accent-hover: #7dd3fc;
   --git-added: #34d399;
   --git-modified: #fbbf24;
@@ -443,11 +443,12 @@ code,
   gap: 0.4rem;
   padding: 0.4rem 0.8rem;
   border-radius: var(--radius-control);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  background: var(--glass-bg-strong);
   backdrop-filter: blur(14px) saturate(1.45);
   -webkit-backdrop-filter: blur(14px) saturate(1.45);
   color: var(--text-primary);
+  font-weight: 600;
   box-shadow: 0 1px 0 var(--glass-highlight) inset;
   transition:
     background var(--duration-fast) var(--ease-out),
@@ -458,7 +459,7 @@ code,
 
 .bl-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--glass-border-strong);
+  border-color: var(--border-strong);
 }
 
 .bl-btn:active {
@@ -467,27 +468,28 @@ code,
 }
 
 .bl-btn-primary {
-  background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 82%, white), var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   color: #ffffff;
-  font-weight: 600;
+  font-weight: 700;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.35) inset,
-    0 6px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 6px 18px color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
 .bl-btn-primary:hover {
-  background: linear-gradient(165deg, color-mix(in srgb, var(--accent-hover) 70%, white), var(--accent-hover));
+  background: linear-gradient(165deg, color-mix(in srgb, var(--accent-hover) 65%, white), var(--accent-hover));
   border-color: transparent;
 }
 
 .bl-btn-danger {
-  border-color: color-mix(in srgb, var(--git-deleted) 45%, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--git-deleted) 55%, var(--border-subtle));
   color: var(--git-deleted);
+  font-weight: 650;
 }
 
 .bl-btn-danger:hover {
-  background: color-mix(in srgb, var(--git-deleted) 12%, var(--bg-hover));
+  background: color-mix(in srgb, var(--git-deleted) 14%, var(--bg-hover));
 }
 
 .bl-chip {

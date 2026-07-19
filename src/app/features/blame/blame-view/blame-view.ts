@@ -54,4 +54,10 @@ export class BlameView {
   get displayPath(): string {
     return this.store.selectedDiffPath() ?? 'Select a file from Diff or File tree';
   }
+
+  openCommit(sha: string): void {
+    if (!sha.trim()) return;
+    this.store.selectCommit(sha);
+    this.store.setBrowseTab('diff');
+  }
 }

@@ -43,7 +43,14 @@ header {
   display: grid;
   grid-template-columns: 64px 90px 40px 1fr;
   gap: 0.5rem;
+  width: 100%;
   padding: 0.15rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .row:hover {

@@ -189,6 +189,10 @@ export class FileTreePanel {
     void this.store.discardPaths([path]);
   }
 
+  ignoreFile(path: string): void {
+    void this.store.ignorePath(path);
+  }
+
   statusGlyph(status: FileStatusKind, area: FileArea): string {
     if (area === 'conflicted') return '!';
     if (area === 'staged') return 'S';

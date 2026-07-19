@@ -34,29 +34,6 @@ export class DiffViewer {
     return 'Commit';
   });
 
-  readonly interactiveUnified = computed(() => !this.sideBySide());
-
-  readonly splitPairs = computed(() => {
-    const left: string[] = [];
-    const right: string[] = [];
-    for (const text of this.patch().split('\n')) {
-      let kind: 'add' | 'del' | 'other' = 'other';
-      if (text.startsWith('+') && !text.startsWith('+++')) kind = 'add';
-      else if (text.startsWith('-') && !text.startsWith('---')) kind = 'del';
-      if (kind === 'del') {
-        left.push(text);
-        right.push('');
-      } else if (kind === 'add') {
-        left.push('');
-        right.push(text);
-      } else {
-        left.push(text);
-        right.push(text);
-      }
-    }
-    return { left, right };
-  });
-
   constructor() {
     effect(() => {
       const path = this.store.currentRepo()?.path;

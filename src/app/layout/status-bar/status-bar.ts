@@ -10,4 +10,16 @@ import { AppStore } from '../../core/app.store';
 })
 export class StatusBar {
   readonly store = inject(AppStore);
+
+  onPush(): void {
+    void this.store.pushRemote();
+  }
+
+  onPull(): void {
+    void this.store.pullRemote();
+  }
+
+  onChanges(): void {
+    this.store.openCommitModal();
+  }
 }

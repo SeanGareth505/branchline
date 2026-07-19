@@ -13,12 +13,15 @@ import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overla
 import { AppStore } from '../../../core/app.store';
 import {
   buildPartialPatch,
+  buildSideBySideRows,
   parseUnifiedDiff,
   selectableIndexesForHunk,
   type ParsedDiff,
+  type SideBySideRow,
 } from '../../../core/patch-ops';
 
 export type PatchLinesMode = 'unstaged' | 'staged' | 'revert' | 'readonly';
+export type PatchLinesLayout = 'unified' | 'sideBySide';
 
 @Component({
   selector: 'app-patch-lines-view',
@@ -32,6 +35,7 @@ export class PatchLinesView {
 
   readonly patch = input.required<string>();
   readonly mode = input<PatchLinesMode>('readonly');
+  readonly layout = input<PatchLinesLayout>('unified');
   readonly emptyMessage = input('No diff to show.');
   readonly showToolbar = input(true);
   readonly captureKeys = input(true);
@@ -70,6 +74,12 @@ export class PatchLinesView {
   readonly canStage = computed(() => this.mode() === 'unstaged');
   readonly canUnstage = computed(() => this.mode() === 'staged');
   readonly canReset = computed(() => this.mode() === 'unstaged' || this.mode() === 'revert');
+  readonly sideBySide = computed(() => this.layout() === 'sideBySide');
+  readonly sideBySideRows = computed((): SideBySideRow[] => {
+    const parsed = this.parsedDiff();
+    if (!parsed || !this.sideBySide()) return [];
+    return buildSideBySideRows(parsed);
+  });
 
   private dragSelecting = false;
   private dragAdditive = false;

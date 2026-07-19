@@ -92,14 +92,28 @@
   cursor: pointer;
 }
 
-.pline.selectable:hover {
-  filter: brightness(1.04);
+.pline.selectable:hover:not(.selected) {
+  filter: brightness(1.06);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .pline.selected {
   border-left-color: var(--accent);
-  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent) 28%, transparent) !important;
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text-primary);
+}
+
+.pline.selected[data-kind='add'] {
+  background: color-mix(in srgb, var(--accent) 22%, var(--diff-add-bg)) !important;
+  color: color-mix(in srgb, var(--git-added) 40%, var(--text-primary));
+}
+
+.pline.selected[data-kind='del'] {
+  background: color-mix(in srgb, var(--accent) 22%, var(--diff-del-bg)) !important;
+  color: color-mix(in srgb, var(--git-deleted) 40%, var(--text-primary));
 }
 
 .pline[data-kind='add'] {
@@ -119,4 +133,37 @@
 
 .pline[data-kind='meta'] {
   color: var(--text-muted);
+}
+
+.pline.spacer {
+  min-height: 1.4em;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.patch-scroll.split {
+  padding: 0.35rem 0;
+}
+
+.split-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.split-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.split-cell {
+  min-width: 0;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.split-cell:last-child {
+  border-right: 0;
+}
+
+.split-cell .hunk-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
 }

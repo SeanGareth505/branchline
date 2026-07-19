@@ -20,11 +20,7 @@
       type="button"
       class="bl-btn"
       (click)="toggleSideBySide()"
-      [title]="
-        sideBySide()
-          ? 'Switch to unified diff (line select enabled)'
-          : 'Switch to side-by-side diff'
-      "
+      [title]="sideBySide() ? 'Switch to unified diff' : 'Switch to side-by-side diff'"
     >
       {{ sideBySide() ? 'Unified' : 'Side by side' }}
     </button>
@@ -34,24 +30,11 @@
     <p class="empty">Loading diff…</p>
   } @else if (!patch()) {
     <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
-  } @else if (sideBySide()) {
-    <div class="split mono">
-      <pre>
-@for (line of splitPairs().left; track $index) {
-<span [class.add]="line.startsWith('+')" [class.del]="line.startsWith('-')">{{ line || ' ' }}</span>
-}
-      </pre>
-      <pre>
-@for (line of splitPairs().right; track $index) {
-<span [class.add]="line.startsWith('+')" [class.del]="line.startsWith('-')">{{ line || ' ' }}</span>
-}
-      </pre>
-    </div>
-    <p class="hint">Switch to Unified to highlight and reset lines.</p>
   } @else {
     <app-patch-lines-view
       [patch]="patch()"
       [mode]="linesMode()"
+      [layout]="sideBySide() ? 'sideBySide' : 'unified'"
       emptyMessage="No changes in this diff."
       (applied)="onApplied()"
     />

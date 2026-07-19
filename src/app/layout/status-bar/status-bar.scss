@@ -86,7 +86,31 @@
 }
 
 .meta {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.meta.action {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0.2rem 0.45rem;
+  margin: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.meta.action:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.meta.action:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .right .bl-btn {

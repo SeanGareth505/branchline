@@ -23,6 +23,7 @@ import type {
   SafetyAnalysis,
   StashEntry,
   TagInfo,
+  TemplateInfo,
   UiSession,
   WorktreeInfo,
 } from './models';
@@ -147,6 +148,8 @@ export class AppStore {
   readonly ignoreEditorOpen = signal(false);
   readonly ignoreEditor = signal<IgnoreFileOutput | null>(null);
   readonly commitModalOpen = signal(false);
+  readonly pendingCommitTemplate = signal<TemplateInfo | null>(null);
+  readonly paletteSeedQuery = signal<string | null>(null);
   readonly changelogModalOpen = signal(false);
   readonly cloneDialogOpen = signal(false);
   readonly cloneDialogUrl = signal('');
@@ -1559,6 +1562,89 @@ export class AppStore {
 
   closeCommitModal(): void {
     this.commitModalOpen.set(false);
+    this.pendingCommitTemplate.set(null);
+  }
+
+  openShortcutPalette(): void {
+    this.paletteSeedQuery.set('shortcut');
+    this.paletteOpen.set(true);
+  }
+
+  applyCommitTemplate(template: TemplateInfo): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    this.pendingCommitTemplate.set(template);
+    this.setView('browse');
+    this.openCommitModal();
+  }
+
+  applyBranchTemplate(template: TemplateInfo): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    const branch = this.status()?.branch ?? 'main';
+    const jira = this.activeJiraKey() || 'PROJ-0';
+    const name = template.pattern
+      .replaceAll('{type}', 'feat')
+      .replaceAll('{summary}', 'summary')
+      .replaceAll('{name}', branch)
+      .replaceAll('{jira}', jira)
+      .split('\n')[0]
+      .trim();
+    this.setView('browse');
+    this.openCreateBranchDialog(null, name);
+  }
+
+  async ignorePath(filePath: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || !filePath.trim()) return;
+    try {
+      const file = await this.tauri.getIgnoreFile(path, 'gitignore');
+      const lines = file.content.split(/\r?\n/);
+      const pattern = filePath.trim();
+      if (lines.some((line) => line.trim() === pattern)) {
+        this.showInfo(`Already ignored: ${pattern}`);
+        return;
+      }
+      const next = file.content.trimEnd();
+      const content = next ? `${next}\n${pattern}\n` : `${pattern}\n`;
+      const result = await this.tauri.saveIgnoreFile(path, 'gitignore', content);
+      await this.refreshRepo();
+      this.showSuccess(result.message || `Ignored ${pattern}`);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openCreatePullRequest(): Promise<void> {
+    const status = this.status();
+    const remotes = this.remotes();
+    if (!status) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    const origin =
+      remotes.find((r) => r.name === 'origin') ?? remotes[0] ?? null;
+    if (!origin) {
+      this.showWarning('No remotes configured');
+      return;
+    }
+    const upstream = status.upstream?.includes('/')
+      ? status.upstream.split('/').slice(1).join('/')
+      : null;
+    const url = buildCompareUrl(origin.fetchUrl || origin.pushUrl, status.branch, upstream);
+    if (!url) {
+      this.showWarning('Could not build a pull request URL from the remote');
+      return;
+    }
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch (err) {
+      this.showError(err);
+    }
   }
 
   openChangelogModal(): void {
@@ -2102,6 +2188,58 @@ function normalizePullAction(value: unknown): AppSettings['defaultPullAction'] {
 function normalizePushAction(value: unknown): AppSettings['defaultPushAction'] {
   if (value === 'current' || value === 'matching' || value === 'upstream') return value;
   return 'upstream';
+}
+
+function buildCompareUrl(
+  remoteUrl: string,
+  branch: string,
+  upstreamBranch: string | null,
+): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  if (!parsed || !branch.trim()) return null;
+  const head = encodeURIComponent(branch.trim());
+  if (parsed.host.includes('gitlab')) {
+    const params = new URLSearchParams();
+    params.set('merge_request[source_branch]', branch.trim());
+    if (upstreamBranch) {
+      params.set('merge_request[target_branch]', upstreamBranch);
+    }
+    return `${parsed.webBase}/-/merge_requests/new?${params.toString()}`;
+  }
+  if (parsed.host.includes('dev.azure.com') || parsed.host.includes('visualstudio.com')) {
+    return `${parsed.webBase}/pullrequestcreate?sourceRef=${head}`;
+  }
+  const base = encodeURIComponent(upstreamBranch || 'main');
+  return `${parsed.webBase}/compare/${base}...${head}?expand=1`;
+}
+
+function parseRemoteWebBase(
+  remoteUrl: string,
+): { host: string; webBase: string } | null {
+  const raw = remoteUrl.trim();
+  if (!raw) return null;
+
+  let host = '';
+  let path = '';
+
+  const ssh = raw.match(/^git@([^:]+):(.+)$/i);
+  if (ssh) {
+    host = ssh[1].toLowerCase();
+    path = ssh[2];
+  } else {
+    try {
+      const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+      const url = new URL(withScheme);
+      host = url.host.toLowerCase();
+      path = url.pathname.replace(/^\/+/, '');
+    } catch {
+      return null;
+    }
+  }
+
+  path = path.replace(/\.git$/i, '').replace(/\/+$/, '');
+  if (!host || !path) return null;
+  return { host, webBase: `https://${host}/${path}` };
 }
 
 function defaultConnections(): AppSettings['connections'] {

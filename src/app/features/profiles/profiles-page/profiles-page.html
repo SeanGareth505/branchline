@@ -33,9 +33,11 @@
           <button
             type="button"
             class="bl-btn action"
-            title="Apply this profile to the open repository"
+            title="Apply this profile as your Git identity"
+            [disabled]="applyingId() === p.id"
+            (click)="useProfile(p)"
           >
-            Use
+            {{ applyingId() === p.id ? 'Applying…' : 'Use' }}
           </button>
         </div>
       </article>

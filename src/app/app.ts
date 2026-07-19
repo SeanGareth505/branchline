@@ -41,9 +41,25 @@ export class App implements OnInit {
       this.store.paletteOpen.update((v) => !v);
       return;
     }
+    if (
+      meta &&
+      event.shiftKey &&
+      event.key.toLowerCase() === 'c' &&
+      !typing &&
+      this.store.currentRepo()
+    ) {
+      event.preventDefault();
+      this.store.openCommitModal();
+      return;
+    }
     if (meta && event.key.toLowerCase() === 'z' && !typing && this.store.toast()?.undo) {
       event.preventDefault();
       this.store.runUndoFromToast();
+    }
+    if (event.key === '?' && !typing && !meta && !event.altKey) {
+      event.preventDefault();
+      this.store.openShortcutPalette();
+      return;
     }
     if (event.key === 'Escape') {
       if (this.store.paletteOpen()) {

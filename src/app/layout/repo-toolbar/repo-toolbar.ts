@@ -102,6 +102,11 @@ export class RepoToolbar {
     void this.store.stashPop(0);
   }
 
+  createPullRequest(): void {
+    this.menu.set(null);
+    void this.store.openCreatePullRequest();
+  }
+
   openConsole(): void {
     this.menu.set(null);
     this.store.setView('browse');

@@ -184,3 +184,24 @@ export function selectableIndexesForHunk(parsed: ParsedDiff, hunkId: string): nu
   if (!hunk) return [];
   return hunk.lineIndexes.filter((i) => parsed.lines[i]?.selectable);
 }
+
+export interface SideBySideCell {
+  line: DiffLine | null;
+}
+
+export interface SideBySideRow {
+  left: SideBySideCell;
+  right: SideBySideCell;
+}
+
+export function buildSideBySideRows(parsed: ParsedDiff): SideBySideRow[] {
+  return parsed.lines.map((line) => {
+    if (line.kind === 'del') {
+      return { left: { line }, right: { line: null } };
+    }
+    if (line.kind === 'add') {
+      return { left: { line: null }, right: { line } };
+    }
+    return { left: { line }, right: { line } };
+  });
+}

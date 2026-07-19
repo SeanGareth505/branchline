@@ -8,8 +8,33 @@
         <ng-icon name="lucideGitBranch" size="14" />
         {{ status.branch }}
       </span>
-      <span class="meta">↑{{ status.ahead }} ↓{{ status.behind }}</span>
-      <span class="meta">{{ store.changeCount() }} changes</span>
+      <button
+        type="button"
+        class="meta action"
+        [disabled]="!status.ahead"
+        title="Push {{ status.ahead }} commit(s) to remote"
+        (click)="onPush()"
+      >
+        ↑{{ status.ahead }}
+      </button>
+      <button
+        type="button"
+        class="meta action"
+        [disabled]="!status.behind"
+        title="Pull {{ status.behind }} commit(s) from remote"
+        (click)="onPull()"
+      >
+        ↓{{ status.behind }}
+      </button>
+      <button
+        type="button"
+        class="meta action"
+        [disabled]="!store.changeCount()"
+        title="Open commit dialog"
+        (click)="onChanges()"
+      >
+        {{ store.changeCount() }} changes
+      </button>
     } @else {
       <span class="meta">No repository open</span>
     }

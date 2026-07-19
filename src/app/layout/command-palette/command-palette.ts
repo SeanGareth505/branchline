@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import Fuse from 'fuse.js';
@@ -24,6 +24,15 @@ export class CommandPalette {
   private readonly prompts = inject(PromptService);
   private readonly updates = inject(UpdateService);
   readonly query = signal('');
+
+  constructor() {
+    effect(() => {
+      const seed = this.store.paletteSeedQuery();
+      if (!this.store.paletteOpen() || !seed) return;
+      this.query.set(seed);
+      this.store.paletteSeedQuery.set(null);
+    });
+  }
 
   private readonly actions = computed<PaletteItem[]>(() => {
     const store = this.store;
@@ -212,6 +221,36 @@ export class CommandPalette {
         label: 'Focus commit panel',
         group: 'Git',
         run: () => store.focusCommitPanel(),
+      },
+      {
+        id: 'create-pr',
+        label: 'Create pull request in browser…',
+        group: 'Git',
+        run: () => void store.openCreatePullRequest(),
+      },
+      {
+        id: 'shortcut-commit',
+        label: 'Shortcut · ⌘⇧C / Ctrl+Shift+C — Commit',
+        group: 'Shortcuts',
+        run: () => store.focusCommitPanel(),
+      },
+      {
+        id: 'shortcut-palette',
+        label: 'Shortcut · ⌘K / Ctrl+K — Command palette',
+        group: 'Shortcuts',
+        run: () => undefined,
+      },
+      {
+        id: 'shortcut-help',
+        label: 'Shortcut · ? — Show shortcuts',
+        group: 'Shortcuts',
+        run: () => store.openShortcutPalette(),
+      },
+      {
+        id: 'shortcut-undo',
+        label: 'Shortcut · ⌘Z / Ctrl+Z — Undo toast action',
+        group: 'Shortcuts',
+        run: () => store.runUndoFromToast(),
       },
       {
         id: 'cherry',

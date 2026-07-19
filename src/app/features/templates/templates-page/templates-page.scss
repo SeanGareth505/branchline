@@ -97,6 +97,12 @@
   gap: 1rem;
 }
 
+.card-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+
 .identity {
   display: flex;
   align-items: flex-start;

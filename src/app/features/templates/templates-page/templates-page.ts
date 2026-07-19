@@ -35,4 +35,12 @@ export class TemplatesPage implements OnInit {
       this.store.showError('Could not copy pattern');
     }
   }
+
+  use(template: TemplateInfo): void {
+    if (template.kind === 'branch') {
+      this.store.applyBranchTemplate(template);
+      return;
+    }
+    this.store.applyCommitTemplate(template);
+  }
 }

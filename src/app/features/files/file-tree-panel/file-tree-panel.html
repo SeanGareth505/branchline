@@ -167,6 +167,16 @@
                   Discard
                 </button>
               }
+              @if (row.file.area === 'untracked') {
+                <button
+                  type="button"
+                  class="link"
+                  title="Add to .gitignore"
+                  (click)="ignoreFile(row.path)"
+                >
+                  Ignore
+                </button>
+              }
               @if (row.file.area !== 'untracked') {
                 <button
                   type="button"

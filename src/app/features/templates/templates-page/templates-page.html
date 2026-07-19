@@ -27,14 +27,24 @@
               <p class="sub">{{ kindHint(t.kind) }}</p>
             </div>
           </div>
-          <button
-            type="button"
-            class="bl-btn action"
-            title="Copy pattern to clipboard"
-            (click)="copy(t.pattern)"
-          >
-            Copy
-          </button>
+          <div class="card-actions">
+            <button
+              type="button"
+              class="bl-btn action"
+              title="Use this template"
+              (click)="use(t)"
+            >
+              Use
+            </button>
+            <button
+              type="button"
+              class="bl-btn action"
+              title="Copy pattern to clipboard"
+              (click)="copy(t.pattern)"
+            >
+              Copy
+            </button>
+          </div>
         </div>
         <code class="pattern mono">{{ t.pattern }}</code>
       </article>

@@ -50,18 +50,19 @@
 }
 
 .ghost {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  background: var(--glass-bg);
+  color: var(--text-primary);
   font-size: 11.5px;
-  font-weight: 600;
-  padding: 0.3rem 0.45rem;
+  font-weight: 650;
+  padding: 0.3rem 0.5rem;
   border-radius: 6px;
 }
 
 .ghost:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
 .chips {

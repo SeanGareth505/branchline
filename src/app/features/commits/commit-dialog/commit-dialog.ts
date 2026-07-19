@@ -139,6 +139,13 @@ export class CommitDialog {
     });
   }
 
+  readonly isMac =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+
+  readonly modKey = this.isMac ? '⌘' : 'Ctrl';
+  readonly stageAllShortcut = `${this.modKey}+S`;
+  readonly commitShortcut = `${this.modKey}+Enter`;
+
   onPatchApplied(): void {
     const path = this.selectedPath();
     if (!path) return;
@@ -208,6 +215,16 @@ export class CommitDialog {
 
   hasStagedSelection(): boolean {
     return [...this.selectedFiles()].some((k) => k.startsWith('s:'));
+  }
+
+  hasUntrackedSelection(): boolean {
+    const untracked = new Set(
+      (this.store.status()?.untracked ?? []).map((f) => f.path),
+    );
+    return [...this.selectedFiles()].some((k) => {
+      if (!k.startsWith('u:')) return false;
+      return untracked.has(k.slice(2));
+    });
   }
 
   onFileClick(entry: FileStatusEntry, staged: boolean, event: MouseEvent, index: number): void {
@@ -292,6 +309,24 @@ export class CommitDialog {
       return;
     }
     await this.store.discardPaths(paths);
+    this.selectedFiles.set(new Set());
+  }
+
+  async ignoreSelected(): Promise<void> {
+    const untracked = new Set(
+      (this.store.status()?.untracked ?? []).map((f) => f.path),
+    );
+    const paths = [...this.selectedFiles()]
+      .filter((k) => k.startsWith('u:'))
+      .map((k) => k.slice(2))
+      .filter((p) => untracked.has(p));
+    if (!paths.length) {
+      this.store.showWarning('Select untracked files to ignore');
+      return;
+    }
+    for (const path of paths) {
+      await this.store.ignorePath(path);
+    }
     this.selectedFiles.set(new Set());
   }
 
@@ -542,6 +577,12 @@ export class CommitDialog {
       this.selectedFiles.set(new Set([this.fileKey(firstStaged, true)]));
       this.selectFile(firstStaged, true);
       this.focusPane.set('staged');
+    }
+
+    const pending = this.store.pendingCommitTemplate();
+    if (pending) {
+      this.applyTemplate(pending);
+      this.store.pendingCommitTemplate.set(null);
     }
   }
 

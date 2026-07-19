@@ -19,15 +19,6 @@
           <span class="stat staged">{{ stagedCount() }} staged</span>
         </div>
         <div class="toolbar-right">
-          <label class="filter">
-            <ng-icon name="lucideSearch" size="14" />
-            <input
-              type="search"
-              placeholder="Filter files"
-              [ngModel]="fileFilter()"
-              (ngModelChange)="fileFilter.set($event)"
-            />
-          </label>
           <button type="button" class="bl-btn icon-btn" (click)="close()" aria-label="Close" title="Close">
             <ng-icon name="lucideX" size="16" />
           </button>
@@ -42,6 +33,15 @@
 
       <div class="workspace">
         <div class="files-column">
+          <label class="filter">
+            <ng-icon name="lucideSearch" size="14" />
+            <input
+              type="search"
+              placeholder="Filter files"
+              [ngModel]="fileFilter()"
+              (ngModelChange)="fileFilter.set($event)"
+            />
+          </label>
           <section class="file-pane unstaged-pane" [class.focused]="focusPane() === 'unstaged'">
             <header class="pane-head">
               <h3>Unstaged changes</h3>
@@ -50,7 +50,7 @@
                 <button
                   type="button"
                   class="bl-btn quiet"
-                  title="Stage all (Ctrl+S)"
+                  title="Stage all ({{ stageAllShortcut }})"
                   [disabled]="!unstagedCount()"
                   (click)="stageAll()"
                 >
@@ -108,6 +108,15 @@
               (click)="resetSelected()"
             >
               Reset
+            </button>
+            <button
+              type="button"
+              class="bl-btn quiet"
+              title="Add selected untracked files to .gitignore"
+              [disabled]="!hasUntrackedSelection()"
+              (click)="ignoreSelected()"
+            >
+              Ignore
             </button>
           </div>
 
@@ -267,7 +276,7 @@
               (click)="commit()"
             >
               {{ amend() ? 'Amend' : 'Commit' }}
-              <span class="kbd">Ctrl+Enter</span>
+              <span class="kbd">{{ commitShortcut }}</span>
             </button>
           </div>
         </div>

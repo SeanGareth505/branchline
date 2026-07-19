@@ -24,25 +24,29 @@
   gap: 0.3rem;
   height: 1.9rem;
   min-width: 0;
-  padding: 0 0.5rem;
-  border: 1px solid transparent;
+  padding: 0 0.55rem;
+  border: 1px solid var(--border-subtle);
   border-radius: 7px;
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  color: var(--text-primary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
   letter-spacing: -0.01em;
   white-space: nowrap;
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
   transition:
     background var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .tool:hover {
-  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  background: var(--bg-hover);
   color: var(--text-primary);
-  border-color: var(--glass-border);
+  border-color: var(--border-strong);
 }
 
 .tool:disabled,
@@ -53,19 +57,28 @@
 
 .tool.locked {
   color: var(--text-muted);
+  border-color: var(--border-subtle);
 }
 
 .tool.primary {
-  padding: 0 0.5rem;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  padding: 0 0.65rem;
+  color: #ffffff;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  font-weight: 700;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .tool.primary:hover {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: var(--accent);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent-hover) 70%, white),
+    var(--accent-hover)
+  );
+  border-color: transparent;
+  color: #ffffff;
 }
 
 .tool ng-icon {
@@ -84,34 +97,44 @@
 
 .sep {
   width: 1px;
-  height: 1.15rem;
-  margin: 0 0.28rem;
-  background: var(--glass-border);
+  height: 1.25rem;
+  margin: 0 0.32rem;
+  background: var(--border-strong);
   flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .split {
   display: inline-flex;
   align-items: stretch;
   height: 1.9rem;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-subtle);
   border-radius: 7px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: 0 1px 0 var(--glass-highlight) inset;
 }
 
 .split:hover,
 .split.open {
-  border-color: var(--glass-border);
-  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
 }
 
 .split .tool {
   border: 0;
   border-radius: 5px 0 0 5px;
   height: 100%;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .split .tool:hover {
   border-color: transparent;
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
 
 .chev {
@@ -120,15 +143,15 @@
   justify-content: center;
   width: 0.95rem;
   border: 0;
-  border-left: 1px solid transparent;
+  border-left: 1px solid var(--border-subtle);
   border-radius: 0 5px 5px 0;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .split:hover .chev,
 .split.open .chev {
-  border-left-color: var(--glass-border);
+  border-left-color: var(--border-strong);
 }
 
 .chev:hover {

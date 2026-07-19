@@ -20,7 +20,7 @@
   <button
     type="button"
     class="tool primary"
-    title="Commit"
+    title="Commit (⌘⇧C / Ctrl+Shift+C)"
     (click)="store.focusCommitPanel()"
   >
     <ng-icon name="lucideGitCommitHorizontal" size="14" />
@@ -183,6 +183,10 @@
     </ng-template>
   </div>
 
+  <button type="button" class="tool" title="Create pull request in browser" (click)="createPullRequest()">
+    <ng-icon name="lucideGitPullRequest" size="14" />
+    <span>PR</span>
+  </button>
   <button type="button" class="tool" title="Undo last action" (click)="store.softUndoLastCommit()">
     <ng-icon name="lucideUndo2" size="14" />
     <span>Undo</span>

@@ -14,12 +14,18 @@
   } @else {
     <div class="rows mono">
       @for (line of visibleLines(); track line.lineNumber) {
-        <div class="row" [class.mine]="store.isMine(line.author, line.email)">
+        <button
+          type="button"
+          class="row"
+          [class.mine]="store.isMine(line.author, line.email)"
+          [title]="'Open commit ' + line.sha.slice(0, 7)"
+          (click)="openCommit(line.sha)"
+        >
           <span class="sha">{{ line.sha.slice(0, 7) }}</span>
           <span class="author">{{ line.author }}</span>
           <span class="num">{{ line.lineNumber }}</span>
           <span class="content">{{ line.content }}</span>
-        </div>
+        </button>
       } @empty {
         <p class="empty">
           @if (mineOnly() && lines().length) {
