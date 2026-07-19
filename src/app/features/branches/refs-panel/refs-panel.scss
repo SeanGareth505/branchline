@@ -186,9 +186,18 @@
   background: color-mix(in srgb, var(--git-conflict) 12%, transparent);
 }
 
+.sync-chip[data-kind='publish'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .sync-chip[data-kind='synced'] {
   color: var(--git-added);
   background: color-mix(in srgb, var(--git-added) 10%, transparent);
+}
+
+.sync-chip.row-sync {
+  margin-left: 0.2rem;
 }
 
 .count {

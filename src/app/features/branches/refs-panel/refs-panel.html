@@ -43,7 +43,7 @@
         <ng-icon class="chev" [name]="chevron('local')" size="13" />
         <span class="kind">Local</span>
         @if (syncLabel(); as sync) {
-          <span class="sync-chip" [attr.data-kind]="sync.kind" [title]="sync.detail">{{ sync.short }}</span>
+          <span class="sync-chip" [attr.data-kind]="sync.kind" [title]="sync.tooltip">{{ sync.short }}</span>
         }
         <span class="count">{{ filteredLocal().length }}</span>
       </button>
@@ -79,6 +79,11 @@
                   [title]="branchTitle(row.branch)"
                 >
                   <span class="label">{{ row.name }}</span>
+                  @if (row.branch.isCurrent && syncLabel(); as sync) {
+                    <span class="sync-chip row-sync" [attr.data-kind]="sync.kind" [title]="sync.tooltip">
+                      {{ sync.short }}
+                    </span>
+                  }
                   @if (row.branch.locked) {
                     <span
                       class="lock-badge"

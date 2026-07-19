@@ -4,28 +4,27 @@
       <span class="dummy-pill" title="Browser preview is using fake Git data">DUMMY DATA</span>
     }
     @if (store.status(); as status) {
-      <span class="pill">
+      <span class="pill" [title]="branchTitle()">
         <ng-icon name="lucideGitBranch" size="14" />
-        {{ status.branch }}
+        <span class="branch-name">{{ status.branch }}</span>
+        @if (syncStatus()?.upstreamShort; as up) {
+          <span class="upstream">↔ {{ up }}</span>
+        }
       </span>
-      @if (status.ahead > 0) {
+      @if (syncStatus(); as sync) {
         <button
           type="button"
-          class="meta action"
-          title="Push {{ status.ahead }} commit(s) to remote"
-          (click)="onPush()"
+          class="sync-btn"
+          [attr.data-kind]="sync.kind"
+          [title]="sync.tooltip"
+          (click)="onSyncAction()"
         >
-          ↑{{ status.ahead }}
-        </button>
-      }
-      @if (status.behind > 0) {
-        <button
-          type="button"
-          class="meta action"
-          title="Pull {{ status.behind }} commit(s) from remote"
-          (click)="onPull()"
-        >
-          ↓{{ status.behind }}
+          <ng-icon [name]="sync.icon" size="14" />
+          @if (sync.label) {
+            <span class="sync-label">{{ sync.label }}</span>
+          } @else if (sync.kind === 'publish') {
+            <span class="sync-label">Publish</span>
+          }
         </button>
       }
       @if (store.changeCount() > 0) {

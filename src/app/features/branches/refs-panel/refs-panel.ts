@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { BranchInfo } from '../../../core/models';
+import { describeBranchSync } from '../../../shared/git/branch-sync';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { RemotesPanel } from '../../remotes/remotes-panel/remotes-panel';
 import { StashPanel } from '../../stash/stash-panel/stash-panel';
@@ -96,36 +97,9 @@ export class RefsPanel {
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'top' },
   ];
 
-  readonly syncLabel = computed(() => {
-    const status = this.store.status();
-    if (!status) return null;
-    const up = status.upstream ? this.shortUpstream(status.upstream) : '';
-    if (status.ahead > 0 && status.behind > 0) {
-      return {
-        kind: 'diverged',
-        short: `${status.ahead}↑ ${status.behind}↓`,
-        detail: up ? `Diverged from ${up}` : 'Diverged from upstream',
-      };
-    }
-    if (status.ahead > 0) {
-      return {
-        kind: 'ahead',
-        short: `${status.ahead}↑`,
-        detail: up ? `${status.ahead} commit(s) ahead of ${up}` : 'Ahead of upstream',
-      };
-    }
-    if (status.behind > 0) {
-      return {
-        kind: 'behind',
-        short: `${status.behind}↓`,
-        detail: up ? `${status.behind} commit(s) behind ${up}` : 'Behind upstream',
-      };
-    }
-    if (status.upstream) {
-      return { kind: 'synced', short: 'synced', detail: `Matches ${status.upstream}` };
-    }
-    return null;
-  });
+  readonly syncLabel = computed(() =>
+    describeBranchSync(this.store.status(), { hasRemotes: this.store.remotes().length > 0 }),
+  );
 
   readonly filteredLocal = computed(() => this.filterByQuery(this.store.filteredLocalBranches()));
   readonly filteredRemote = computed(() => this.filterByQuery(this.store.filteredRemoteBranches()));
@@ -319,12 +293,6 @@ export class RefsPanel {
     await this.store.deleteTag(name);
   }
 
-  shortUpstream(upstream: string): string {
-    const parts = upstream.split('/');
-    if (parts.length <= 2) return upstream;
-    return parts.slice(-2).join('/');
-  }
-
   isTipSelected(tipSha: string | null | undefined): boolean {
     if (!tipSha) return false;
     const selected = this.store.selectedSha();
@@ -333,9 +301,18 @@ export class RefsPanel {
   }
 
   branchTitle(branch: BranchInfo): string {
-    if (branch.isCurrent) return `${branch.name} (checked out)`;
+    if (branch.isCurrent) {
+      const sync = this.syncLabel();
+      if (sync?.tooltip) return `${branch.name} · ${sync.tooltip}`;
+      return `${branch.name} (checked out)`;
+    }
     const wt = this.store.worktrees().find((w) => !w.isMain && w.branch === branch.name);
     if (wt) return `${branch.name} (checked out in another worktree)`;
+    if (branch.upstream) {
+      return branch.upstreamGone
+        ? `${branch.name} · upstream gone (${branch.upstream})`
+        : `${branch.name} → ${branch.upstream}`;
+    }
     return branch.name;
   }
 

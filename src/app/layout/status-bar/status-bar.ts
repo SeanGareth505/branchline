@@ -1,6 +1,7 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
+import { describeBranchSync } from '../../shared/git/branch-sync';
 
 @Component({
   selector: 'app-status-bar',
@@ -11,12 +12,34 @@ import { AppStore } from '../../core/app.store';
 export class StatusBar {
   readonly store = inject(AppStore);
 
-  onPush(): void {
-    void this.store.pushRemote();
+  readonly syncStatus = computed(() =>
+    describeBranchSync(this.store.status(), { hasRemotes: this.store.remotes().length > 0 }),
+  );
+
+  branchTitle(): string {
+    const status = this.store.status();
+    if (!status) return '';
+    if (status.isDetached) return `Detached HEAD at ${status.branch}`;
+    if (status.upstream) return `${status.branch} tracking ${status.upstream}`;
+    return status.branch;
   }
 
-  onPull(): void {
-    void this.store.pullRemote();
+  onSyncAction(): void {
+    const sync = this.syncStatus();
+    if (!sync) return;
+    if (sync.kind === 'publish') {
+      void this.store.pushRemote();
+      return;
+    }
+    if (sync.kind === 'ahead') {
+      void this.store.pushRemote();
+      return;
+    }
+    if (sync.kind === 'behind') {
+      void this.store.pullRemote();
+      return;
+    }
+    void this.store.syncRemote();
   }
 
   onChanges(): void {
