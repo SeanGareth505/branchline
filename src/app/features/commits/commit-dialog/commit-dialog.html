@@ -46,8 +46,13 @@
 
       @if (conflictedCount()) {
         <div class="conflict-strip">
-          {{ conflictedCount() }} conflicted file(s) — resolve them, then Continue to finish
-          {{ operationLabel() }}.
+          <span>
+            {{ conflictedCount() }} conflicted file(s) — resolve them, then Continue to finish
+            {{ operationLabel() }}.
+          </span>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="store.openConflictResolver()">
+            Resolve
+          </button>
         </div>
       }
 

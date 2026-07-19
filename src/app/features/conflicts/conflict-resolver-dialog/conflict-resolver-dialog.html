@@ -190,7 +190,7 @@
                   [class.bl-btn-primary]="choiceFor(c.id) === 'ours'"
                   (click)="accept(c.id, 'ours'); $event.stopPropagation()"
                 >
-                  1 · Yours
+                  1 · {{ yoursLabel() }}
                 </button>
                 <button
                   type="button"
@@ -198,7 +198,7 @@
                   [class.bl-btn-primary]="choiceFor(c.id) === 'theirs'"
                   (click)="accept(c.id, 'theirs'); $event.stopPropagation()"
                 >
-                  2 · Incoming
+                  2 · {{ incomingLabel() }}
                 </button>
                 <button
                   type="button"

@@ -125,11 +125,6 @@ export class ConflictResolverDialog {
     return kind === 'deletedByUs' || kind === 'deletedByThem' || kind === 'bothDeleted';
   });
 
-  readonly isAddConflict = computed(() => {
-    const kind = this.currentFile()?.conflictKind ?? '';
-    return kind === 'bothAdded' || kind === 'addedByUs' || kind === 'addedByThem';
-  });
-
   readonly remaining = computed(() => remainingConflictIds(this.conflicts(), this.choices()));
 
   readonly remainingCount = computed(() => this.remaining().length);
