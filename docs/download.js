@@ -65,6 +65,9 @@ async function loadLatest() {
     card.classList.toggle('recommended', card.dataset.platform === platform.id);
   });
 
+  const macTip = document.getElementById('mac-tip');
+  if (macTip) macTip.hidden = platform.id !== 'mac';
+
   try {
     const res = await fetch(API, {
       headers: { Accept: 'application/vnd.github+json' },

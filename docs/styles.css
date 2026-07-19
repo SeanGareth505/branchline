@@ -193,10 +193,14 @@ body {
   opacity: 0.72;
 }
 
-.meta {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
+.meta.tip {
+  max-width: 34rem;
+  line-height: 1.45;
+}
+
+.meta.tip code {
+  font-size: 0.82em;
+  color: var(--accent-soft);
 }
 
 .meta.center {
