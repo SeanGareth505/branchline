@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
@@ -16,9 +17,14 @@ import {
   parseConventionalSubject,
 } from '../../../core/commit-types';
 import { TauriService } from '../../../core/tauri.service';
-import { PatchLinesView, type PatchLinesMode } from '../../diff/patch-lines-view/patch-lines-view';
+import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import {
+  PatchLinesView,
+  type PatchLinesLayout,
+  type PatchLinesMode,
+} from '../../diff/patch-lines-view/patch-lines-view';
 
-type FileKey = `${'s' | 'u'}:${string}`;
+type FileKey = `${'s' | 'u' | 'c'}:${string}`;
 
 @Component({
   selector: 'app-commit-dialog',
@@ -30,12 +36,14 @@ type FileKey = `${'s' | 'u'}:${string}`;
 export class CommitDialog {
   readonly store = inject(AppStore);
   private readonly tauri = inject(TauriService);
+  private readonly prompts = inject(PromptService);
 
   readonly subject = signal('');
   readonly body = signal('');
   readonly amend = signal(false);
   readonly signOff = signal(false);
   readonly pushAfter = signal(false);
+  readonly allowEmpty = signal(false);
   readonly commitType = signal('');
   readonly fileFilter = signal('');
   readonly selectedPath = signal<string | null>(null);
@@ -47,9 +55,11 @@ export class CommitDialog {
   readonly addingType = signal(false);
   readonly newTypeDraft = signal('');
   readonly savingType = signal(false);
-  readonly focusPane = signal<'unstaged' | 'staged'>('unstaged');
+  readonly focusPane = signal<'unstaged' | 'staged' | 'conflicted'>('unstaged');
   readonly selectedFiles = signal<Set<FileKey>>(new Set());
-  private lastFileIndex: { staged: boolean; index: number } | null = null;
+  readonly diffLayout = signal<PatchLinesLayout>('unified');
+  private lastFileIndex: { pane: 'unstaged' | 'staged' | 'conflicted'; index: number } | null =
+    null;
 
   readonly jiraKeyHint = computed(
     () => this.store.activeJiraKey() || this.jiraFromBranch(this.store.status()?.branch ?? ''),
@@ -71,12 +81,23 @@ export class CommitDialog {
       ...(this.store.status()?.untracked ?? []),
     ]),
   );
-  readonly conflicted = computed(() => this.store.status()?.conflicted ?? []);
+  readonly conflicted = computed(() => this.filterFiles(this.store.status()?.conflicted ?? []));
 
   readonly stagedCount = computed(() => this.store.status()?.staged.length ?? 0);
   readonly unstagedCount = computed(
     () =>
       (this.store.status()?.unstaged.length ?? 0) + (this.store.status()?.untracked.length ?? 0),
+  );
+  readonly conflictedCount = computed(() => this.store.status()?.conflicted.length ?? 0);
+
+  readonly unstagedSelectedCount = computed(
+    () => [...this.selectedFiles()].filter((k) => k.startsWith('u:')).length,
+  );
+  readonly stagedSelectedCount = computed(
+    () => [...this.selectedFiles()].filter((k) => k.startsWith('s:')).length,
+  );
+  readonly conflictedSelectedCount = computed(
+    () => [...this.selectedFiles()].filter((k) => k.startsWith('c:')).length,
   );
 
   readonly linesMode = computed((): PatchLinesMode =>
@@ -98,9 +119,19 @@ export class CommitDialog {
   });
 
   readonly canCommit = computed(() => {
-    if (!this.messagePreview().trim()) return false;
-    if (this.amend()) return true;
-    return this.stagedCount() > 0;
+    if (this.conflictedCount() > 0) return false;
+    if (!this.messagePreview().trim() && !this.allowEmpty()) return false;
+    if (this.amend() || this.allowEmpty()) return true;
+    return this.stagedCount() > 0 || this.unstagedCount() > 0;
+  });
+
+  readonly commitBlockedReason = computed(() => {
+    if (this.conflictedCount() > 0) return 'Resolve conflicts before committing';
+    if (!this.messagePreview().trim() && !this.allowEmpty()) return 'Write a commit message';
+    if (!this.amend() && !this.allowEmpty() && this.stagedCount() === 0 && this.unstagedCount() === 0) {
+      return 'Nothing to commit';
+    }
+    return null;
   });
 
   readonly charHint = computed(() => {
@@ -140,10 +171,12 @@ export class CommitDialog {
   }
 
   readonly isMac =
-    typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 
   readonly modKey = this.isMac ? '⌘' : 'Ctrl';
-  readonly stageAllShortcut = `${this.modKey}+S`;
+  readonly stageAllShortcut = `${this.modKey}+⇧S`;
+  readonly selectAllShortcut = `${this.modKey}+A`;
   readonly commitShortcut = `${this.modKey}+Enter`;
 
   onPatchApplied(): void {
@@ -162,8 +195,15 @@ export class CommitDialog {
     return i >= 0 ? path.slice(0, i) : '';
   }
 
-  close(): void {
-    this.store.closeCommitModal();
+  displayPath(entry: FileStatusEntry): string {
+    if (entry.originalPath && (entry.status === 'renamed' || entry.status === 'copied')) {
+      return `${this.fileName(entry.originalPath)} → ${this.fileName(entry.path)}`;
+    }
+    return this.fileName(entry.path);
+  }
+
+  close(completed = false): void {
+    this.store.closeCommitModal(completed);
   }
 
   statusClass(status: FileStatusKind): string {
@@ -201,48 +241,128 @@ export class CommitDialog {
     }
   }
 
-  fileKey(path: string, staged: boolean): FileKey {
-    return `${staged ? 's' : 'u'}:${path}`;
+  fileKey(path: string, pane: 'unstaged' | 'staged' | 'conflicted'): FileKey {
+    const prefix = pane === 'staged' ? 's' : pane === 'conflicted' ? 'c' : 'u';
+    return `${prefix}:${path}`;
   }
 
-  isFileSelected(path: string, staged: boolean): boolean {
-    return this.selectedFiles().has(this.fileKey(path, staged));
+  isFileSelected(path: string, pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+    return this.selectedFiles().has(this.fileKey(path, pane));
+  }
+
+  paneFullySelected(pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+    const list = this.listForPane(pane);
+    if (!list.length) return false;
+    const selected = this.selectedFiles();
+    return list.every((f) => selected.has(this.fileKey(f.path, pane)));
+  }
+
+  panePartiallySelected(pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+    const list = this.listForPane(pane);
+    if (!list.length) return false;
+    const selected = this.selectedFiles();
+    const count = list.filter((f) => selected.has(this.fileKey(f.path, pane))).length;
+    return count > 0 && count < list.length;
   }
 
   hasUnstagedSelection(): boolean {
-    return [...this.selectedFiles()].some((k) => k.startsWith('u:'));
+    return this.unstagedSelectedCount() > 0;
   }
 
   hasStagedSelection(): boolean {
-    return [...this.selectedFiles()].some((k) => k.startsWith('s:'));
+    return this.stagedSelectedCount() > 0;
+  }
+
+  hasConflictedSelection(): boolean {
+    return this.conflictedSelectedCount() > 0;
   }
 
   hasUntrackedSelection(): boolean {
-    const untracked = new Set(
-      (this.store.status()?.untracked ?? []).map((f) => f.path),
-    );
+    const untracked = new Set((this.store.status()?.untracked ?? []).map((f) => f.path));
     return [...this.selectedFiles()].some((k) => {
       if (!k.startsWith('u:')) return false;
       return untracked.has(k.slice(2));
     });
   }
 
-  onFileClick(entry: FileStatusEntry, staged: boolean, event: MouseEvent, index: number): void {
-    this.focusPane.set(staged ? 'staged' : 'unstaged');
-    const key = this.fileKey(entry.path, staged);
-    const list = staged ? this.staged() : this.unstaged();
+  hasDiscardableSelection(): boolean {
+    const untracked = new Set((this.store.status()?.untracked ?? []).map((f) => f.path));
+    return [...this.selectedFiles()].some((k) => {
+      if (!k.startsWith('u:')) return false;
+      return !untracked.has(k.slice(2));
+    });
+  }
+
+  togglePaneSelectAll(pane: 'unstaged' | 'staged' | 'conflicted', event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.focusPane.set(pane);
+    const list = this.listForPane(pane);
+    if (!list.length) return;
+    const allSelected = this.paneFullySelected(pane);
+    const next = new Set(
+      [...this.selectedFiles()].filter((k) => {
+        if (pane === 'staged') return !k.startsWith('s:');
+        if (pane === 'conflicted') return !k.startsWith('c:');
+        return !k.startsWith('u:');
+      }),
+    );
+    if (!allSelected) {
+      for (const item of list) next.add(this.fileKey(item.path, pane));
+      this.selectFile(list[0].path, pane === 'staged');
+    }
+    this.selectedFiles.set(next);
+  }
+
+  onCheckboxClick(
+    entry: FileStatusEntry,
+    pane: 'unstaged' | 'staged' | 'conflicted',
+    event: MouseEvent,
+    index: number,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.focusPane.set(pane);
+    const key = this.fileKey(entry.path, pane);
+    const next = new Set(
+      [...this.selectedFiles()].filter((k) => {
+        if (pane === 'staged') return k.startsWith('s:');
+        if (pane === 'conflicted') return k.startsWith('c:');
+        return k.startsWith('u:');
+      }),
+    );
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    this.lastFileIndex = { pane, index };
+    this.selectedFiles.set(next);
+    this.selectFile(entry.path, pane === 'staged');
+  }
+
+  onFileClick(
+    entry: FileStatusEntry,
+    pane: 'unstaged' | 'staged' | 'conflicted',
+    event: MouseEvent,
+    index: number,
+  ): void {
+    this.focusPane.set(pane);
+    const key = this.fileKey(entry.path, pane);
+    const list = this.listForPane(pane);
     let next = new Set<FileKey>();
 
-    if (event.shiftKey && this.lastFileIndex && this.lastFileIndex.staged === staged) {
+    if (event.shiftKey && this.lastFileIndex && this.lastFileIndex.pane === pane) {
       const from = Math.min(this.lastFileIndex.index, index);
       const to = Math.max(this.lastFileIndex.index, index);
       for (let i = from; i <= to; i++) {
         const item = list[i];
-        if (item) next.add(this.fileKey(item.path, staged));
+        if (item) next.add(this.fileKey(item.path, pane));
       }
     } else if (event.metaKey || event.ctrlKey) {
       next = new Set(
-        [...this.selectedFiles()].filter((k) => (staged ? k.startsWith('s:') : k.startsWith('u:'))),
+        [...this.selectedFiles()].filter((k) => {
+          if (pane === 'staged') return k.startsWith('s:');
+          if (pane === 'conflicted') return k.startsWith('c:');
+          return k.startsWith('u:');
+        }),
       );
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -250,9 +370,9 @@ export class CommitDialog {
       next = new Set([key]);
     }
 
-    this.lastFileIndex = { staged, index };
+    this.lastFileIndex = { pane, index };
     this.selectedFiles.set(next);
-    this.selectFile(entry.path, staged);
+    this.selectFile(entry.path, pane === 'staged');
   }
 
   selectFile(path: string, staged: boolean): void {
@@ -262,25 +382,26 @@ export class CommitDialog {
 
   async stage(entry: FileStatusEntry): Promise<void> {
     await this.store.stagePaths([entry.path]);
-    this.selectedFiles.set(new Set([this.fileKey(entry.path, true)]));
+    this.selectedFiles.set(new Set([this.fileKey(entry.path, 'staged')]));
     this.selectFile(entry.path, true);
     this.focusPane.set('staged');
   }
 
   async unstage(entry: FileStatusEntry): Promise<void> {
     await this.store.unstagePaths([entry.path]);
-    this.selectedFiles.set(new Set([this.fileKey(entry.path, false)]));
+    this.selectedFiles.set(new Set([this.fileKey(entry.path, 'unstaged')]));
     this.selectFile(entry.path, false);
     this.focusPane.set('unstaged');
   }
 
   async stageSelected(): Promise<void> {
-    const paths = [...this.selectedFiles()]
-      .filter((k) => k.startsWith('u:'))
-      .map((k) => k.slice(2));
+    const paths = [
+      ...[...this.selectedFiles()].filter((k) => k.startsWith('u:')).map((k) => k.slice(2)),
+      ...[...this.selectedFiles()].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)),
+    ];
     if (!paths.length) return;
     await this.store.stagePaths(paths);
-    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, true))));
+    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'staged'))));
     this.selectFile(paths[0], true);
     this.focusPane.set('staged');
   }
@@ -291,19 +412,17 @@ export class CommitDialog {
       .map((k) => k.slice(2));
     if (!paths.length) return;
     await this.store.unstagePaths(paths);
-    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, false))));
+    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'unstaged'))));
     this.selectFile(paths[0], false);
     this.focusPane.set('unstaged');
   }
 
   async resetSelected(): Promise<void> {
+    const untracked = new Set((this.store.status()?.untracked ?? []).map((f) => f.path));
     const paths = [...this.selectedFiles()]
       .filter((k) => k.startsWith('u:'))
       .map((k) => k.slice(2))
-      .filter((p) => {
-        const entry = this.unstaged().find((f) => f.path === p);
-        return entry && entry.status !== 'untracked';
-      });
+      .filter((p) => !untracked.has(p));
     if (!paths.length) {
       this.store.showWarning('Select modified unstaged files to reset');
       return;
@@ -312,10 +431,22 @@ export class CommitDialog {
     this.selectedFiles.set(new Set());
   }
 
+  async deleteUntrackedSelected(): Promise<void> {
+    const untracked = new Set((this.store.status()?.untracked ?? []).map((f) => f.path));
+    const paths = [...this.selectedFiles()]
+      .filter((k) => k.startsWith('u:'))
+      .map((k) => k.slice(2))
+      .filter((p) => untracked.has(p));
+    if (!paths.length) {
+      this.store.showWarning('Select untracked files to delete');
+      return;
+    }
+    await this.store.discardPaths(paths);
+    this.selectedFiles.set(new Set());
+  }
+
   async ignoreSelected(): Promise<void> {
-    const untracked = new Set(
-      (this.store.status()?.untracked ?? []).map((f) => f.path),
-    );
+    const untracked = new Set((this.store.status()?.untracked ?? []).map((f) => f.path));
     const paths = [...this.selectedFiles()]
       .filter((k) => k.startsWith('u:'))
       .map((k) => k.slice(2))
@@ -336,6 +467,7 @@ export class CommitDialog {
     await this.store.stagePaths([
       ...status.unstaged.map((f) => f.path),
       ...status.untracked.map((f) => f.path),
+      ...status.conflicted.map((f) => f.path),
     ]);
   }
 
@@ -345,21 +477,104 @@ export class CommitDialog {
     await this.store.unstagePaths(status.staged.map((f) => f.path));
   }
 
-  onFileListKey(event: KeyboardEvent, staged: boolean): void {
+  async copySelectedPaths(): Promise<void> {
+    const paths = [...this.selectedFiles()].map((k) => k.slice(2));
+    if (!paths.length && this.selectedPath()) paths.push(this.selectedPath()!);
+    if (!paths.length) return;
+    try {
+      await navigator.clipboard.writeText(paths.join('\n'));
+      this.store.showSuccess(paths.length === 1 ? 'Path copied' : `${paths.length} paths copied`);
+    } catch {
+      this.store.showError('Could not copy path');
+    }
+  }
+
+  async openSelected(): Promise<void> {
+    const repo = this.store.currentRepo()?.path;
+    const rel = this.selectedPath();
+    if (!repo || !rel) return;
+    try {
+      await openPath(`${repo}/${rel}`);
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
+  async revealSelected(): Promise<void> {
+    const repo = this.store.currentRepo()?.path;
+    const rel = this.selectedPath();
+    if (!repo || !rel) return;
+    try {
+      await revealItemInDir(`${repo}/${rel}`);
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
+  toggleDiffLayout(): void {
+    this.diffLayout.set(this.diffLayout() === 'unified' ? 'sideBySide' : 'unified');
+  }
+
+  onFileListKey(event: KeyboardEvent, pane: 'unstaged' | 'staged' | 'conflicted'): void {
+    const list = this.listForPane(pane);
     const key = event.key.toLowerCase();
-    if (key === 's' && !staged) {
+
+    if ((event.metaKey || event.ctrlKey) && key === 'a') {
+      event.preventDefault();
+      this.togglePaneSelectAll(pane);
+      return;
+    }
+
+    if (key === 'arrowdown' || key === 'arrowup') {
+      event.preventDefault();
+      if (!list.length) return;
+      const current = this.selectedPath();
+      let idx = list.findIndex((f) => f.path === current);
+      if (idx < 0) idx = key === 'arrowdown' ? -1 : 0;
+      const nextIdx =
+        key === 'arrowdown' ? Math.min(list.length - 1, idx + 1) : Math.max(0, idx - 1);
+      const item = list[nextIdx];
+      if (!item) return;
+      if (event.shiftKey && this.lastFileIndex?.pane === pane) {
+        const from = Math.min(this.lastFileIndex.index, nextIdx);
+        const to = Math.max(this.lastFileIndex.index, nextIdx);
+        const next = new Set<FileKey>();
+        for (let i = from; i <= to; i++) {
+          const entry = list[i];
+          if (entry) next.add(this.fileKey(entry.path, pane));
+        }
+        this.selectedFiles.set(next);
+      } else {
+        this.lastFileIndex = { pane, index: nextIdx };
+        this.selectedFiles.set(new Set([this.fileKey(item.path, pane)]));
+      }
+      this.selectFile(item.path, pane === 'staged');
+      return;
+    }
+
+    if (key === 's' && (pane === 'unstaged' || pane === 'conflicted')) {
       event.preventDefault();
       void this.stageSelected();
       return;
     }
-    if (key === 'u' && staged) {
+    if (key === 'u' && pane === 'staged') {
       event.preventDefault();
       void this.unstageSelected();
       return;
     }
-    if (key === 'r' && !staged) {
+    if (key === 'r' && pane === 'unstaged') {
       event.preventDefault();
       void this.resetSelected();
+      return;
+    }
+    if (key === 'backspace' || key === 'delete') {
+      if (pane === 'unstaged' && this.hasUntrackedSelection()) {
+        event.preventDefault();
+        void this.deleteUntrackedSelected();
+      } else if (pane === 'unstaged' && this.hasDiscardableSelection()) {
+        event.preventDefault();
+        void this.resetSelected();
+      }
     }
   }
 
@@ -484,14 +699,42 @@ export class CommitDialog {
 
   async commit(): Promise<void> {
     if (!this.canCommit() || this.committing()) return;
+
+    const needsStageAll =
+      !this.amend() && !this.allowEmpty() && this.stagedCount() === 0 && this.unstagedCount() > 0;
+
+    if (needsStageAll) {
+      const n = this.unstagedCount();
+      const ok = await this.prompts.ask({
+        title: 'Nothing staged',
+        message: `Stage all ${n} file${n === 1 ? '' : 's'} and commit?`,
+        confirmLabel: 'Stage & commit',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+      });
+      if (ok === null) return;
+    }
+
     this.committing.set(true);
     try {
-      await this.store.createCommit(this.messagePreview(), this.amend());
+      if (needsStageAll) {
+        await this.stageAll();
+        if (this.stagedCount() === 0) {
+          this.store.showWarning('Nothing was staged');
+          return;
+        }
+      }
+      const ok = await this.store.createCommit(
+        this.messagePreview(),
+        this.amend(),
+        this.allowEmpty(),
+      );
+      if (!ok) return;
       if (this.pushAfter()) {
         await this.store.pushRemote();
       }
       this.resetForm();
-      this.close();
+      this.close(true);
     } finally {
       this.committing.set(false);
     }
@@ -513,12 +756,31 @@ export class CommitDialog {
     }
 
     if (event.key === 'Escape') {
+      if (this.prompts.request()) return;
       event.preventDefault();
       this.close();
       return;
     }
 
     if (typing) return;
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && event.shiftKey) {
+      event.preventDefault();
+      void this.stageAll();
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      this.togglePaneSelectAll(this.focusPane());
+      return;
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
+      event.preventDefault();
+      void this.copySelectedPaths();
+      return;
+    }
 
     const key = event.key.toLowerCase();
     if (key === 's') {
@@ -535,6 +797,12 @@ export class CommitDialog {
       event.preventDefault();
       void this.resetSelected();
     }
+  }
+
+  private listForPane(pane: 'unstaged' | 'staged' | 'conflicted'): FileStatusEntry[] {
+    if (pane === 'staged') return this.staged();
+    if (pane === 'conflicted') return this.conflicted();
+    return this.unstaged();
   }
 
   private applySubjectLine(line: string): void {
@@ -564,17 +832,24 @@ export class CommitDialog {
     const settings = this.store.settings();
     this.signOff.set(settings.signOffByDefault);
     this.pushAfter.set(settings.pushAfterCommit);
+    this.allowEmpty.set(false);
+    this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
 
     const status = this.store.status();
+    const firstConflict = status?.conflicted[0]?.path ?? null;
     const firstUnstaged = status?.unstaged[0]?.path ?? status?.untracked[0]?.path ?? null;
     const firstStaged = status?.staged[0]?.path ?? null;
-    if (firstUnstaged) {
-      this.selectedFiles.set(new Set([this.fileKey(firstUnstaged, false)]));
+    if (firstConflict) {
+      this.selectedFiles.set(new Set([this.fileKey(firstConflict, 'conflicted')]));
+      this.selectFile(firstConflict, false);
+      this.focusPane.set('conflicted');
+    } else if (firstUnstaged) {
+      this.selectedFiles.set(new Set([this.fileKey(firstUnstaged, 'unstaged')]));
       this.selectFile(firstUnstaged, false);
       this.focusPane.set('unstaged');
     } else if (firstStaged) {
-      this.selectedFiles.set(new Set([this.fileKey(firstStaged, true)]));
+      this.selectedFiles.set(new Set([this.fileKey(firstStaged, 'staged')]));
       this.selectFile(firstStaged, true);
       this.focusPane.set('staged');
     }
@@ -609,6 +884,7 @@ export class CommitDialog {
     this.amend.set(false);
     this.signOff.set(false);
     this.pushAfter.set(false);
+    this.allowEmpty.set(false);
     this.commitType.set('');
     this.cancelAddType();
     this.selectedFiles.set(new Set());

@@ -212,9 +212,8 @@
 }
 
 .row.file.selected {
-  background: var(--selection-bg);
+  background: var(--selection-bg-strong);
   border-color: var(--selection-border);
-  box-shadow: inset 2px 0 0 var(--selection-rail);
 }
 
 .file-main {

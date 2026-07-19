@@ -13,6 +13,7 @@ import { SettingsPage } from '../../features/settings/settings-page/settings-pag
 import { TemplatesPage } from '../../features/templates/templates-page/templates-page';
 import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { PromptDialog } from '../../shared/ui/prompt-dialog/prompt-dialog';
+import { SelectDialog } from '../../shared/ui/select-dialog/select-dialog';
 import { SafetyDialog } from '../../shared/ui/safety-dialog/safety-dialog';
 import { CloneDialog } from '../../features/repositories/clone-dialog/clone-dialog';
 import { CreateBranchDialog } from '../../features/branches/create-branch-dialog/create-branch-dialog';
@@ -51,6 +52,7 @@ import { UpdateService } from '../../core/update.service';
     ToastHost,
     SafetyDialog,
     PromptDialog,
+    SelectDialog,
     CherryPickPreview,
     CommitDialog,
     ChangelogDialog,

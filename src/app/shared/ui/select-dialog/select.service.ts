@@ -1,28 +1,32 @@
 import { Injectable, signal } from '@angular/core';
 
-export interface PromptOptions {
+export interface SelectOption {
+  value: string;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+}
+
+export interface SelectPromptOptions {
   title: string;
   message?: string;
   label?: string;
   placeholder?: string;
-  initialValue?: string;
+  options: SelectOption[];
   confirmLabel?: string;
   cancelLabel?: string;
-  multiline?: boolean;
-  required?: boolean;
-  mono?: boolean;
-  confirmOnly?: boolean;
+  initialValue?: string;
 }
 
-interface PromptRequest extends PromptOptions {
+interface SelectRequest extends SelectPromptOptions {
   resolve: (value: string | null) => void;
 }
 
 @Injectable({ providedIn: 'root' })
-export class PromptService {
-  readonly request = signal<PromptRequest | null>(null);
+export class SelectService {
+  readonly request = signal<SelectRequest | null>(null);
 
-  ask(options: PromptOptions): Promise<string | null> {
+  ask(options: SelectPromptOptions): Promise<string | null> {
     return new Promise((resolve) => {
       const current = this.request();
       if (current) {
@@ -31,7 +35,6 @@ export class PromptService {
       this.request.set({
         confirmLabel: 'Continue',
         cancelLabel: 'Cancel',
-        required: true,
         ...options,
         resolve,
       });

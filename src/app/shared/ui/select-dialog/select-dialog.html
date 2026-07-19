@@ -1,0 +1,81 @@
+@if (selects.request(); as prompt) {
+  <div class="backdrop" (click)="cancel()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'select-title'"
+    >
+      <header>
+        <div class="copy">
+          <h2 id="select-title">{{ prompt.title }}</h2>
+          @if (prompt.message) {
+            <p>{{ prompt.message }}</p>
+          }
+        </div>
+        <button type="button" class="bl-btn icon" (click)="cancel()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <label class="field">
+        <span>{{ prompt.label || 'Choose' }}</span>
+        <input
+          #filterField
+          type="search"
+          [placeholder]="prompt.placeholder || 'Filter…'"
+          [ngModel]="filter()"
+          (ngModelChange)="filter.set($event)"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+
+      <ul class="options" role="listbox" [attr.aria-label]="prompt.label || 'Options'">
+        @for (option of visibleOptions(); track option.value) {
+          <li>
+            <button
+              type="button"
+              class="option"
+              role="option"
+              [class.active]="selected() === option.value"
+              [class.disabled]="option.disabled"
+              [disabled]="option.disabled"
+              [attr.aria-selected]="selected() === option.value"
+              (click)="pick(option)"
+              (dblclick)="pick(option); submit()"
+            >
+              <span class="option-main">
+                <span class="option-label">{{ option.label }}</span>
+                @if (option.hint) {
+                  <span class="option-hint">{{ option.hint }}</span>
+                }
+              </span>
+              @if (selected() === option.value) {
+                <ng-icon name="lucideCheck" size="16" />
+              }
+            </button>
+          </li>
+        } @empty {
+          <li class="empty">No matches</li>
+        }
+      </ul>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="cancel()">
+          {{ prompt.cancelLabel || 'Cancel' }}
+        </button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ prompt.confirmLabel || 'Continue' }}
+          <span class="kbd">↵</span>
+        </button>
+      </footer>
+    </div>
+  </div>
+}

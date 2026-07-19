@@ -1,10 +1,21 @@
 <div class="wrap">
   <canvas #canvas (click)="onClick($event)" (contextmenu)="onContext($event)"></canvas>
-  @if (menuState.open) {
-    <div class="menu bl-panel" [style.left.px]="menuState.x" [style.top.px]="menuState.y">
-      <button type="button" (click)="applyHere()">Apply this commit here</button>
-      <button type="button" (click)="undoCommit()">Create undo commit</button>
-      <button type="button" (click)="checkoutCommit()">Checkout…</button>
-    </div>
-  }
 </div>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="menuOrigin()"
+  [cdkConnectedOverlayOpen]="menu().open"
+  [cdkConnectedOverlayPositions]="menuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="onMenuDismiss($event)"
+  (overlayOutsideClick)="onMenuDismiss($event)"
+>
+  <div class="menu bl-panel" role="menu" (click)="$event.stopPropagation()">
+    <button type="button" (click)="applyHere()">Apply this commit here</button>
+    <button type="button" (click)="undoCommit()">Create undo commit</button>
+    <button type="button" (click)="checkoutCommit()">Checkout…</button>
+  </div>
+</ng-template>

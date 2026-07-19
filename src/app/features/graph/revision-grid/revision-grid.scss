@@ -203,7 +203,6 @@
 .row.selected {
   background: var(--selection-bg-strong);
   box-shadow:
-    inset 3px 0 0 var(--selection-rail),
     inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -230,13 +229,12 @@
 }
 
 .row.compare {
-  box-shadow: inset 3px 0 0 var(--lane-2);
+  background: color-mix(in srgb, var(--lane-2) 12%, transparent);
 }
 
 .row.selected.compare {
-  box-shadow:
-    inset 3px 0 0 var(--selection-rail),
-    inset 0 0 0 1px color-mix(in srgb, var(--lane-2) 35%, transparent);
+  background: color-mix(in srgb, var(--lane-2) 16%, var(--selection-bg-strong));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lane-2) 35%, transparent);
 }
 
 .row.dim {
@@ -271,7 +269,7 @@
 }
 
 .row.child-of {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .row.selected.child-of,

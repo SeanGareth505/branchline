@@ -22,4 +22,13 @@ export class StatusBar {
   onChanges(): void {
     this.store.openCommitModal();
   }
+
+  isActionable(): boolean {
+    const next = this.store.nextAction();
+    return (
+      next !== 'Working tree clean' &&
+      next !== 'Open a repository' &&
+      !next.startsWith('Working tree')
+    );
+  }
 }

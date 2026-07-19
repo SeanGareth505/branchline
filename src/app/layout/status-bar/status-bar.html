@@ -8,33 +8,36 @@
         <ng-icon name="lucideGitBranch" size="14" />
         {{ status.branch }}
       </span>
-      <button
-        type="button"
-        class="meta action"
-        [disabled]="!status.ahead"
-        title="Push {{ status.ahead }} commit(s) to remote"
-        (click)="onPush()"
-      >
-        ↑{{ status.ahead }}
-      </button>
-      <button
-        type="button"
-        class="meta action"
-        [disabled]="!status.behind"
-        title="Pull {{ status.behind }} commit(s) from remote"
-        (click)="onPull()"
-      >
-        ↓{{ status.behind }}
-      </button>
-      <button
-        type="button"
-        class="meta action"
-        [disabled]="!store.changeCount()"
-        title="Open commit dialog"
-        (click)="onChanges()"
-      >
-        {{ store.changeCount() }} changes
-      </button>
+      @if (status.ahead > 0) {
+        <button
+          type="button"
+          class="meta action"
+          title="Push {{ status.ahead }} commit(s) to remote"
+          (click)="onPush()"
+        >
+          ↑{{ status.ahead }}
+        </button>
+      }
+      @if (status.behind > 0) {
+        <button
+          type="button"
+          class="meta action"
+          title="Pull {{ status.behind }} commit(s) from remote"
+          (click)="onPull()"
+        >
+          ↓{{ status.behind }}
+        </button>
+      }
+      @if (store.changeCount() > 0) {
+        <button
+          type="button"
+          class="meta action"
+          title="Open commit dialog"
+          (click)="onChanges()"
+        >
+          {{ store.changeCount() }} change{{ store.changeCount() === 1 ? '' : 's' }}
+        </button>
+      }
     } @else {
       <span class="meta">No repository open</span>
     }
@@ -42,7 +45,7 @@
   <div class="right">
     <button
       type="button"
-      class="bl-btn"
+      class="bl-btn quiet"
       [class.focus-on]="store.settings().focusMode"
       [attr.aria-pressed]="store.settings().focusMode"
       (click)="store.toggleFocusMode()"
@@ -51,13 +54,17 @@
       <ng-icon name="lucideFocus" size="14" />
       Focus {{ store.settings().focusMode ? 'on' : 'off' }}
     </button>
-    <button
-      type="button"
-      class="bl-btn bl-btn-primary"
-      (click)="store.runNextAction()"
-      title="Suggested next step for this repository"
-    >
-      {{ store.nextAction() }}
-    </button>
+    @if (isActionable()) {
+      <button
+        type="button"
+        class="bl-btn bl-btn-primary"
+        (click)="store.runNextAction()"
+        title="Suggested next step for this repository"
+      >
+        {{ store.nextAction() }}
+      </button>
+    } @else {
+      <span class="next-quiet" title="Nothing urgent right now">{{ store.nextAction() }}</span>
+    }
   </div>
 </footer>

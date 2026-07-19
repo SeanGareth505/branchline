@@ -23,6 +23,8 @@ pub struct RepoPathInput {
 pub struct FilePathInput {
     pub path: String,
     pub file: String,
+    #[serde(default)]
+    pub commit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +85,19 @@ pub fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
     use crate::infrastructure::git_cli;
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
-    let out = git_cli::run_git(&path, &["blame", "--line-porcelain", "--", &input.file])?;
+    let commit = input
+        .commit
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let out = if let Some(sha) = commit {
+        git_cli::run_git(
+            &path,
+            &["blame", "--line-porcelain", sha, "--", &input.file],
+        )?
+    } else {
+        git_cli::run_git(&path, &["blame", "--line-porcelain", "--", &input.file])?
+    };
 
     let mut lines = Vec::new();
     let mut current_sha = String::new();

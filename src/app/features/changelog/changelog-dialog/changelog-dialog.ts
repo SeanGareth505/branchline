@@ -28,12 +28,15 @@ export class ChangelogDialog {
   private readonly changelog = inject(ChangelogService);
   private readonly tauri = inject(TauriService);
 
-  readonly format = signal<ChangelogFormat>('keepachangelog');
+  readonly format = signal<ChangelogFormat>('release');
   readonly version = signal('1.0.0');
   readonly title = signal('');
+  readonly team = signal('');
+  readonly preparedBy = signal('');
   readonly date = signal('');
   readonly includeAuthors = signal(false);
   readonly includeShas = signal(true);
+  readonly includeContributors = signal(false);
   readonly excludeMerges = signal(true);
   readonly excludeChores = signal(false);
   readonly fromRef = signal('latest-tag');
@@ -42,9 +45,10 @@ export class ChangelogDialog {
   readonly rangeCommits = signal<CommitInfo[]>([]);
 
   readonly formats: { id: ChangelogFormat; label: string; hint: string }[] = [
-    { id: 'keepachangelog', label: 'Keep a Changelog', hint: 'Added / Fixed sections' },
-    { id: 'release', label: 'Release notes', hint: 'Highlights-first narrative' },
-    { id: 'conventional', label: 'Conventional', hint: 'Grouped by commit type' },
+    { id: 'release', label: 'Git release', hint: 'Ship notes from commits' },
+    { id: 'team', label: 'Team update', hint: 'What shipped & who' },
+    { id: 'credits', label: 'Made by', hint: 'Contributors & credits' },
+    { id: 'engineering', label: 'Engineering', hint: 'Grouped by commit type' },
     { id: 'plain', label: 'Plain list', hint: 'Simple bullets' },
   ];
 
@@ -129,8 +133,11 @@ export class ChangelogDialog {
     format: this.format(),
     version: this.version(),
     title: this.title(),
+    team: this.team(),
+    preparedBy: this.preparedBy(),
     includeAuthors: this.includeAuthors(),
     includeShas: this.includeShas(),
+    includeContributors: this.includeContributors(),
     excludeMerges: this.excludeMerges(),
     excludeChores: this.excludeChores(),
     date: this.date(),
@@ -159,6 +166,21 @@ export class ChangelogDialog {
     };
   });
 
+  readonly previewName = computed(() => {
+    switch (this.format()) {
+      case 'team':
+        return 'TEAM-UPDATE.md';
+      case 'credits':
+        return 'CREDITS.md';
+      case 'engineering':
+        return 'CHANGELOG-engineering.md';
+      case 'plain':
+        return 'changes.txt';
+      default:
+        return 'CHANGELOG.md';
+    }
+  });
+
   constructor() {
     effect(() => {
       if (!this.store.changelogModalOpen()) return;
@@ -179,9 +201,37 @@ export class ChangelogDialog {
 
   setFormat(format: ChangelogFormat): void {
     this.format.set(format);
-    if (format === 'release' && !this.title().trim()) {
-      const v = this.version().trim();
-      this.title.set(v ? `Release ${v}` : 'Release notes');
+    const v = this.version().trim();
+    const team = this.team().trim();
+    if (format === 'team') {
+      this.includeAuthors.set(true);
+      this.includeContributors.set(true);
+      this.includeShas.set(false);
+      if (!this.title().trim()) {
+        this.title.set(team ? `${team} update` : v ? `Team update · ${v}` : 'Team update');
+      }
+    } else if (format === 'credits') {
+      this.includeAuthors.set(true);
+      this.includeContributors.set(true);
+      this.includeShas.set(false);
+      if (!this.title().trim() || this.title().startsWith('Team update') || this.title().startsWith('Release')) {
+        this.title.set(v ? `Made by · ${v}` : 'Made by');
+      }
+    } else if (format === 'release') {
+      this.includeShas.set(true);
+      this.includeAuthors.set(false);
+      this.includeContributors.set(false);
+      this.title.set('');
+    } else if (format === 'engineering') {
+      this.includeShas.set(true);
+      this.includeAuthors.set(true);
+      this.includeContributors.set(true);
+      this.title.set('');
+    } else {
+      this.includeShas.set(false);
+      this.includeAuthors.set(true);
+      this.includeContributors.set(false);
+      this.title.set('');
     }
   }
 
@@ -213,7 +263,7 @@ export class ChangelogDialog {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CHANGELOG-${safe}.md`;
+    a.download = `${this.previewName().replace(/\.[^.]+$/, '')}-${safe}.md`;
     a.click();
     URL.revokeObjectURL(url);
     this.store.showSuccess('Changelog downloaded');
@@ -233,7 +283,13 @@ export class ChangelogDialog {
     const tags = this.store.tags();
     this.date.set(this.changelog.todayIso());
     this.version.set(this.changelog.suggestVersion(tags, commits));
-    this.title.set(`Release ${this.version()}`);
+    this.title.set('');
+    this.team.set('');
+    this.preparedBy.set(this.store.identity()?.name?.trim() ?? '');
+    this.format.set('release');
+    this.includeAuthors.set(false);
+    this.includeShas.set(true);
+    this.includeContributors.set(false);
     this.copied.set(false);
 
     const compare = this.store.compareSha();

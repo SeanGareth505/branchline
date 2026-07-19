@@ -7,6 +7,12 @@ export interface WorkflowStepDef {
 
 export const WORKFLOW_STEP_CATALOG: WorkflowStepDef[] = [
   {
+    id: 'checkoutBranch',
+    label: 'Switch branch',
+    hint: 'Pick a local branch and check it out',
+    interactive: true,
+  },
+  {
     id: 'fetch',
     label: 'Fetch remotes',
     hint: 'Update remote-tracking branches',
@@ -29,19 +35,20 @@ export const WORKFLOW_STEP_CATALOG: WorkflowStepDef[] = [
   {
     id: 'createBranch',
     label: 'Create branch',
-    hint: 'Open the new-branch dialog',
+    hint: 'Choose a base, then name the new branch',
     interactive: true,
   },
   {
     id: 'openCommit',
     label: 'Commit',
-    hint: 'Open the commit dialog',
+    hint: 'Open commit and wait until you finish',
     interactive: true,
   },
   {
     id: 'stash',
     label: 'Stash changes',
-    hint: 'Stash uncommitted work',
+    hint: 'Optionally name a stash, then park uncommitted work',
+    interactive: true,
   },
   {
     id: 'refresh',

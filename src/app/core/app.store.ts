@@ -758,6 +758,11 @@ export class AppStore {
     this.ignoreEditorOpen.set(false);
     this.ignoreEditor.set(null);
     this.commitModalOpen.set(false);
+    this.commitWaiter?.(false);
+    this.commitWaiter = null;
+    if (this.createBranchDialogOpen()) {
+      this.closeCreateBranchDialog(false);
+    }
   }
 
   private clearRepoState(): void {
@@ -863,16 +868,29 @@ export class AppStore {
     }
   }
 
-  openCreateBranchDialog(startPoint?: string | null, suggestedName?: string): void {
-    this.createBranchStartPoint.set(startPoint ?? null);
-    this.createBranchSuggestedName.set(suggestedName?.trim() ?? '');
-    this.createBranchDialogOpen.set(true);
+  private createBranchWaiter: ((completed: boolean) => void) | null = null;
+  private commitWaiter: ((completed: boolean) => void) | null = null;
+
+  openCreateBranchDialog(
+    startPoint?: string | null,
+    suggestedName?: string,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.createBranchWaiter?.(false);
+      this.createBranchWaiter = resolve;
+      this.createBranchStartPoint.set(startPoint ?? null);
+      this.createBranchSuggestedName.set(suggestedName?.trim() ?? '');
+      this.createBranchDialogOpen.set(true);
+    });
   }
 
-  closeCreateBranchDialog(): void {
+  closeCreateBranchDialog(completed = false): void {
     this.createBranchDialogOpen.set(false);
     this.createBranchStartPoint.set(null);
     this.createBranchSuggestedName.set('');
+    const waiter = this.createBranchWaiter;
+    this.createBranchWaiter = null;
+    waiter?.(completed);
   }
 
   openPublishGithubDialog(): void {
@@ -1453,16 +1471,24 @@ export class AppStore {
     }
   }
 
-  async createCommit(message: string, amend = false): Promise<void> {
+  async createCommit(message: string, amend = false, allowEmpty = false): Promise<boolean> {
     const path = this.currentRepo()?.path;
-    if (!path || !message.trim()) return;
+    if (!path) return false;
+    if (!message.trim() && !allowEmpty) {
+      this.showWarning('Write a commit message first');
+      return false;
+    }
     const status = this.status();
-    if (!amend && !status?.staged.length) {
+    if ((status?.conflicted.length ?? 0) > 0) {
+      this.showToast('Resolve conflicts before committing', { kind: 'warning' });
+      return false;
+    }
+    if (!amend && !allowEmpty && !status?.staged.length) {
       this.showToast('Stage at least one file before committing', { kind: 'warning' });
-      return;
+      return false;
     }
     try {
-      const result = await this.tauri.createCommit(path, message.trim(), amend);
+      const result = await this.tauri.createCommit(path, message.trim(), amend, allowEmpty);
       await this.refreshRepo();
       this.showToast(
         amend ? `Amended ${result.sha.slice(0, 7)}` : `Committed ${result.sha.slice(0, 7)}`,
@@ -1472,8 +1498,10 @@ export class AppStore {
           undo: () => void this.tauri.undoLast(path).then(() => this.refreshRepo()),
         },
       );
+      return true;
     } catch (err) {
       this.showError(err);
+      return false;
     }
   }
 
@@ -1739,13 +1767,20 @@ export class AppStore {
     this.openCommitModal();
   }
 
-  openCommitModal(): void {
-    this.commitModalOpen.set(true);
+  openCommitModal(): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.commitWaiter?.(false);
+      this.commitWaiter = resolve;
+      this.commitModalOpen.set(true);
+    });
   }
 
-  closeCommitModal(): void {
+  closeCommitModal(completed = false): void {
     this.commitModalOpen.set(false);
     this.pendingCommitTemplate.set(null);
+    const waiter = this.commitWaiter;
+    this.commitWaiter = null;
+    waiter?.(completed);
   }
 
   openShortcutPalette(): void {

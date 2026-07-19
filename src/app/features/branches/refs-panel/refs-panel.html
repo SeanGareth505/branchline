@@ -1,4 +1,4 @@
-<aside class="refs" (click)="branchMenu() && closeBranchMenu()">
+<aside class="refs" (click)="branchMenu() && onBranchMenuDismiss()">
   <div class="toolbar">
     <label class="filter">
       <ng-icon name="lucideSearch" size="14" />
@@ -67,14 +67,17 @@
             } @else {
               <li
                 [class.current]="row.branch.isCurrent"
-                [class.mine]="store.isMyBranch(row.branch)"
                 [class.locked]="row.branch.locked"
                 [class.tip-selected]="isTipSelected(row.branch.tipSha)"
                 [style.--depth]="row.depth"
                 (contextmenu)="openBranchMenu(row.branch.name, $event)"
               >
-                <button type="button" class="name" (click)="store.checkoutBranch(row.branch.name)" [title]="row.branch.name">
-                  <span class="rail" aria-hidden="true"></span>
+                <button
+                  type="button"
+                  class="name"
+                  (click)="store.checkoutBranch(row.branch.name)"
+                  [title]="branchTitle(row.branch)"
+                >
                   <span class="label">{{ row.name }}</span>
                   @if (row.branch.locked) {
                     <span
@@ -141,7 +144,6 @@
                 </li>
               } @else {
                 <li
-                  [class.mine]="store.isMyBranch(row.branch)"
                   [class.tip-selected]="isTipSelected(row.branch.tipSha)"
                   [style.--depth]="row.depth"
                   (contextmenu)="openBranchMenu(row.branch.name, $event)"
@@ -152,7 +154,6 @@
                     (click)="store.checkoutBranch(row.branch.name)"
                     [title]="row.branch.name"
                   >
-                    <span class="rail" aria-hidden="true"></span>
                     <span class="label">{{ row.name }}</span>
                   </button>
                 </li>
@@ -221,7 +222,6 @@
             } @else {
               <li [class.tip-selected]="isTipSelected(row.sha)" [style.--depth]="row.depth">
                 <button type="button" class="name" (click)="store.selectCommit(row.sha)" [title]="row.path">
-                  <span class="rail" aria-hidden="true"></span>
                   <span class="label">{{ row.name }}</span>
                 </button>
                 <button
@@ -268,8 +268,8 @@
   [cdkConnectedOverlayHasBackdrop]="true"
   [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
   [cdkConnectedOverlayPush]="true"
-  (backdropClick)="closeBranchMenu()"
-  (overlayOutsideClick)="closeBranchMenu()"
+  (backdropClick)="onBranchMenuDismiss($event)"
+  (overlayOutsideClick)="onBranchMenuDismiss($event)"
 >
   @if (branchMenu(); as menu) {
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">

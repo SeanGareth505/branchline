@@ -83,6 +83,7 @@ export class RefsPanel {
     stash: false,
     worktrees: false,
   });
+  private suppressMenuCloseUntil = 0;
 
   readonly menuOrigin = computed(() => {
     const menu = this.branchMenu();
@@ -234,11 +235,18 @@ export class RefsPanel {
   openBranchMenu(name: string, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
+    this.suppressMenuCloseUntil = performance.now() + 500;
     this.branchMenu.set({ name, x: event.clientX, y: event.clientY });
   }
 
   closeBranchMenu(): void {
     this.branchMenu.set(null);
+  }
+
+  onBranchMenuDismiss(event?: Event): void {
+    if (performance.now() < this.suppressMenuCloseUntil) return;
+    if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
+    this.closeBranchMenu();
   }
 
   async mergeBranch(name: string): Promise<void> {
@@ -322,6 +330,13 @@ export class RefsPanel {
     const selected = this.store.selectedSha();
     if (!selected) return false;
     return tipSha === selected || tipSha.startsWith(selected) || selected.startsWith(tipSha.slice(0, 7));
+  }
+
+  branchTitle(branch: BranchInfo): string {
+    if (branch.isCurrent) return `${branch.name} (checked out)`;
+    const wt = this.store.worktrees().find((w) => !w.isMain && w.branch === branch.name);
+    if (wt) return `${branch.name} (checked out in another worktree)`;
+    return branch.name;
   }
 
   private filterByQuery<T extends { name: string }>(items: T[]): T[] {

@@ -1,21 +1,24 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
   HostListener,
   computed,
   effect,
   inject,
   signal,
-  viewChild,
 } from '@angular/core';
+import {
+  CdkConnectedOverlay,
+  CdkOverlayOrigin,
+  type ConnectedPosition,
+} from '@angular/cdk/overlay';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 
 @Component({
   selector: 'app-create-branch-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
   templateUrl: './create-branch-dialog.html',
   styleUrl: './create-branch-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,9 +33,69 @@ export class CreateBranchDialog {
   readonly prefixOpen = signal(false);
   readonly addingPrefix = signal(false);
   readonly newPrefix = signal('');
-  private readonly prefixMenu = viewChild<ElementRef<HTMLElement>>('prefixMenu');
+  readonly startRef = signal('');
+  readonly startOpen = signal(false);
+  readonly startQuery = signal('');
+
+  readonly prefixMenuPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -6 },
+  ];
+
+  readonly startMenuPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 6 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -6 },
+  ];
 
   readonly prefixes = computed(() => this.store.settings().branchPrefixes);
+
+  readonly currentBranch = computed(() => {
+    const status = this.store.status();
+    if (!status || status.isDetached) return null;
+    return status.branch || null;
+  });
+
+  readonly startOptions = computed(() => {
+    const q = this.startQuery().trim().toLowerCase();
+    const current = this.currentBranch();
+    const selected = this.startRef();
+    const locals = this.store.localBranches();
+    const remotes = this.store.branches().filter((b) => b.isRemote);
+    const options: { value: string; label: string; kind: 'local' | 'remote' | 'commit'; current: boolean }[] =
+      [];
+
+    if (selected && /^[0-9a-f]{7,40}$/i.test(selected) && !locals.some((b) => b.name === selected)) {
+      options.push({
+        value: selected,
+        label: selected.slice(0, 7),
+        kind: 'commit',
+        current: false,
+      });
+    }
+
+    for (const branch of locals) {
+      if (q && !branch.name.toLowerCase().includes(q)) continue;
+      options.push({
+        value: branch.name,
+        label: branch.name,
+        kind: 'local',
+        current: branch.name === current || branch.isCurrent,
+      });
+    }
+
+    for (const branch of remotes) {
+      if (q && !branch.name.toLowerCase().includes(q)) continue;
+      options.push({
+        value: branch.name,
+        label: branch.name,
+        kind: 'remote',
+        current: false,
+      });
+    }
+
+    return options;
+  });
 
   readonly preview = computed(() => {
     const raw = this.name().trim().replace(/^\/+|\/+$/g, '');
@@ -49,13 +112,18 @@ export class CreateBranchDialog {
 
   readonly canCreate = computed(() => {
     const preview = this.preview();
-    return !!preview && !preview.includes('{') && !this.busy();
+    return !!preview && !preview.includes('{') && !this.busy() && !!this.startRef();
   });
 
   readonly baseLabel = computed(() => {
-    const start = this.store.createBranchStartPoint();
-    if (start) return start.slice(0, 7);
-    return this.store.status()?.branch || 'HEAD';
+    const start = this.startRef();
+    if (/^[0-9a-f]{7,40}$/i.test(start)) return start.slice(0, 7);
+    return start || this.currentBranch() || 'HEAD';
+  });
+
+  readonly startIsCurrent = computed(() => {
+    const current = this.currentBranch();
+    return !!current && this.startRef() === current;
   });
 
   readonly canAddPrefix = computed(() => {
@@ -82,6 +150,10 @@ export class CreateBranchDialog {
       this.prefixOpen.set(false);
       this.addingPrefix.set(false);
       this.newPrefix.set('');
+      this.startOpen.set(false);
+      this.startQuery.set('');
+      const passed = this.store.createBranchStartPoint();
+      this.startRef.set(passed || this.currentBranch() || 'HEAD');
     });
   }
 
@@ -92,27 +164,31 @@ export class CreateBranchDialog {
 
   onUsePrefixChange(value: boolean): void {
     this.usePrefix.set(value);
-    if (!value) this.prefixOpen.set(false);
+    if (!value) this.closePrefixMenu();
     void this.store.saveSettings({ branchPrefixEnabled: value });
   }
 
   togglePrefixMenu(event: MouseEvent): void {
     event.stopPropagation();
     if (!this.usePrefix()) return;
-    const next = !this.prefixOpen();
-    this.prefixOpen.set(next);
-    if (!next) {
-      this.addingPrefix.set(false);
-      this.newPrefix.set('');
+    if (this.prefixOpen()) {
+      this.closePrefixMenu();
+      return;
     }
+    this.closeStartMenu();
+    this.prefixOpen.set(true);
+  }
+
+  closePrefixMenu(): void {
+    this.prefixOpen.set(false);
+    this.addingPrefix.set(false);
+    this.newPrefix.set('');
   }
 
   selectPrefix(value: string): void {
     const cleaned = this.cleanPrefix(value) || 'feature';
     this.prefix.set(cleaned);
-    this.prefixOpen.set(false);
-    this.addingPrefix.set(false);
-    this.newPrefix.set('');
+    this.closePrefixMenu();
     void this.store.saveSettings({ branchPrefix: cleaned });
   }
 
@@ -127,9 +203,7 @@ export class CreateBranchDialog {
     if (!cleaned || !this.canAddPrefix()) return;
     const next = [...this.prefixes(), cleaned];
     this.prefix.set(cleaned);
-    this.addingPrefix.set(false);
-    this.newPrefix.set('');
-    this.prefixOpen.set(false);
+    this.closePrefixMenu();
     await this.store.saveSettings({
       branchPrefix: cleaned,
       branchPrefixes: next,
@@ -149,13 +223,34 @@ export class CreateBranchDialog {
     });
   }
 
+  toggleStartMenu(event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.startOpen()) {
+      this.closeStartMenu();
+      return;
+    }
+    this.closePrefixMenu();
+    this.startQuery.set('');
+    this.startOpen.set(true);
+  }
+
+  closeStartMenu(): void {
+    this.startOpen.set(false);
+    this.startQuery.set('');
+  }
+
+  selectStart(value: string): void {
+    this.startRef.set(value);
+    this.closeStartMenu();
+  }
+
   async submit(): Promise<void> {
     if (!this.canCreate()) return;
     this.busy.set(true);
     try {
-      const start = this.store.createBranchStartPoint() ?? undefined;
+      const start = this.startRef().trim() || undefined;
       const ok = await this.store.createBranch(this.preview(), start, this.checkout());
-      if (ok) this.store.closeCreateBranchDialog();
+      if (ok) this.store.closeCreateBranchDialog(true);
     } finally {
       this.busy.set(false);
     }
@@ -167,8 +262,11 @@ export class CreateBranchDialog {
     if (event.key === 'Escape') {
       event.preventDefault();
       if (this.prefixOpen()) {
-        this.prefixOpen.set(false);
-        this.addingPrefix.set(false);
+        this.closePrefixMenu();
+        return;
+      }
+      if (this.startOpen()) {
+        this.closeStartMenu();
         return;
       }
       this.close();
@@ -177,16 +275,6 @@ export class CreateBranchDialog {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       void this.submit();
-    }
-  }
-
-  @HostListener('document:click', ['$event'])
-  onDocClick(event: MouseEvent): void {
-    if (!this.prefixOpen()) return;
-    const menu = this.prefixMenu()?.nativeElement;
-    if (menu && !menu.contains(event.target as Node)) {
-      this.prefixOpen.set(false);
-      this.addingPrefix.set(false);
     }
   }
 

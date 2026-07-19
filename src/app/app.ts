@@ -2,6 +2,8 @@ import { Component, HostListener, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppStore } from './core/app.store';
 import { UpdateService } from './core/update.service';
+import { PromptService } from './shared/ui/prompt-dialog/prompt.service';
+import { SelectService } from './shared/ui/select-dialog/select.service';
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 
 @Component({
@@ -14,6 +16,8 @@ export class App implements OnInit {
   private readonly store = inject(AppStore);
   private readonly updates = inject(UpdateService);
   private readonly tooltips = inject(TooltipService);
+  private readonly prompts = inject(PromptService);
+  private readonly selects = inject(SelectService);
 
   ngOnInit(): void {
     this.tooltips.init();
@@ -62,6 +66,14 @@ export class App implements OnInit {
       return;
     }
     if (event.key === 'Escape') {
+      if (this.prompts.request()) {
+        this.prompts.cancel();
+        return;
+      }
+      if (this.selects.request()) {
+        this.selects.cancel();
+        return;
+      }
       if (this.store.paletteOpen()) {
         this.store.paletteOpen.set(false);
       } else if (this.store.commitModalOpen()) {

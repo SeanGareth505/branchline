@@ -2,7 +2,7 @@
   class="revision-grid"
   tabindex="0"
   [style.--grid-cols]="columns()"
-  (click)="menu().open && closeMenu()"
+  (click)="menu().open && onMenuDismiss()"
   (keydown)="onKeydown($event)"
 >
   <div class="filter-bar">
@@ -197,8 +197,8 @@
     [cdkConnectedOverlayHasBackdrop]="true"
     [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
     [cdkConnectedOverlayPush]="true"
-    (backdropClick)="closeMenu()"
-    (overlayOutsideClick)="closeMenu()"
+    (backdropClick)="onMenuDismiss($event)"
+    (overlayOutsideClick)="onMenuDismiss($event)"
   >
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
       <button type="button" (click)="applyHere()">Cherry-pick onto HEAD</button>

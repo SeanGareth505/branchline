@@ -43,13 +43,17 @@ export class PromptDialog {
   canSubmit(): boolean {
     const req = this.prompts.request();
     if (!req) return false;
-    if (req.required === false) return true;
+    if (req.confirmOnly || req.required === false) return true;
     return this.value().trim().length > 0;
   }
 
   submit(): void {
     if (!this.canSubmit()) return;
     const req = this.prompts.request();
+    if (req?.confirmOnly) {
+      this.prompts.submit('ok');
+      return;
+    }
     const raw = this.value();
     this.prompts.submit(req?.required === false ? raw : raw.trim());
   }

@@ -75,7 +75,7 @@
 
 .tool.primary {
   padding: 0 0.85rem;
-  color: #ffffff;
+  color: var(--btn-primary-fg, #ffffff);
   background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   font-weight: 700;
@@ -91,7 +91,7 @@
     var(--accent-hover)
   );
   border-color: transparent;
-  color: #ffffff;
+  color: var(--btn-primary-fg, #ffffff);
 }
 
 .tool.icon-only {

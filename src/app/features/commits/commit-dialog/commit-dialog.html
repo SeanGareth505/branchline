@@ -1,7 +1,7 @@
 @if (store.commitModalOpen()) {
   <div class="backdrop" role="presentation">
     <div
-      class="dialog"
+      class="dialog bl-glass-dialog"
       role="dialog"
       aria-modal="true"
       aria-labelledby="commit-dialog-title"
@@ -15,6 +15,9 @@
           }
         </div>
         <div class="toolbar-mid">
+          @if (conflictedCount()) {
+            <span class="stat conflict">{{ conflictedCount() }} conflicted</span>
+          }
           <span class="stat">{{ unstagedCount() }} unstaged</span>
           <span class="stat staged">{{ stagedCount() }} staged</span>
         </div>
@@ -25,14 +28,14 @@
         </div>
       </header>
 
-      @if (conflicted().length) {
+      @if (conflictedCount()) {
         <div class="conflict-strip">
-          {{ conflicted().length }} conflicted file(s) — resolve before committing.
+          {{ conflictedCount() }} conflicted file(s) — stage resolved files, then commit.
         </div>
       }
 
       <div class="workspace">
-        <div class="files-column">
+        <div class="files-column" [class.has-conflicts]="conflictedCount() > 0">
           <label class="filter">
             <ng-icon name="lucideSearch" size="14" />
             <input
@@ -42,16 +45,74 @@
               (ngModelChange)="fileFilter.set($event)"
             />
           </label>
+
+          @if (conflictedCount()) {
+            <section class="file-pane conflict-pane" [class.focused]="focusPane() === 'conflicted'">
+              <header class="pane-head">
+                <label class="select-all" title="Select all conflicted ({{ selectAllShortcut }})">
+                  <input
+                    type="checkbox"
+                    [checked]="paneFullySelected('conflicted')"
+                    [indeterminate]="panePartiallySelected('conflicted')"
+                    (click)="togglePaneSelectAll('conflicted', $event)"
+                  />
+                </label>
+                <h3>Conflicts</h3>
+                <span class="count">{{ conflicted().length }}</span>
+                @if (conflictedSelectedCount()) {
+                  <span class="sel-count">{{ conflictedSelectedCount() }} selected</span>
+                }
+              </header>
+              <ul
+                class="file-list"
+                tabindex="0"
+                (focus)="focusPane.set('conflicted')"
+                (keydown)="onFileListKey($event, 'conflicted')"
+              >
+                @for (f of conflicted(); track f.path; let i = $index) {
+                  <li
+                    [class.active]="isFileSelected(f.path, 'conflicted')"
+                    [class.current]="selectedPath() === f.path && !selectedStaged()"
+                    (click)="onFileClick(f, 'conflicted', $event, i)"
+                    (dblclick)="stage(f)"
+                  >
+                    <input
+                      type="checkbox"
+                      class="row-check"
+                      [checked]="isFileSelected(f.path, 'conflicted')"
+                      (click)="onCheckboxClick(f, 'conflicted', $event, i)"
+                      tabindex="-1"
+                    />
+                    <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                    <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
+                    <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
+                  </li>
+                }
+              </ul>
+            </section>
+          }
+
           <section class="file-pane unstaged-pane" [class.focused]="focusPane() === 'unstaged'">
             <header class="pane-head">
+              <label class="select-all" title="Select all unstaged ({{ selectAllShortcut }})">
+                <input
+                  type="checkbox"
+                  [checked]="paneFullySelected('unstaged')"
+                  [indeterminate]="panePartiallySelected('unstaged')"
+                  (click)="togglePaneSelectAll('unstaged', $event)"
+                />
+              </label>
               <h3>Unstaged changes</h3>
               <span class="count">{{ unstaged().length }}</span>
+              @if (unstagedSelectedCount()) {
+                <span class="sel-count">{{ unstagedSelectedCount() }} selected</span>
+              }
               <div class="pane-actions">
                 <button
                   type="button"
                   class="bl-btn quiet"
                   title="Stage all ({{ stageAllShortcut }})"
-                  [disabled]="!unstagedCount()"
+                  [disabled]="!unstagedCount() && !conflictedCount()"
                   (click)="stageAll()"
                 >
                   Stage all
@@ -62,17 +123,24 @@
               class="file-list"
               tabindex="0"
               (focus)="focusPane.set('unstaged')"
-              (keydown)="onFileListKey($event, false)"
+              (keydown)="onFileListKey($event, 'unstaged')"
             >
               @for (f of unstaged(); track f.path; let i = $index) {
                 <li
-                  [class.active]="isFileSelected(f.path, false)"
+                  [class.active]="isFileSelected(f.path, 'unstaged')"
                   [class.current]="selectedPath() === f.path && !selectedStaged()"
-                  (click)="onFileClick(f, false, $event, i)"
+                  (click)="onFileClick(f, 'unstaged', $event, i)"
                   (dblclick)="stage(f)"
                 >
+                  <input
+                    type="checkbox"
+                    class="row-check"
+                    [checked]="isFileSelected(f.path, 'unstaged')"
+                    (click)="onCheckboxClick(f, 'unstaged', $event, i)"
+                    tabindex="-1"
+                  />
                   <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
-                  <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+                  <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
                   <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
                 </li>
               } @empty {
@@ -86,10 +154,15 @@
               type="button"
               class="bl-btn"
               title="Stage selected (S)"
-              [disabled]="!hasUnstagedSelection()"
+              [disabled]="!hasUnstagedSelection() && !hasConflictedSelection()"
               (click)="stageSelected()"
             >
-              Stage ▾
+              Stage
+              @if (unstagedSelectedCount() + conflictedSelectedCount(); as n) {
+                @if (n > 1) {
+                  <span class="btn-count">{{ n }}</span>
+                }
+              }
             </button>
             <button
               type="button"
@@ -98,16 +171,30 @@
               [disabled]="!hasStagedSelection()"
               (click)="unstageSelected()"
             >
-              ▴ Unstage
+              Unstage
+              @if (stagedSelectedCount(); as n) {
+                @if (n > 1) {
+                  <span class="btn-count">{{ n }}</span>
+                }
+              }
             </button>
             <button
               type="button"
               class="bl-btn quiet danger"
-              title="Reset selected (R)"
-              [disabled]="!hasUnstagedSelection()"
+              title="Reset selected modified files (R)"
+              [disabled]="!hasDiscardableSelection()"
               (click)="resetSelected()"
             >
               Reset
+            </button>
+            <button
+              type="button"
+              class="bl-btn quiet danger"
+              title="Delete selected untracked files (⌫)"
+              [disabled]="!hasUntrackedSelection()"
+              (click)="deleteUntrackedSelected()"
+            >
+              Delete
             </button>
             <button
               type="button"
@@ -122,8 +209,19 @@
 
           <section class="file-pane staged-pane" [class.focused]="focusPane() === 'staged'">
             <header class="pane-head">
+              <label class="select-all" title="Select all staged ({{ selectAllShortcut }})">
+                <input
+                  type="checkbox"
+                  [checked]="paneFullySelected('staged')"
+                  [indeterminate]="panePartiallySelected('staged')"
+                  (click)="togglePaneSelectAll('staged', $event)"
+                />
+              </label>
               <h3>Staged changes</h3>
               <span class="count">{{ staged().length }}</span>
+              @if (stagedSelectedCount()) {
+                <span class="sel-count">{{ stagedSelectedCount() }} selected</span>
+              }
               <div class="pane-actions">
                 <button
                   type="button"
@@ -140,17 +238,24 @@
               class="file-list"
               tabindex="0"
               (focus)="focusPane.set('staged')"
-              (keydown)="onFileListKey($event, true)"
+              (keydown)="onFileListKey($event, 'staged')"
             >
               @for (f of staged(); track f.path; let i = $index) {
                 <li
-                  [class.active]="isFileSelected(f.path, true)"
+                  [class.active]="isFileSelected(f.path, 'staged')"
                   [class.current]="selectedPath() === f.path && selectedStaged()"
-                  (click)="onFileClick(f, true, $event, i)"
+                  (click)="onFileClick(f, 'staged', $event, i)"
                   (dblclick)="unstage(f)"
                 >
+                  <input
+                    type="checkbox"
+                    class="row-check"
+                    [checked]="isFileSelected(f.path, 'staged')"
+                    (click)="onCheckboxClick(f, 'staged', $event, i)"
+                    tabindex="-1"
+                  />
                   <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
-                  <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+                  <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
                   <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
                 </li>
               } @empty {
@@ -169,6 +274,26 @@
                 </span>
                 <span class="mono path-label" [title]="path">{{ path }}</span>
               </div>
+              <div class="diff-actions">
+                <button type="button" class="bl-btn quiet" title="Copy path" (click)="copySelectedPaths()">
+                  <ng-icon name="lucideCopy" size="13" />
+                </button>
+                <button type="button" class="bl-btn quiet" title="Open file" (click)="openSelected()">
+                  <ng-icon name="lucideExternalLink" size="13" />
+                </button>
+                <button type="button" class="bl-btn quiet" title="Reveal in Finder" (click)="revealSelected()">
+                  <ng-icon name="lucideFolderOpen" size="13" />
+                </button>
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  [class.on]="diffLayout() === 'sideBySide'"
+                  title="Toggle side-by-side"
+                  (click)="toggleDiffLayout()"
+                >
+                  <ng-icon name="lucideColumns2" size="13" />
+                </button>
+              </div>
             } @else {
               <span class="muted">Select a file to view diff</span>
             }
@@ -177,6 +302,7 @@
           <app-patch-lines-view
             [patch]="patch()"
             [mode]="linesMode()"
+            [layout]="diffLayout()"
             [emptyMessage]="
               selectedPath() ? 'Loading diff…' : 'Select a file from Unstaged or Staged changes.'
             "
@@ -260,6 +386,10 @@
               <input type="checkbox" [ngModel]="pushAfter()" (ngModelChange)="pushAfter.set($event)" />
               Push after commit
             </label>
+            <label title="Commit with no staged changes and/or an empty message">
+              <input type="checkbox" [ngModel]="allowEmpty()" (ngModelChange)="allowEmpty.set($event)" />
+              Allow empty
+            </label>
           </div>
           <div class="composer-actions">
             <div class="composer-actions-secondary">
@@ -273,6 +403,7 @@
               type="button"
               class="bl-btn bl-btn-primary commit-btn"
               [disabled]="!canCommit() || committing()"
+              [title]="commitBlockedReason() || ''"
               (click)="commit()"
             >
               {{ amend() ? 'Amend' : 'Commit' }}

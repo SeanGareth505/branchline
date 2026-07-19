@@ -93,6 +93,7 @@ export class RevisionGrid {
     y: 0,
     sha: '',
   });
+  private suppressMenuCloseUntil = 0;
 
   readonly menuOrigin = computed(() => ({ x: this.menu().x, y: this.menu().y }));
 
@@ -291,8 +292,10 @@ export class RevisionGrid {
 
   onContext(row: RowView, event: MouseEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     if (!row.commit) return;
     this.store.selectCommit(row.commit.sha);
+    this.suppressMenuCloseUntil = performance.now() + 500;
     this.menu.set({ open: true, x: event.clientX, y: event.clientY, sha: row.commit.sha });
   }
 
@@ -314,6 +317,12 @@ export class RevisionGrid {
 
   closeMenu(): void {
     if (this.menu().open) this.menu.update((m) => ({ ...m, open: false }));
+  }
+
+  onMenuDismiss(event?: Event): void {
+    if (performance.now() < this.suppressMenuCloseUntil) return;
+    if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
+    this.closeMenu();
   }
 
   applyHere(): void {

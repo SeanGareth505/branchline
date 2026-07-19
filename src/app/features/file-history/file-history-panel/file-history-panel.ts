@@ -12,7 +12,7 @@ import type { FileHistoryEntry } from '../../../core/models';
 })
 export class FileHistoryPanel {
   private readonly tauri = inject(TauriService);
-  private readonly store = inject(AppStore);
+  readonly store = inject(AppStore);
   readonly entries = signal<FileHistoryEntry[]>([]);
   readonly loading = signal(false);
 
@@ -49,7 +49,11 @@ export class FileHistoryPanel {
     this.store.setBrowseTab('diff');
   }
 
+  hasFile(): boolean {
+    return !!(this.store.fileHistoryPath() ?? this.store.selectedDiffPath());
+  }
+
   get displayPath(): string {
-    return this.store.fileHistoryPath() ?? this.store.selectedDiffPath() ?? 'Select a file';
+    return this.store.fileHistoryPath() ?? this.store.selectedDiffPath() ?? '';
   }
 }

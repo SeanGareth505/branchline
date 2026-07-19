@@ -223,17 +223,7 @@
   </div>
 </div>
 
-<ng-template
-  cdkConnectedOverlay
-  [cdkConnectedOverlayOrigin]="lineMenuOrigin()"
-  [cdkConnectedOverlayOpen]="lineMenu().open"
-  [cdkConnectedOverlayPositions]="lineMenuPositions"
-  [cdkConnectedOverlayHasBackdrop]="true"
-  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
-  [cdkConnectedOverlayPush]="true"
-  (backdropClick)="onLineMenuOutside()"
-  (overlayOutsideClick)="onLineMenuOutside()"
->
+<ng-template #lineMenuTpl>
   <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
     <div class="bl-menu-label">
       {{ selectedCount() }} line{{ selectedCount() === 1 ? '' : 's' }}

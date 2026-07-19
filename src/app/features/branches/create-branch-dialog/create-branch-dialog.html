@@ -48,20 +48,93 @@
 
       <div class="source">
         <span class="source-label">Fork from</span>
-        <span class="source-pill">
+        <button
+          type="button"
+          class="source-pill"
+          cdkOverlayOrigin
+          #startOrigin="cdkOverlayOrigin"
+          [class.open]="startOpen()"
+          [class.current]="startIsCurrent()"
+          (click)="toggleStartMenu($event)"
+          [attr.aria-expanded]="startOpen()"
+          aria-haspopup="listbox"
+          title="Choose start branch"
+        >
           <ng-icon name="lucideGitBranch" size="13" />
-          {{ baseLabel() }}
-        </span>
+          <span class="source-value">{{ baseLabel() }}</span>
+          @if (startIsCurrent()) {
+            <span class="source-hint">current</span>
+          }
+          <ng-icon class="chev" name="lucideChevronDown" size="13" />
+        </button>
+
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="startOrigin"
+          [cdkConnectedOverlayOpen]="startOpen()"
+          [cdkConnectedOverlayPositions]="startMenuPositions"
+          [cdkConnectedOverlayPush]="true"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+          (backdropClick)="closeStartMenu()"
+          (overlayOutsideClick)="closeStartMenu()"
+        >
+          <div class="start-menu" role="listbox" (click)="$event.stopPropagation()">
+            <label class="start-filter">
+              <ng-icon name="lucideSearch" size="13" />
+              <input
+                type="search"
+                placeholder="Filter branches…"
+                [ngModel]="startQuery()"
+                (ngModelChange)="startQuery.set($event)"
+                (keydown.escape)="$event.stopPropagation(); closeStartMenu()"
+                autofocus
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <ul>
+              @for (opt of startOptions(); track opt.value) {
+                <li>
+                  <button
+                    type="button"
+                    class="start-option"
+                    [class.active]="opt.value === startRef()"
+                    role="option"
+                    [attr.aria-selected]="opt.value === startRef()"
+                    (click)="selectStart(opt.value)"
+                  >
+                    <span class="start-name">{{ opt.label }}</span>
+                    @if (opt.current) {
+                      <span class="start-tag">current</span>
+                    } @else if (opt.kind === 'commit') {
+                      <span class="start-tag">commit</span>
+                    } @else if (opt.kind === 'remote') {
+                      <span class="start-tag muted">remote</span>
+                    }
+                    @if (opt.value === startRef()) {
+                      <ng-icon name="lucideCheck" size="13" />
+                    }
+                  </button>
+                </li>
+              } @empty {
+                <li class="start-empty">No matching branches</li>
+              }
+            </ul>
+          </div>
+        </ng-template>
       </div>
 
       <div class="composer">
         <div class="name-row" [class.with-prefix]="usePrefix()">
           @if (usePrefix()) {
-            <div class="prefix-field" #prefixMenu>
+            <div class="prefix-field">
               <span class="field-label">Prefix</span>
               <button
                 type="button"
                 class="prefix-trigger"
+                cdkOverlayOrigin
+                #prefixOrigin="cdkOverlayOrigin"
                 [class.open]="prefixOpen()"
                 (click)="togglePrefixMenu($event)"
                 [attr.aria-expanded]="prefixOpen()"
@@ -71,7 +144,18 @@
                 <ng-icon name="lucideChevronDown" size="14" />
               </button>
 
-              @if (prefixOpen()) {
+              <ng-template
+                cdkConnectedOverlay
+                [cdkConnectedOverlayOrigin]="prefixOrigin"
+                [cdkConnectedOverlayOpen]="prefixOpen()"
+                [cdkConnectedOverlayPositions]="prefixMenuPositions"
+                [cdkConnectedOverlayPush]="true"
+                [cdkConnectedOverlayMatchWidth]="true"
+                [cdkConnectedOverlayHasBackdrop]="true"
+                [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+                (backdropClick)="closePrefixMenu()"
+                (overlayOutsideClick)="closePrefixMenu()"
+              >
                 <div class="prefix-menu" role="listbox" (click)="$event.stopPropagation()">
                   <ul>
                     @for (item of prefixes(); track item) {
@@ -112,7 +196,7 @@
                         [ngModel]="newPrefix()"
                         (ngModelChange)="newPrefix.set($event)"
                         (keydown.enter)="addPrefix()"
-                        (keydown.escape)="$event.stopPropagation(); addingPrefix.set(false)"
+                        (keydown.escape)="$event.stopPropagation(); addingPrefix.set(false); newPrefix.set('')"
                         autofocus
                         spellcheck="false"
                         autocomplete="off"
@@ -133,7 +217,7 @@
                     </button>
                   }
                 </div>
-              }
+              </ng-template>
             </div>
             <span class="slash" aria-hidden="true">/</span>
           }

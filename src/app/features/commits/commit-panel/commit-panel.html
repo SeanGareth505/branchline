@@ -1,12 +1,17 @@
 <div class="panel" [class.has-selection]="!!store.selectedCommit()">
-  <div class="toolbar-row">
-    <h3>Commit info</h3>
-    <button type="button" class="bl-btn bl-btn-primary" (click)="openCommitModal()">
-      Open commit dialog
-    </button>
-  </div>
-
   @if (store.selectedCommit(); as commit) {
+    <div class="toolbar-row">
+      <div class="toolbar-left">
+        <span class="eyebrow">Selected commit</span>
+        <button type="button" class="sha mono" (click)="copySha(commit.sha)" [title]="commit.sha">
+          {{ commit.shortSha }}
+        </button>
+      </div>
+      <button type="button" class="bl-btn quiet" (click)="openCommitModal()" title="Stage files and create a commit">
+        New commit…
+      </button>
+    </div>
+
     <div class="commit-meta">
       <div class="commit-head">
         <div class="title-block">
@@ -15,10 +20,6 @@
             {{ commit.author }}
             <span class="sep">·</span>
             {{ time(commit.timestamp) }}
-            <span class="sep">·</span>
-            <button type="button" class="sha mono" (click)="copySha(commit.sha)" [title]="commit.sha">
-              {{ commit.shortSha }}
-            </button>
           </p>
         </div>
         @if (commit.refs.length) {
@@ -79,8 +80,11 @@
     </div>
   } @else {
     <div class="empty-inspector">
-      <p>Select a commit in the revision grid to inspect it.</p>
-      <p class="muted">Use the Commit button to stage files and create a new commit.</p>
+      <p class="empty-title">No commit selected</p>
+      <p class="muted">Click a row in the revision grid to inspect author, message, and parents.</p>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="openCommitModal()">
+        Create a commit…
+      </button>
     </div>
   }
 </div>

@@ -1,16 +1,29 @@
 import { Injectable } from '@angular/core';
 import type { CommitInfo, TagInfo } from '../../core/models';
 
-export type ChangelogFormat = 'keepachangelog' | 'conventional' | 'release' | 'plain';
+export type ChangelogFormat =
+  | 'release'
+  | 'team'
+  | 'credits'
+  | 'engineering'
+  | 'plain';
 
-export type ChangelogRangePreset = 'since-latest-tag' | 'between-tags' | 'compare' | 'selection' | 'custom';
+export type ChangelogRangePreset =
+  | 'since-latest-tag'
+  | 'between-tags'
+  | 'compare'
+  | 'selection'
+  | 'custom';
 
 export interface ChangelogOptions {
   format: ChangelogFormat;
   version: string;
   title: string;
+  team: string;
+  preparedBy: string;
   includeAuthors: boolean;
   includeShas: boolean;
+  includeContributors: boolean;
   excludeMerges: boolean;
   excludeChores: boolean;
   date: string;
@@ -108,12 +121,13 @@ export class ChangelogService {
     const major = Number(match[1]);
     const minor = Number(match[2]);
     const patch = Number(match[3]);
-    const range = this.commitsBetween(commits, latest ? this.latestTag(tags, commits)?.sha ?? null : null, null);
+    const range = this.commitsBetween(
+      commits,
+      latest ? (this.latestTag(tags, commits)?.sha ?? null) : null,
+      null,
+    );
     const hasBreaking = range.some((c) => this.parseCommit(c).breaking);
-    const hasFeat = range.some((c) => {
-      const p = this.parseCommit(c);
-      return p.section === 'Added';
-    });
+    const hasFeat = range.some((c) => this.parseCommit(c).section === 'Added');
     if (hasBreaking) return `${major + 1}.0.0`;
     if (hasFeat) return `${major}.${minor + 1}.0`;
     return `${major}.${minor}.${patch + 1}`;
@@ -198,30 +212,28 @@ export class ChangelogService {
     toLabel: string,
   ): string {
     switch (options.format) {
-      case 'keepachangelog':
-        return this.renderKeepAChangelog(parsed, options, fromLabel, toLabel);
-      case 'conventional':
-        return this.renderConventional(parsed, options, fromLabel, toLabel);
-      case 'release':
-        return this.renderReleaseNotes(parsed, options, fromLabel, toLabel);
-      default:
+      case 'team':
+        return this.renderTeam(parsed, options, fromLabel, toLabel);
+      case 'credits':
+        return this.renderCredits(parsed, options, fromLabel, toLabel);
+      case 'engineering':
+        return this.renderEngineering(parsed, options, fromLabel, toLabel);
+      case 'plain':
         return this.renderPlain(parsed, options, fromLabel, toLabel);
+      default:
+        return this.renderRelease(parsed, options, fromLabel, toLabel);
     }
   }
 
-  private renderKeepAChangelog(
+  private renderRelease(
     parsed: ParsedCommit[],
     options: ChangelogOptions,
     fromLabel: string,
     toLabel: string,
   ): string {
     const version = options.version.trim() || 'Unreleased';
-    const lines: string[] = [
-      `## [${version}] - ${options.date}`,
-      '',
-      `> Changes from \`${fromLabel}\` to \`${toLabel}\``,
-      '',
-    ];
+    const lines: string[] = [`## [${version}] - ${options.date}`, ''];
+    this.pushMeta(lines, options, fromLabel, toLabel);
 
     const groups = this.groupBySection(parsed);
     for (const section of SECTION_ORDER) {
@@ -238,22 +250,116 @@ export class ChangelogService {
       lines.push('_No commits in this range._', '');
     }
 
+    this.pushContributors(lines, parsed, options);
     return lines.join('\n').trimEnd() + '\n';
   }
 
-  private renderConventional(
+  private renderTeam(
+    parsed: ParsedCommit[],
+    options: ChangelogOptions,
+    fromLabel: string,
+    toLabel: string,
+  ): string {
+    const version = options.version.trim();
+    const team = options.team.trim();
+    const title =
+      options.title.trim() ||
+      (team ? `${team} update` : version ? `Team update · ${version}` : 'Team update');
+    const lines: string[] = [`# ${title}`, ''];
+    this.pushMeta(lines, options, fromLabel, toLabel);
+
+    const highlights = parsed.filter((p) => p.section === 'Breaking' || p.section === 'Added');
+    const fixes = parsed.filter((p) => p.section === 'Fixed');
+    const improvements = parsed.filter(
+      (p) =>
+        p.section === 'Changed' ||
+        p.section === 'Deprecated' ||
+        p.section === 'Removed' ||
+        p.section === 'Security',
+    );
+    const other = parsed.filter((p) => p.section === 'Other');
+
+    const pushGroup = (heading: string, items: ParsedCommit[]) => {
+      if (!items.length) return;
+      lines.push(`## ${heading}`, '');
+      for (const item of items) {
+        const who =
+          options.includeAuthors && item.commit.author ? ` — _${item.commit.author}_` : '';
+        lines.push(`- ${this.bullet(item, { ...options, includeAuthors: false })}${who}`);
+      }
+      lines.push('');
+    };
+
+    pushGroup('What shipped', highlights);
+    pushGroup('Improvements', improvements);
+    pushGroup('Fixes', fixes);
+    pushGroup('Other', other);
+
+    if (parsed.length === 0) {
+      lines.push('_Nothing new in this range._', '');
+    }
+
+    this.pushContributors(lines, parsed, { ...options, includeContributors: true });
+    if (options.preparedBy.trim()) {
+      lines.push(`Prepared by **${options.preparedBy.trim()}**.`, '');
+    }
+    return lines.join('\n').trimEnd() + '\n';
+  }
+
+  private renderCredits(
+    parsed: ParsedCommit[],
+    options: ChangelogOptions,
+    fromLabel: string,
+    toLabel: string,
+  ): string {
+    const version = options.version.trim();
+    const team = options.team.trim();
+    const title =
+      options.title.trim() ||
+      (version ? `Made by · ${version}` : team ? `Made by ${team}` : 'Made by');
+    const lines: string[] = [`# ${title}`, ''];
+    this.pushMeta(lines, options, fromLabel, toLabel);
+
+    const contributors = this.contributorStats(parsed);
+    if (contributors.length) {
+      lines.push('## Contributors', '');
+      for (const person of contributors) {
+        const commits = person.count === 1 ? '1 commit' : `${person.count} commits`;
+        lines.push(`- **${person.name}** — ${commits}`);
+      }
+      lines.push('');
+    } else {
+      lines.push('_No contributors in this range._', '');
+    }
+
+    const highlights = parsed.filter((p) => p.section === 'Breaking' || p.section === 'Added');
+    if (highlights.length) {
+      lines.push('## Highlights', '');
+      for (const item of highlights) {
+        const who = item.commit.author ? ` (${item.commit.author})` : '';
+        lines.push(`- ${this.bullet(item, { ...options, includeAuthors: false })}${who}`);
+      }
+      lines.push('');
+    }
+
+    if (options.preparedBy.trim()) {
+      lines.push(`Curated by **${options.preparedBy.trim()}**.`, '');
+    }
+    if (team) {
+      lines.push(`— ${team}`, '');
+    }
+    return lines.join('\n').trimEnd() + '\n';
+  }
+
+  private renderEngineering(
     parsed: ParsedCommit[],
     options: ChangelogOptions,
     fromLabel: string,
     toLabel: string,
   ): string {
     const version = options.version.trim() || 'Unreleased';
-    const lines: string[] = [
-      `# ${version}`,
-      '',
-      `Range: \`${fromLabel}\` → \`${toLabel}\` · ${options.date}`,
-      '',
-    ];
+    const lines: string[] = [`# ${version}`, ''];
+    this.pushMeta(lines, options, fromLabel, toLabel);
 
     const byType = new Map<string, ParsedCommit[]>();
     for (const item of parsed) {
@@ -295,52 +401,7 @@ export class ChangelogService {
       lines.push('_No commits in this range._', '');
     }
 
-    return lines.join('\n').trimEnd() + '\n';
-  }
-
-  private renderReleaseNotes(
-    parsed: ParsedCommit[],
-    options: ChangelogOptions,
-    fromLabel: string,
-    toLabel: string,
-  ): string {
-    const title = options.title.trim() || `Release ${options.version.trim() || 'notes'}`;
-    const lines: string[] = [
-      `# ${title}`,
-      '',
-      `**Date:** ${options.date}  `,
-      `**Range:** \`${fromLabel}\` → \`${toLabel}\``,
-      '',
-    ];
-
-    const highlights = parsed.filter((p) => p.section === 'Breaking' || p.section === 'Added');
-    const fixes = parsed.filter((p) => p.section === 'Fixed');
-    const improvements = parsed.filter(
-      (p) => p.section === 'Changed' || p.section === 'Deprecated' || p.section === 'Removed',
-    );
-    const security = parsed.filter((p) => p.section === 'Security');
-    const other = parsed.filter((p) => p.section === 'Other');
-
-    const pushGroup = (heading: string, items: ParsedCommit[]) => {
-      if (!items.length) return;
-      lines.push(`## ${heading}`, '');
-      for (const item of items) {
-        lines.push(`- ${this.bullet(item, options)}`);
-      }
-      lines.push('');
-    };
-
-    pushGroup('Highlights', highlights);
-    pushGroup('Improvements', improvements);
-    pushGroup('Fixes', fixes);
-    pushGroup('Security', security);
-    pushGroup('Other', other);
-
-    if (parsed.length === 0) {
-      lines.push('_No commits in this range._', '');
-    }
-
-    lines.push('---', '', `Generated with Branchline.`, '');
+    this.pushContributors(lines, parsed, options);
     return lines.join('\n').trimEnd() + '\n';
   }
 
@@ -351,11 +412,9 @@ export class ChangelogService {
     toLabel: string,
   ): string {
     const version = options.version.trim() || 'Unreleased';
-    const lines: string[] = [
-      `${version} (${options.date})`,
-      `${fromLabel} → ${toLabel}`,
-      '',
-    ];
+    const lines: string[] = [`${version} (${options.date})`, `${fromLabel} → ${toLabel}`, ''];
+    if (options.team.trim()) lines.push(`Team: ${options.team.trim()}`, '');
+    if (options.preparedBy.trim()) lines.push(`By: ${options.preparedBy.trim()}`, '');
     for (const item of parsed) {
       lines.push(`• ${this.bullet(item, options)}`);
     }
@@ -364,6 +423,49 @@ export class ChangelogService {
     }
     lines.push('');
     return lines.join('\n');
+  }
+
+  private pushMeta(
+    lines: string[],
+    options: ChangelogOptions,
+    fromLabel: string,
+    toLabel: string,
+  ): void {
+    if (options.team.trim()) {
+      lines.push(`**Team:** ${options.team.trim()}  `);
+    }
+    if (options.preparedBy.trim()) {
+      lines.push(`**Prepared by:** ${options.preparedBy.trim()}  `);
+    }
+    lines.push(`**Date:** ${options.date}  `);
+    lines.push(`**Range:** \`${fromLabel}\` → \`${toLabel}\``, '');
+  }
+
+  private pushContributors(
+    lines: string[],
+    parsed: ParsedCommit[],
+    options: ChangelogOptions,
+  ): void {
+    if (!options.includeContributors) return;
+    const people = this.contributorStats(parsed);
+    if (!people.length) return;
+    lines.push('## Contributors', '');
+    for (const person of people) {
+      lines.push(`- ${person.name} (${person.count})`);
+    }
+    lines.push('');
+  }
+
+  private contributorStats(parsed: ParsedCommit[]): { name: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const item of parsed) {
+      const name = item.commit.author?.trim();
+      if (!name) continue;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }
 
   private groupBySection(parsed: ParsedCommit[]): Map<ChangelogSection, ParsedCommit[]> {

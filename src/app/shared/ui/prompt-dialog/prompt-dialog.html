@@ -19,30 +19,32 @@
         </button>
       </header>
 
-      <label class="field">
-        <span>{{ prompt.label || 'Value' }}</span>
-        @if (prompt.multiline) {
-          <textarea
-            #field
-            rows="4"
-            [class.mono]="prompt.mono"
-            [placeholder]="prompt.placeholder || ''"
-            [ngModel]="value()"
-            (ngModelChange)="value.set($event)"
-          ></textarea>
-        } @else {
-          <input
-            #field
-            type="text"
-            [class.mono]="prompt.mono"
-            [placeholder]="prompt.placeholder || ''"
-            [ngModel]="value()"
-            (ngModelChange)="value.set($event)"
-            autocomplete="off"
-            spellcheck="false"
-          />
-        }
-      </label>
+      @if (!prompt.confirmOnly) {
+        <label class="field">
+          <span>{{ prompt.label || 'Value' }}</span>
+          @if (prompt.multiline) {
+            <textarea
+              #field
+              rows="4"
+              [class.mono]="prompt.mono"
+              [placeholder]="prompt.placeholder || ''"
+              [ngModel]="value()"
+              (ngModelChange)="value.set($event)"
+            ></textarea>
+          } @else {
+            <input
+              #field
+              type="text"
+              [class.mono]="prompt.mono"
+              [placeholder]="prompt.placeholder || ''"
+              [ngModel]="value()"
+              (ngModelChange)="value.set($event)"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          }
+        </label>
+      }
 
       <footer>
         <button type="button" class="bl-btn" (click)="cancel()">

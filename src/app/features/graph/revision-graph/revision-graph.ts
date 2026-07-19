@@ -3,25 +3,39 @@ import {
   Component,
   ElementRef,
   OnDestroy,
+  computed,
   effect,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
+import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import { AppStore } from '../../../core/app.store';
 import type { ArtificialCommit, CommitInfo } from '../../../core/models';
 
 @Component({
   selector: 'app-revision-graph',
-  imports: [],
+  imports: [CdkConnectedOverlay],
   templateUrl: './revision-graph.html',
   styleUrl: './revision-graph.scss',
 })
 export class RevisionGraph implements AfterViewInit, OnDestroy {
   readonly store = inject(AppStore);
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
-  private readonly menu = { open: false, x: 0, y: 0, sha: '' as string };
-  menuState = this.menu;
+  readonly menu = signal({ open: false, x: 0, y: 0, sha: '' });
+  private suppressMenuCloseUntil = 0;
   private resizeObserver?: ResizeObserver;
+
+  readonly menuOrigin = computed(() => ({
+    x: this.menu().x,
+    y: this.menu().y,
+  }));
+
+  readonly menuPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'top' },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'top' },
+  ];
 
   constructor() {
     effect(() => {
@@ -50,32 +64,44 @@ export class RevisionGraph implements AfterViewInit, OnDestroy {
     const sha = this.hitTest(event);
     if (!sha) return;
     this.store.selectCommit(sha, event.metaKey || event.ctrlKey);
-    this.menuState = { ...this.menu, open: false };
+    this.closeMenu();
   }
 
   onContext(event: MouseEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     const sha = this.hitTest(event);
     if (!sha) return;
     this.store.selectCommit(sha);
-    this.menuState = { open: true, x: event.offsetX, y: event.offsetY, sha };
+    this.suppressMenuCloseUntil = performance.now() + 500;
+    this.menu.set({ open: true, x: event.clientX, y: event.clientY, sha });
+  }
+
+  closeMenu(): void {
+    if (this.menu().open) this.menu.update((m) => ({ ...m, open: false }));
+  }
+
+  onMenuDismiss(event?: Event): void {
+    if (performance.now() < this.suppressMenuCloseUntil) return;
+    if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
+    this.closeMenu();
   }
 
   applyHere(): void {
-    void this.store.openCherryPickPreview([this.menuState.sha]);
-    this.menuState = { ...this.menuState, open: false };
+    void this.store.openCherryPickPreview([this.menu().sha]);
+    this.closeMenu();
   }
 
   undoCommit(): void {
     void this.store.revertSelected();
-    this.menuState = { ...this.menuState, open: false };
+    this.closeMenu();
   }
 
   checkoutCommit(): void {
-    const sha = this.menuState.sha;
+    const sha = this.menu().sha;
     const short = sha.slice(0, 7);
     void this.store.createBranch(`checkout/${short}`, sha);
-    this.menuState = { ...this.menuState, open: false };
+    this.closeMenu();
   }
 
   private hitTest(event: MouseEvent): string | null {

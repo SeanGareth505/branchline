@@ -9,7 +9,7 @@
     >
       <header class="dialog-head">
         <div>
-          <p class="kicker">Release</p>
+          <p class="kicker">Changelog</p>
           <h2 id="changelog-dialog-title">Extract changelog</h2>
           <p class="sub">
             {{ resolvedRange().fromLabel }}
@@ -31,7 +31,7 @@
       <div class="body">
         <aside class="controls">
           <section>
-            <h3>Format</h3>
+            <h3>For</h3>
             <div class="format-grid">
               @for (f of formats; track f.id) {
                 <button
@@ -68,7 +68,7 @@
           </section>
 
           <section>
-            <h3>Release</h3>
+            <h3>Details</h3>
             <label class="field">
               <span>Version</span>
               <input
@@ -78,17 +78,35 @@
                 placeholder="1.2.0"
               />
             </label>
-            @if (format() === 'release') {
+            @if (format() === 'team' || format() === 'credits') {
               <label class="field">
                 <span>Title</span>
                 <input
                   type="text"
                   [ngModel]="title()"
                   (ngModelChange)="title.set($event)"
-                  placeholder="Release notes"
+                  [placeholder]="format() === 'credits' ? 'Made by' : 'Team update'"
                 />
               </label>
             }
+            <label class="field">
+              <span>Team</span>
+              <input
+                type="text"
+                [ngModel]="team()"
+                (ngModelChange)="team.set($event)"
+                placeholder="Platform, Design, …"
+              />
+            </label>
+            <label class="field">
+              <span>Prepared by</span>
+              <input
+                type="text"
+                [ngModel]="preparedBy()"
+                (ngModelChange)="preparedBy.set($event)"
+                placeholder="Your name"
+              />
+            </label>
             <label class="field">
               <span>Date</span>
               <input type="date" [ngModel]="date()" (ngModelChange)="date.set($event)" />
@@ -112,7 +130,15 @@
                   [ngModel]="includeAuthors()"
                   (ngModelChange)="includeAuthors.set($event)"
                 />
-                Authors
+                Authors on each item
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  [ngModel]="includeContributors()"
+                  (ngModelChange)="includeContributors.set($event)"
+                />
+                Contributors section
               </label>
               <label>
                 <input
@@ -151,7 +177,7 @@
         <section class="preview">
           <header>
             <h3>Preview</h3>
-            <span class="mono muted">CHANGELOG.md</span>
+            <span class="mono muted">{{ previewName() }}</span>
           </header>
           <pre class="markdown mono">{{ result().markdown }}</pre>
         </section>

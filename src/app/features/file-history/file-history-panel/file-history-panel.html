@@ -1,7 +1,30 @@
 <div class="history">
-  <header>File history · {{ displayPath }}</header>
+  <header>
+    <span class="title">File history</span>
+    @if (hasFile()) {
+      <span class="path mono" [title]="displayPath">{{ displayPath }}</span>
+    } @else {
+      <span class="meta">Select a file to see its commits</span>
+    }
+  </header>
   @if (loading()) {
-    <p class="empty">Loading history…</p>
+    <div class="state">
+      <p class="state-title">Loading history…</p>
+    </div>
+  } @else if (!hasFile()) {
+    <div class="state">
+      <p class="state-title">No file selected</p>
+      <p class="state-hint">Choose a file in Diff or File tree, then open History.</p>
+      <div class="state-actions">
+        <button type="button" class="bl-btn" (click)="store.setBrowseTab('files')">Open File tree</button>
+        <button type="button" class="bl-btn" (click)="store.setBrowseTab('diff')">Open Diff</button>
+      </div>
+    </div>
+  } @else if (!entries().length) {
+    <div class="state">
+      <p class="state-title">No history for this file</p>
+      <p class="state-hint">It may be new, untracked, or outside this repository.</p>
+    </div>
   } @else {
     <ul>
       @for (entry of entries(); track entry.sha) {
@@ -12,8 +35,6 @@
             <span class="meta">{{ entry.author }} · {{ time(entry.timestamp) }}</span>
           </button>
         </li>
-      } @empty {
-        <li class="empty">No history for this file</li>
       }
     </ul>
   }

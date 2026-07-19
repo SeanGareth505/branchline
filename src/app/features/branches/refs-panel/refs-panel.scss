@@ -288,45 +288,21 @@
   background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
 }
 
-.ref-list > li.mine:not(.current):not(.tip-selected) .rail {
-  background: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
 .ref-list > li.tip-selected:not(.current) {
-  background: var(--selection-bg);
-  border-color: color-mix(in srgb, var(--accent) 18%, var(--glass-border));
-}
-
-.ref-list > li.tip-selected:not(.current) .rail {
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
 }
 
 .ref-list > li.current {
-  background: var(--current-bg);
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-}
-
-.ref-list > li.current .rail {
-  background: var(--selection-rail);
-  width: 2px;
-}
-
-.ref-list > li.current .name {
-  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .ref-list > li.current .label {
+  font-weight: 650;
   color: var(--accent-hover);
 }
 
-.rail {
-  width: 2px;
-  height: 14px;
-  margin: 0;
-  border-radius: 2px;
-  background: transparent;
-  flex-shrink: 0;
-  align-self: center;
+.ref-list > li.current:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .lock-badge {
@@ -344,11 +320,11 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   height: 100%;
   border: 0;
   background: transparent;
-  padding: 0 0.3rem 0 0.15rem;
+  padding: 0 0.35rem;
   text-align: left;
   min-width: 0;
   font-size: 12.5px;

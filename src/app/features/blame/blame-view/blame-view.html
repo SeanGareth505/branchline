@@ -1,6 +1,14 @@
 <div class="blame">
   <header>
-    <span>Blame · {{ displayPath }} · {{ visibleLines().length }}{{ mineOnly() ? ' of ' + lines().length : '' }} lines</span>
+    <div class="head-text">
+      <span class="title">Blame</span>
+      @if (store.selectedDiffPath(); as file) {
+        <span class="path mono" [title]="file">{{ fileName(file) }}</span>
+        <span class="meta">{{ visibleLines().length }}{{ mineOnly() ? ' of ' + lines().length : '' }} lines</span>
+      } @else {
+        <span class="meta">Pick a file to inspect line authors</span>
+      }
+    </div>
     <label class="mine" title="Show only lines authored by you">
       <input type="checkbox" [ngModel]="mineOnly()" (ngModelChange)="mineOnly.set($event)" />
       Mine
@@ -9,10 +17,40 @@
       }
     </label>
   </header>
+
   @if (loading()) {
-    <p class="empty">Loading blame…</p>
+    <div class="state">
+      <p class="state-title">Loading blame…</p>
+      <p class="state-hint">Annotating each line with its last commit</p>
+    </div>
+  } @else if (error()) {
+    <div class="state">
+      <p class="state-title">Couldn’t load blame</p>
+      <p class="state-hint">{{ error() }}</p>
+      <button type="button" class="bl-btn" (click)="retry()">Try again</button>
+    </div>
+  } @else if (!store.selectedDiffPath()) {
+    <div class="state">
+      <p class="state-title">No file selected</p>
+      <p class="state-hint">Open Diff or File tree and choose a file, or select a commit with changes.</p>
+      <div class="state-actions">
+        <button type="button" class="bl-btn" (click)="store.setBrowseTab('diff')">Open Diff</button>
+        <button type="button" class="bl-btn" (click)="store.setBrowseTab('files')">Open File tree</button>
+      </div>
+    </div>
+  } @else if (!lines().length) {
+    <div class="state">
+      <p class="state-title">No blame for this file</p>
+      <p class="state-hint">It may be binary, untracked, or missing at this revision.</p>
+    </div>
+  } @else if (!visibleLines().length) {
+    <div class="state">
+      <p class="state-title">No lines by you</p>
+      <p class="state-hint">Turn off Mine to see the full file.</p>
+    </div>
   } @else {
     <div class="rows mono">
+      <div class="hint-bar">Click a line to open that commit in Diff</div>
       @for (line of visibleLines(); track line.lineNumber) {
         <button
           type="button"
@@ -26,14 +64,6 @@
           <span class="num">{{ line.lineNumber }}</span>
           <span class="content">{{ line.content }}</span>
         </button>
-      } @empty {
-        <p class="empty">
-          @if (mineOnly() && lines().length) {
-            No lines by you in this file
-          } @else {
-            Select a file to blame
-          }
-        </p>
       }
     </div>
   }

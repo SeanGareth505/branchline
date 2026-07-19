@@ -102,6 +102,10 @@
   gap: 0.4rem;
 }
 
+.format-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .format-card {
   display: flex;
   flex-direction: column;
@@ -137,9 +141,8 @@
 }
 
 .format-card.on {
-  background: var(--selection-bg);
+  background: var(--selection-bg-strong);
   border-color: var(--selection-border);
-  box-shadow: inset 2px 0 0 var(--selection-rail);
 }
 
 .field {

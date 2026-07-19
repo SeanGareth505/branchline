@@ -62,14 +62,16 @@ export class ProjectSwitcher {
   ];
 
   readonly triggerLabel = computed(() =>
-    this.store.openRepos().length ? 'Switch' : 'Open repo',
+    this.store.openRepos().length ? 'Add repo' : 'Open repo',
   );
 
   readonly triggerTitle = computed(() => {
     const current = this.store.currentRepo();
-    if (!current) return 'Open or switch repositories';
+    if (!current) return 'Open a repository as a tab';
     const branch = this.store.status()?.branch;
-    return branch ? `${current.path}\non ${branch}` : current.path;
+    return branch
+      ? `Add or open another repository\n${current.path}\non ${branch}`
+      : `Add or open another repository\n${current.path}`;
   });
 
   readonly linkedHosts = computed(() => this.store.linkedGitHosts());

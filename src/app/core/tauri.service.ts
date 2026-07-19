@@ -60,8 +60,24 @@ export class TauriService {
       {
         id: 'wf-feature',
         name: 'Create feature branch',
-        description: 'Start a feature: create a branch, then open commit',
+        description: 'Pick a base, create a branch, then open commit',
         steps: ['createBranch', 'openCommit'],
+        builtin: true,
+        enabled: true,
+      },
+      {
+        id: 'wf-switch',
+        name: 'Switch branch',
+        description: 'Choose a local branch and check it out',
+        steps: ['checkoutBranch'],
+        builtin: true,
+        enabled: true,
+      },
+      {
+        id: 'wf-switch-sync',
+        name: 'Switch and sync',
+        description: 'Check out a branch, then fetch and pull',
+        steps: ['checkoutBranch', 'fetch', 'pull'],
         builtin: true,
         enabled: true,
       },
@@ -223,9 +239,9 @@ export class TauriService {
     return this.invoke<MutationOutput>('apply_patch', { input: { path, patch, mode } });
   }
 
-  createCommit(path: string, message: string, amend = false) {
+  createCommit(path: string, message: string, amend = false, allowEmpty = false) {
     return this.invoke<{ sha: string; shortSha?: string; message: string }>('create_commit', {
-      input: { path, message, amend },
+      input: { path, message, amend, allowEmpty },
     });
   }
 
@@ -508,8 +524,10 @@ export class TauriService {
     return this.invoke<GitEnvSnapshot>('set_git_config', { input: { key, value } });
   }
 
-  getFileBlame(path: string, file: string) {
-    return this.invoke<BlameLine[]>('get_file_blame', { input: { path, file } });
+  getFileBlame(path: string, file: string, commit?: string | null) {
+    return this.invoke<BlameLine[]>('get_file_blame', {
+      input: { path, file, commit: commit?.trim() || undefined },
+    });
   }
 
   getFileHistory(path: string, file: string) {

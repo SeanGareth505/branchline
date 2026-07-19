@@ -69,7 +69,6 @@
   background: var(--current-bg);
   border: 1px solid var(--selection-border);
   color: var(--accent);
-  box-shadow: inset 2px 0 0 var(--selection-rail);
 }
 
 .dummy-pill {
@@ -127,4 +126,11 @@
 
 .right .bl-btn.focus-on ng-icon {
   color: var(--accent);
+}
+
+.next-quiet {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 550;
+  padding: 0.2rem 0.35rem;
 }
