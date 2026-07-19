@@ -5,6 +5,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { TauriService } from './tauri.service';
 
 const DISMISS_KEY = 'branchline.update.dismissedVersion';
+export const UPDATE_DOWNLOAD_PAGE = 'https://seangareth505.github.io/branchline/';
 
 export type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'error';
 
@@ -20,6 +21,7 @@ export class UpdateService {
   readonly downloadPercent = signal<number | null>(null);
   readonly errorMessage = signal<string | null>(null);
   readonly bannerVisible = signal(false);
+  readonly downloadPageUrl = UPDATE_DOWNLOAD_PAGE;
 
   async init(): Promise<void> {
     if (this.tauri.isDummyBackend) return;
@@ -71,8 +73,7 @@ export class UpdateService {
         this.phase.set('idle');
         return false;
       }
-      const message = err instanceof Error ? err.message : String(err);
-      this.errorMessage.set(message);
+      this.errorMessage.set(this.formatError(err));
       this.phase.set('error');
       this.bannerVisible.set(false);
       return false;
@@ -89,6 +90,15 @@ export class UpdateService {
       }
     }
     this.bannerVisible.set(false);
+  }
+
+  async openDownloadPage(): Promise<void> {
+    try {
+      await this.tauri.openExternalUrl(UPDATE_DOWNLOAD_PAGE);
+    } catch (err) {
+      this.errorMessage.set(this.formatError(err));
+      this.phase.set('error');
+    }
   }
 
   async installAndRelaunch(): Promise<void> {
@@ -126,11 +136,18 @@ export class UpdateService {
       this.downloadPercent.set(100);
       await relaunch();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.errorMessage.set(message);
+      this.errorMessage.set(this.formatError(err));
       this.phase.set('error');
       this.bannerVisible.set(true);
     }
+  }
+
+  private formatError(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/404|not found/i.test(message)) {
+      return `${message} — the macOS installer is missing from this release. Use Download page instead.`;
+    }
+    return message;
   }
 
   private readDismissedVersion(): string | null {

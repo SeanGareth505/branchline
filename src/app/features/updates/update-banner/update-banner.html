@@ -17,13 +17,19 @@
       @if (updates.phase() === 'downloading') {
         <span class="busy">Installing…</span>
       } @else {
-        <button
-          type="button"
-          class="bl-btn bl-btn-primary"
-          (click)="updates.installAndRelaunch()"
-        >
-          Update & restart
-        </button>
+        @if (updates.phase() === 'error') {
+          <button type="button" class="bl-btn bl-btn-primary" (click)="updates.openDownloadPage()">
+            Download page
+          </button>
+        } @else {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            (click)="updates.installAndRelaunch()"
+          >
+            Update & restart
+          </button>
+        }
         <button type="button" class="bl-btn quiet" (click)="updates.dismissBanner()">
           Later
         </button>

@@ -63,9 +63,6 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Only export Apple signing vars when import succeeds.
-          # Empty APPLE_CERTIFICATE in the environment still makes Tauri try to
-          # codesign and fail — so we must not set those env vars at all when skipping.
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
             echo "No APPLE_CERTIFICATE secret; building unsigned macOS artifacts"
             exit 0
@@ -79,7 +76,7 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
-          if ! security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+          if ! security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security; then
             echo "Certificate import failed; building unsigned macOS artifacts"
             exit 0
           fi
@@ -95,10 +92,7 @@ jobs:
           fi
           {
             echo "APPLE_SIGNING_IDENTITY=$CERT_ID"
-            echo "APPLE_CERTIFICATE<<EOF"
-            echo "$APPLE_CERTIFICATE"
-            echo "EOF"
-            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD"
             if [ -n "${APPLE_ID:-}" ]; then echo "APPLE_ID=$APPLE_ID"; fi
             if [ -n "${APPLE_PASSWORD:-}" ]; then echo "APPLE_PASSWORD=$APPLE_PASSWORD"; fi
             if [ -n "${APPLE_TEAM_ID:-}" ]; then echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"; fi
@@ -110,6 +104,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ env.APPLE_ID }}
+          APPLE_PASSWORD: ${{ env.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: Branchline ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
@@ -130,6 +128,23 @@ jobs:
           releaseDraft: ${{ github.ref_type != 'tag' }}
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Verify updater artifacts uploaded
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          ASSETS=$(gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq '.assets[].name')
+          echo "$ASSETS"
+          if ! echo "$ASSETS" | grep -qi '\.app\.tar\.gz$'; then
+            echo "::error::macOS updater archive (.app.tar.gz) missing from $TAG — in-app updates will 404"
+            exit 1
+          fi
+          if ! echo "$ASSETS" | grep -qi '\.dmg$'; then
+            echo "::warning::No .dmg on $TAG — download page macOS links may be broken"
+          fi
 
   stabilize-names:
     needs: publish-tauri

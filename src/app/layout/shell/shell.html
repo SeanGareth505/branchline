@@ -91,17 +91,17 @@
         <div class="chrome-right">
           <button
             type="button"
-            class="util"
+            class="util icon-only"
             [class.active]="isActive('settings')"
             (click)="nav('settings')"
             title="Settings"
+            aria-label="Settings"
           >
             <ng-icon name="lucideSettings" size="15" />
-            <span>Settings</span>
           </button>
           <button
             type="button"
-            class="util"
+            class="util mode-toggle"
             (click)="store.toggleSimpleMode()"
             [attr.aria-pressed]="store.settings().simpleMode"
             [title]="

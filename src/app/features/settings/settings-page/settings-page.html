@@ -608,7 +608,7 @@
                   <strong>Update available</strong>
                   <span>Version {{ next }}</span>
                 </div>
-                <div class="setting-control">
+                <div class="setting-control update-actions">
                   <button
                     type="button"
                     class="bl-btn bl-btn-primary"
@@ -625,11 +625,24 @@
                       Update & restart
                     }
                   </button>
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    title="Open the download page in your browser"
+                    (click)="updates.openDownloadPage()"
+                  >
+                    Download page
+                  </button>
                 </div>
               </div>
             }
             @if (updates.errorMessage(); as err) {
               <p class="block-hint warn-inline">{{ err }}</p>
+              <div class="setting-control update-actions">
+                <button type="button" class="bl-btn" (click)="updates.openDownloadPage()">
+                  Download page
+                </button>
+              </div>
             }
           </article>
         }

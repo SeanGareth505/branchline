@@ -6,17 +6,16 @@
 
 .page {
   box-sizing: border-box;
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 1.25rem 1.5rem 2rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
   min-height: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .page.repos-mode {
-  width: 100%;
-  max-width: none;
   padding: 0.75rem 1rem 1rem;
 }
 
@@ -182,6 +181,10 @@
   justify-content: flex-end;
   align-items: center;
   gap: 0.5rem;
+}
+
+.update-actions {
+  flex-wrap: wrap;
 }
 
 .accent-control code {
@@ -571,7 +574,7 @@ input[type='color'] {
 @media (max-width: 900px) {
   .page {
     width: 100%;
-    padding: 1rem 1rem 1.5rem;
+    padding: 0.75rem 0.85rem 1rem;
   }
 
   .layout {
