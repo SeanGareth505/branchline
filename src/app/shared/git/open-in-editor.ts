@@ -1,10 +1,7 @@
 import { openPath } from '@tauri-apps/plugin-opener';
-import type { PreferredEditor } from '../../core/models';
+import type { DetectedEditors, PreferredEditor } from '../../core/models';
 
-export interface DetectedEditors {
-  cursor: boolean;
-  vscode: boolean;
-}
+export type IdeEditor = 'cursor' | 'vscode';
 
 export interface OpenInEditorOptions {
   preferred: PreferredEditor;
@@ -19,16 +16,8 @@ function asAbsoluteUriPath(path: string): string {
   return normalized.startsWith('/') ? normalized : `/${normalized}`;
 }
 
-function schemeUrl(scheme: 'cursor' | 'vscode', absPath: string): string {
+function schemeUrl(scheme: IdeEditor, absPath: string): string {
   return `${scheme}://file${asAbsoluteUriPath(absPath)}`;
-}
-
-async function openWithScheme(
-  scheme: 'cursor' | 'vscode',
-  absPath: string,
-  openExternalUrl: (url: string) => Promise<void>,
-): Promise<void> {
-  await openExternalUrl(schemeUrl(scheme, absPath));
 }
 
 export function resolvePreferredEditor(
@@ -60,6 +49,37 @@ export function preferredEditorLabel(
   }
 }
 
+export function ideCliCommand(
+  editor: IdeEditor,
+  detected?: DetectedEditors | null,
+): string | null {
+  if (editor === 'cursor') {
+    return detected?.cursorPath?.trim() || (detected?.cursor ? 'cursor' : null);
+  }
+  return detected?.vscodePath?.trim() || (detected?.vscode ? 'code' : null);
+}
+
+async function openWithIde(
+  editor: IdeEditor,
+  absPath: string,
+  options: OpenInEditorOptions,
+): Promise<void> {
+  const cli = ideCliCommand(editor, options.detected);
+  if (cli && options.openWithCommand) {
+    try {
+      await options.openWithCommand(cli, absPath);
+      return;
+    } catch {
+      // Fall through to URL scheme / system open.
+    }
+  }
+  try {
+    await options.openExternalUrl(schemeUrl(editor, absPath));
+  } catch {
+    await openPath(absPath);
+  }
+}
+
 export async function openInPreferredEditor(
   absPath: string,
   options: OpenInEditorOptions,
@@ -67,10 +87,10 @@ export async function openInPreferredEditor(
   const resolved = resolvePreferredEditor(options.preferred, options.detected);
   switch (resolved) {
     case 'cursor':
-      await openWithScheme('cursor', absPath, options.openExternalUrl);
+      await openWithIde('cursor', absPath, options);
       return;
     case 'vscode':
-      await openWithScheme('vscode', absPath, options.openExternalUrl);
+      await openWithIde('vscode', absPath, options);
       return;
     case 'command': {
       const command = options.editorCommand.trim();
@@ -91,6 +111,22 @@ export async function openInPreferredEditor(
   }
 }
 
+export async function openInSpecificEditor(
+  absPath: string,
+  editor: IdeEditor | 'preferred' | 'system',
+  options: OpenInEditorOptions,
+): Promise<void> {
+  if (editor === 'preferred') {
+    await openInPreferredEditor(absPath, options);
+    return;
+  }
+  if (editor === 'system') {
+    await openPath(absPath);
+    return;
+  }
+  await openWithIde(editor, absPath, options);
+}
+
 export async function openPathsInPreferredEditor(
   absPaths: string[],
   options: OpenInEditorOptions,
@@ -100,4 +136,23 @@ export async function openPathsInPreferredEditor(
     await openInPreferredEditor(path, options);
   }
   return { opened: absPaths.length, firstPath: absPaths[0] ?? null };
+}
+
+export function mergeToolPreset(editor: IdeEditor): {
+  mergeTool: string;
+  cmd: string;
+  trustExitCode: string;
+} {
+  if (editor === 'cursor') {
+    return {
+      mergeTool: 'cursor',
+      cmd: 'cursor --wait --merge "$LOCAL" "$REMOTE" "$BASE" "$MERGED"',
+      trustExitCode: 'true',
+    };
+  }
+  return {
+    mergeTool: 'vscode',
+    cmd: 'code --wait --merge "$LOCAL" "$REMOTE" "$BASE" "$MERGED"',
+    trustExitCode: 'true',
+  };
 }

@@ -177,6 +177,10 @@ export class FileTreePanel {
     void this.store.markConflictResolved(path);
   }
 
+  openResolver(path: string): void {
+    void this.store.openConflictResolver(path);
+  }
+
   openInEditor(path: string): void {
     void this.store.openPathsInEditor([path]);
   }
@@ -191,6 +195,10 @@ export class FileTreePanel {
 
   openMergeTool(path: string): void {
     void this.store.openMergeToolForPaths([path]);
+  }
+
+  openIdeMerge(path: string): void {
+    void this.store.openConflictInIde('auto', 'merge', path);
   }
 
   stageFile(path: string): void {

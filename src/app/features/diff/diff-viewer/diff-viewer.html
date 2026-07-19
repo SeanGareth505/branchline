@@ -116,7 +116,7 @@
         </header>
 
         @if (loading() && !patch()) {
-          <p class="empty">Loading diff…</p>
+          <app-loading-block message="Loading diff…" [compact]="true" />
         } @else if (!files().length && !patch()) {
           <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
         } @else if (!store.selectedDiffPath()) {

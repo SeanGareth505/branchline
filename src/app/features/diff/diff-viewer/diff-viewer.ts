@@ -10,11 +10,12 @@ import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overla
 import { AngularSplitModule, type SplitGutterInteractionEvent } from 'angular-split';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
+import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { PatchLinesView, type PatchLinesMode } from '../patch-lines-view/patch-lines-view';
 
 @Component({
   selector: 'app-diff-viewer',
-  imports: [AngularSplitModule, PatchLinesView, CdkConnectedOverlay],
+  imports: [AngularSplitModule, PatchLinesView, CdkConnectedOverlay, LoadingBlock],
   templateUrl: './diff-viewer.html',
   styleUrl: './diff-viewer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,6 +77,9 @@ export class DiffViewer {
       const file = this.store.selectedDiffPath();
       const source = this.store.diffSource();
       const tab = this.store.browseTab();
+      if (source === 'workingDirectory' || source === 'staged') {
+        this.store.changeCount();
+      }
       if (!path || tab !== 'diff') return;
       void this.load(path, sha, compare, file, source);
     });

@@ -1,0 +1,61 @@
+<section class="group kind-submodules" [class.collapsed]="!open()">
+  <div class="group-head-row">
+    <button
+      type="button"
+      class="group-head"
+      (click)="toggle($event)"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon class="chev" [name]="chevron()" size="13" />
+      <span class="kind" title="Git submodules in this repository">Submodules</span>
+      <span class="count">{{ filtered().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="store.updateSubmodules(); $event.stopPropagation()"
+      aria-label="Update submodules"
+      title="git submodule update --init --recursive"
+    >
+      <ng-icon name="lucideRefreshCw" size="11" />
+    </button>
+  </div>
+
+  @if (open()) {
+    <ul class="card-list">
+      @for (s of filtered(); track s.path) {
+        <li>
+          <div class="meta">
+            <div class="title-row">
+              <ng-icon name="lucideFolders" size="12" />
+              <span class="name">{{ s.name }}</span>
+              <span class="chip">{{ s.status }}</span>
+            </div>
+            <span class="msg" [title]="s.url || s.path">
+              {{ s.path }}
+              ·
+              <span class="mono">{{ s.shortHead || '—' }}</span>
+            </span>
+          </div>
+          <div class="actions">
+            <button
+              type="button"
+              class="link"
+              (click)="store.updateSubmodule(s.path)"
+              title="Update this submodule"
+            >
+              Update
+            </button>
+          </div>
+        </li>
+      } @empty {
+        <li class="empty-row">No submodules</li>
+      }
+    </ul>
+    @if (filtered().length) {
+      <div class="footer-actions">
+        <button type="button" class="link" (click)="store.syncSubmodules()">Sync URLs</button>
+      </div>
+    }
+  }
+</section>

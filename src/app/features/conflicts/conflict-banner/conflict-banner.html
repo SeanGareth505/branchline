@@ -13,11 +13,37 @@
   <div class="actions">
     <button
       type="button"
+      class="bl-btn bl-btn-primary"
+      (click)="openResolver()"
+      title="Resolve conflicts in Branchline or open an IDE"
+    >
+      Resolve
+    </button>
+    <button
+      type="button"
       class="bl-btn"
       (click)="openInEditor()"
-      [title]="'Open conflicted files in ' + store.preferredEditorButtonLabel()"
+      [title]="'Open conflicted files in ' + preferredLabel()"
     >
-      Open in {{ store.preferredEditorButtonLabel() }}
+      Open in {{ preferredLabel() }}
+    </button>
+    @if (hasCursor()) {
+      <button type="button" class="bl-btn" (click)="openCursor()" title="Open in Cursor">
+        Cursor
+      </button>
+    }
+    @if (hasVscode()) {
+      <button type="button" class="bl-btn" (click)="openVscode()" title="Open in VS Code">
+        VS Code
+      </button>
+    }
+    <button
+      type="button"
+      class="bl-btn"
+      (click)="openIdeMerge()"
+      title="Open Cursor or VS Code 3-way merge editor"
+    >
+      IDE merge
     </button>
     <button
       type="button"
@@ -37,11 +63,11 @@
     </button>
     <button
       type="button"
-      class="bl-btn bl-btn-primary"
+      class="bl-btn"
       (click)="openMergeTool()"
       title="Open the configured merge tool"
     >
-      Merge tool
+      Mergetool
     </button>
   </div>
 </div>

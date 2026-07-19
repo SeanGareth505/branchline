@@ -44,7 +44,9 @@
     </button>
   </div>
 
-  @if (visible().length === 0) {
+  @if (loading()) {
+    <app-page-skeleton [cards]="4" />
+  } @else if (visible().length === 0) {
     <div class="empty-panel">
       <ng-icon name="lucideSparkles" size="28" />
       <h2>No workflows here yet</h2>
@@ -83,8 +85,13 @@
               title="Run this workflow against the open repository"
               (click)="run(w)"
             >
-              <ng-icon name="lucidePlay" size="14" />
-              {{ runningId() === w.id ? 'Running…' : 'Run' }}
+              @if (runningId() === w.id) {
+                <app-spinner size="sm" label="Running" />
+                Running…
+              } @else {
+                <ng-icon name="lucidePlay" size="14" />
+                Run
+              }
             </button>
           </div>
 

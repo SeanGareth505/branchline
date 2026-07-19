@@ -72,27 +72,35 @@
     <div>Commit</div>
   </div>
 
-  <div #body class="grid-body" (scroll)="onScroll()">
-    @for (row of rows(); track row.id) {
-      <div
-        class="row"
-        [attr.data-sha]="row.commit?.sha ?? null"
-        [class.alt]="row.alt"
-        [class.artificial]="row.artificial"
-        [class.selected]="row.selected"
-        [class.compare]="row.compare"
-        [class.head]="row.head"
-        [class.dim]="row.dim"
-        [class.hover]="row.hovered"
-        [class.parent-of]="row.parentOf"
-        [class.child-of]="row.childOf"
-        [style.height.px]="rowHeight"
-        (click)="onRowClick(row, $event)"
-        (dblclick)="onRowDblClick(row, $event)"
-        (contextmenu)="onContext(row, $event)"
-        (mouseenter)="onRowEnter(row.id)"
-        (mouseleave)="onRowLeave()"
-      >
+  <cdk-virtual-scroll-viewport
+    class="grid-body"
+    [itemSize]="rowHeight"
+    (scroll)="onScroll()"
+  >
+    <div
+      *cdkVirtualFor="let row of rows(); trackBy: trackRow"
+      class="row"
+      [attr.data-sha]="row.commit?.sha ?? null"
+      [class.alt]="row.alt"
+      [class.artificial]="row.artificial"
+      [class.selected]="row.selected"
+      [class.compare]="row.compare"
+      [class.head]="row.head"
+      [class.dim]="row.dim"
+      [class.parent-of]="row.parentOf"
+      [class.child-of]="row.childOf"
+      [class.drop-target]="!!row.commit && dropTargetSha() === row.commit.sha"
+      [style.height.px]="rowHeight"
+      [attr.draggable]="row.commit ? true : null"
+      (dragstart)="onDragStart(row, $event)"
+      (dragend)="onDragEnd()"
+      (dragover)="onDragOver(row, $event)"
+      (dragleave)="onDragLeave(row)"
+      (drop)="onDrop(row, $event)"
+      (click)="onRowClick(row, $event)"
+      (dblclick)="onRowDblClick(row, $event)"
+      (contextmenu)="onContext(row, $event)"
+    >
         <div class="col-graph" aria-hidden="true">
           <svg
             class="graph-svg"
@@ -192,8 +200,7 @@
             {{ c.shortSha }}
           </button>
         }
-      </div>
-    }
+    </div>
 
     @if (!rows().length) {
       <div class="empty">
@@ -201,7 +208,7 @@
         <span>Open a repository to browse history</span>
       </div>
     }
-  </div>
+  </cdk-virtual-scroll-viewport>
 
   <ng-template
     cdkConnectedOverlay

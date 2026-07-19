@@ -692,3 +692,19 @@ code,
   opacity: 1;
   transform: translateY(0);
 }
+
+.bl-spin {
+  animation: bl-spin 0.7s linear infinite;
+}
+
+@keyframes bl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bl-spin {
+    animation: none;
+  }
+}

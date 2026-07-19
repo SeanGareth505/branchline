@@ -6,48 +6,52 @@
       <p>Branch names and commit messages that stay consistent.</p>
     </div>
     <div class="count">
-      <strong>{{ templates().length }}</strong>
+      <strong>{{ loading() ? '…' : templates().length }}</strong>
       templates
     </div>
   </header>
 
-  <div class="grid">
-    @for (t of templates(); track t.id) {
-      <article class="card">
-        <div class="card-top">
-          <div class="identity">
-            <span class="icon" [attr.data-kind]="t.kind">
-              <ng-icon [name]="iconFor(t.kind)" size="18" />
-            </span>
-            <div>
-              <div class="title-row">
-                <h2>{{ t.name }}</h2>
-                <span class="bl-chip" [class.bl-chip-tag]="t.kind === 'commit'">{{ t.kind }}</span>
+  @if (loading()) {
+    <app-page-skeleton [cards]="4" />
+  } @else {
+    <div class="grid">
+      @for (t of templates(); track t.id) {
+        <article class="card">
+          <div class="card-top">
+            <div class="identity">
+              <span class="icon" [attr.data-kind]="t.kind">
+                <ng-icon [name]="iconFor(t.kind)" size="18" />
+              </span>
+              <div>
+                <div class="title-row">
+                  <h2>{{ t.name }}</h2>
+                  <span class="bl-chip" [class.bl-chip-tag]="t.kind === 'commit'">{{ t.kind }}</span>
+                </div>
+                <p class="sub">{{ kindHint(t.kind) }}</p>
               </div>
-              <p class="sub">{{ kindHint(t.kind) }}</p>
+            </div>
+            <div class="card-actions">
+              <button
+                type="button"
+                class="bl-btn action"
+                title="Use this template"
+                (click)="use(t)"
+              >
+                Use
+              </button>
+              <button
+                type="button"
+                class="bl-btn action"
+                title="Copy pattern to clipboard"
+                (click)="copy(t.pattern)"
+              >
+                Copy
+              </button>
             </div>
           </div>
-          <div class="card-actions">
-            <button
-              type="button"
-              class="bl-btn action"
-              title="Use this template"
-              (click)="use(t)"
-            >
-              Use
-            </button>
-            <button
-              type="button"
-              class="bl-btn action"
-              title="Copy pattern to clipboard"
-              (click)="copy(t.pattern)"
-            >
-              Copy
-            </button>
-          </div>
-        </div>
-        <code class="pattern mono">{{ t.pattern }}</code>
-      </article>
-    }
-  </div>
+          <code class="pattern mono">{{ t.pattern }}</code>
+        </article>
+      }
+    </div>
+  }
 </section>

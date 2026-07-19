@@ -141,7 +141,7 @@
     </header>
   }
 
-  <main class="main">
+  <main class="main" [attr.aria-busy]="store.loading() || null">
     @switch (store.view()) {
       @case ('onboarding') {
         <app-onboarding-wizard />
@@ -168,6 +168,15 @@
         <app-templates-page />
       }
     }
+
+    @if (store.loading()) {
+      <div class="boot-overlay" role="status" aria-live="polite">
+        <div class="boot-card bl-glass-dialog">
+          <app-spinner size="lg" [label]="store.loadingLabel()" />
+          <p>{{ store.loadingLabel() }}</p>
+        </div>
+      </div>
+    }
   </main>
 
   @if (store.view() !== 'onboarding') {
@@ -185,6 +194,7 @@
   <app-clone-dialog />
   <app-create-branch-dialog />
   <app-interactive-rebase-dialog />
+  <app-conflict-resolver-dialog />
   <app-ignore-editor-dialog />
   <app-publish-github-dialog />
   <app-github-device-login-dialog />

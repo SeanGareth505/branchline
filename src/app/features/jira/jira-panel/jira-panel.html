@@ -99,7 +99,7 @@
   </div>
 
   @if (loading()) {
-    <p class="empty">Loading issues…</p>
+    <app-loading-block message="Loading issues…" [compact]="true" />
   } @else if (error(); as err) {
     <p class="empty error">{{ err }}</p>
   } @else {

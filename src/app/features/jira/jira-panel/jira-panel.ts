@@ -6,10 +6,11 @@ import { AppStore } from '../../../core/app.store';
 import type { JiraIssue, JiraTransition } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-jira-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, LoadingBlock],
   templateUrl: './jira-panel.html',
   styleUrl: './jira-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

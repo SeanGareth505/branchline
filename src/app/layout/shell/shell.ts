@@ -15,9 +15,11 @@ import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { PromptDialog } from '../../shared/ui/prompt-dialog/prompt-dialog';
 import { SelectDialog } from '../../shared/ui/select-dialog/select-dialog';
 import { SafetyDialog } from '../../shared/ui/safety-dialog/safety-dialog';
+import { Spinner } from '../../shared/ui/spinner/spinner';
 import { CloneDialog } from '../../features/repositories/clone-dialog/clone-dialog';
 import { CreateBranchDialog } from '../../features/branches/create-branch-dialog/create-branch-dialog';
 import { InteractiveRebaseDialog } from '../../features/rebase/interactive-rebase-dialog/interactive-rebase-dialog';
+import { ConflictResolverDialog } from '../../features/conflicts/conflict-resolver-dialog/conflict-resolver-dialog';
 import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/ignore-editor-dialog';
 import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
@@ -36,6 +38,7 @@ import { UpdateService } from '../../core/update.service';
   imports: [
     NgIcon,
     BrandMark,
+    Spinner,
     ProjectSwitcher,
     RepoTabs,
     RepoToolbar,
@@ -59,6 +62,7 @@ import { UpdateService } from '../../core/update.service';
     CloneDialog,
     CreateBranchDialog,
     InteractiveRebaseDialog,
+    ConflictResolverDialog,
     IgnoreEditorDialog,
     PublishGithubDialog,
     GithubDeviceLoginDialog,

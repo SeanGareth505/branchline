@@ -8,6 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { FormsModule } from '@angular/forms';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
@@ -50,7 +51,6 @@ interface RowView {
   compare: boolean;
   head: boolean;
   dim: boolean;
-  hovered: boolean;
   parentOf: boolean;
   childOf: boolean;
   cx: number;
@@ -68,7 +68,13 @@ interface RowView {
 
 @Component({
   selector: 'app-revision-grid',
-  imports: [FormsModule, CdkConnectedOverlay],
+  imports: [
+    FormsModule,
+    CdkConnectedOverlay,
+    CdkVirtualScrollViewport,
+    CdkFixedSizeVirtualScroll,
+    CdkVirtualForOf,
+  ],
   templateUrl: './revision-grid.html',
   styleUrl: './revision-grid.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,13 +82,12 @@ interface RowView {
 export class RevisionGrid {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
-  private readonly bodyRef = viewChild<ElementRef<HTMLElement>>('body');
+  private readonly viewport = viewChild(CdkVirtualScrollViewport);
   private readonly headerRef = viewChild<ElementRef<HTMLElement>>('header');
 
   readonly rowHeight = ROW_HEIGHT;
   readonly nodeR = NODE_RADIUS;
   readonly nodeRSel = NODE_RADIUS_SELECTED;
-  readonly hoveredId = signal<string | null>(null);
   readonly queryDraft = signal(this.store.historyFilter().query);
   readonly authorDraft = signal(this.store.historyFilter().author);
   private filterTimer: number | null = null;
@@ -108,6 +113,9 @@ export class RevisionGrid {
     return !!(f.query.trim() || f.author.trim() || f.currentBranchOnly || f.mineOnly);
   });
 
+  readonly dropTargetSha = signal<string | null>(null);
+  private dragSha: string | null = null;
+
   readonly layout = computed(() => {
     const commits = this.filterActive()
       ? this.store.filteredCommits()
@@ -121,14 +129,18 @@ export class RevisionGrid {
     if (!selected) return new Set<string>();
     const set = new Set<string>([selected.sha]);
     const commits = this.store.commits();
-    const bySha = new Map(commits.map((c) => [c.sha, c] as const));
+    const bySha = new Map<string, CommitInfo>();
+    for (const c of commits) bySha.set(c.sha, c);
     for (const parent of selected.parents) {
       const resolved = resolveSha(parent, bySha);
       if (resolved) set.add(resolved);
     }
     for (const commit of commits) {
-      if (commit.parents.some((p) => matchesSha(p, selected.sha))) {
-        set.add(commit.sha);
+      for (const p of commit.parents) {
+        if (matchesSha(p, selected.sha)) {
+          set.add(commit.sha);
+          break;
+        }
       }
     }
     return set;
@@ -162,7 +174,6 @@ export class RevisionGrid {
     const selected = this.store.selectedCommit();
     const focusMode = this.store.settings().focusMode;
     const lineage = this.lineageShas();
-    const hovered = this.hoveredId();
     const remotes = this.remoteRefNames();
     const selectedSet = new Set(selectedShas);
     if (selectedSha) selectedSet.add(selectedSha);
@@ -208,7 +219,6 @@ export class RevisionGrid {
         compare,
         head,
         dim,
-        hovered: hovered === node.id,
         parentOf,
         childOf,
         cx,
@@ -230,6 +240,8 @@ export class RevisionGrid {
       };
     });
   });
+
+  trackRow = (_: number, row: RowView): string => row.id;
 
   onQueryInput(value: string): void {
     this.queryDraft.set(value);
@@ -261,17 +273,47 @@ export class RevisionGrid {
 
   onScroll(): void {
     this.closeMenu();
-    const body = this.bodyRef()?.nativeElement;
+    const body = this.viewport()?.elementRef.nativeElement;
     const header = this.headerRef()?.nativeElement;
     if (body && header) header.scrollLeft = body.scrollLeft;
   }
 
-  onRowEnter(id: string): void {
-    this.hoveredId.set(id);
+  onDragStart(row: RowView, event: DragEvent): void {
+    if (!row.commit) {
+      event.preventDefault();
+      return;
+    }
+    this.dragSha = row.commit.sha;
+    event.dataTransfer?.setData('text/plain', row.commit.sha);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove';
   }
 
-  onRowLeave(): void {
-    this.hoveredId.set(null);
+  onDragEnd(): void {
+    this.dragSha = null;
+    this.dropTargetSha.set(null);
+  }
+
+  onDragOver(row: RowView, event: DragEvent): void {
+    if (!row.commit || !this.dragSha || this.dragSha === row.commit.sha) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    this.dropTargetSha.set(row.commit.sha);
+  }
+
+  onDragLeave(row: RowView): void {
+    if (row.commit && this.dropTargetSha() === row.commit.sha) {
+      this.dropTargetSha.set(null);
+    }
+  }
+
+  onDrop(row: RowView, event: DragEvent): void {
+    event.preventDefault();
+    const source = this.dragSha || event.dataTransfer?.getData('text/plain') || null;
+    const target = row.commit?.sha ?? null;
+    this.dragSha = null;
+    this.dropTargetSha.set(null);
+    if (!source || !target) return;
+    void this.store.handleGraphDrop(source, target);
   }
 
   onRowClick(row: RowView, event: MouseEvent): void {
@@ -460,11 +502,30 @@ export class RevisionGrid {
   }
 
   private scrollToSha(sha: string): void {
-    const body = this.bodyRef()?.nativeElement;
-    if (!body) return;
-    const row = body.querySelector(`[data-sha="${sha}"]`) as HTMLElement | null;
-    row?.scrollIntoView({ block: 'nearest' });
+    const viewport = this.viewport();
+    if (!viewport) return;
+    const index = this.rows().findIndex((row) => row.commit?.sha === sha);
+    if (index < 0) return;
+
+    const range = viewport.getRenderedRange();
+    if (index < range.start || index >= range.end) {
+      const offset = Math.max(0, index - 2);
+      viewport.scrollToIndex(offset);
+      return;
+    }
+
+    const el = viewport.elementRef.nativeElement.querySelector(
+      `[data-sha="${cssEscape(sha)}"]`,
+    ) as HTMLElement | null;
+    el?.scrollIntoView({ block: 'nearest' });
   }
+}
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function laneColor(index: number): string {

@@ -609,7 +609,7 @@
             <div class="setting">
               <div class="setting-label">
                 <strong>PR activity</strong>
-                <span>Reviews, comments, merges, and assignments (also for live sync later)</span>
+                <span>Reviews, comments, merges, and assignments</span>
               </div>
               <div class="setting-control">
                 <label class="switch">
@@ -887,12 +887,18 @@
                 <input
                   [ngModel]="store.settings().mergeTool"
                   (ngModelChange)="store.saveSettings({ mergeTool: $event })"
-                  placeholder="vscode"
+                  placeholder="cursor or vscode"
                 />
-                <span class="field-hint">Used by conflict banner and file Resolve → Mergetool</span>
+                <span class="field-hint">Used by Mergetool actions. Prefer Cursor or VS Code presets below.</span>
               </label>
             </div>
             <div class="row tight">
+              <button type="button" class="bl-btn" (click)="useIdeMergePreset('cursor')">
+                Use Cursor as mergetool
+              </button>
+              <button type="button" class="bl-btn" (click)="useIdeMergePreset('vscode')">
+                Use VS Code as mergetool
+              </button>
               <button type="button" class="bl-btn bl-btn-primary" (click)="applyToolSettings()">
                 Apply to Git config
               </button>

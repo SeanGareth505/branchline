@@ -544,6 +544,41 @@ export interface WorktreeInfo {
   isMain: boolean;
 }
 
+export interface SubmoduleInfo {
+  name: string;
+  path: string;
+  url: string;
+  head: string;
+  shortHead: string;
+  status: string;
+  initialized: boolean;
+}
+
+export interface LfsFileInfo {
+  path: string;
+  locked: boolean;
+  size: string;
+}
+
+export interface ConflictSidesOutput {
+  path: string;
+  base: string;
+  ours: string;
+  theirs: string;
+  working: string;
+  hasBase: boolean;
+  hasOurs: boolean;
+  hasTheirs: boolean;
+  binary: boolean;
+}
+
+export interface CreatePullRequestOutput {
+  ok: boolean;
+  message: string;
+  url?: string | null;
+  number?: number | null;
+}
+
 export type IgnoreKind = 'gitignore' | 'exclude';
 
 export interface IgnoreFileOutput {

@@ -694,6 +694,15 @@ input[type='text']:focus {
     border-color var(--duration-fast) var(--ease-out);
 }
 
+.toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.toggle:disabled:hover {
+  background: var(--glass-bg);
+}
+
 .toggle:hover {
   background: var(--bg-hover);
 }

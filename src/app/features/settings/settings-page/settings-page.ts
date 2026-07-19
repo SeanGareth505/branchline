@@ -15,6 +15,7 @@ import { Dashboard } from '../../../layout/dashboard/dashboard';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
+import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
 
 @Component({
   selector: 'app-settings-page',
@@ -355,6 +356,30 @@ export class SettingsPage implements OnInit {
     }
   }
 
+  async useIdeMergePreset(editor: IdeEditor): Promise<void> {
+    const preset = mergeToolPreset(editor);
+    await this.store.saveSettings({
+      mergeTool: preset.mergeTool,
+      preferredEditor: editor,
+    });
+    try {
+      await this.tauri.setGitConfig('merge.tool', preset.mergeTool);
+      await this.tauri.setGitConfig(`mergetool.${preset.mergeTool}.cmd`, preset.cmd);
+      await this.tauri.setGitConfig(
+        `mergetool.${preset.mergeTool}.trustExitCode`,
+        preset.trustExitCode,
+      );
+      await this.refreshEnv();
+      this.store.showSuccess(
+        editor === 'cursor'
+          ? 'Cursor set as preferred editor and Git mergetool'
+          : 'VS Code set as preferred editor and Git mergetool',
+      );
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
   async applyToolSettings(): Promise<void> {
     const s = this.store.settings();
     try {
@@ -365,7 +390,16 @@ export class SettingsPage implements OnInit {
         await this.tauri.setGitConfig('diff.tool', s.diffTool.trim());
       }
       if (s.mergeTool.trim()) {
-        await this.tauri.setGitConfig('merge.tool', s.mergeTool.trim());
+        const tool = s.mergeTool.trim().toLowerCase();
+        await this.tauri.setGitConfig('merge.tool', tool);
+        if (tool === 'cursor' || tool === 'vscode') {
+          const preset = mergeToolPreset(tool);
+          await this.tauri.setGitConfig(`mergetool.${preset.mergeTool}.cmd`, preset.cmd);
+          await this.tauri.setGitConfig(
+            `mergetool.${preset.mergeTool}.trustExitCode`,
+            preset.trustExitCode,
+          );
+        }
       }
       await this.refreshEnv();
       this.store.showSuccess('Applied tool settings to Git config');

@@ -199,10 +199,10 @@
                 <button
                   type="button"
                   class="link"
-                  title="Open in preferred editor"
+                  [title]="'Open in ' + store.preferredEditorButtonLabel()"
                   (click)="openInEditor(row.path)"
                 >
-                  Open
+                  {{ store.preferredEditorButtonLabel() }}
                 </button>
                 <button
                   type="button"
@@ -223,6 +223,14 @@
                 <button
                   type="button"
                   class="link"
+                  title="Open Cursor/VS Code 3-way merge"
+                  (click)="openIdeMerge(row.path)"
+                >
+                  IDE merge
+                </button>
+                <button
+                  type="button"
+                  class="link"
                   title="Open merge tool for this file"
                   (click)="openMergeTool(row.path)"
                 >
@@ -231,10 +239,18 @@
                 <button
                   type="button"
                   class="link resolve"
+                  title="Open 3-way conflict resolver"
+                  (click)="openResolver(row.path)"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  class="link resolve"
                   title="Mark conflict resolved (stage)"
                   (click)="markResolved(row.path)"
                 >
-                  Resolve
+                  Stage
                 </button>
               }
             </div>

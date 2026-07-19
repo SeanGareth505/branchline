@@ -1,0 +1,49 @@
+<section class="group kind-lfs" [class.collapsed]="!open()">
+  <div class="group-head-row">
+    <button
+      type="button"
+      class="group-head"
+      (click)="toggle($event)"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon class="chev" [name]="chevron()" size="13" />
+      <span class="kind" title="Git LFS tracked files (requires git-lfs)">LFS</span>
+      <span class="count">{{ filtered().length }}</span>
+    </button>
+    <button
+      type="button"
+      class="icon always"
+      (click)="store.lfsPull(); $event.stopPropagation()"
+      aria-label="Pull LFS objects"
+      title="git lfs pull"
+    >
+      <ng-icon name="lucideDownload" size="11" />
+    </button>
+  </div>
+
+  @if (open()) {
+    <ul class="card-list">
+      @for (f of filtered(); track f.path) {
+        <li>
+          <div class="meta">
+            <div class="title-row">
+              <ng-icon name="lucideFileText" size="12" />
+              <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+              @if (f.locked) {
+                <span class="chip">locked</span>
+              }
+            </div>
+            <span class="msg" [title]="f.path">
+              {{ f.path }}
+              @if (f.size) {
+                · {{ f.size }}
+              }
+            </span>
+          </div>
+        </li>
+      } @empty {
+        <li class="empty-row">No LFS files (or git-lfs not installed)</li>
+      }
+    </ul>
+  }
+</section>

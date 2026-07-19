@@ -404,6 +404,16 @@
       [expanded]="isOpen('worktrees')"
       (expandedChange)="setExpanded('worktrees', $event)"
     />
+    <app-submodules-panel
+      [filter]="query()"
+      [expanded]="isOpen('submodules')"
+      (expandedChange)="setExpanded('submodules', $event)"
+    />
+    <app-lfs-panel
+      [filter]="query()"
+      [expanded]="isOpen('lfs')"
+      (expandedChange)="setExpanded('lfs', $event)"
+    />
     <app-stash-panel
       [filter]="query()"
       [expanded]="isOpen('stash')"

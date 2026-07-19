@@ -27,9 +27,28 @@
     </button>
 
     <div class="split" [class.open]="menu() === 'pull'">
-      <button type="button" class="tool" [title]="pullTitle()" (click)="runDefaultPull()">
-        <ng-icon [name]="pullIcon()" size="14" />
-        <span>{{ pullLabel() }}</span>
+      <button
+        type="button"
+        class="tool"
+        [title]="pullTitle()"
+        [disabled]="!!store.remoteBusy()"
+        [attr.aria-busy]="store.remoteBusy() === 'fetch' || store.remoteBusy() === 'pull'"
+        (click)="runDefaultPull()"
+      >
+        @if (store.remoteBusy() === 'fetch' || store.remoteBusy() === 'pull') {
+          <app-spinner size="sm" [label]="store.remoteBusy() === 'fetch' ? 'Fetching' : 'Pulling'" />
+        } @else {
+          <ng-icon [name]="pullIcon()" size="14" />
+        }
+        <span>
+          @if (store.remoteBusy() === 'fetch') {
+            Fetching…
+          } @else if (store.remoteBusy() === 'pull') {
+            Pulling…
+          } @else {
+            {{ pullLabel() }}
+          }
+        </span>
       </button>
       <button
         type="button"
@@ -38,6 +57,7 @@
         aria-label="Pull options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'pull'"
+        [disabled]="!!store.remoteBusy()"
         cdkOverlayOrigin
         #pullOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('pull', $event)"
@@ -105,7 +125,8 @@
         type="button"
         class="tool"
         [class.locked]="store.currentBranchLocked()"
-        [disabled]="store.currentBranchLocked()"
+        [disabled]="store.currentBranchLocked() || !!store.remoteBusy()"
+        [attr.aria-busy]="store.remoteBusy() === 'push'"
         [title]="
           store.currentBranchLocked()
             ? store.currentBranchLockReason()
@@ -115,8 +136,20 @@
         "
         (click)="runPush()"
       >
-        <ng-icon [name]="store.currentBranchLocked() ? 'lucideLock' : 'lucideUpload'" size="14" />
-        <span>{{ store.currentBranchLocked() ? 'Locked' : 'Push' }}</span>
+        @if (store.remoteBusy() === 'push') {
+          <app-spinner size="sm" label="Pushing" />
+        } @else {
+          <ng-icon [name]="store.currentBranchLocked() ? 'lucideLock' : 'lucideUpload'" size="14" />
+        }
+        <span>
+          @if (store.remoteBusy() === 'push') {
+            Pushing…
+          } @else if (store.currentBranchLocked()) {
+            Locked
+          } @else {
+            Push
+          }
+        </span>
       </button>
       <button
         type="button"
@@ -125,7 +158,7 @@
         aria-label="Push options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'push'"
-        [disabled]="store.currentBranchLocked()"
+        [disabled]="store.currentBranchLocked() || !!store.remoteBusy()"
         cdkOverlayOrigin
         #pushOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('push', $event)"

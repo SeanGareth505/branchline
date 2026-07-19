@@ -14,11 +14,22 @@
         </button>
       </header>
 
-      <p class="hint">Reorder commits and choose pick, reword, squash, fixup, edit, or drop — same as <code>git rebase -i</code>.</p>
+      <p class="hint">
+        Drag commits to reorder, or use the arrows. Choose pick, reword, squash, fixup, edit, or drop —
+        same as <code>git rebase -i</code>.
+      </p>
 
       <ul class="steps">
         @for (step of store.interactiveRebaseSteps(); track step.sha; let i = $index) {
-          <li [attr.data-action]="step.action">
+          <li
+            [attr.data-action]="step.action"
+            [class.drag-over]="dragOverSha() === step.sha"
+            draggable="true"
+            (dragstart)="onDragStart(step.sha, $event)"
+            (dragend)="onDragEnd()"
+            (dragover)="onDragOver(step.sha, $event)"
+            (drop)="onDrop(step.sha, $event)"
+          >
             <div class="order">
               <button
                 type="button"

@@ -1,13 +1,13 @@
 import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { IdentityCandidate, IdentityContexts } from '../../../core/models';
+import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-profiles-page',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, LoadingBlock],
   templateUrl: './profiles-page.html',
   styleUrl: './profiles-page.scss',
 })

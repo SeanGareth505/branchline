@@ -74,35 +74,40 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
 
-    let mut args: Vec<String> = vec!["diff".into(), "--no-color".into()];
+    // Listing (no pathspec): only file names/stats. Patch view (pathspec): only unified.
+    if input.pathspec.is_some() {
+        let mut args: Vec<String> = vec!["diff".into(), "--no-color".into()];
+        apply_range_args(&mut args, &input);
+        apply_pathspec(&mut args, &input.pathspec);
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
+        let mut unified = git_cli::run_git(&path, &arg_refs).unwrap_or_default();
+        if unified.len() > MAX_DIFF_BYTES {
+            let mut truncated = unified;
+            truncated.truncate(MAX_DIFF_BYTES);
+            if let Some(idx) = truncated.rfind('\n') {
+                truncated.truncate(idx);
+            }
+            truncated.push_str(
+                "\n\n… diff truncated — select a single file to view the full patch safely",
+            );
+            unified = truncated;
+        }
+        return Ok(DiffOutput {
+            unified,
+            files: Vec::new(),
+        });
+    }
+
     let mut name_args: Vec<String> =
         vec!["diff".into(), "--name-status".into(), "--no-color".into()];
     let mut num_args: Vec<String> = vec!["diff".into(), "--numstat".into(), "--no-color".into()];
-
-    apply_range_args(&mut args, &input);
     apply_range_args(&mut name_args, &input);
     apply_range_args(&mut num_args, &input);
-    apply_pathspec(&mut args, &input.pathspec);
-    apply_pathspec(&mut name_args, &input.pathspec);
-    apply_pathspec(&mut num_args, &input.pathspec);
 
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let name_refs: Vec<&str> = name_args.iter().map(|s| s.as_str()).collect();
     let num_refs: Vec<&str> = num_args.iter().map(|s| s.as_str()).collect();
-
-    const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
-    let mut unified = git_cli::run_git(&path, &arg_refs).unwrap_or_default();
-    if unified.len() > MAX_DIFF_BYTES {
-        let mut truncated = unified;
-        truncated.truncate(MAX_DIFF_BYTES);
-        if let Some(idx) = truncated.rfind('\n') {
-            truncated.truncate(idx);
-        }
-        truncated.push_str(
-            "\n\n… diff truncated — select a single file to view the full patch safely",
-        );
-        unified = truncated;
-    }
     let names = git_cli::run_git(&path, &name_refs).unwrap_or_default();
     let stats = parse_numstat(&git_cli::run_git(&path, &num_refs).unwrap_or_default());
 
@@ -129,5 +134,8 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
         });
     }
 
-    Ok(DiffOutput { unified, files })
+    Ok(DiffOutput {
+        unified: String::new(),
+        files,
+    })
 }

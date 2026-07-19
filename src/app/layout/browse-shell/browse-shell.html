@@ -1,4 +1,34 @@
 <div class="browse">
+  @if (store.syncingRepo() || store.remoteBusy()) {
+    <div
+      class="sync-bar"
+      role="status"
+      aria-live="polite"
+      [attr.aria-label]="
+        store.remoteBusy() === 'fetch'
+          ? 'Fetching from remote'
+          : store.remoteBusy() === 'pull'
+            ? 'Pulling from remote'
+            : store.remoteBusy() === 'push'
+              ? 'Pushing to remote'
+              : 'Refreshing repository'
+      "
+    >
+      <span class="sync-track" aria-hidden="true"></span>
+      <span class="sync-label">
+        @if (store.remoteBusy() === 'fetch') {
+          Fetching…
+        } @else if (store.remoteBusy() === 'pull') {
+          Pulling…
+        } @else if (store.remoteBusy() === 'push') {
+          Pushing…
+        } @else {
+          Syncing…
+        }
+      </span>
+    </div>
+  }
+
   @if (store.status()?.conflicted?.length) {
     <app-conflict-banner />
   }
@@ -98,19 +128,29 @@
                   <app-diff-viewer />
                 }
                 @case ('files') {
-                  <app-file-tree-panel />
+                  @defer (on immediate) {
+                    <app-file-tree-panel />
+                  }
                 }
                 @case ('blame') {
-                  <app-blame-view />
+                  @defer (on immediate) {
+                    <app-blame-view />
+                  }
                 }
                 @case ('history') {
-                  <app-file-history-panel />
+                  @defer (on immediate) {
+                    <app-file-history-panel />
+                  }
                 }
                 @case ('reflog') {
-                  <app-reflog-panel />
+                  @defer (on immediate) {
+                    <app-reflog-panel />
+                  }
                 }
                 @case ('console') {
-                  <app-git-console />
+                  @defer (on immediate) {
+                    <app-git-console />
+                  }
                 }
               }
             </div>

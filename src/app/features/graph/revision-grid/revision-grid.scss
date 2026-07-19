@@ -170,7 +170,12 @@
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  width: 100%;
+  height: 100%;
+}
+
+.grid-body .cdk-virtual-scroll-content-wrapper {
+  min-width: 100%;
 }
 
 .row {
@@ -178,6 +183,7 @@
   grid-template-columns: var(--grid-cols);
   gap: 0;
   align-items: center;
+  box-sizing: border-box;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -222,6 +228,12 @@
 
 .row.head:not(.selected) {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.row.drop-target {
+  outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .row.head:not(.selected) .subject {

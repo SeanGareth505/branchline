@@ -1,7 +1,7 @@
 <div class="reflog">
   <header>Reflog · HEAD movements</header>
   @if (loading()) {
-    <p class="empty">Loading reflog…</p>
+    <app-loading-block message="Loading reflog…" [compact]="true" />
   } @else {
     <ul>
       @for (entry of entries(); track entry.selector + entry.sha) {

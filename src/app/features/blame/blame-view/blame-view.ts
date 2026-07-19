@@ -3,10 +3,11 @@ import { FormsModule } from '@angular/forms';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { BlameLine } from '../../../core/models';
+import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-blame-view',
-  imports: [FormsModule],
+  imports: [FormsModule, LoadingBlock],
   templateUrl: './blame-view.html',
   styleUrl: './blame-view.scss',
 })

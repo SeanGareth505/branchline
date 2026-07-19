@@ -179,6 +179,7 @@
         type="checkbox"
         [checked]="allFilteredSelected()"
         (change)="toggleSelectAllFiltered()"
+        [disabled]="loading()"
       />
       Select all filtered ({{ filtered().length }})
     </label>
@@ -187,6 +188,9 @@
     </span>
   </div>
 
+  @if (loading()) {
+    <app-page-skeleton [cards]="4" />
+  } @else {
   <div class="list">
     @for (pr of filtered(); track pr.id) {
       <article class="row bl-glass" [class.selected]="selected().has(pr.id)">
@@ -320,12 +324,17 @@
       </article>
     } @empty {
       <div class="empty">
-        @if (showingDummy()) {
+        @if (liveError()) {
+          {{ liveError() }}
+        } @else if (showingDummy()) {
           No pull requests match these filters.
+        } @else if (!hasGithub()) {
+          Link GitHub under Settings → Connections to load live pull requests.
         } @else {
-          Dummy PRs cleared. Live host sync is not wired yet.
+          No pull requests found for this repository.
         }
       </div>
     }
   </div>
+  }
 </section>

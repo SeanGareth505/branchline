@@ -27,6 +27,7 @@ export class CreateBranchDialog {
   readonly store = inject(AppStore);
   readonly name = signal('');
   readonly checkout = signal(true);
+  readonly push = signal(true);
   readonly usePrefix = signal(true);
   readonly prefix = signal('feature');
   readonly busy = signal(false);
@@ -132,6 +133,15 @@ export class CreateBranchDialog {
     return !this.prefixes().some((p) => p.toLowerCase() === cleaned.toLowerCase());
   });
 
+  readonly hasRemote = computed(() => this.store.remotes().length > 0);
+
+  readonly submitLabel = computed(() => {
+    if (this.busy()) {
+      return this.push() && this.hasRemote() ? 'Creating & pushing…' : 'Creating…';
+    }
+    return this.push() && this.hasRemote() ? 'Create & push' : 'Create branch';
+  });
+
   constructor() {
     effect(() => {
       if (!this.store.createBranchDialogOpen()) return;
@@ -145,6 +155,7 @@ export class CreateBranchDialog {
         this.usePrefix.set(settings.branchPrefixEnabled);
       }
       this.checkout.set(true);
+      this.push.set(this.store.remotes().length > 0);
       this.prefix.set(settings.branchPrefix || 'feature');
       this.busy.set(false);
       this.prefixOpen.set(false);
@@ -249,7 +260,9 @@ export class CreateBranchDialog {
     this.busy.set(true);
     try {
       const start = this.startRef().trim() || undefined;
-      const ok = await this.store.createBranch(this.preview(), start, this.checkout());
+      const ok = await this.store.createBranch(this.preview(), start, this.checkout(), {
+        push: this.push() && this.hasRemote(),
+      });
       if (ok) this.store.closeCreateBranchDialog(true);
     } finally {
       this.busy.set(false);

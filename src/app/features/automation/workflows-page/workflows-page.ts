@@ -13,6 +13,8 @@ import type { BranchInfo, WorkflowInfo, WorkflowStep, WorkflowStepConfig } from 
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { SelectService, type SelectOption } from '../../../shared/ui/select-dialog/select.service';
+import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
+import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { WorkflowEditorDialog } from '../workflow-editor-dialog/workflow-editor-dialog';
 import { asWorkflowStep, createBranchIsAutomatic, stepIdOf, stepSummary } from '../workflow-steps';
 
@@ -25,7 +27,7 @@ class WorkflowCancelled extends Error {
 
 @Component({
   selector: 'app-workflows-page',
-  imports: [NgIcon, WorkflowEditorDialog],
+  imports: [NgIcon, WorkflowEditorDialog, PageSkeleton, Spinner],
   templateUrl: './workflows-page.html',
   styleUrl: './workflows-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,6 +41,7 @@ export class WorkflowsPage implements OnInit {
 
   readonly workflows = signal<WorkflowInfo[]>([]);
   readonly runningId = signal<string | null>(null);
+  readonly loading = signal(true);
 
   readonly filter = computed(() => this.store.automationFilter());
 
@@ -57,7 +60,12 @@ export class WorkflowsPage implements OnInit {
   }
 
   async reload(): Promise<void> {
-    this.workflows.set(await this.tauri.listWorkflows());
+    this.loading.set(true);
+    try {
+      this.workflows.set(await this.tauri.listWorkflows());
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   stepSummary = stepSummary;

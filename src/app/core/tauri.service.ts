@@ -48,6 +48,10 @@ import type {
   WorkflowInfo,
   WorktreeInfo,
   FileStatusEntry,
+  SubmoduleInfo,
+  LfsFileInfo,
+  ConflictSidesOutput,
+  CreatePullRequestOutput,
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -358,6 +362,83 @@ export class TauriService {
     return this.invoke<WorktreeInfo[]>('list_worktrees', { input: { path } });
   }
 
+  getConflictSides(path: string, filePath: string) {
+    return this.invoke<ConflictSidesOutput>('get_conflict_sides', {
+      input: { path, filePath },
+    });
+  }
+
+  resolveConflictFile(path: string, filePath: string, content: string) {
+    return this.invoke<MutationOutput>('resolve_conflict_file', {
+      input: { path, filePath, content },
+    });
+  }
+
+  openConflictInIde(
+    path: string,
+    filePath: string,
+    opts: {
+      editor?: 'auto' | 'cursor' | 'vscode';
+      mode?: 'file' | 'merge';
+      cursorPath?: string | null;
+      vscodePath?: string | null;
+    } = {},
+  ) {
+    return this.invoke<MutationOutput>('open_conflict_in_ide', {
+      input: {
+        path,
+        filePath,
+        editor: opts.editor ?? 'auto',
+        mode: opts.mode ?? 'file',
+        cursorPath: opts.cursorPath ?? null,
+        vscodePath: opts.vscodePath ?? null,
+      },
+    });
+  }
+
+  listSubmodules(path: string) {
+    return this.invoke<SubmoduleInfo[]>('list_submodules', { input: { path } });
+  }
+
+  updateSubmodules(path: string) {
+    return this.invoke<MutationOutput>('update_submodules', { input: { path } });
+  }
+
+  syncSubmodules(path: string) {
+    return this.invoke<MutationOutput>('sync_submodules', { input: { path } });
+  }
+
+  updateSubmodule(path: string, submodulePath: string) {
+    return this.invoke<MutationOutput>('update_submodule', {
+      input: { path, submodulePath },
+    });
+  }
+
+  listLfsFiles(path: string) {
+    return this.invoke<LfsFileInfo[]>('list_lfs_files', { input: { path } });
+  }
+
+  lfsPull(path: string) {
+    return this.invoke<MutationOutput>('lfs_pull', { input: { path } });
+  }
+
+  listPullRequests(path: string, state: 'open' | 'closed' | 'all' = 'open') {
+    return this.invoke<MockPullRequest[]>('list_pull_requests', {
+      input: { path, state },
+    });
+  }
+
+  createPullRequest(input: {
+    path: string;
+    title: string;
+    body?: string;
+    head: string;
+    base: string;
+    draft?: boolean;
+  }) {
+    return this.invoke<CreatePullRequestOutput>('create_pull_request', { input });
+  }
+
   addWorktree(
     path: string,
     worktreePath: string,
@@ -480,7 +561,14 @@ export class TauriService {
 
   push(
     path: string,
-    opts: boolean | { forceWithLease?: boolean; setUpstream?: boolean; remote?: string } = false,
+    opts:
+      | boolean
+      | {
+          forceWithLease?: boolean;
+          setUpstream?: boolean;
+          remote?: string;
+          branch?: string;
+        } = false,
   ) {
     const options =
       typeof opts === 'boolean'
@@ -492,6 +580,7 @@ export class TauriService {
         forceWithLease: options.forceWithLease ?? false,
         setUpstream: options.setUpstream ?? null,
         remote: options.remote ?? null,
+        branch: options.branch ?? null,
       },
     });
   }
@@ -1738,6 +1827,78 @@ export class TauriService {
       return this.mockSafetyAnalysis(input?.action ?? 'forcePush', target, locked, reason) as T;
     }
 
+    if (cmd === 'get_conflict_sides') {
+      const filePath =
+        (args?.['input'] as { filePath?: string } | undefined)?.filePath ?? 'src/app/app.ts';
+      return {
+        path: filePath,
+        base: 'export const value = 1;\n',
+        ours: 'export const value = 2;\n',
+        theirs: 'export const value = 3;\n',
+        working:
+          '<<<<<<< HEAD\nexport const value = 2;\n=======\nexport const value = 3;\n>>>>>>> theirs\n',
+        hasBase: true,
+        hasOurs: true,
+        hasTheirs: true,
+        binary: false,
+      } as T;
+    }
+
+    if (cmd === 'resolve_conflict_file') {
+      return { ok: true, message: 'Resolved (mock)' } as T;
+    }
+
+    if (cmd === 'open_conflict_in_ide') {
+      const input = args?.['input'] as { filePath?: string; editor?: string; mode?: string } | undefined;
+      return {
+        ok: true,
+        message: `Opened ${input?.filePath ?? 'file'} in ${input?.editor ?? 'editor'} (${input?.mode ?? 'file'})`,
+      } as T;
+    }
+
+    if (cmd === 'list_submodules') {
+      return [
+        {
+          name: 'vendor-ui',
+          path: 'vendor/ui',
+          url: 'https://github.com/demo/vendor-ui.git',
+          head: 'abcdef1234567890',
+          shortHead: 'abcdef1',
+          status: 'ok',
+          initialized: true,
+        },
+      ] as T;
+    }
+
+    if (
+      cmd === 'update_submodules' ||
+      cmd === 'sync_submodules' ||
+      cmd === 'update_submodule' ||
+      cmd === 'lfs_pull'
+    ) {
+      return mutation as T;
+    }
+
+    if (cmd === 'list_lfs_files') {
+      return [
+        { path: 'assets/hero.png', locked: false, size: '1.2 MB' },
+        { path: 'assets/demo.mp4', locked: false, size: '24 MB' },
+      ] as T;
+    }
+
+    if (cmd === 'list_pull_requests') {
+      return mocks['list_mock_pull_requests'] as T;
+    }
+
+    if (cmd === 'create_pull_request') {
+      return {
+        ok: true,
+        message: 'Opened PR #42 (mock)',
+        url: 'https://github.com/demo/branchline/pull/42',
+        number: 42,
+      } as T;
+    }
+
     if (cmd in mocks) {
       return mocks[cmd] as T;
     }
@@ -2159,16 +2320,22 @@ export class TauriService {
 
   private mockDiff(args?: Record<string, unknown>): DiffOutput {
     const input = (args?.['input'] ?? args ?? {}) as { pathspec?: string };
-    const pathspec = input.pathspec ?? 'src/app.ts';
+    const pathspec = input.pathspec;
+    if (!pathspec) {
+      return {
+        files: [{ path: 'src/app.ts', status: 'modified', additions: 1, deletions: 0 }],
+        unified: '',
+      };
+    }
     if (this.mockPreviewFlags.conflicts && (pathspec === 'src/app.ts' || pathspec === 'README.md')) {
       return {
-        files: [{ path: pathspec, status: 'conflicted', additions: 2, deletions: 1 }],
+        files: [],
         unified:
           `diff --git a/${pathspec} b/${pathspec}\n--- a/${pathspec}\n+++ b/${pathspec}\n@@ -1,4 +1,7 @@\n export class App {\n<<<<<<< HEAD\n-  title = "Old";\n=======\n+  title = "Branchline";\n>>>>>>> feature/auth\n }\n`,
       };
     }
     return {
-      files: [{ path: 'src/app.ts', status: 'modified', additions: 1, deletions: 0 }],
+      files: [],
       unified:
         'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,3 +1,4 @@\n export class App {\n+  title = "Branchline";\n }\n',
     };

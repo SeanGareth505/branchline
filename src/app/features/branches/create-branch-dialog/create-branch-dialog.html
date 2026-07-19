@@ -269,6 +269,25 @@
             <em>Switch after create</em>
           </span>
         </button>
+        <button
+          type="button"
+          class="toggle"
+          [class.on]="push() && hasRemote()"
+          [disabled]="!hasRemote()"
+          (click)="hasRemote() && push.set(!push())"
+          [attr.aria-pressed]="push() && hasRemote()"
+          [title]="
+            hasRemote()
+              ? 'Push the new branch and set upstream tracking'
+              : 'Add a remote first to push from here'
+          "
+        >
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-copy">
+            <strong>Push</strong>
+            <em>{{ hasRemote() ? 'Publish to remote' : 'No remote configured' }}</em>
+          </span>
+        </button>
       </div>
 
       <footer>
@@ -280,7 +299,7 @@
           [disabled]="!canCreate()"
         >
           <ng-icon name="lucideGitBranch" size="15" />
-          {{ busy() ? 'Creating…' : 'Create branch' }}
+          {{ submitLabel() }}
           <kbd class="kbd">⌘↵</kbd>
         </button>
       </footer>

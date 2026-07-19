@@ -7,12 +7,13 @@ import {
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
 import type { DefaultPullAction } from '../../core/models';
+import { Spinner } from '../../shared/ui/spinner/spinner';
 
 type ToolMenu = 'pull' | 'push' | 'stash' | null;
 
 @Component({
   selector: 'app-repo-toolbar',
-  imports: [NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
+  imports: [NgIcon, CdkConnectedOverlay, CdkOverlayOrigin, Spinner],
   templateUrl: './repo-toolbar.html',
   styleUrl: './repo-toolbar.scss',
 })

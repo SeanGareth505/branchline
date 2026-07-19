@@ -1,0 +1,4 @@
+<div class="loading" [class.compact]="compact" role="status" [attr.aria-live]="'polite'">
+  <app-spinner [size]="compact ? 'sm' : 'md'" [label]="message" />
+  <p>{{ message }}</p>
+</div>

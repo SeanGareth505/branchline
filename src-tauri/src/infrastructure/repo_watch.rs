@@ -12,6 +12,8 @@ const DEBOUNCE: Duration = Duration::from_millis(450);
 #[serde(rename_all = "camelCase")]
 struct RepoFsChanged {
     path: String,
+    /// "meta" when .git refs/HEAD/index changed; "worktree" for working-tree files only.
+    scope: String,
 }
 
 struct WatchInner {
@@ -66,7 +68,8 @@ impl RepoWatcher {
             let mut last_emit = Instant::now()
                 .checked_sub(DEBOUNCE)
                 .unwrap_or_else(Instant::now);
-            let mut pending = false;
+            let mut pending_meta = false;
+            let mut pending_worktree = false;
 
             while !stop.load(Ordering::Relaxed) {
                 match rx.recv_timeout(Duration::from_millis(100)) {
@@ -74,7 +77,11 @@ impl RepoWatcher {
                         if should_ignore_event(&watch_root, &event.kind, &event.paths) {
                             continue;
                         }
-                        pending = true;
+                        if event_is_meta(&watch_root, &event.paths) {
+                            pending_meta = true;
+                        } else {
+                            pending_worktree = true;
+                        }
                     }
                     Ok(Err(err)) => {
                         log::debug!("repo watcher event error: {err}");
@@ -83,11 +90,14 @@ impl RepoWatcher {
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
 
-                if pending && last_emit.elapsed() >= DEBOUNCE {
-                    pending = false;
+                if (pending_meta || pending_worktree) && last_emit.elapsed() >= DEBOUNCE {
+                    let scope = if pending_meta { "meta" } else { "worktree" };
+                    pending_meta = false;
+                    pending_worktree = false;
                     last_emit = Instant::now();
                     let payload = RepoFsChanged {
                         path: watch_root.to_string_lossy().to_string(),
+                        scope: scope.into(),
                     };
                     let _ = app.emit("repo-fs-changed", payload);
                 }
@@ -113,6 +123,35 @@ fn should_ignore_event(root: &Path, kind: &notify::EventKind, paths: &[PathBuf])
         return false;
     }
     paths.iter().all(|p| should_ignore_path(root, p))
+}
+
+fn event_is_meta(root: &Path, paths: &[PathBuf]) -> bool {
+    if paths.is_empty() {
+        return true;
+    }
+    paths.iter().any(|p| is_meta_path(root, p))
+}
+
+fn is_meta_path(root: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return false;
+    };
+    let mut parts = rel.components().filter_map(|c| match c {
+        std::path::Component::Normal(s) => Some(s.to_string_lossy().to_lowercase()),
+        _ => None,
+    });
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    if first != ".git" {
+        return false;
+    }
+    match parts.next().as_deref() {
+        Some("index") | Some("head") | Some("refs") | Some("commondir") | Some("packed-refs") => {
+            true
+        }
+        _ => false,
+    }
 }
 
 fn should_ignore_path(root: &Path, path: &Path) -> bool {

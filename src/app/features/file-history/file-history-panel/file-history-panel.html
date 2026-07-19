@@ -8,9 +8,7 @@
     }
   </header>
   @if (loading()) {
-    <div class="state">
-      <p class="state-title">Loading history…</p>
-    </div>
+    <app-loading-block message="Loading history…" [compact]="true" />
   } @else if (!hasFile()) {
     <div class="state">
       <p class="state-title">No file selected</p>

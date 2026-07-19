@@ -7,7 +7,7 @@
   </header>
 
   @if (loading() && !contexts()) {
-    <p class="muted">Reading Git identity…</p>
+    <app-loading-block message="Reading Git identity…" />
   } @else if (contexts(); as ctx) {
     @if (hasOverride()) {
       <div class="banner">

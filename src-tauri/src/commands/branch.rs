@@ -58,6 +58,8 @@ pub struct RemoteActionInput {
     pub remote: Option<String>,
     #[serde(default)]
     pub set_upstream: Option<bool>,
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,7 +261,13 @@ pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
 pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<MutationOutput> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
-    let branch = git2_repo::current_branch(&path)?;
+    let branch = input
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or(git2_repo::current_branch(&path)?);
     ensure_not_locked(&state, &input.path, &branch)?;
     let remote = input.remote.as_deref().unwrap_or("origin");
     let needs_upstream = !git2_repo::branch_has_upstream(&path, &branch);

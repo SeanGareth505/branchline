@@ -26,6 +26,9 @@ import type {
   SafetyAction,
   SafetyAnalysis,
   StashEntry,
+  SubmoduleInfo,
+  LfsFileInfo,
+  ConflictSidesOutput,
   TagInfo,
   TemplateInfo,
   UiSession,
@@ -129,6 +132,12 @@ export class AppStore {
   readonly tags = signal<TagInfo[]>([]);
   readonly remotes = signal<RemoteInfo[]>([]);
   readonly worktrees = signal<WorktreeInfo[]>([]);
+  readonly submodules = signal<SubmoduleInfo[]>([]);
+  readonly lfsFiles = signal<LfsFileInfo[]>([]);
+  readonly conflictResolverOpen = signal(false);
+  readonly conflictResolverPath = signal<string | null>(null);
+  readonly conflictResolver = signal<ConflictSidesOutput | null>(null);
+  readonly conflictResolverDraft = signal('');
   readonly selectedSha = signal<string | null>(null);
   readonly selectedShas = signal<string[]>([]);
   readonly compareSha = signal<string | null>(null);
@@ -202,12 +211,15 @@ export class AppStore {
   });
   readonly detectedEditors = signal<DetectedEditors | null>(null);
   readonly loading = signal(false);
+  readonly loadingLabel = signal('Loading…');
   readonly nextAction = signal('Open a repository');
   readonly safety = signal<SafetyAnalysis | null>(null);
   readonly toast = signal<ToastState | null>(null);
   private toastTimer: number | null = null;
   private toastSeq = 0;
   readonly refreshingRepo = signal(false);
+  readonly syncingRepo = signal(false);
+  readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -245,6 +257,7 @@ export class AppStore {
   private restoringSession = false;
   private repoFsUnlisten: UnlistenFn | null = null;
   private repoFsRefreshTimer: number | null = null;
+  private repoFsPendingScope: 'worktree' | 'meta' = 'worktree';
   private mutationDepth = 0;
   private refreshQueued = false;
   private refreshInFlight: Promise<void> | null = null;
@@ -681,6 +694,7 @@ export class AppStore {
       return;
     }
 
+    this.loadingLabel.set('Opening repository…');
     this.loading.set(true);
     try {
       this.clearWorkingState();
@@ -787,6 +801,12 @@ export class AppStore {
     this.tags.set([]);
     this.remotes.set([]);
     this.worktrees.set([]);
+    this.submodules.set([]);
+    this.lfsFiles.set([]);
+    this.conflictResolverOpen.set(false);
+    this.conflictResolverPath.set(null);
+    this.conflictResolver.set(null);
+    this.conflictResolverDraft.set('');
     this.selectedSha.set(null);
     this.selectedShas.set([]);
     this.compareSha.set(null);
@@ -1095,12 +1115,9 @@ export class AppStore {
     if (!path) return;
     try {
       const prev = this.status();
-      const [status, artificial] = await Promise.all([
-        this.tauri.getRepoStatus(path),
-        this.tauri.getArtificialCommits(path),
-      ]);
+      const status = await this.tauri.getRepoStatus(path);
       this.status.set(status);
-      this.artificial.set(artificial);
+      this.artificial.set(artificialFromStatus(status));
       this.updateNextAction(status);
       this.maybeNotifyStatusChanges(prev, status);
     } catch (err) {
@@ -1125,11 +1142,13 @@ export class AppStore {
     }
 
     if (opts?.notify) this.refreshingRepo.set(true);
+    this.syncingRepo.set(true);
     this.refreshInFlight = this.runRefreshRepo(path, opts)
       .catch((err) => this.showError(err))
       .finally(() => {
         this.refreshInFlight = null;
         if (opts?.notify) this.refreshingRepo.set(false);
+        this.syncingRepo.set(false);
         if (this.refreshQueued && this.mutationDepth === 0) {
           this.refreshQueued = false;
           void this.refreshRepo();
@@ -1140,25 +1159,28 @@ export class AppStore {
 
   private async runRefreshRepo(path: string, opts?: { notify?: boolean }): Promise<void> {
     const prev = this.status();
-    const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
+    const [status, commits, branches, stashes, tags, remotes, worktrees, submodules, lfsFiles] =
       await Promise.all([
         this.tauri.getRepoStatus(path),
         this.tauri.getCommitLog(path, 300),
-        this.tauri.getArtificialCommits(path),
         this.tauri.listBranches(path),
         this.tauri.listStashes(path),
         this.tauri.listTags(path),
         this.tauri.listRemotes(path),
         this.tauri.listWorktrees(path),
+        this.tauri.listSubmodules(path).catch(() => [] as SubmoduleInfo[]),
+        this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[]),
       ]);
     this.status.set(status);
     this.commits.set(commits);
-    this.artificial.set(artificial);
+    this.artificial.set(artificialFromStatus(status));
     this.branches.set(branches);
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
     this.worktrees.set(worktrees);
+    this.submodules.set(submodules);
+    this.lfsFiles.set(lfsFiles);
     void this.refreshIdentity();
     if (!this.selectedSha() && commits[0]) {
       this.selectedSha.set(commits[0].sha);
@@ -1199,26 +1221,40 @@ export class AppStore {
       this.repoFsUnlisten = null;
     }
     try {
-      this.repoFsUnlisten = await listen<{ path: string }>('repo-fs-changed', (event) => {
-        const current = this.currentRepo()?.path;
-        if (!current) return;
-        if (!sameRepoPath(current, event.payload.path)) return;
-        if (this.mutationDepth > 0) {
-          this.refreshQueued = true;
-          return;
-        }
-        if (this.repoFsRefreshTimer !== null) {
-          window.clearTimeout(this.repoFsRefreshTimer);
-        }
-        this.repoFsRefreshTimer = window.setTimeout(() => {
-          this.repoFsRefreshTimer = null;
+      this.repoFsUnlisten = await listen<{ path: string; scope?: string }>(
+        'repo-fs-changed',
+        (event) => {
+          const current = this.currentRepo()?.path;
+          if (!current) return;
+          if (!sameRepoPath(current, event.payload.path)) return;
           if (this.mutationDepth > 0) {
             this.refreshQueued = true;
             return;
           }
-          void this.refreshRepo();
-        }, 750);
-      });
+          const scope = event.payload.scope === 'worktree' ? 'worktree' : 'meta';
+          if (scope === 'meta' || this.repoFsPendingScope !== 'meta') {
+            this.repoFsPendingScope = scope;
+          }
+          if (this.repoFsRefreshTimer !== null) {
+            window.clearTimeout(this.repoFsRefreshTimer);
+          }
+          const delayMs = this.repoFsPendingScope === 'worktree' ? 900 : 750;
+          this.repoFsRefreshTimer = window.setTimeout(() => {
+            this.repoFsRefreshTimer = null;
+            if (this.mutationDepth > 0) {
+              this.refreshQueued = true;
+              return;
+            }
+            const pending = this.repoFsPendingScope;
+            this.repoFsPendingScope = 'worktree';
+            if (pending === 'worktree') {
+              void this.refreshWorkingTree();
+            } else {
+              void this.refreshRepo();
+            }
+          }, delayMs);
+        },
+      );
     } catch {
       /* watch unavailable outside desktop shell */
     }
@@ -2067,13 +2103,29 @@ export class AppStore {
     }
   }
 
-  async createBranch(name: string, startPoint?: string, checkout = true): Promise<boolean> {
+  async createBranch(
+    name: string,
+    startPoint?: string,
+    checkout = true,
+    opts?: { push?: boolean },
+  ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path || !name.trim()) return false;
     const trimmed = name.trim();
     try {
       const result = await this.tauri.createBranch(path, trimmed, checkout, startPoint);
       await this.refreshRepo();
+      if (opts?.push) {
+        const pushed = await this.pushNewBranch(trimmed);
+        if (!pushed) {
+          this.showToast(result.message || `Created '${trimmed}' (push failed)`, {
+            kind: 'warning',
+            durationMs: 4000,
+          });
+          return true;
+        }
+        return true;
+      }
       this.showToast(result.message, () =>
         void this.tauri.undoLast(path).then(() => this.refreshRepo()),
       );
@@ -2084,6 +2136,9 @@ export class AppStore {
         (await this.handleCheckoutBlockedByLocalChanges(path, trimmed, err, async () => {
           const result = await this.tauri.createBranch(path, trimmed, true, startPoint);
           await this.refreshRepo();
+          if (opts?.push) {
+            await this.pushNewBranch(trimmed);
+          }
           return result.message || `Stashed changes and created '${trimmed}'`;
         }))
       ) {
@@ -2091,6 +2146,33 @@ export class AppStore {
       }
       this.showError(err);
       return false;
+    }
+  }
+
+  async pushNewBranch(branch: string): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path || !branch.trim()) return false;
+    const remote = this.pushRemoteName();
+    if (this.remoteBusy()) return false;
+    this.remoteBusy.set('push');
+    try {
+      const result = await this.tauri.push(path, {
+        setUpstream: true,
+        remote,
+        branch: branch.trim(),
+      });
+      await this.refreshRepo();
+      this.showToast(result.message || `Pushed ${branch.trim()} to ${remote}`, {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'push',
+      });
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
@@ -2160,6 +2242,8 @@ export class AppStore {
   async fetchRemote(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (this.remoteBusy()) return;
+    this.remoteBusy.set('fetch');
     try {
       const result = await this.withRepoMutation(() => this.tauri.fetch(path));
       await this.refreshRepo();
@@ -2170,12 +2254,16 @@ export class AppStore {
       });
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
   async pullRemote(rebase = false): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (this.remoteBusy()) return;
+    this.remoteBusy.set('pull');
     try {
       const result = await this.withRepoMutation(() =>
         rebase
@@ -2190,6 +2278,8 @@ export class AppStore {
       });
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
@@ -2227,7 +2317,9 @@ export class AppStore {
 
     const pushOpts = await this.preparePushOptions(status);
     if (!pushOpts) return;
+    if (this.remoteBusy()) return;
 
+    this.remoteBusy.set('push');
     try {
       const result = await this.tauri.push(path, pushOpts);
       await this.refreshRepo();
@@ -2243,6 +2335,8 @@ export class AppStore {
         return;
       }
       this.showError(message);
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
@@ -2853,6 +2947,7 @@ export class AppStore {
   }
 
   async cloneRepo(url: string, destination: string): Promise<void> {
+    this.loadingLabel.set('Cloning repository…');
     this.loading.set(true);
     try {
       const summary = await this.tauri.cloneRepository(url, destination);
@@ -2872,6 +2967,7 @@ export class AppStore {
   }
 
   async initRepo(path: string): Promise<void> {
+    this.loadingLabel.set('Initializing repository…');
     this.loading.set(true);
     try {
       const summary = await this.tauri.initRepository(path);
@@ -3064,6 +3160,40 @@ export class AppStore {
     await this.openPathsInEditor(conflicted);
   }
 
+  async openConflictInIde(
+    editor: 'auto' | 'cursor' | 'vscode' = 'auto',
+    mode: 'file' | 'merge' = 'file',
+    filePath?: string,
+  ): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    const target =
+      filePath?.trim() ||
+      this.conflictResolverPath() ||
+      this.status()?.conflicted?.[0]?.path ||
+      this.selectedDiffPath();
+    if (!repo || !target) {
+      this.showToast('No conflicted file to open', { kind: 'info' });
+      return;
+    }
+    try {
+      await this.refreshDetectedEditors();
+      const detected = this.detectedEditors();
+      const result = await this.tauri.openConflictInIde(repo, target, {
+        editor,
+        mode,
+        cursorPath: detected?.cursorPath,
+        vscodePath: detected?.vscodePath,
+      });
+      if (!result.ok) {
+        this.showWarning(result.message);
+        return;
+      }
+      this.showSuccess(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
   async openMergeToolForPaths(paths?: string[]): Promise<void> {
     const repo = this.currentRepo()?.path;
     if (!repo) {
@@ -3138,6 +3268,189 @@ export class AppStore {
       }
       await this.stagePaths([path]);
       this.showSuccess(`Took ${side} for ${path}`);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async openConflictResolver(filePath?: string): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    const conflicted = this.status()?.conflicted ?? [];
+    const target = filePath?.trim() || conflicted[0]?.path || this.selectedDiffPath();
+    if (!repo || !target) {
+      this.showToast('No conflicted file to resolve', { kind: 'info' });
+      return;
+    }
+    try {
+      void this.refreshDetectedEditors();
+      const sides = await this.tauri.getConflictSides(repo, target);
+      this.conflictResolverPath.set(target);
+      this.conflictResolver.set(sides);
+      this.conflictResolverDraft.set(
+        sides.binary ? '' : sides.working || sides.ours || sides.theirs || sides.base,
+      );
+      this.conflictResolverOpen.set(true);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  closeConflictResolver(): void {
+    this.conflictResolverOpen.set(false);
+    this.conflictResolverPath.set(null);
+    this.conflictResolver.set(null);
+    this.conflictResolverDraft.set('');
+  }
+
+  setConflictResolverDraft(content: string): void {
+    this.conflictResolverDraft.set(content);
+  }
+
+  useConflictSide(side: 'base' | 'ours' | 'theirs' | 'working'): void {
+    const sides = this.conflictResolver();
+    if (!sides || sides.binary) return;
+    const next =
+      side === 'base'
+        ? sides.base
+        : side === 'ours'
+          ? sides.ours
+          : side === 'theirs'
+            ? sides.theirs
+            : sides.working;
+    this.conflictResolverDraft.set(next);
+  }
+
+  async saveConflictResolution(): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    const filePath = this.conflictResolverPath();
+    const sides = this.conflictResolver();
+    if (!repo || !filePath || !sides) return;
+    if (sides.binary) {
+      this.showWarning('Binary conflicts need an external merge tool');
+      return;
+    }
+    try {
+      const result = await this.tauri.resolveConflictFile(
+        repo,
+        filePath,
+        this.conflictResolverDraft(),
+      );
+      if (!result.ok) {
+        this.showWarning(result.message);
+        return;
+      }
+      this.closeConflictResolver();
+      await this.refreshRepo();
+      this.showSuccess(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async handleGraphDrop(sourceSha: string, targetSha: string): Promise<void> {
+    if (!sourceSha || !targetSha || sourceSha === targetSha) return;
+    const target = this.commits().find((c) => c.sha === targetSha);
+    const tipBranches = this.localBranches().filter(
+      (b) => b.tipSha === targetSha || target?.refs.includes(b.name),
+    );
+    const branchOptions = tipBranches.flatMap((b) => [
+      {
+        value: `merge:${b.name}`,
+        label: `Merge ${b.name} into HEAD`,
+        hint: 'Bring that branch into your current branch',
+      },
+      {
+        value: `rebase:${b.name}`,
+        label: `Rebase HEAD onto ${b.name}`,
+        hint: 'Replay your commits on top of that branch',
+      },
+    ]);
+    const options = [
+      {
+        value: 'cherry-pick',
+        label: `Cherry-pick ${sourceSha.slice(0, 7)} onto HEAD`,
+        hint: 'Copy this commit onto your current branch',
+      },
+      ...branchOptions,
+    ];
+    const choice = await this.selects.ask({
+      title: 'Drop action',
+      message: `Dropped ${sourceSha.slice(0, 7)} onto ${targetSha.slice(0, 7)}.`,
+      label: 'Action',
+      options,
+      initialValue: 'cherry-pick',
+      confirmLabel: 'Run',
+    });
+    if (!choice) return;
+    if (choice === 'cherry-pick') {
+      await this.openCherryPickPreview([sourceSha]);
+      return;
+    }
+    if (choice.startsWith('merge:')) {
+      await this.mergeBranch(choice.slice('merge:'.length));
+      return;
+    }
+    if (choice.startsWith('rebase:')) {
+      await this.rebaseOnto(choice.slice('rebase:'.length));
+    }
+  }
+
+  reorderRebaseStep(fromSha: string, toSha: string): void {
+    if (!fromSha || !toSha || fromSha === toSha) return;
+    this.interactiveRebaseSteps.update((steps) => {
+      const from = steps.findIndex((s) => s.sha === fromSha);
+      const to = steps.findIndex((s) => s.sha === toSha);
+      if (from < 0 || to < 0) return steps;
+      const copy = steps.slice();
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
+      return copy;
+    });
+  }
+
+  async updateSubmodules(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.updateSubmodules(path);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async syncSubmodules(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.syncSubmodules(path);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async updateSubmodule(submodulePath: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.updateSubmodule(path, submodulePath);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async lfsPull(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.lfsPull(path);
+      await this.refreshRepo();
+      this.showToast(result.message, { kind: result.ok ? 'success' : 'warning' });
     } catch (err) {
       this.showError(err);
     }
@@ -3625,4 +3938,41 @@ function sameRepoPath(a: string, b: string): boolean {
       .replace(/\/+$/, '')
       .toLowerCase();
   return norm(a) === norm(b);
+}
+
+function artificialFromStatus(status: RepoStatus): ArtificialCommit[] {
+  const countKinds = (files: RepoStatus['staged']) => {
+    let added = 0;
+    let modified = 0;
+    let deleted = 0;
+    for (const f of files) {
+      if (f.status === 'added' || f.status === 'untracked') added++;
+      else if (f.status === 'deleted') deleted++;
+      else modified++;
+    }
+    return { added, modified, deleted };
+  };
+  const working = [...status.unstaged, ...status.untracked, ...status.conflicted];
+  const w = countKinds(working);
+  const s = countKinds(status.staged);
+  return [
+    {
+      id: 'artificial:working',
+      kind: 'workingDirectory',
+      label: 'Working Directory',
+      fileCount: working.length,
+      added: w.added,
+      modified: w.modified,
+      deleted: w.deleted,
+    },
+    {
+      id: 'artificial:staged',
+      kind: 'staged',
+      label: 'Staged Changes',
+      fileCount: status.staged.length,
+      added: s.added,
+      modified: s.modified,
+      deleted: s.deleted,
+    },
+  ];
 }

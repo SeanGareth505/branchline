@@ -94,6 +94,15 @@ header p,
   opacity: 0.55;
 }
 
+.steps li.drag-over {
+  outline: 1px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--glass-bg-soft));
+}
+
+.steps li[draggable='true'] {
+  cursor: grab;
+}
+
 .order {
   display: flex;
   flex-direction: column;

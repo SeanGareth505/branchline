@@ -20,8 +20,10 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { RemotesPanel } from '../../remotes/remotes-panel/remotes-panel';
 import { StashPanel } from '../../stash/stash-panel/stash-panel';
 import { WorktreesPanel } from '../../worktrees/worktrees-panel/worktrees-panel';
+import { SubmodulesPanel } from '../../submodules/submodules-panel/submodules-panel';
+import { LfsPanel } from '../../lfs/lfs-panel/lfs-panel';
 
-export type RefsGroup = 'local' | 'tags' | 'remotes' | 'stash' | 'worktrees';
+export type RefsGroup = 'local' | 'tags' | 'remotes' | 'stash' | 'worktrees' | 'submodules' | 'lfs';
 
 type SuggestKind = 'local' | 'remote' | 'tag' | 'folder';
 
@@ -91,6 +93,8 @@ type TagFlatRow =
     StashPanel,
     RemotesPanel,
     WorktreesPanel,
+    SubmodulesPanel,
+    LfsPanel,
   ],
   templateUrl: './refs-panel.html',
   styleUrl: './refs-panel.scss',
@@ -113,6 +117,8 @@ export class RefsPanel {
     remotes: false,
     stash: false,
     worktrees: false,
+    submodules: false,
+    lfs: false,
   });
   private suppressMenuCloseUntil = 0;
 

@@ -13,12 +13,13 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { MockPullRequest } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
+import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 
 type SortKey = 'updated' | 'number' | 'title' | 'additions';
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, PageSkeleton],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,6 +29,7 @@ export class PrPanel {
   private readonly store = inject(AppStore);
 
   readonly prs = signal<MockPullRequest[]>([]);
+  readonly loading = signal(true);
   readonly query = signal('');
   readonly status = signal<'all' | 'open' | 'draft' | 'merged' | 'closed'>('open');
   readonly team = signal('all');
@@ -46,7 +48,17 @@ export class PrPanel {
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
 
+  readonly liveError = signal<string | null>(null);
+
   readonly showingDummy = computed(() => !this.store.hasLinkedPrHost());
+
+  readonly hasGithub = computed(() =>
+    this.store
+      .settings()
+      .connections.some(
+        (c) => c.provider === 'github' && c.enabled && (c.hasToken || c.token.trim()),
+      ),
+  );
 
   connectHosts(): void {
     this.store.openSettings('connections', 'github');
@@ -54,17 +66,13 @@ export class PrPanel {
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
-      return 'DUMMY DATA — sample PRs for UI preview. Link GitHub, GitLab, or Azure DevOps under Settings → Connections to hide them.';
+      return 'DUMMY DATA — sample PRs for UI preview. Link GitHub under Settings → Connections for live PRs.';
     }
-    const hosts = this.store
-      .settings()
-      .connections.filter(
-        (c) =>
-          c.enabled &&
-          (c.hasToken || c.token.trim()) &&
-          (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
-      );
-    return `Linked to ${hosts.map((h) => h.label).join(', ')}. Dummy PRs removed — live sync ships next.`;
+    if (this.hasGithub()) {
+      const n = this.prs().length;
+      return `Live GitHub PRs for this repo${n ? ` · ${n} loaded` : ''}.`;
+    }
+    return 'GitHub is not linked. Live PR sync currently supports GitHub; GitLab/Azure listing still uses the browser.';
   });
 
   readonly teams = computed(() => this.unique((p) => p.team));
@@ -165,6 +173,8 @@ export class PrPanel {
 
     effect(() => {
       this.store.settings();
+      this.store.currentRepo();
+      this.status();
       void this.reloadPrs();
     });
 
@@ -187,12 +197,41 @@ export class PrPanel {
   }
 
   private async reloadPrs(): Promise<void> {
-    if (this.store.hasLinkedPrHost()) {
-      this.prs.set([]);
+    this.loading.set(true);
+    this.liveError.set(null);
+    try {
+      if (!this.store.hasLinkedPrHost()) {
+        this.prs.set(await this.tauri.listMockPullRequests());
+        this.selected.set(new Set());
+        return;
+      }
+      if (!this.hasGithub()) {
+        this.prs.set([]);
+        this.selected.set(new Set());
+        return;
+      }
+      const path = this.store.currentRepo()?.path;
+      if (!path) {
+        this.prs.set([]);
+        this.liveError.set('Open a repository with a GitHub remote to load pull requests.');
+        return;
+      }
+      const status = this.status();
+      const state =
+        status === 'closed' || status === 'merged'
+          ? 'closed'
+          : status === 'all'
+            ? 'all'
+            : 'open';
+      const list = await this.tauri.listPullRequests(path, state);
+      this.prs.set(list);
       this.selected.set(new Set());
-      return;
+    } catch (err) {
+      this.prs.set([]);
+      this.liveError.set(err instanceof Error ? err.message : String(err));
+    } finally {
+      this.loading.set(false);
     }
-    this.prs.set(await this.tauri.listMockPullRequests());
   }
 
   clearFilters(): void {
