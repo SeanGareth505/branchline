@@ -229,13 +229,28 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
     let branch = git2_repo::current_branch(&path)?;
     ensure_not_locked(&state, &input.path, &branch)?;
     let remote = input.remote.as_deref().unwrap_or("origin");
-    let mut args = vec!["push", remote];
+    let set_upstream = !git2_repo::branch_has_upstream(&path, &branch);
+
+    let mut args = Vec::with_capacity(6);
+    args.push("push");
     if input.force_with_lease.unwrap_or(false) {
-        args.insert(1, "--force-with-lease");
+        args.push("--force-with-lease");
     }
+    if set_upstream {
+        args.push("-u");
+    }
+    args.push(remote);
+    args.push(branch.as_str());
+
     let out = git_cli::run_git(&path, &args)?;
     Ok(MutationOutput {
         ok: true,
-        message: if out.is_empty() { "Pushed".into() } else { out },
+        message: if !out.is_empty() {
+            out
+        } else if set_upstream {
+            format!("Pushed and set upstream to {remote}/{branch}")
+        } else {
+            "Pushed".into()
+        },
     })
 }
