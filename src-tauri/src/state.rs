@@ -1,3 +1,4 @@
+use crate::infrastructure::repo_watch::RepoWatcher;
 use crate::infrastructure::sqlite::{self, Db};
 use crate::AppResult;
 use std::path::PathBuf;
@@ -6,6 +7,7 @@ use std::sync::Mutex;
 pub struct AppState {
     pub db: Mutex<Db>,
     pub current_repo: Mutex<Option<PathBuf>>,
+    pub repo_watcher: RepoWatcher,
 }
 
 impl AppState {
@@ -14,6 +16,7 @@ impl AppState {
         Ok(Self {
             db: Mutex::new(db),
             current_repo: Mutex::new(None),
+            repo_watcher: RepoWatcher::new(),
         })
     }
 

@@ -231,8 +231,8 @@
   [cdkConnectedOverlayHasBackdrop]="true"
   [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
   [cdkConnectedOverlayPush]="true"
-  (backdropClick)="closeLineMenu()"
-  (overlayOutsideClick)="closeLineMenu()"
+  (backdropClick)="onLineMenuOutside()"
+  (overlayOutsideClick)="onLineMenuOutside()"
 >
   <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
     <div class="bl-menu-label">
@@ -241,6 +241,7 @@
     @if (canStage()) {
       <button type="button" [disabled]="!selectedCount() || patchBusy()" (click)="runLineMenuAction('stage')">
         Stage lines
+        <span class="shortcut">S</span>
       </button>
       <button
         type="button"
@@ -249,10 +250,12 @@
         (click)="runLineMenuAction('discard')"
       >
         Reset lines
+        <span class="shortcut">R</span>
       </button>
     } @else if (canUnstage()) {
       <button type="button" [disabled]="!selectedCount() || patchBusy()" (click)="runLineMenuAction('unstage')">
         Unstage lines
+        <span class="shortcut">U</span>
       </button>
     } @else if (canReset()) {
       <button
@@ -262,8 +265,12 @@
         (click)="runLineMenuAction('discard')"
       >
         Reset lines
+        <span class="shortcut">R</span>
       </button>
     }
-    <button type="button" (click)="clearLineSelection()">Clear selection</button>
+    <button type="button" (click)="clearLineSelection()">
+      Clear selection
+      <span class="shortcut">Esc</span>
+    </button>
   </div>
 </ng-template>

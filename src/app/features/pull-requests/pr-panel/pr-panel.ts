@@ -310,7 +310,7 @@ export class PrPanel {
       updatedAt: new Date().toISOString(),
       reviewers: ensureYou(pr.reviewers),
     });
-    this.store.showSuccess(`DUMMY: approved #${pr.number}`);
+    this.store.showSuccess(`DUMMY: approved #${pr.number}`, undefined, 'prActivity');
   }
 
   startRequestChanges(pr: MockPullRequest): void {
@@ -372,7 +372,7 @@ export class PrPanel {
       updatedAt: new Date().toISOString(),
     });
     this.cancelComment();
-    this.store.showSuccess(`DUMMY: commented on #${pr.number}`);
+    this.store.showSuccess(`DUMMY: commented on #${pr.number}`, undefined, 'prActivity');
   }
 
   merge(pr: MockPullRequest): void {
@@ -396,7 +396,7 @@ export class PrPanel {
       status: 'merged',
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: merged #${pr.number} into ${pr.targetBranch}`);
+    this.store.showSuccess(`DUMMY: merged #${pr.number} into ${pr.targetBranch}`, undefined, 'prActivity');
   }
 
   closePr(pr: MockPullRequest): void {
@@ -409,7 +409,7 @@ export class PrPanel {
       draft: false,
       updatedAt: new Date().toISOString(),
     });
-    this.store.showInfo(`DUMMY: closed #${pr.number}`);
+    this.store.showInfo(`DUMMY: closed #${pr.number}`, undefined, 'prActivity');
   }
 
   markReady(pr: MockPullRequest): void {
@@ -421,7 +421,7 @@ export class PrPanel {
       draft: false,
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: marked #${pr.number} ready for review`);
+    this.store.showSuccess(`DUMMY: marked #${pr.number} ready for review`, undefined, 'prActivity');
   }
 
   assignMyself(pr: MockPullRequest): void {
@@ -433,7 +433,7 @@ export class PrPanel {
       assignees: [...pr.assignees, 'you'],
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: assigned yourself to #${pr.number}`);
+    this.store.showSuccess(`DUMMY: assigned yourself to #${pr.number}`, undefined, 'prActivity');
   }
 
   requestMyReview(pr: MockPullRequest): void {
@@ -450,7 +450,7 @@ export class PrPanel {
       reviewState: pr.reviewState === 'approved' ? 'pending' : pr.reviewState,
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: added you as reviewer on #${pr.number}`);
+    this.store.showSuccess(`DUMMY: added you as reviewer on #${pr.number}`, undefined, 'prActivity');
   }
 
   private patchPr(id: string, partial: Partial<MockPullRequest>): void {

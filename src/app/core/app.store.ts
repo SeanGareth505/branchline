@@ -1,4 +1,5 @@
 import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AppSettings,
   ArtificialCommit,
@@ -28,6 +29,7 @@ import type {
   WorktreeInfo,
 } from './models';
 import { TauriService } from './tauri.service';
+import { NotificationService } from './notification.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 
 export type BrowseTab = 'commit' | 'diff' | 'files' | 'blame' | 'history' | 'reflog' | 'console';
@@ -45,12 +47,24 @@ export type SettingsSection =
   | 'repos'
   | 'appearance'
   | 'git'
+  | 'notifications'
   | 'connections'
   | 'ssh'
   | 'tools'
   | 'about';
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
+export type NotificationCategory =
+  | 'general'
+  | 'fetch'
+  | 'pull'
+  | 'push'
+  | 'commit'
+  | 'conflicts'
+  | 'behind'
+  | 'updates'
+  | 'prActivity'
+  | 'prCi';
 export interface ToastState {
   id: number;
   message: string;
@@ -61,11 +75,15 @@ export interface ToastOptions {
   undo?: () => void;
   kind?: ToastKind;
   durationMs?: number;
+  category?: NotificationCategory;
+  desktop?: boolean;
+  force?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AppStore {
   private readonly tauri = inject(TauriService);
+  private readonly notifications = inject(NotificationService);
 
   readonly isDummyBackend = this.tauri.isDummyBackend;
   readonly view = signal<AppView>('settings');
@@ -131,6 +149,18 @@ export class AppStore {
     connections: defaultConnections(),
     commitTypes: DEFAULT_COMMIT_TYPES.map((t) => ({ ...t })),
     githubOAuthClientId: '',
+    notificationsEnabled: true,
+    notifyToasts: true,
+    notifyDesktop: true,
+    notifyGitFetch: false,
+    notifyGitPull: true,
+    notifyGitPush: true,
+    notifyGitCommit: true,
+    notifyGitConflicts: true,
+    notifyRemoteBehind: true,
+    notifyAppUpdates: true,
+    notifyPrActivity: true,
+    notifyPrCi: true,
   });
   readonly loading = signal(false);
   readonly nextAction = signal('Open a repository');
@@ -174,6 +204,8 @@ export class AppStore {
   readonly splitNested = signal<number[]>([62, 38]);
   private sessionSaveTimer: number | null = null;
   private restoringSession = false;
+  private repoFsUnlisten: UnlistenFn | null = null;
+  private repoFsRefreshTimer: number | null = null;
 
   readonly selectedCommit = computed(() => {
     const sha = this.selectedSha();
@@ -476,6 +508,7 @@ export class AppStore {
         window.addEventListener('beforeunload', () => this.flushSession());
         window.addEventListener('pagehide', () => this.flushSession());
       }
+      void this.bindRepoFsWatcher();
       try {
         this.identity.set(await this.tauri.getGitIdentity());
       } catch {
@@ -999,6 +1032,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
+      const prev = this.status();
       const [status, artificial] = await Promise.all([
         this.tauri.getRepoStatus(path),
         this.tauri.getArtificialCommits(path),
@@ -1006,6 +1040,7 @@ export class AppStore {
       this.status.set(status);
       this.artificial.set(artificial);
       this.updateNextAction(status);
+      this.maybeNotifyStatusChanges(prev, status);
     } catch (err) {
       this.showError(err);
     }
@@ -1019,6 +1054,7 @@ export class AppStore {
     }
     if (opts?.notify) this.refreshingRepo.set(true);
     try {
+      const prev = this.status();
       const [status, commits, artificial, branches, stashes, tags, remotes, worktrees] =
         await Promise.all([
           this.tauri.getRepoStatus(path),
@@ -1046,6 +1082,7 @@ export class AppStore {
         this.selectedShas.set([commits[0].sha]);
       }
       this.updateNextAction(status);
+      this.maybeNotifyStatusChanges(prev, status);
       if (opts?.notify) {
         const changed =
           status.staged.length + status.unstaged.length + status.untracked.length;
@@ -1054,13 +1091,37 @@ export class AppStore {
           changed
             ? `Refreshed ${branch} · ${changed} change${changed === 1 ? '' : 's'}`
             : `Refreshed ${branch} · clean`,
-          { kind: 'success', durationMs: 2500 },
+          { kind: 'success', durationMs: 2500, category: 'general' },
         );
       }
     } catch (err) {
       this.showError(err);
     } finally {
       if (opts?.notify) this.refreshingRepo.set(false);
+    }
+  }
+
+  private async bindRepoFsWatcher(): Promise<void> {
+    if (this.isDummyBackend) return;
+    if (this.repoFsUnlisten) {
+      this.repoFsUnlisten();
+      this.repoFsUnlisten = null;
+    }
+    try {
+      this.repoFsUnlisten = await listen<{ path: string }>('repo-fs-changed', (event) => {
+        const current = this.currentRepo()?.path;
+        if (!current) return;
+        if (!sameRepoPath(current, event.payload.path)) return;
+        if (this.repoFsRefreshTimer !== null) {
+          window.clearTimeout(this.repoFsRefreshTimer);
+        }
+        this.repoFsRefreshTimer = window.setTimeout(() => {
+          this.repoFsRefreshTimer = null;
+          void this.refreshRepo();
+        }, 250);
+      });
+    } catch {
+      /* watch unavailable outside desktop shell */
     }
   }
 
@@ -1130,6 +1191,13 @@ export class AppStore {
         ? { undo: undoOrOptions, kind: 'success' as ToastKind }
         : (undoOrOptions ?? {});
     const kind = options.kind ?? (options.undo ? 'success' : 'info');
+    const category = options.category ?? 'general';
+    if (!options.force && !this.shouldShowToast(category, kind)) {
+      if (options.desktop) {
+        void this.sendDesktopIfEnabled(category, 'Branchline', message);
+      }
+      return;
+    }
     const durationMs = options.durationMs ?? (kind === 'error' ? 12000 : options.undo ? 10000 : 6000);
     if (this.toastTimer !== null) {
       window.clearTimeout(this.toastTimer);
@@ -1143,22 +1211,123 @@ export class AppStore {
       }
       this.toastTimer = null;
     }, durationMs);
+    if (options.desktop) {
+      void this.sendDesktopIfEnabled(category, 'Branchline', message);
+    }
   }
 
-  showSuccess(message: string, undo?: () => void): void {
-    this.showToast(message, { kind: 'success', undo });
+  showSuccess(message: string, undo?: () => void, category: NotificationCategory = 'general'): void {
+    this.showToast(message, { kind: 'success', undo, category });
   }
 
-  showWarning(message: string, undo?: () => void): void {
-    this.showToast(message, { kind: 'warning', undo, durationMs: undo ? 10000 : 8000 });
+  showWarning(message: string, undo?: () => void, category: NotificationCategory = 'general'): void {
+    this.showToast(message, {
+      kind: 'warning',
+      undo,
+      category,
+      durationMs: undo ? 10000 : 8000,
+      force: true,
+    });
   }
 
-  showInfo(message: string, undo?: () => void): void {
-    this.showToast(message, { kind: 'info', undo, durationMs: undo ? 10000 : 6000 });
+  showInfo(message: string, undo?: () => void, category: NotificationCategory = 'general'): void {
+    this.showToast(message, { kind: 'info', undo, category, durationMs: undo ? 10000 : 6000 });
   }
 
   showError(err: unknown): void {
-    this.showToast(this.formatError(err), { kind: 'error' });
+    this.showToast(this.formatError(err), { kind: 'error', force: true });
+  }
+
+  notifyEvent(
+    category: NotificationCategory,
+    title: string,
+    body: string,
+    options?: { toast?: boolean; desktop?: boolean; kind?: ToastKind },
+  ): void {
+    const toast = options?.toast !== false;
+    const desktop = options?.desktop !== false;
+    if (toast) {
+      this.showToast(body, {
+        kind: options?.kind ?? 'info',
+        category,
+        desktop: false,
+      });
+    }
+    if (desktop) {
+      void this.sendDesktopIfEnabled(category, title, body);
+    }
+  }
+
+  private shouldShowToast(category: NotificationCategory, kind: ToastKind): boolean {
+    if (kind === 'error' || kind === 'warning') return true;
+    const s = this.settings();
+    if (!s.notifyToasts) return false;
+    return this.categoryEnabled(category, s);
+  }
+
+  private categoryEnabled(
+    category: NotificationCategory,
+    s = this.settings(),
+  ): boolean {
+    switch (category) {
+      case 'fetch':
+        return s.notifyGitFetch;
+      case 'pull':
+        return s.notifyGitPull;
+      case 'push':
+        return s.notifyGitPush;
+      case 'commit':
+        return s.notifyGitCommit;
+      case 'conflicts':
+        return s.notifyGitConflicts;
+      case 'behind':
+        return s.notifyRemoteBehind;
+      case 'updates':
+        return s.notifyAppUpdates;
+      case 'prActivity':
+        return s.notifyPrActivity;
+      case 'prCi':
+        return s.notifyPrCi;
+      case 'general':
+      default:
+        return true;
+    }
+  }
+
+  private async sendDesktopIfEnabled(
+    category: NotificationCategory,
+    title: string,
+    body: string,
+  ): Promise<void> {
+    const s = this.settings();
+    if (!s.notificationsEnabled || !s.notifyDesktop) return;
+    if (!this.categoryEnabled(category, s)) return;
+    await this.notifications.sendDesktop(title, body);
+  }
+
+  private maybeNotifyStatusChanges(prev: RepoStatus | null, next: RepoStatus): void {
+    if (!prev) return;
+    const repo = this.currentRepo()?.name || next.branch || 'Repository';
+
+    if (next.conflicted.length > 0 && prev.conflicted.length === 0) {
+      const n = next.conflicted.length;
+      this.notifyEvent(
+        'conflicts',
+        'Merge conflicts',
+        `${repo}: ${n} conflict${n === 1 ? '' : 's'} to resolve`,
+        { kind: 'warning' },
+      );
+    }
+
+    if (next.behind > prev.behind) {
+      const n = next.behind;
+      this.notifyEvent(
+        'behind',
+        'Remote updated',
+        `${repo} is ${n} commit${n === 1 ? '' : 's'} behind upstream`,
+        { kind: 'info' },
+      );
+    }
   }
 
   dismissToast(): void {
@@ -1295,8 +1464,13 @@ export class AppStore {
     try {
       const result = await this.tauri.createCommit(path, message.trim(), amend);
       await this.refreshRepo();
-      this.showToast(amend ? `Amended ${result.sha.slice(0, 7)}` : `Committed ${result.sha.slice(0, 7)}`, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+      this.showToast(
+        amend ? `Amended ${result.sha.slice(0, 7)}` : `Committed ${result.sha.slice(0, 7)}`,
+        {
+          kind: 'success',
+          category: 'commit',
+          undo: () => void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+        },
       );
     } catch (err) {
       this.showError(err);
@@ -1401,7 +1575,11 @@ export class AppStore {
     try {
       const result = await this.tauri.fetch(path);
       await this.refreshRepo();
-      this.showToast(result.message || 'Fetched from remote', { kind: 'success', durationMs: 3200 });
+      this.showToast(result.message || 'Fetched from remote', {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'fetch',
+      });
     } catch (err) {
       this.showError(err);
     }
@@ -1418,6 +1596,7 @@ export class AppStore {
       this.showToast(result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'), {
         kind: 'success',
         durationMs: 3200,
+        category: 'pull',
       });
     } catch (err) {
       this.showError(err);
@@ -1445,7 +1624,11 @@ export class AppStore {
     try {
       const result = await this.tauri.push(path);
       await this.refreshRepo();
-      this.showToast(result.message || 'Pushed to remote', { kind: 'success', durationMs: 3200 });
+      this.showToast(result.message || 'Pushed to remote', {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'push',
+      });
     } catch (err) {
       const message = this.formatError(err);
       if (/non-fast-forward|rejected|fetch first/i.test(message)) {
@@ -2353,5 +2536,27 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     connections,
     commitTypes: normalizeCommitTypes(raw.commitTypes),
     githubOAuthClientId: (raw.githubOAuthClientId ?? '').trim(),
+    notificationsEnabled: raw.notificationsEnabled ?? true,
+    notifyToasts: raw.notifyToasts ?? true,
+    notifyDesktop: raw.notifyDesktop ?? true,
+    notifyGitFetch: raw.notifyGitFetch ?? false,
+    notifyGitPull: raw.notifyGitPull ?? true,
+    notifyGitPush: raw.notifyGitPush ?? true,
+    notifyGitCommit: raw.notifyGitCommit ?? true,
+    notifyGitConflicts: raw.notifyGitConflicts ?? true,
+    notifyRemoteBehind: raw.notifyRemoteBehind ?? true,
+    notifyAppUpdates: raw.notifyAppUpdates ?? true,
+    notifyPrActivity: raw.notifyPrActivity ?? true,
+    notifyPrCi: raw.notifyPrCi ?? true,
   };
+}
+
+function sameRepoPath(a: string, b: string): boolean {
+  const norm = (p: string) =>
+    p
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '')
+      .toLowerCase();
+  return norm(a) === norm(b);
 }

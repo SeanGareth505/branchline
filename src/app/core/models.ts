@@ -265,6 +265,18 @@ export interface AppSettings {
   connections: ConnectionConfig[];
   commitTypes: CommitTypeOption[];
   githubOAuthClientId: string;
+  notificationsEnabled: boolean;
+  notifyToasts: boolean;
+  notifyDesktop: boolean;
+  notifyGitFetch: boolean;
+  notifyGitPull: boolean;
+  notifyGitPush: boolean;
+  notifyGitCommit: boolean;
+  notifyGitConflicts: boolean;
+  notifyRemoteBehind: boolean;
+  notifyAppUpdates: boolean;
+  notifyPrActivity: boolean;
+  notifyPrCi: boolean;
 }
 
 export interface GitEnvSnapshot {

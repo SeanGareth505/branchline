@@ -42,6 +42,11 @@ export class SettingsPage implements OnInit {
     { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
     { id: 'appearance', label: 'Appearance', hint: 'Theme, accent, and UI modes' },
     { id: 'git', label: 'Git', hint: 'Identity, pull/push, safety, commit types' },
+    {
+      id: 'notifications',
+      label: 'Notifications',
+      hint: 'Toasts, desktop alerts, Git and pull request events',
+    },
     { id: 'connections', label: 'Connections', hint: 'Link GitHub, GitLab, Azure DevOps, and Jira' },
     { id: 'ssh', label: 'SSH', hint: 'Keys and credential helper' },
     { id: 'tools', label: 'Tools', hint: 'Editor, diff, and merge tools' },
@@ -333,14 +338,19 @@ export class SettingsPage implements OnInit {
   async checkForUpdates(): Promise<void> {
     const found = await this.updates.checkForUpdates({ silent: false });
     if (found) {
-      this.store.showInfo(`Update ${this.updates.availableVersion()} is available`);
+      this.store.notifyEvent(
+        'updates',
+        'Update available',
+        `Update ${this.updates.availableVersion()} is available`,
+        { kind: 'info' },
+      );
       return;
     }
     if (this.updates.phase() === 'error') {
       this.store.showError(this.updates.errorMessage() ?? 'Could not check for updates');
       return;
     }
-    this.store.showSuccess('You are on the latest version');
+    this.store.showSuccess('You are on the latest version', undefined, 'updates');
   }
 
   async setCredentialHelper(value: string): Promise<void> {

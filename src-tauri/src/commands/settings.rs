@@ -76,6 +76,30 @@ pub struct AppSettings {
     pub commit_types: Vec<CommitTypeOption>,
     #[serde(default)]
     pub github_oauth_client_id: String,
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
+    #[serde(default = "default_true")]
+    pub notify_toasts: bool,
+    #[serde(default = "default_true")]
+    pub notify_desktop: bool,
+    #[serde(default)]
+    pub notify_git_fetch: bool,
+    #[serde(default = "default_true")]
+    pub notify_git_pull: bool,
+    #[serde(default = "default_true")]
+    pub notify_git_push: bool,
+    #[serde(default = "default_true")]
+    pub notify_git_commit: bool,
+    #[serde(default = "default_true")]
+    pub notify_git_conflicts: bool,
+    #[serde(default = "default_true")]
+    pub notify_remote_behind: bool,
+    #[serde(default = "default_true")]
+    pub notify_app_updates: bool,
+    #[serde(default = "default_true")]
+    pub notify_pr_activity: bool,
+    #[serde(default = "default_true")]
+    pub notify_pr_ci: bool,
 }
 
 fn default_pull_action() -> String {
@@ -242,6 +266,18 @@ impl Default for AppSettings {
             connections: default_connections(),
             commit_types: default_commit_types(),
             github_oauth_client_id: String::new(),
+            notifications_enabled: true,
+            notify_toasts: true,
+            notify_desktop: true,
+            notify_git_fetch: false,
+            notify_git_pull: true,
+            notify_git_push: true,
+            notify_git_commit: true,
+            notify_git_conflicts: true,
+            notify_remote_behind: true,
+            notify_app_updates: true,
+            notify_pr_activity: true,
+            notify_pr_ci: true,
         }
     }
 }

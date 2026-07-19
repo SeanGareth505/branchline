@@ -1,7 +1,8 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, Injector, inject, signal } from '@angular/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
+import { AppStore } from './app.store';
 import { TauriService } from './tauri.service';
 
 const DISMISS_KEY = 'branchline.update.dismissedVersion';
@@ -12,6 +13,7 @@ export type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'e
 @Injectable({ providedIn: 'root' })
 export class UpdateService {
   private readonly tauri = inject(TauriService);
+  private readonly injector = inject(Injector);
   private pending: Update | null = null;
 
   readonly phase = signal<UpdatePhase>('idle');
@@ -22,6 +24,10 @@ export class UpdateService {
   readonly errorMessage = signal<string | null>(null);
   readonly bannerVisible = signal(false);
   readonly downloadPageUrl = UPDATE_DOWNLOAD_PAGE;
+
+  private get store(): AppStore {
+    return this.injector.get(AppStore);
+  }
 
   async init(): Promise<void> {
     if (this.tauri.isDummyBackend) return;
@@ -61,8 +67,17 @@ export class UpdateService {
       this.phase.set('available');
 
       const dismissed = this.readDismissedVersion();
-      if (!options.silent || dismissed !== update.version) {
+      const showBanner = !options.silent || dismissed !== update.version;
+      if (showBanner) {
         this.bannerVisible.set(true);
+      }
+      if (options.silent && showBanner) {
+        this.store.notifyEvent(
+          'updates',
+          'Update available',
+          `Branchline ${update.version} is ready to install`,
+          { toast: false, desktop: true },
+        );
       }
       return true;
     } catch (err) {

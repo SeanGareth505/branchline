@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::command;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,7 +108,11 @@ pub fn set_last_repo(state: State<'_, AppState>, input: PathInput) -> AppResult<
 }
 
 #[command]
-pub fn open_repository(state: State<'_, AppState>, input: PathInput) -> AppResult<RepoSummary> {
+pub fn open_repository(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: PathInput,
+) -> AppResult<RepoSummary> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
     let name = repo_name(&path);
@@ -119,7 +123,8 @@ pub fn open_repository(state: State<'_, AppState>, input: PathInput) -> AppResul
         sqlite::upsert_recent_repo(&db, &input.path, &name, &opened_at)?;
         sqlite::set_last_repo(&db, &input.path)?;
     }
-    state.set_current_repo(Some(path));
+    state.set_current_repo(Some(path.clone()));
+    state.repo_watcher.watch(app, path);
     let has_changes = !status.staged.is_empty()
         || !status.unstaged.is_empty()
         || !status.untracked.is_empty()
@@ -149,6 +154,7 @@ pub struct InitRepoInput {
 
 #[command]
 pub fn clone_repository(
+    app: AppHandle,
     state: State<'_, AppState>,
     input: CloneRepoInput,
 ) -> AppResult<RepoSummary> {
@@ -184,6 +190,7 @@ pub fn clone_repository(
         .unwrap_or_else(|| "repo".into());
     git_cli::run_git(&parent, &["clone", url, &folder])?;
     open_repository(
+        app,
         state,
         PathInput {
             path: dest.to_string_lossy().to_string(),
@@ -192,7 +199,11 @@ pub fn clone_repository(
 }
 
 #[command]
-pub fn init_repository(state: State<'_, AppState>, input: InitRepoInput) -> AppResult<RepoSummary> {
+pub fn init_repository(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: InitRepoInput,
+) -> AppResult<RepoSummary> {
     let path = PathBuf::from(input.path.trim());
     if input.path.trim().is_empty() {
         return Err(AppError::msg("Folder path is required"));
@@ -203,6 +214,7 @@ pub fn init_repository(state: State<'_, AppState>, input: InitRepoInput) -> AppR
     }
     git_cli::run_git(&path, &["init"])?;
     open_repository(
+        app,
         state,
         PathInput {
             path: path.to_string_lossy().to_string(),

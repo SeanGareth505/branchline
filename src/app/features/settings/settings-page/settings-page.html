@@ -1,10 +1,8 @@
 <section class="page" [class.repos-mode]="section() === 'repos'">
-  @if (section() !== 'repos') {
-    <header class="hero">
-      <h1>Settings</h1>
-      <p>{{ sectionMeta().hint }}</p>
-    </header>
-  }
+  <header class="hero">
+    <h1>Settings</h1>
+    <p>{{ sectionMeta().hint }}</p>
+  </header>
 
   <div class="layout" [class.repos-layout]="section() === 'repos'">
     <nav class="nav bl-panel" aria-label="Settings sections">
@@ -318,6 +316,198 @@
           </article>
         }
 
+        @case ('notifications') {
+          <article class="bl-panel block">
+            <h2 class="block-title">Delivery</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>In-app toasts</strong>
+                <span>Show success toasts for enabled categories</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyToasts"
+                    (ngModelChange)="store.saveSettings({ notifyToasts: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Desktop notifications</strong>
+                <span>System alerts for important background events</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notificationsEnabled && store.settings().notifyDesktop"
+                    (ngModelChange)="
+                      store.saveSettings({ notificationsEnabled: $event, notifyDesktop: $event })
+                    "
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Git</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Fetch</strong>
+                <span>Toast when a fetch finishes (off by default)</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyGitFetch"
+                    (ngModelChange)="store.saveSettings({ notifyGitFetch: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Pull</strong>
+                <span>Toast when a pull finishes</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyGitPull"
+                    (ngModelChange)="store.saveSettings({ notifyGitPull: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Push</strong>
+                <span>Toast when a push finishes</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyGitPush"
+                    (ngModelChange)="store.saveSettings({ notifyGitPush: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Commit</strong>
+                <span>Toast when a commit or amend finishes</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyGitCommit"
+                    (ngModelChange)="store.saveSettings({ notifyGitCommit: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Conflicts</strong>
+                <span>Alert when merge conflicts appear</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyGitConflicts"
+                    (ngModelChange)="store.saveSettings({ notifyGitConflicts: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Behind upstream</strong>
+                <span>Alert when the remote moves ahead after fetch/refresh</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyRemoteBehind"
+                    (ngModelChange)="store.saveSettings({ notifyRemoteBehind: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">App & pull requests</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>App updates</strong>
+                <span>Desktop alert when a new Branchline version is available</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyAppUpdates"
+                    (ngModelChange)="store.saveSettings({ notifyAppUpdates: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>PR activity</strong>
+                <span>Reviews, comments, merges, and assignments (also for live sync later)</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyPrActivity"
+                    (ngModelChange)="store.saveSettings({ notifyPrActivity: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>PR CI</strong>
+                <span>Pipeline pass/fail alerts when live PR sync is available</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyPrCi"
+                    (ngModelChange)="store.saveSettings({ notifyPrCi: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+        }
+
         @case ('connections') {
           <article class="bl-panel block">
             <div class="block-head">
@@ -581,7 +771,7 @@
         @case ('about') {
           <article class="bl-panel block">
             <h2 class="block-title">Branchline</h2>
-            <p class="block-hint">Desktop Git client</p>
+            <p class="block-hint">Desktop Git client — version and updates</p>
             <div class="setting">
               <div class="setting-label">
                 <strong>Version</strong>

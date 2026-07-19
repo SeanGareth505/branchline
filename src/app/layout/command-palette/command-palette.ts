@@ -62,6 +62,12 @@ export class CommandPalette {
         run: () => store.openSettings('appearance'),
       },
       {
+        id: 'notifications',
+        label: 'Open Notification settings',
+        group: 'Navigate',
+        run: () => store.openSettings('notifications'),
+      },
+      {
         id: 'about',
         label: 'Open About / Updates',
         group: 'Navigate',
@@ -74,11 +80,16 @@ export class CommandPalette {
         run: () => {
           void updates.checkForUpdates({ silent: false }).then((found) => {
             if (found) {
-              store.showInfo(`Update ${updates.availableVersion()} is available`);
+              store.notifyEvent(
+                'updates',
+                'Update available',
+                `Update ${updates.availableVersion()} is available`,
+                { kind: 'info' },
+              );
             } else if (updates.phase() === 'error') {
               store.showError(updates.errorMessage() ?? 'Could not check for updates');
             } else {
-              store.showSuccess('You are on the latest version');
+              store.showSuccess('You are on the latest version', undefined, 'updates');
             }
           });
         },

@@ -32,6 +32,9 @@ export type PatchLinesLayout = 'unified' | 'sideBySide';
 })
 export class PatchLinesView {
   private readonly store = inject(AppStore);
+  private readonly isMac =
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
 
   readonly patch = input.required<string>();
   readonly mode = input<PatchLinesMode>('readonly');
@@ -51,6 +54,7 @@ export class PatchLinesView {
   });
   private lastClickedLine: number | null = null;
   private focused = false;
+  private suppressMenuCloseUntil = 0;
 
   readonly lineMenuOrigin = computed(() => ({
     x: this.lineMenu().x,
@@ -112,6 +116,7 @@ export class PatchLinesView {
 
   onDiffLineMouseDown(index: number, event: MouseEvent): void {
     if (!this.interactive() || event.button !== 0) return;
+    if (this.isMacContextClick(event)) return;
     const parsed = this.parsedDiff();
     const line = parsed?.lines[index];
     if (!line?.selectable) return;
@@ -120,7 +125,7 @@ export class PatchLinesView {
     this.focused = true;
     this.dragSelecting = true;
     this.skipClickSelection = true;
-    this.dragAdditive = event.metaKey || event.ctrlKey;
+    this.dragAdditive = event.metaKey || (!this.isMac && event.ctrlKey);
     this.dragAnchor = index;
     this.dragBaseSelection = this.dragAdditive
       ? new Set(this.selectedLines())
@@ -160,6 +165,7 @@ export class PatchLinesView {
   onDiffLineClick(index: number, event: MouseEvent): void {
     if (!this.interactive()) return;
     event.preventDefault();
+    if (this.isMacContextClick(event)) return;
     if (this.skipClickSelection) {
       this.skipClickSelection = false;
       return;
@@ -170,10 +176,11 @@ export class PatchLinesView {
     if (!line?.selectable) return;
 
     const next = new Set(this.selectedLines());
+    const additive = event.metaKey || (!this.isMac && event.ctrlKey);
     if (event.shiftKey && this.lastClickedLine !== null) {
-      this.dragBaseSelection = event.metaKey || event.ctrlKey ? new Set(next) : new Set();
+      this.dragBaseSelection = additive ? new Set(next) : new Set();
       this.applyDragRange(this.lastClickedLine, index);
-    } else if (event.metaKey || event.ctrlKey) {
+    } else if (additive) {
       if (next.has(index)) next.delete(index);
       else next.add(index);
       this.selectedLines.set(next);
@@ -213,7 +220,17 @@ export class PatchLinesView {
     this.openLineMenu(event.clientX, event.clientY);
   }
 
+  onLineMenuOutside(): void {
+    if (performance.now() < this.suppressMenuCloseUntil) return;
+    this.closeLineMenu();
+  }
+
+  private isMacContextClick(event: MouseEvent): boolean {
+    return this.isMac && event.ctrlKey && !event.metaKey;
+  }
+
   private openLineMenu(x: number, y: number): void {
+    this.suppressMenuCloseUntil = performance.now() + 320;
     this.lineMenu.set({ open: true, x, y });
   }
 
@@ -283,10 +300,18 @@ export class PatchLinesView {
     if (typing) return;
 
     const key = event.key.toLowerCase();
-    if (key === 'escape' && this.selectedCount() > 0) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.clearLineSelection();
+    if (key === 'escape') {
+      if (this.lineMenu().open) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeLineMenu();
+        return;
+      }
+      if (this.selectedCount() > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.clearLineSelection();
+      }
       return;
     }
     if (key === 's' && this.canStage() && this.selectedCount() > 0) {
