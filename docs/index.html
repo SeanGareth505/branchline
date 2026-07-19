@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Branchline — Download</title>
+    <meta
+      name="description"
+      content="Download Branchline, a dedicated desktop Git GUI. Get the Android APK or desktop installers."
+    />
+    <link rel="icon" href="brand/branchline-mark.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Sora:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <main class="shell">
+      <header class="brand">
+        <img class="mark" src="brand/branchline-mark.svg" width="72" height="72" alt="" />
+        <img class="wordmark" src="brand/branchline-wordmark.svg" alt="Branchline" />
+      </header>
+
+      <p class="lede">A dedicated Git GUI. Not an IDE. Not an AI tool.</p>
+
+      <section class="cta" aria-labelledby="download-title">
+        <h1 id="download-title" class="visually-hidden">Download</h1>
+        <a class="btn primary" id="apk-btn" href="https://github.com/SeanGareth505/branchline/releases/latest">
+          Download Android APK
+        </a>
+        <p class="meta" id="apk-meta">Fetching latest release…</p>
+      </section>
+
+      <section class="platforms" aria-label="Other platforms">
+        <a class="btn ghost" id="mac-btn" hidden href="#">macOS</a>
+        <a class="btn ghost" id="win-btn" hidden href="#">Windows</a>
+        <a class="btn ghost" id="linux-btn" hidden href="#">Linux</a>
+        <a
+          class="btn ghost"
+          href="https://github.com/SeanGareth505/branchline/releases/latest"
+          >All releases</a
+        >
+      </section>
+
+      <footer>
+        <a href="https://github.com/SeanGareth505/branchline">Source on GitHub</a>
+      </footer>
+    </main>
+    <script src="download.js"></script>
+  </body>
+</html>

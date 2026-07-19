@@ -100,29 +100,37 @@ jobs:
           fi
           OUT="Branchline-${VERSION}-android.apk"
           cp "$APK" "$OUT"
+          cp "$APK" Branchline-android.apk
           echo "path=$OUT" >> "$GITHUB_OUTPUT"
-          ls -lh "$OUT"
+          echo "stable=Branchline-android.apk" >> "$GITHUB_OUTPUT"
+          ls -lh "$OUT" Branchline-android.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Branchline-${{ steps.version.outputs.version }}-android
-          path: ${{ steps.apk.outputs.path }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.stable }}
           if-no-files-found: error
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.apk.outputs.path }}
+          files: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.stable }}
           generate_release_notes: true
           body: |
             ## Install Branchline on Android
 
-            1. Download **Branchline-${{ steps.version.outputs.version }}-android.apk** from Assets below
+            1. Download **Branchline-android.apk** (or the versioned APK) from Assets below
             2. Open the file on your phone and allow install from this source if asked
 
-            Direct download (after this release is published):
-            https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Branchline-${{ steps.version.outputs.version }}-android.apk
+            Download page: https://seangareth505.github.io/branchline/
+
+            Direct download:
+            https://github.com/${{ github.repository }}/releases/latest/download/Branchline-android.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

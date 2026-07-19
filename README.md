@@ -48,6 +48,10 @@ git tag v0.1.0
 git push origin main --tags
 ```
 
+Public download page (GitHub Pages):
+
+https://seangareth505.github.io/branchline/
+
 ### Android APK
 
 > Note: Branchline is primarily a desktop Git GUI. The Android build packages the UI as an APK for sideloading; local Git workflows on phone will be limited compared to desktop.
