@@ -1,242 +1,110 @@
 <section class="page">
   <header class="hero">
     <div>
-      <h1>Profiles</h1>
-      <p>Choose who Git commits as in this repo, or set your global default.</p>
+      <h1>Identity</h1>
+      <p>Who Git attributes commits to.</p>
     </div>
-    <button
-      type="button"
-      class="bl-btn"
-      [disabled]="loading()"
-      (click)="reload()"
-      title="Re-read Git config and commit authors"
-    >
-      <ng-icon name="lucideRefreshCw" size="14" />
-      Refresh
-    </button>
   </header>
 
   @if (loading() && !contexts()) {
-    <div class="loading-panel">
-      <ng-icon name="lucideRefreshCw" size="22" />
-      <p>Reading Git identity…</p>
-    </div>
+    <p class="muted">Reading Git identity…</p>
   } @else if (contexts(); as ctx) {
-    <section class="current" aria-label="Current identity">
-      <span class="avatar" aria-hidden="true">
-        {{ initials(ctx.effective.name, ctx.effective.email) }}
-      </span>
-      <div class="current-copy">
-        @if (ctx.effective.name || ctx.effective.email) {
-          <strong>{{ ctx.effective.name || 'Unnamed' }}</strong>
-          <span class="email">{{ ctx.effective.email || 'No email set' }}</span>
-        } @else {
-          <strong>No identity set</strong>
-          <span class="email">Add a name and email below to start committing.</span>
-        }
-      </div>
-      <span class="scope" [attr.data-scope]="ctx.effectiveScope">{{ scopeLabel() }}</span>
-      @if (!ctx.hasRepo) {
-        <p class="current-hint">
-          <ng-icon name="lucideInfo" size="13" />
-          Open a repository to set a local identity for just that project.
-        </p>
-      }
-    </section>
-
-    <div class="toolbar">
-      <div class="filters" role="tablist" aria-label="Filter profiles">
+    @if (hasOverride()) {
+      <div class="banner">
+        <div>
+          <strong>This repo has its own identity</strong>
+          <p>Everything else still uses your global default.</p>
+        </div>
         <button
           type="button"
-          class="chip"
-          [class.active]="filter() === 'all'"
-          (click)="filter.set('all')"
+          class="bl-btn"
+          [disabled]="saving()"
+          (click)="clearOverride()"
+          title="Remove the repo override and use the global default here"
         >
-          All
+          Use global default
         </button>
-        <button
-          type="button"
-          class="chip"
-          [class.active]="filter() === 'config'"
-          (click)="filter.set('config')"
-        >
-          Git config
-        </button>
-        <button
-          type="button"
-          class="chip"
-          [class.active]="filter() === 'history'"
-          (click)="filter.set('history')"
-        >
-          History
-        </button>
-      </div>
-      <p class="toolbar-meta">
-        {{ visibleCandidates().length }} of {{ candidateCount() }}
-        · {{ filterHint() }}
-      </p>
-    </div>
-
-    @if (visibleCandidates().length === 0) {
-      <div class="empty-panel">
-        <ng-icon name="lucideUser" size="28" />
-        <h2>No profiles here yet</h2>
-        <p>
-          @if (filter() === 'history') {
-            This repository has no commit authors to suggest. Set one below.
-          } @else if (filter() === 'config') {
-            No local or global Git identity found. Enter one below.
-          } @else {
-            Nothing in Git config or commit history yet. Set a name and email below.
-          }
-        </p>
-      </div>
-    } @else {
-      <div class="table-wrap">
-        <table class="profiles-table">
-          <thead>
-            <tr>
-              <th scope="col">Identity</th>
-              <th scope="col">Source</th>
-              <th scope="col">Commits</th>
-              <th scope="col" class="col-status">Status</th>
-              <th scope="col" class="col-actions">
-                <span class="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (c of visibleCandidates(); track c.id) {
-              <tr
-                [class.active]="c.isActive"
-                [class.applying]="applyingId() === c.id"
-                (click)="fillDraft(c)"
-              >
-                <td>
-                  <div class="identity">
-                    <span class="avatar small" [attr.data-source]="c.source" aria-hidden="true">
-                      {{ initials(c.name, c.email) }}
-                    </span>
-                    <div class="identity-copy">
-                      <span class="name">{{ c.name || 'Unnamed' }}</span>
-                      <span class="email">{{ c.email || 'No email' }}</span>
-                      @if (c.aliases; as aliases) {
-                        @if (aliases.length > 0) {
-                          <span class="aliases" [title]="'Also as ' + aliases.join(', ')">
-                            Also as {{ aliases.join(', ') }}
-                          </span>
-                        }
-                      }
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span class="source" [attr.data-source]="c.source">
-                    <ng-icon [name]="sourceIcon(c.source)" size="12" />
-                    {{ sourceLabel(c) }}
-                  </span>
-                </td>
-                <td class="col-commits">
-                  @if (c.commitCount; as n) {
-                    {{ n }}
-                  } @else {
-                    <span class="muted">—</span>
-                  }
-                </td>
-                <td class="col-status">
-                  @if (c.isActive) {
-                    <span class="status on">Active</span>
-                  } @else {
-                    <span class="muted">—</span>
-                  }
-                </td>
-                <td class="col-actions" (click)="$event.stopPropagation()">
-                  <div class="row-actions">
-                    @if (ctx.hasRepo) {
-                      <button
-                        type="button"
-                        class="bl-btn"
-                        [class.bl-btn-primary]="!c.isActive"
-                        [disabled]="c.isActive || applyingId() === c.id"
-                        (click)="useForRepo(c)"
-                        title="Set this name and email for this repository only"
-                      >
-                        {{ c.isActive ? 'In use' : 'This repo' }}
-                      </button>
-                    }
-                    <button
-                      type="button"
-                      class="bl-btn"
-                      [class.bl-btn-primary]="!ctx.hasRepo && !(c.isActive && ctx.effectiveScope === 'global')"
-                      [disabled]="applyingId() === c.id || (c.isActive && ctx.effectiveScope === 'global')"
-                      (click)="useGlobal(c)"
-                      title="Write to global Git config (all repos)"
-                    >
-                      {{ c.isActive && ctx.effectiveScope === 'global' ? 'Default' : 'Global' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
       </div>
     }
 
-    <section class="composer" aria-label="Set identity">
-      <header class="composer-head">
-        <h2>Set identity</h2>
-        <p>
-          <span><ng-icon name="lucideFolderGit2" size="12" /> This repo — current project only</span>
-          <span><ng-icon name="lucideGlobe" size="12" /> Global — default for every repository</span>
-        </p>
-      </header>
-      <div class="composer-form">
-        <label>
-          <span>Name</span>
-          <input
-            type="text"
-            autocomplete="name"
-            [ngModel]="draftName()"
-            (ngModelChange)="draftName.set($event)"
-            placeholder="Your name"
-          />
-        </label>
-        <label>
-          <span>Email</span>
-          <input
-            type="email"
-            autocomplete="email"
-            [ngModel]="draftEmail()"
-            (ngModelChange)="draftEmail.set($event)"
-            placeholder="you@example.com"
-          />
-        </label>
-        <div class="composer-actions">
+    <section class="panel">
+      <label>
+        <span>Name</span>
+        <input
+          type="text"
+          autocomplete="name"
+          [ngModel]="name()"
+          (ngModelChange)="name.set($event)"
+          placeholder="Your name"
+        />
+      </label>
+      <label>
+        <span>Email</span>
+        <input
+          type="email"
+          autocomplete="email"
+          [ngModel]="email()"
+          (ngModelChange)="email.set($event)"
+          placeholder="you@example.com"
+        />
+      </label>
+
+      <div class="actions">
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSave()"
+          (click)="saveDefault()"
+          title="Save as the default for every repository"
+        >
+          Save as default
+        </button>
+        @if (hasRepo()) {
           <button
             type="button"
-            class="bl-btn bl-btn-primary"
-            [disabled]="!canSave() || !ctx.hasRepo"
-            (click)="saveForRepo()"
-            [title]="
-              ctx.hasRepo
-                ? 'Write user.name / user.email for this repository only'
-                : 'Open a repository first'
-            "
-          >
-            Use for this repo
-          </button>
-          <button
-            type="button"
-            class="bl-btn"
+            class="bl-btn quiet"
             [disabled]="!canSave()"
-            (click)="saveGlobal()"
-            title="Write global user.name / user.email"
+            (click)="saveRepoOnly()"
+            title="Use this identity only in the current repository"
           >
-            Save as global
+            Only this repo
           </button>
-        </div>
+        }
       </div>
+
+      <p class="hint">
+        @if (hasOverride()) {
+          Commits in this repo use the identity above (repo override).
+        } @else if (ctx.global?.email) {
+          Default for all repos:
+          <strong>{{ ctx.global?.name }}</strong>
+          &lt;{{ ctx.global?.email }}&gt;
+        } @else {
+          No global default yet — save one to start committing.
+        }
+      </p>
     </section>
+
+    @if (suggestions().length) {
+      <section class="suggestions">
+        <h2>Your identities</h2>
+        <p class="muted">From your Git config and commits under your name. Click to fill the form.</p>
+        <ul>
+          @for (c of suggestions(); track c.id) {
+            <li>
+              <button
+                type="button"
+                class="suggest"
+                [class.on]="isSelected(c)"
+                (click)="pick(c)"
+              >
+                <span class="suggest-name">{{ c.name || 'Unnamed' }}</span>
+                <span class="suggest-email">{{ c.email }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
   }
 </section>

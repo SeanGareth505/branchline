@@ -272,6 +272,22 @@ pub fn config_set_scoped(
     Ok(())
 }
 
+pub fn config_unset_scoped(repo: Option<&Path>, key: &str, scope: ConfigScope) -> AppResult<()> {
+    let args = match scope {
+        ConfigScope::Global | ConfigScope::Effective => ["config", "--global", "--unset", key],
+        ConfigScope::Local => ["config", "--local", "--unset", key],
+    };
+    if matches!(scope, ConfigScope::Local) {
+        let path =
+            repo.ok_or_else(|| AppError::msg("Repository path required for local config"))?;
+        ensure_repo(path)?;
+        let _ = run_git_allow_fail(path, &args);
+        return Ok(());
+    }
+    let _ = capture_git(None, &args, MAX_GIT_OUTPUT_BYTES)?;
+    Ok(())
+}
+
 pub fn ensure_repo(path: &Path) -> AppResult<()> {
     if !path.exists() {
         return Err(AppError::msg(format!(

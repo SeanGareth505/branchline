@@ -5,6 +5,7 @@
         [message]="t.message"
         [kind]="t.kind"
         [canUndo]="!!t.undo"
+        [actionLabel]="t.actionLabel || 'Undo'"
         (undo)="store.runUndoFromToast()"
         (dismiss)="store.dismissToast()"
       />

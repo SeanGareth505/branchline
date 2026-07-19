@@ -10,7 +10,9 @@
   <span class="message">{{ message }}</span>
   <div class="actions">
     @if (canUndo) {
-      <button type="button" class="bl-btn bl-btn-primary" (click)="undo.emit()">Undo</button>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="undo.emit()">
+        {{ actionLabel || 'Undo' }}
+      </button>
     }
     @if (canUndo || kind === 'error' || kind === 'warning') {
       <button type="button" class="bl-btn" (click)="dismiss.emit()">Dismiss</button>

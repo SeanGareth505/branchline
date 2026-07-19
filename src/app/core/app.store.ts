@@ -44,6 +44,12 @@ import {
 import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
 import {
+  checkoutBlockedNeedsUntracked,
+  isCheckoutBlockedByLocalChanges,
+  parseCheckoutBlockedPaths,
+  summarizeCheckoutBlockedPaths,
+} from '../shared/git/checkout-blocked';
+import {
   resolveWorkflowPattern,
   sanitizeBranchName,
   slugifyUser,
@@ -87,9 +93,11 @@ export interface ToastState {
   message: string;
   kind: ToastKind;
   undo?: () => void;
+  actionLabel?: string;
 }
 export interface ToastOptions {
   undo?: () => void;
+  actionLabel?: string;
   kind?: ToastKind;
   durationMs?: number;
   category?: NotificationCategory;
@@ -1294,7 +1302,13 @@ export class AppStore {
       this.toastTimer = null;
     }
     const id = ++this.toastSeq;
-    this.toast.set({ id, message, kind, undo: options.undo });
+    this.toast.set({
+      id,
+      message,
+      kind,
+      undo: options.undo,
+      actionLabel: options.actionLabel,
+    });
     this.toastTimer = window.setTimeout(() => {
       if (this.toast()?.id === id) {
         this.toast.set(null);
@@ -1635,6 +1649,7 @@ export class AppStore {
       await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
+      if (await this.handleCheckoutBlockedByLocalChanges(path, name, err)) return;
       this.showError(err);
     }
   }
@@ -1665,6 +1680,23 @@ export class AppStore {
           kind: 'success',
         });
       } catch (err) {
+        if (
+          await this.handleCheckoutBlockedByLocalChanges(path, branch, err, async () => {
+            const result = await this.tauri.createBranch(path, branch, true, remoteRef);
+            const tracked = await this.tauri.runGitCommand(path, [
+              'branch',
+              `--set-upstream-to=${remoteRef}`,
+              branch,
+            ]);
+            await this.refreshRepo();
+            if (!tracked.ok) {
+              return result.message || `Created and checked out '${branch}' from ${remoteRef}`;
+            }
+            return `Created and checked out '${branch}' tracking ${remoteRef}`;
+          })
+        ) {
+          return true;
+        }
         this.showError(err);
       }
       return true;
@@ -1727,6 +1759,25 @@ export class AppStore {
           { kind: 'success', durationMs: 3200, category: 'pull' },
         );
       } catch (err) {
+        if (
+          await this.handleCheckoutBlockedByLocalChanges(path, branch, err, async () => {
+            if (!local.isCurrent) {
+              await this.tauri.checkoutBranch(path, branch);
+            }
+            const rebase = this.settings().defaultPullAction === 'rebase';
+            const args = rebase
+              ? ['pull', '--rebase', remote, branch]
+              : ['pull', remote, branch];
+            const pulled = await this.tauri.runGitCommand(path, args);
+            await this.refreshRepo();
+            if (!pulled.ok) {
+              throw new Error(pulled.stderr.trim() || pulled.stdout.trim() || 'Pull failed');
+            }
+            return pulled.stdout.trim() || `Updated '${branch}' from ${remoteRef}`;
+          })
+        ) {
+          return true;
+        }
         this.showError(err);
       }
       return true;
@@ -1741,7 +1792,91 @@ export class AppStore {
       await this.refreshRepo();
       this.showToast(result.message || `Checked out '${branch}'`);
     } catch (err) {
+      if (await this.handleCheckoutBlockedByLocalChanges(path, branch, err)) return true;
       this.showError(err);
+    }
+    return true;
+  }
+
+  private async handleCheckoutBlockedByLocalChanges(
+    path: string,
+    target: string,
+    err: unknown,
+    retry?: () => Promise<string>,
+  ): Promise<boolean> {
+    const raw = this.formatError(err);
+    if (!isCheckoutBlockedByLocalChanges(raw)) return false;
+
+    const files = parseCheckoutBlockedPaths(raw);
+    const summary = summarizeCheckoutBlockedPaths(files);
+    const countLabel =
+      files.length === 0
+        ? 'local changes'
+        : files.length === 1
+          ? '1 local change'
+          : `${files.length} local changes`;
+    const detail = summary ? ` (${summary})` : '';
+    const includeUntracked = checkoutBlockedNeedsUntracked(raw);
+
+    const choice = await this.selects.ask({
+      title: 'Local changes block checkout',
+      message: `Switching to '${target}' would overwrite ${countLabel}${detail}. Stash them to switch safely, or review them first.`,
+      options: [
+        {
+          value: 'stash',
+          label: 'Stash & switch',
+          hint: includeUntracked
+            ? 'Park tracked and untracked changes, then check out'
+            : 'Park changes, then check out the branch',
+        },
+        {
+          value: 'review',
+          label: 'Review changes',
+          hint: 'Stay on this branch and open the files panel',
+        },
+      ],
+      confirmLabel: 'Continue',
+      cancelLabel: 'Cancel',
+      initialValue: 'stash',
+      filterable: false,
+    });
+
+    if (choice === null) return true;
+
+    if (choice === 'review') {
+      this.setBrowseTab('files');
+      this.showToast(`Couldn't switch to '${target}' — review local changes first`, {
+        kind: 'warning',
+        force: true,
+        durationMs: 8000,
+      });
+      return true;
+    }
+
+    try {
+      await this.withRepoMutation(() =>
+        this.tauri.stashPush(
+          path,
+          `Auto-stash before checkout ${target}`,
+          includeUntracked,
+        ),
+      );
+      let message: string;
+      if (retry) {
+        message = await retry();
+      } else {
+        const result = await this.tauri.checkoutBranch(path, target);
+        await this.refreshRepo();
+        message = result.message || `Stashed changes and checked out ${target}`;
+      }
+      this.showToast(message, {
+        kind: 'success',
+        actionLabel: 'Apply stash',
+        durationMs: 12000,
+        undo: () => void this.stashApply(0),
+      });
+    } catch (stashErr) {
+      this.showError(stashErr);
     }
     return true;
   }
@@ -1773,14 +1908,25 @@ export class AppStore {
   async createBranch(name: string, startPoint?: string, checkout = true): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path || !name.trim()) return false;
+    const trimmed = name.trim();
     try {
-      const result = await this.tauri.createBranch(path, name.trim(), checkout, startPoint);
+      const result = await this.tauri.createBranch(path, trimmed, checkout, startPoint);
       await this.refreshRepo();
       this.showToast(result.message, () =>
         void this.tauri.undoLast(path).then(() => this.refreshRepo()),
       );
       return true;
     } catch (err) {
+      if (
+        checkout &&
+        (await this.handleCheckoutBlockedByLocalChanges(path, trimmed, err, async () => {
+          const result = await this.tauri.createBranch(path, trimmed, true, startPoint);
+          await this.refreshRepo();
+          return result.message || `Stashed changes and created '${trimmed}'`;
+        }))
+      ) {
+        return true;
+      }
       this.showError(err);
       return false;
     }

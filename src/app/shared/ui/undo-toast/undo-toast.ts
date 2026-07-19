@@ -12,6 +12,7 @@ export class UndoToast {
   @Input() message = '';
   @Input() kind: ToastKind = 'info';
   @Input() canUndo = false;
+  @Input() actionLabel = 'Undo';
   @Output() undo = new EventEmitter<void>();
   @Output() dismiss = new EventEmitter<void>();
 

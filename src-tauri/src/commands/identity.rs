@@ -98,6 +98,43 @@ fn is_placeholder_email(email: &str) -> bool {
         || e.contains("users.noreply.github.com")
 }
 
+fn normalize_name(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+fn names_match(a: &str, b: &str) -> bool {
+    let a = normalize_name(a);
+    let b = normalize_name(b);
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    a.starts_with(&format!("{b} ")) || b.starts_with(&format!("{a} "))
+}
+
+fn is_my_history_author(
+    email_lower: &str,
+    primary_name: &str,
+    aliases: &[String],
+    my_emails: &std::collections::HashSet<String>,
+    my_names: &[String],
+) -> bool {
+    if my_emails.contains(email_lower) {
+        return true;
+    }
+    if my_names.is_empty() {
+        return false;
+    }
+    if my_names.iter().any(|n| names_match(n, primary_name)) {
+        return true;
+    }
+    aliases
+        .iter()
+        .any(|alias| my_names.iter().any(|n| names_match(n, alias)))
+}
+
 fn best_history_name(agg: &HistoryAgg, preferred: Option<&str>) -> String {
     if let Some(pref) = preferred {
         let pref = pref.trim();
@@ -277,7 +314,12 @@ pub fn set_git_identity(input: SetGitIdentityInput) -> AppResult<GitIdentity> {
         .as_deref()
         .unwrap_or("global")
         .to_ascii_lowercase();
-    let path = input.path.as_deref().map(PathBuf::from);
+    let path = input
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from);
     let scope = match scope_raw.as_str() {
         "local" => ConfigScope::Local,
         _ => ConfigScope::Global,
@@ -287,8 +329,21 @@ pub fn set_git_identity(input: SetGitIdentityInput) -> AppResult<GitIdentity> {
         return Err(AppError::msg("Open a repository to set a local identity"));
     }
 
-    git_cli::config_set_scoped(path.as_deref(), "user.name", name, scope)?;
-    git_cli::config_set_scoped(path.as_deref(), "user.email", email, scope)?;
+    if matches!(scope, ConfigScope::Local) {
+        let repo = path.as_deref().unwrap();
+        git_cli::config_set_scoped(Some(repo), "user.name", name, ConfigScope::Local)?;
+        git_cli::config_set_scoped(Some(repo), "user.email", email, ConfigScope::Local)?;
+    } else {
+        git_cli::config_set_scoped(None, "user.name", name, ConfigScope::Global)?;
+        git_cli::config_set_scoped(None, "user.email", email, ConfigScope::Global)?;
+        // Choosing a global default clears any repo override so it applies here too.
+        if let Some(repo) = path.as_deref() {
+            if git_cli::ensure_repo(repo).is_ok() {
+                let _ = git_cli::config_unset_scoped(Some(repo), "user.name", ConfigScope::Local);
+                let _ = git_cli::config_unset_scoped(Some(repo), "user.email", ConfigScope::Local);
+            }
+        }
+    }
 
     Ok(GitIdentity {
         name: name.to_string(),
@@ -332,30 +387,47 @@ pub fn list_identity_contexts(
 
     let active_key = identity_key(&effective.name, &effective.email);
     let active_email = email_key(&effective.email);
+    let mut my_emails: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut my_names: Vec<String> = Vec::new();
+    for id in [&local, &global].into_iter().flatten() {
+        let email = email_key(&id.email);
+        if !email.is_empty() && !is_placeholder_email(&email) {
+            my_emails.insert(email);
+        }
+        let name = id.name.trim();
+        if !name.is_empty() {
+            my_names.push(name.to_string());
+        }
+    }
+
     let mut candidates = Vec::new();
     let mut by_email: HashMap<String, usize> = HashMap::new();
 
     if let Some(id) = &local {
-        push_config_candidate(
-            &mut candidates,
-            &mut by_email,
-            &id.name,
-            &id.email,
-            "local",
-            "This repository",
-            &active_key,
-        );
+        if !is_placeholder_email(&id.email) {
+            push_config_candidate(
+                &mut candidates,
+                &mut by_email,
+                &id.name,
+                &id.email,
+                "local",
+                "This repository",
+                &active_key,
+            );
+        }
     }
     if let Some(id) = &global {
-        push_config_candidate(
-            &mut candidates,
-            &mut by_email,
-            &id.name,
-            &id.email,
-            "global",
-            "Global Git default",
-            &active_key,
-        );
+        if !is_placeholder_email(&id.email) {
+            push_config_candidate(
+                &mut candidates,
+                &mut by_email,
+                &id.name,
+                &id.email,
+                "global",
+                "Global Git default",
+                &active_key,
+            );
+        }
     }
 
     if let Some(p) = repo {
@@ -363,12 +435,12 @@ pub fn list_identity_contexts(
         let mut rows: Vec<_> = history.into_iter().collect();
         rows.sort_by(|a, b| b.1.total.cmp(&a.1.total).then(a.0.cmp(&b.0)));
 
-        for (email_lower, agg) in rows.into_iter().take(16) {
-            let placeholder = is_placeholder_email(&email_lower);
-            let is_active_email = !active_email.is_empty() && email_lower == active_email;
-            if placeholder && !is_active_email {
+        for (email_lower, agg) in rows.into_iter().take(24) {
+            if is_placeholder_email(&email_lower) {
                 continue;
             }
+
+            let is_active_email = !active_email.is_empty() && email_lower == active_email;
 
             if let Some(&idx) = by_email.get(&email_lower) {
                 let preferred = candidates[idx].name.clone();
@@ -388,21 +460,21 @@ pub fn list_identity_contexts(
             if primary.is_empty() {
                 continue;
             }
-            let email_display = email_lower.clone();
+            let aliases = alias_names(&agg, &primary);
+            if !is_my_history_author(&email_lower, &primary, &aliases, &my_emails, &my_names) {
+                continue;
+            }
+
             by_email.insert(email_lower.clone(), candidates.len());
             candidates.push(IdentityCandidate {
                 id: format!("history:{email_lower}"),
                 name: primary.clone(),
-                email: email_display,
+                email: email_lower.clone(),
                 source: "history".into(),
-                label: if placeholder {
-                    "Sample / placeholder".into()
-                } else {
-                    "Seen in commits".into()
-                },
+                label: "Seen in commits".into(),
                 commit_count: Some(agg.total),
                 is_active: is_active_email,
-                aliases: alias_names(&agg, &primary),
+                aliases,
             });
         }
     }
