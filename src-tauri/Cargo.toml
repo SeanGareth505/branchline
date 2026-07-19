@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.1.1"
 description = "Branchline — premium desktop Git client"
 authors = ["you"]
 license = ""
@@ -26,7 +26,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-fs = "2"
-git2 = "0.19"
+git2 = { version = "0.19", default-features = false }
 rusqlite = { version = "0.32", features = ["bundled"] }
 notify = "7"
 chrono = { version = "0.4", features = ["serde"] }
