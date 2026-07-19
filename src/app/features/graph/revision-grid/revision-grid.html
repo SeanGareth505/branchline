@@ -88,6 +88,7 @@
         [class.child-of]="row.childOf"
         [style.height.px]="rowHeight"
         (click)="onRowClick(row, $event)"
+        (dblclick)="onRowDblClick(row, $event)"
         (contextmenu)="onContext(row, $event)"
         (mouseenter)="onRowEnter(row.id)"
         (mouseleave)="onRowLeave()"

@@ -155,6 +155,36 @@ fn restore(db: &Db, entry: &UndoEntry) -> AppResult<()> {
                 )?;
             }
         }
+        "apply_patch" => {
+            if let Some(patch) = entry.payload.get("patch").and_then(|v| v.as_str()) {
+                git_cli::run_git_with_stdin(
+                    path,
+                    &["apply", "-R", "--whitespace=nowarn", "-"],
+                    &format!("{patch}\n"),
+                )?;
+            }
+        }
+        "apply_index_patch" => {
+            if let Some(patch) = entry.payload.get("patch").and_then(|v| v.as_str()) {
+                git_cli::run_git_with_stdin(
+                    path,
+                    &["apply", "--cached", "-R", "--whitespace=nowarn", "-"],
+                    &format!("{patch}\n"),
+                )?;
+            }
+        }
+        "cherry_file" => {
+            if let Some(stash_ref) = entry.payload.get("stashRef").and_then(|v| v.as_str()) {
+                git_cli::run_git(path, &["stash", "apply", stash_ref])?;
+            } else if let Some(paths) = entry.payload.get("paths").and_then(|v| v.as_array()) {
+                let list: Vec<&str> = paths.iter().filter_map(|v| v.as_str()).collect();
+                if !list.is_empty() {
+                    let mut args = vec!["checkout", "HEAD", "--"];
+                    args.extend(list);
+                    git_cli::run_git(path, &args)?;
+                }
+            }
+        }
         "hard_reset" => {
             if let Some(backup) = entry.payload.get("backupBranch").and_then(|v| v.as_str()) {
                 git_cli::run_git(path, &["reset", "--hard", backup])?;

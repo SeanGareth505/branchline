@@ -12,20 +12,53 @@
         }
       </span>
       @if (syncStatus(); as sync) {
-        <button
-          type="button"
-          class="sync-btn"
-          [attr.data-kind]="sync.kind"
-          [title]="sync.tooltip"
-          (click)="onSyncAction()"
-        >
-          <ng-icon [name]="sync.icon" size="14" />
-          @if (sync.label) {
-            <span class="sync-label">{{ sync.label }}</span>
-          } @else if (sync.kind === 'publish') {
-            <span class="sync-label">Publish</span>
+        @if (store.status(); as status) {
+          @if (status.behind > 0) {
+            <button
+              type="button"
+              class="sync-btn"
+              data-kind="behind"
+              title="Pull remote commits into this branch"
+              (click)="store.pullRemote()"
+            >
+              <ng-icon name="lucideArrowDown" size="14" />
+              <span class="sync-label">↓{{ status.behind }}</span>
+            </button>
           }
-        </button>
+          @if (status.ahead > 0 || sync.kind === 'publish') {
+            <button
+              type="button"
+              class="sync-btn"
+              [attr.data-kind]="sync.kind === 'publish' ? 'publish' : 'ahead'"
+              [title]="
+                sync.kind === 'publish'
+                  ? 'Publish this branch to the remote'
+                  : 'Push local commits to the remote'
+              "
+              (click)="store.pushRemote()"
+            >
+              <ng-icon [name]="sync.kind === 'publish' ? 'lucideCloudUpload' : 'lucideArrowUp'" size="14" />
+              <span class="sync-label">
+                @if (sync.kind === 'publish') {
+                  Publish
+                } @else {
+                  ↑{{ status.ahead }}
+                }
+              </span>
+            </button>
+          }
+          @if (sync.kind === 'synced') {
+            <button
+              type="button"
+              class="sync-btn"
+              data-kind="synced"
+              [title]="sync.tooltip"
+              (click)="onSyncAction()"
+            >
+              <ng-icon [name]="sync.icon" size="14" />
+            </button>
+          }
+        }
       }
       @if (store.changeCount() > 0) {
         <button

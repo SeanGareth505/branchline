@@ -62,6 +62,21 @@ pub fn analyze_with_lock(
     }
 }
 
+fn is_protected_branch(branch: &str) -> bool {
+    matches!(
+        branch,
+        "main" | "master" | "develop" | "dev" | "release" | "trunk"
+    ) || branch.starts_with("release/")
+}
+
+fn push_remote_for_branch(path: &Path, branch: &str) -> String {
+    git2_repo::branch_upstream_name(path, branch)
+        .and_then(|upstream| git2_repo::parse_remote_tracking_name(&upstream))
+        .map(|(remote, _)| remote)
+        .filter(|remote| !remote.is_empty())
+        .unwrap_or_else(|| "origin".into())
+}
+
 fn analyze_delete_branch(
     path: &Path,
     target: Option<String>,
@@ -77,6 +92,7 @@ fn analyze_delete_branch(
     let is_current = !branch.is_empty() && branch == current;
     let merged = !branch.is_empty() && git2_repo::is_branch_merged(path, &branch);
     let has_upstream = !branch.is_empty() && git2_repo::branch_has_upstream(path, &branch);
+    let protected = is_protected_branch(&branch);
 
     let checks = vec![
         SafetyCheck {
@@ -103,6 +119,16 @@ fn analyze_delete_branch(
             },
         },
         SafetyCheck {
+            id: "not_protected".into(),
+            label: "Not a protected branch".into(),
+            ok: !protected,
+            detail: if protected {
+                format!("'{branch}' is commonly protected — type the name to continue")
+            } else {
+                "Branch name is not a common protected name".into()
+            },
+        },
+        SafetyCheck {
             id: "merged".into(),
             label: "Merged into HEAD".into(),
             ok: merged,
@@ -125,7 +151,7 @@ fn analyze_delete_branch(
     ];
 
     let blocked = is_current || locked;
-    let severity = if blocked {
+    let severity = if blocked || protected {
         "danger"
     } else if merged {
         "warning"
@@ -153,6 +179,10 @@ fn analyze_delete_branch(
         "Unlock the branch from the Branches panel, then try again.".into()
     } else if blocked {
         "Checkout another branch first, then try again.".into()
+    } else if protected {
+        format!(
+            "Deleting '{branch}' can disrupt the whole team. Prefer renaming or archiving if you only need a different default. Type the branch name to continue."
+        )
     } else if merged {
         "Prefer deleting only after the branch is merged or you no longer need it.".into()
     } else {
@@ -166,6 +196,8 @@ fn analyze_delete_branch(
         target,
         consequence: if locked {
             format!("Branch '{branch}' is locked and cannot be deleted until unlocked.")
+        } else if protected {
+            format!("Delete local branch '{branch}'. This is a common default/mainline branch.")
         } else if merged {
             format!("Delete local branch '{branch}'. Work appears merged into HEAD.")
         } else {
@@ -179,9 +211,11 @@ fn analyze_delete_branch(
         git_command: format!("git branch -d {branch}"),
         proceed_git_command: format!("git branch -D {branch}"),
         confirm_prompt: format!("I understand I am deleting local branch '{branch}'"),
-        require_typed_confirm: false,
+        require_typed_confirm: !blocked && protected,
         blocked,
         can_proceed: !blocked,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -193,10 +227,7 @@ fn analyze_delete_remote_branch(
     let (remote, branch) = git2_repo::parse_remote_tracking_name(remote_tracking)
         .unwrap_or_else(|| ("origin".into(), remote_tracking.to_string()));
     let merged = git2_repo::is_remote_tracking_merged(path, remote_tracking);
-    let protected = matches!(
-        branch.as_str(),
-        "main" | "master" | "develop" | "release" | "trunk"
-    );
+    let protected = is_protected_branch(&branch);
 
     let checks = vec![
         SafetyCheck {
@@ -204,7 +235,7 @@ fn analyze_delete_remote_branch(
             label: "Not a protected branch".into(),
             ok: !protected,
             detail: if protected {
-                format!("Refusing to delete protected branch '{branch}' on {remote}")
+                format!("'{branch}' is commonly protected — type '{remote}/{branch}' to continue")
             } else {
                 "Branch is not a protected mainline name".into()
             },
@@ -227,8 +258,7 @@ fn analyze_delete_remote_branch(
         },
     ];
 
-    let blocked = protected;
-    let severity = if blocked {
+    let severity = if protected {
         "danger"
     } else if merged {
         "warning"
@@ -236,9 +266,7 @@ fn analyze_delete_remote_branch(
         "danger"
     };
 
-    let (recommended_label, recommended_action, proceed_label) = if blocked {
-        ("Close".into(), "keep".into(), "Close".into())
-    } else if merged {
+    let (recommended_label, recommended_action, proceed_label) = if merged {
         (
             format!("Delete on {remote}"),
             "delete_remote".into(),
@@ -252,8 +280,10 @@ fn analyze_delete_remote_branch(
         )
     };
 
-    let advice = if blocked {
-        "Protected remote branches cannot be deleted from Branchline.".into()
+    let advice = if protected {
+        format!(
+            "Deleting '{remote}/{branch}' can disrupt the whole team. Prefer a new default branch on the host first. Type the full ref name to continue."
+        )
     } else if merged {
         "This removes the branch on the remote and cleans up the local remote-tracking ref.".into()
     } else {
@@ -265,8 +295,10 @@ fn analyze_delete_remote_branch(
         title: format!("Delete remote branch '{branch}' on {remote}?"),
         severity: severity.into(),
         target,
-        consequence: if blocked {
-            format!("Protected branch '{remote}/{branch}' cannot be deleted.")
+        consequence: if protected {
+            format!(
+                "Delete protected branch '{branch}' on remote '{remote}' and remove local tracking ref '{remote_tracking}'."
+            )
         } else if merged {
             format!(
                 "Delete '{branch}' on remote '{remote}' and remove local tracking ref '{remote_tracking}'."
@@ -290,9 +322,11 @@ fn analyze_delete_remote_branch(
         confirm_prompt: format!(
             "I understand I am deleting remote branch '{remote}/{branch}'"
         ),
-        require_typed_confirm: false,
-        blocked,
-        can_proceed: !blocked,
+        require_typed_confirm: protected,
+        blocked: false,
+        can_proceed: true,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -352,6 +386,8 @@ fn analyze_hard_reset(path: &Path, target: Option<String>) -> SafetyAnalysis {
         require_typed_confirm: true,
         blocked: false,
         can_proceed: true,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -364,10 +400,8 @@ fn analyze_force_push(
     let branch = target
         .clone()
         .unwrap_or_else(|| git2_repo::current_branch(path).unwrap_or_else(|_| "HEAD".into()));
-    let protected = matches!(
-        branch.as_str(),
-        "main" | "master" | "develop" | "release" | "trunk"
-    ) || branch.starts_with("release/");
+    let protected = is_protected_branch(&branch);
+    let remote = push_remote_for_branch(path, &branch);
     let (ahead, behind) = git2_repo::ahead_behind(path);
     let lease_safe = behind == 0;
 
@@ -453,7 +487,7 @@ fn analyze_force_push(
             format!("Branch '{branch}' is locked. Push and force-push are blocked until unlocked.")
         } else {
             format!(
-                "This rewrites remote history on origin/{branch}. Collaborators who based work on the old tip will need to recover (rebase or reset)."
+                "This rewrites remote history on {remote}/{branch}. Collaborators who based work on the old tip will need to recover (rebase or reset)."
             )
         },
         advice,
@@ -473,12 +507,14 @@ fn analyze_force_push(
         } else {
             "Push with --force".into()
         },
-        git_command: format!("git push --force-with-lease origin {branch}"),
-        proceed_git_command: format!("git push --force origin {branch}"),
+        git_command: format!("git push --force-with-lease {remote} {branch}"),
+        proceed_git_command: format!("git push --force {remote} {branch}"),
         confirm_prompt: format!("I understand this rewrites remote history on '{branch}'"),
         require_typed_confirm: !locked && (protected || !lease_safe),
         blocked: locked,
         can_proceed: !locked,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -535,6 +571,8 @@ fn analyze_discard(path: &Path, target: Option<String>) -> SafetyAnalysis {
         require_typed_confirm: large,
         blocked: false,
         can_proceed: true,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -576,6 +614,8 @@ fn analyze_delete_tag(path: &Path, target: Option<String>) -> SafetyAnalysis {
         require_typed_confirm: false,
         blocked: !exists,
         can_proceed: exists,
+        also_delete_target: None,
+        also_delete_label: None,
     }
 }
 
@@ -677,10 +717,14 @@ pub fn execute(
             let branch = analysis.target.clone().unwrap_or_else(|| {
                 git2_repo::current_branch(path).unwrap_or_else(|_| "HEAD".into())
             });
+            let remote = push_remote_for_branch(path, &branch);
             let msg = if use_recommended {
-                git_cli::run_git(path, &["push", "--force-with-lease", "origin", &branch])?
+                git_cli::run_git(
+                    path,
+                    &["push", "--force-with-lease", &remote, &branch],
+                )?
             } else if allow_bare_force {
-                git_cli::run_git(path, &["push", "--force", "origin", &branch])?
+                git_cli::run_git(path, &["push", "--force", &remote, &branch])?
             } else {
                 return Err(crate::AppError::msg(
                     "Bare --force requires explicit confirmation",
@@ -688,9 +732,9 @@ pub fn execute(
             };
             Ok(outcome_msg(if msg.trim().is_empty() {
                 if use_recommended {
-                    format!("Pushed origin/{branch} with --force-with-lease")
+                    format!("Pushed {remote}/{branch} with --force-with-lease")
                 } else {
-                    format!("Force-pushed origin/{branch}")
+                    format!("Force-pushed {remote}/{branch}")
                 }
             } else {
                 msg

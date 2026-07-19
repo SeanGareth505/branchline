@@ -75,6 +75,7 @@ pub fn run() {
             commands::stage::unstage_paths,
             commands::stage::discard_paths,
             commands::stage::apply_patch,
+            commands::stage::checkout_paths_from_revision,
             commands::commit::create_commit,
             commands::branch::list_branches,
             commands::branch::create_branch,

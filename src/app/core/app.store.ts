@@ -45,10 +45,11 @@ import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
 import {
   checkoutBlockedNeedsUntracked,
+  computeCheckoutOverwritePaths,
   isCheckoutBlockedByLocalChanges,
   parseCheckoutBlockedPaths,
-  summarizeCheckoutBlockedPaths,
 } from '../shared/git/checkout-blocked';
+import { isMainlineBranch } from '../shared/git/mainline-branch';
 import {
   resolveWorkflowPattern,
   sanitizeBranchName,
@@ -1543,11 +1544,35 @@ export class AppStore {
     }
   }
 
-  async applyPatch(patch: string, mode: 'stage' | 'unstage' | 'discard'): Promise<boolean> {
+  async applyPatch(
+    patch: string,
+    mode: 'stage' | 'unstage' | 'discard' | 'apply' | 'apply-index',
+  ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path || !patch.trim()) return false;
     try {
       const result = await this.tauri.applyPatch(path, patch, mode);
+      await this.refreshWorkingTree();
+      this.showToast(result.message, () =>
+        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
+      );
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async cherryPickPathsFromCommit(
+    paths: string[],
+    target: 'worktree' | 'index' | 'both' = 'both',
+    revision?: string,
+  ): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const sha = revision ?? this.selectedSha();
+    if (!path || !sha || !paths.length) return false;
+    try {
+      const result = await this.tauri.checkoutPathsFromRevision(path, sha, paths, target);
       await this.refreshWorkingTree();
       this.showToast(result.message, () =>
         void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
@@ -1644,14 +1669,237 @@ export class AppStore {
       if (handled) return;
     }
 
-    try {
-      const result = await this.tauri.checkoutBranch(path, name);
-      await this.refreshRepo();
-      this.showToast(result.message);
-    } catch (err) {
-      if (await this.handleCheckoutBlockedByLocalChanges(path, name, err)) return;
-      this.showError(err);
+    await this.runCheckoutWithLocalChanges(path, name);
+  }
+
+  /**
+   * Git Extensions–style checkout: when the working tree is dirty, ask what to do
+   * with local changes (Don't change / Merge / Stash / Reset) before switching.
+   */
+  private async runCheckoutWithLocalChanges(
+    path: string,
+    target: string,
+    retry?: () => Promise<string>,
+  ): Promise<boolean> {
+    const dirty = this.changeCount() > 0;
+    let mode: 'keep' | 'merge' | 'stash' | 'reset' = 'keep';
+
+    if (dirty) {
+      const preview = await this.previewCheckoutOverwrite(path, target);
+      const choice = await this.askCheckoutLocalChanges(
+        target,
+        preview.files.length ? preview.files : undefined,
+        preview.includeUntracked,
+      );
+      if (choice === null) return true;
+      mode = choice;
     }
+
+    return this.executeCheckoutLocalChanges(path, target, mode, retry);
+  }
+
+  private async previewCheckoutOverwrite(
+    path: string,
+    target: string,
+  ): Promise<{ files: string[]; includeUntracked: boolean }> {
+    const status = this.status();
+    if (!status) return { files: [], includeUntracked: false };
+
+    const dirtyTrackedPaths = [
+      ...status.staged,
+      ...status.unstaged,
+      ...status.conflicted,
+    ].flatMap((f) => [f.path, f.originalPath].filter((p): p is string => !!p?.trim()));
+    const untrackedPaths = status.untracked.map((f) => f.path).filter((p) => !!p?.trim());
+
+    try {
+      const diff = await this.tauri.runGitCommand(path, ['diff', '--name-only', 'HEAD', target]);
+      const changedBetweenHeadAndTarget = (diff.ok ? diff.stdout : '')
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      let pathsPresentInTarget: string[] = [];
+      if (untrackedPaths.length) {
+        const tree = await this.tauri.runGitCommand(path, [
+          'ls-tree',
+          '-r',
+          '--name-only',
+          target,
+        ]);
+        if (tree.ok) {
+          pathsPresentInTarget = tree.stdout
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+        }
+      }
+
+      return computeCheckoutOverwritePaths({
+        changedBetweenHeadAndTarget,
+        dirtyTrackedPaths,
+        untrackedPaths,
+        pathsPresentInTarget,
+      });
+    } catch {
+      return { files: [], includeUntracked: false };
+    }
+  }
+
+  private async askCheckoutLocalChanges(
+    target: string,
+    conflictingFiles?: string[],
+    includeUntrackedHint = false,
+  ): Promise<'keep' | 'merge' | 'stash' | 'reset' | null> {
+    const current = this.status()?.branch?.trim() || '(detached HEAD)';
+    const hasConflicts = !!conflictingFiles?.length;
+    const choice = await this.selects.ask({
+      title: 'Checkout branch',
+      message: hasConflicts
+        ? `Cannot switch from '${current}' to '${target}' — these files would be overwritten. Choose how to handle local changes:`
+        : `Switch from '${current}' to '${target}'. Local uncommitted changes found — choose how to handle them:`,
+      detailsLabel: hasConflicts
+        ? includeUntrackedHint
+          ? 'Would be overwritten (including untracked)'
+          : 'Would be overwritten by checkout'
+        : undefined,
+      details: hasConflicts ? conflictingFiles : undefined,
+      options: [
+        {
+          value: 'keep',
+          label: "Don't change",
+          hint: hasConflicts
+            ? 'Unavailable — local changes would be overwritten by this checkout'
+            : 'Keep local changes if they do not conflict with the branch you are checking out',
+          disabled: hasConflicts,
+        },
+        {
+          value: 'merge',
+          label: 'Merge',
+          hint: 'Three-way merge between your current branch, local changes, and the branch you are checking out',
+        },
+        {
+          value: 'stash',
+          label: 'Stash',
+          hint: 'Stash local changes, check out the branch, then optionally re-apply the stash',
+        },
+        {
+          value: 'reset',
+          label: 'Reset',
+          hint: 'Discard local changes and check out the branch (cannot be undone)',
+        },
+      ],
+      confirmLabel: 'Checkout',
+      cancelLabel: 'Cancel',
+      initialValue: hasConflicts ? 'stash' : 'keep',
+      filterable: false,
+    });
+
+    if (choice === null) return null;
+    if (choice === 'keep' || choice === 'merge' || choice === 'stash' || choice === 'reset') {
+      return choice;
+    }
+    return null;
+  }
+
+  private async executeCheckoutLocalChanges(
+    path: string,
+    target: string,
+    mode: 'keep' | 'merge' | 'stash' | 'reset',
+    retry?: () => Promise<string>,
+  ): Promise<boolean> {
+    if (mode === 'reset') {
+      const confirmed = await this.prompts.ask({
+        title: 'Discard local changes?',
+        message: `Reset discards all uncommitted changes, then checks out '${target}'. Git has no record of those changes — they cannot be retrieved.`,
+        confirmLabel: 'Discard & checkout',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+        required: false,
+      });
+      if (confirmed === null) return true;
+    }
+
+    try {
+      if (mode === 'stash') {
+        const status = this.status();
+        const includeUntracked = (status?.untracked.length ?? 0) > 0;
+        await this.withRepoMutation(() =>
+          this.tauri.stashPush(path, `Auto-stash before checkout ${target}`, includeUntracked),
+        );
+      } else if (mode === 'reset') {
+        const hard = await this.tauri.runGitCommand(path, ['reset', '--hard']);
+        if (!hard.ok) {
+          throw new Error(hard.stderr.trim() || hard.stdout.trim() || 'git reset --hard failed');
+        }
+      }
+
+      let message: string;
+      if (retry) {
+        if (mode === 'merge') {
+          try {
+            const result = await this.tauri.checkoutBranch(path, target, 'merge');
+            await this.refreshRepo();
+            message = result.message;
+          } catch {
+            message = await retry();
+          }
+        } else {
+          message = await retry();
+        }
+      } else {
+        const localChanges =
+          mode === 'merge' ? 'merge' : mode === 'reset' ? 'force' : 'keep';
+        const result = await this.tauri.checkoutBranch(path, target, localChanges);
+        await this.refreshRepo();
+        message = result.message;
+      }
+
+      this.showToast(message, { kind: 'success' });
+
+      if (mode === 'stash') {
+        const apply = await this.prompts.ask({
+          title: 'Apply stashed changes?',
+          message: `Apply the stash onto '${target}' now?`,
+          confirmLabel: 'Apply stash',
+          cancelLabel: 'Keep stashed',
+          confirmOnly: true,
+          required: false,
+        });
+        if (apply !== null) {
+          await this.stashPop(0);
+        }
+      }
+
+      return true;
+    } catch (err) {
+      const raw = this.formatError(err);
+      if (mode === 'keep' && isCheckoutBlockedByLocalChanges(raw)) {
+        const files = parseCheckoutBlockedPaths(raw);
+        const includeUntracked = checkoutBlockedNeedsUntracked(raw);
+        const next = await this.askCheckoutLocalChanges(target, files, includeUntracked);
+        if (next === null) return true;
+        return this.executeCheckoutLocalChanges(path, target, next, retry);
+      }
+      this.showError(err);
+      return true;
+    }
+  }
+
+  private async handleCheckoutBlockedByLocalChanges(
+    path: string,
+    target: string,
+    err: unknown,
+    retry?: () => Promise<string>,
+  ): Promise<boolean> {
+    const raw = this.formatError(err);
+    if (!isCheckoutBlockedByLocalChanges(raw)) return false;
+
+    const files = parseCheckoutBlockedPaths(raw);
+    const includeUntracked = checkoutBlockedNeedsUntracked(raw);
+    const choice = await this.askCheckoutLocalChanges(target, files, includeUntracked);
+    if (choice === null) return true;
+    return this.executeCheckoutLocalChanges(path, target, choice, retry);
   }
 
   private async checkoutRemoteTrackingBranch(
@@ -1788,95 +2036,9 @@ export class AppStore {
         this.showToast(`Already on '${branch}'`);
         return true;
       }
-      const result = await this.tauri.checkoutBranch(path, branch);
-      await this.refreshRepo();
-      this.showToast(result.message || `Checked out '${branch}'`);
+      await this.runCheckoutWithLocalChanges(path, branch);
     } catch (err) {
-      if (await this.handleCheckoutBlockedByLocalChanges(path, branch, err)) return true;
       this.showError(err);
-    }
-    return true;
-  }
-
-  private async handleCheckoutBlockedByLocalChanges(
-    path: string,
-    target: string,
-    err: unknown,
-    retry?: () => Promise<string>,
-  ): Promise<boolean> {
-    const raw = this.formatError(err);
-    if (!isCheckoutBlockedByLocalChanges(raw)) return false;
-
-    const files = parseCheckoutBlockedPaths(raw);
-    const summary = summarizeCheckoutBlockedPaths(files);
-    const countLabel =
-      files.length === 0
-        ? 'local changes'
-        : files.length === 1
-          ? '1 local change'
-          : `${files.length} local changes`;
-    const detail = summary ? ` (${summary})` : '';
-    const includeUntracked = checkoutBlockedNeedsUntracked(raw);
-
-    const choice = await this.selects.ask({
-      title: 'Local changes block checkout',
-      message: `Switching to '${target}' would overwrite ${countLabel}${detail}. Stash them to switch safely, or review them first.`,
-      options: [
-        {
-          value: 'stash',
-          label: 'Stash & switch',
-          hint: includeUntracked
-            ? 'Park tracked and untracked changes, then check out'
-            : 'Park changes, then check out the branch',
-        },
-        {
-          value: 'review',
-          label: 'Review changes',
-          hint: 'Stay on this branch and open the files panel',
-        },
-      ],
-      confirmLabel: 'Continue',
-      cancelLabel: 'Cancel',
-      initialValue: 'stash',
-      filterable: false,
-    });
-
-    if (choice === null) return true;
-
-    if (choice === 'review') {
-      this.setBrowseTab('files');
-      this.showToast(`Couldn't switch to '${target}' — review local changes first`, {
-        kind: 'warning',
-        force: true,
-        durationMs: 8000,
-      });
-      return true;
-    }
-
-    try {
-      await this.withRepoMutation(() =>
-        this.tauri.stashPush(
-          path,
-          `Auto-stash before checkout ${target}`,
-          includeUntracked,
-        ),
-      );
-      let message: string;
-      if (retry) {
-        message = await retry();
-      } else {
-        const result = await this.tauri.checkoutBranch(path, target);
-        await this.refreshRepo();
-        message = result.message || `Stashed changes and checked out ${target}`;
-      }
-      this.showToast(message, {
-        kind: 'success',
-        actionLabel: 'Apply stash',
-        durationMs: 12000,
-        undo: () => void this.stashApply(0),
-      });
-    } catch (stashErr) {
-      this.showError(stashErr);
     }
     return true;
   }
@@ -1980,6 +2142,17 @@ export class AppStore {
         this.showToast(result.message);
       }
     } catch (err) {
+      if (
+        analysis.action === 'forcePush' &&
+        useRecommended &&
+        this.isForceWithLeaseRejected(err)
+      ) {
+        this.showWarning(
+          'Force-with-lease refused — the remote moved since your last fetch. Fetch first, then try again.',
+        );
+        await this.openSafety('forcePush', analysis.target ?? undefined);
+        return;
+      }
       this.showError(err);
     }
   }
@@ -2039,11 +2212,7 @@ export class AppStore {
       const choice = await this.resolveDivergedPush(status);
       if (choice === 'cancel') return;
       if (choice === 'force') {
-        if (this.settings().confirmForcePush) {
-          await this.openSafety('forcePush', status.branch);
-        } else {
-          await this.runForceWithLease(status.branch);
-        }
+        await this.openForcePushSafety(status.branch);
         return;
       }
 
@@ -2070,11 +2239,7 @@ export class AppStore {
     } catch (err) {
       const message = this.formatError(err);
       if (/non-fast-forward|rejected|fetch first/i.test(message)) {
-        if (this.settings().confirmForcePush) {
-          await this.openSafety('forcePush', status?.branch);
-        } else {
-          await this.runForceWithLease(status?.branch);
-        }
+        await this.openForcePushSafety(status?.branch);
         return;
       }
       this.showError(message);
@@ -2153,16 +2318,51 @@ export class AppStore {
   private async runForceWithLease(branch?: string | null): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    const remote = this.pushRemoteName();
     try {
-      const result = await this.tauri.push(path, { forceWithLease: true });
+      const result = await this.tauri.push(path, { forceWithLease: true, remote });
       await this.refreshRepo();
       this.showToast(result.message || `Force-pushed ${branch ?? 'branch'} with lease`, {
         kind: 'success',
         category: 'push',
       });
     } catch (err) {
+      if (this.isForceWithLeaseRejected(err)) {
+        this.showWarning(
+          'Force-with-lease refused — the remote moved since your last fetch. Fetch first, then try again.',
+        );
+        await this.openSafety('forcePush', branch ?? undefined);
+        return;
+      }
       this.showError(err);
     }
+  }
+
+  private pushRemoteName(): string | undefined {
+    const upstream = this.status()?.upstream?.trim();
+    if (!upstream) return undefined;
+    const slash = upstream.indexOf('/');
+    if (slash <= 0) return undefined;
+    return upstream.slice(0, slash);
+  }
+
+  private isForceWithLeaseRejected(err: unknown): boolean {
+    const message = this.formatError(err).toLowerCase();
+    return (
+      message.includes('stale info') ||
+      message.includes('failed to push some refs') ||
+      (message.includes('force-with-lease') && message.includes('rejected')) ||
+      (message.includes('rejected') && message.includes('fetch first'))
+    );
+  }
+
+  private async openForcePushSafety(branch?: string | null): Promise<void> {
+    const name = branch?.trim() || this.status()?.branch || undefined;
+    if (this.settings().confirmForcePush || (name ? isMainlineBranch(name) : false)) {
+      await this.openSafety('forcePush', name);
+      return;
+    }
+    await this.runForceWithLease(name);
   }
 
   async syncRemote(): Promise<void> {
@@ -2997,12 +3197,7 @@ export class AppStore {
       );
       return;
     }
-    const branch = this.status()?.branch;
-    if (this.settings().confirmForcePush) {
-      await this.openSafety('forcePush', branch ?? undefined);
-      return;
-    }
-    await this.runForceWithLease(branch);
+    await this.openForcePushSafety(this.status()?.branch);
   }
 
   private async confirmIfEnabled(

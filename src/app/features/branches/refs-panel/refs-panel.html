@@ -444,6 +444,22 @@
         >
           {{ local.upstream || relatedRemote(local) ? 'Show upstream' : 'Find on remote…' }}
         </button>
+        @if (local.isCurrent) {
+          <button
+            type="button"
+            title="Push this branch to its upstream"
+            (click)="store.pushRemote(); closeBranchMenu()"
+          >
+            Push
+          </button>
+          <button
+            type="button"
+            title="Force push with lease (refuses if the remote moved)"
+            (click)="store.forcePush(); closeBranchMenu()"
+          >
+            Force push with lease…
+          </button>
+        }
       }
       <button
         type="button"

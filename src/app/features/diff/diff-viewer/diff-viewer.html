@@ -1,4 +1,4 @@
-<div class="diff">
+<div class="diff" (click)="fileMenu().open && onFileMenuDismiss()">
   <as-split
     class="diff-split"
     direction="horizontal"
@@ -12,18 +12,35 @@
           <span class="source-chip" [attr.data-source]="store.diffSource()">{{ sourceLabel() }}</span>
           <span class="file-count">{{ files().length }}</span>
         </header>
-        <ul class="file-list" role="listbox" aria-label="Changed files">
+        <ul
+          class="file-list"
+          role="listbox"
+          tabindex="0"
+          aria-label="Changed files"
+          (keydown)="onFileListKey($event)"
+        >
           @for (f of files(); track f.path) {
             <li
               role="option"
+              [attr.data-path]="f.path"
               [class.active]="store.selectedDiffPath() === f.path"
               [attr.aria-selected]="store.selectedDiffPath() === f.path"
               (click)="selectFile(f.path)"
-              [title]="f.path"
+              (dblclick)="canCherryPickFiles() && cherryPickFile('both', f.path)"
+              (contextmenu)="onFileContextMenu(f.path, $event)"
+              [title]="
+                canCherryPickFiles()
+                  ? f.path + ' — click to view, right-click to cherry-pick, double-click to cherry-pick file'
+                  : f.path
+              "
             >
               <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
               <span class="name">{{ fileName(f.path) }}</span>
               <span class="dir">{{ fileDir(f.path) }}</span>
+              <span class="stats" aria-hidden="true">
+                <span class="add">+{{ formatStat(f.additions) }}</span>
+                <span class="del">−{{ formatStat(f.deletions) }}</span>
+              </span>
             </li>
           } @empty {
             <li class="empty-row">No files in this diff</li>
@@ -43,6 +60,42 @@
             }
           </div>
           <div class="actions">
+            @if (canCherryPickFile()) {
+              <button
+                type="button"
+                class="bl-btn"
+                (click)="cherryPickFile('both')"
+                title="Copy this file’s changes into your files and stage them"
+              >
+                Apply file
+              </button>
+              <button
+                type="button"
+                class="bl-btn quiet"
+                (click)="cherryPickFile('worktree')"
+                title="Copy this file’s changes into your files (unstaged)"
+              >
+                Apply to files
+              </button>
+              <button
+                type="button"
+                class="bl-btn quiet"
+                (click)="cherryPickFile('index')"
+                title="Copy this file’s changes and stage them for commit"
+              >
+                Apply & stage
+              </button>
+            }
+            @if (canCherryPickFiles() && files().length > 1) {
+              <button
+                type="button"
+                class="bl-btn quiet"
+                (click)="cherryPickAllFiles('both')"
+                title="Apply every file from this commit"
+              >
+                Apply all files
+              </button>
+            }
             <button
               type="button"
               class="bl-btn"
@@ -83,3 +136,49 @@
     </as-split-area>
   </as-split>
 </div>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="menuOrigin()"
+  [cdkConnectedOverlayOpen]="fileMenu().open"
+  [cdkConnectedOverlayPositions]="menuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="onFileMenuDismiss($event)"
+  (overlayOutsideClick)="onFileMenuDismiss($event)"
+>
+  <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+    <div class="bl-menu-label">{{ fileName(fileMenu().path) }}</div>
+    <button
+      type="button"
+      title="Copy this file’s changes into your files and stage them"
+      (click)="cherryPickFile('both', fileMenu().path)"
+    >
+      Apply file
+    </button>
+    <button
+      type="button"
+      title="Copy this file’s changes into your files (unstaged)"
+      (click)="cherryPickFile('worktree', fileMenu().path)"
+    >
+      Apply to files
+    </button>
+    <button
+      type="button"
+      title="Copy this file’s changes and stage them for commit"
+      (click)="cherryPickFile('index', fileMenu().path)"
+    >
+      Apply & stage
+    </button>
+    @if (files().length > 1) {
+      <button
+        type="button"
+        title="Apply every file from this commit"
+        (click)="cherryPickAllFiles('both')"
+      >
+        Apply all files
+      </button>
+    }
+  </div>
+</ng-template>

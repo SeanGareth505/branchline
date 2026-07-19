@@ -21,6 +21,9 @@ pub struct StashMessageInput {
     pub path: String,
     pub message: Option<String>,
     pub include_untracked: Option<bool>,
+    /// When set, only these paths are stashed (Git Extensions–style conflict stash).
+    #[serde(default)]
+    pub paths: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,24 +74,44 @@ pub fn stash_push(input: StashMessageInput) -> AppResult<MutationOutput> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
-        // Default tracked-only. Including untracked (-u) can stash huge build/cache
-        // trees and OOM the app on large repos.
         let include_untracked = input.include_untracked.unwrap_or(false);
-        let out = if let Some(msg) = message.as_deref() {
-            if include_untracked {
-                git_cli::run_git(path, &["stash", "push", "-u", "-m", msg])?
-            } else {
-                git_cli::run_git(path, &["stash", "push", "-m", msg])?
+        let path_list: Vec<String> = input
+            .paths
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if !path_list.is_empty() {
+            git_cli::validate_pathspecs(&path_list)?;
+        }
+
+        let mut args: Vec<&str> = vec!["stash", "push"];
+        if include_untracked {
+            args.push("-u");
+        }
+        if let Some(msg) = message.as_deref() {
+            args.push("-m");
+            args.push(msg);
+        }
+        if !path_list.is_empty() {
+            args.push("--");
+            for p in &path_list {
+                args.push(p.as_str());
             }
-        } else if include_untracked {
-            git_cli::run_git(path, &["stash", "push", "-u"])?
-        } else {
-            git_cli::run_git(path, &["stash", "push"])?
-        };
+        }
+
+        let out = git_cli::run_git(path, &args)?;
+        let n = path_list.len();
         Ok(MutationOutput {
             ok: true,
             message: if out.is_empty() {
-                "Stashed changes".into()
+                if n == 0 {
+                    "Stashed changes".into()
+                } else {
+                    format!("Stashed {n} conflicting file(s)")
+                }
             } else {
                 out
             },

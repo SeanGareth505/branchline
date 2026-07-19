@@ -69,11 +69,16 @@
   overflow: auto;
   flex: 1;
   min-height: 0;
+  outline: none;
+}
+
+.file-list:focus-visible {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .file-list li {
   display: grid;
-  grid-template-columns: 1.15rem minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: 1.15rem minmax(0, auto) minmax(0, 1fr) auto;
   gap: 0.35rem;
   align-items: center;
   padding: 0.28rem 0.4rem;
@@ -106,6 +111,24 @@
   white-space: nowrap;
   font-size: 11px;
   text-align: right;
+}
+
+.file-list li .stats {
+  display: inline-flex;
+  gap: 0.3rem;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.file-list li .stats .add {
+  color: var(--git-added);
+}
+
+.file-list li .stats .del {
+  color: var(--git-deleted);
 }
 
 .file-list li:hover {

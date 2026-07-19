@@ -13,6 +13,18 @@
           @if (prompt.message) {
             <p>{{ prompt.message }}</p>
           }
+          @if (prompt.details?.length) {
+            <div class="details">
+              @if (prompt.detailsLabel) {
+                <span class="details-label">{{ prompt.detailsLabel }}</span>
+              }
+              <ul>
+                @for (item of prompt.details; track item) {
+                  <li [title]="item">{{ item }}</li>
+                }
+              </ul>
+            </div>
+          }
         </div>
         <button type="button" class="bl-btn icon" (click)="cancel()" aria-label="Close" title="Close">
           <ng-icon name="lucideX" size="16" />

@@ -13,6 +13,9 @@ export interface SelectPromptOptions {
   label?: string;
   placeholder?: string;
   options: SelectOption[];
+  /** Optional bullet list under the message (e.g. conflicting files). */
+  details?: string[];
+  detailsLabel?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   initialValue?: string;

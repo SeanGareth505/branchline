@@ -25,7 +25,8 @@ import {
   type SideBySideRow,
 } from '../../../core/patch-ops';
 
-export type PatchLinesMode = 'unstaged' | 'staged' | 'revert' | 'readonly';
+export type PatchLinesMode = 'unstaged' | 'staged' | 'revert' | 'cherryPick' | 'readonly';
+export type PatchApplyMode = 'stage' | 'unstage' | 'discard' | 'apply' | 'apply-index';
 export type PatchLinesLayout = 'unified' | 'sideBySide';
 
 @Component({
@@ -78,6 +79,7 @@ export class PatchLinesView implements OnDestroy {
   readonly canStage = computed(() => this.mode() === 'unstaged');
   readonly canUnstage = computed(() => this.mode() === 'staged');
   readonly canReset = computed(() => this.mode() === 'unstaged' || this.mode() === 'revert');
+  readonly canCherryPick = computed(() => this.mode() === 'cherryPick');
   readonly sideBySide = computed(() => this.layout() === 'sideBySide');
   readonly sideBySideRows = computed((): SideBySideRow[] => {
     const parsed = this.parsedDiff();
@@ -351,11 +353,11 @@ export class PatchLinesView implements OnDestroy {
     this.closeLineMenu();
   }
 
-  async applySelection(mode: 'stage' | 'unstage' | 'discard'): Promise<void> {
+  async applySelection(mode: PatchApplyMode): Promise<void> {
     await this.applyIndexes([...this.selectedLines()], mode);
   }
 
-  async runLineMenuAction(mode: 'stage' | 'unstage' | 'discard'): Promise<void> {
+  async runLineMenuAction(mode: PatchApplyMode): Promise<void> {
     this.closeLineMenu();
     await this.applySelection(mode);
   }
@@ -376,6 +378,12 @@ export class PatchLinesView implements OnDestroy {
     const parsed = this.parsedDiff();
     if (!parsed) return;
     await this.applyIndexes(selectableIndexesForHunk(parsed, hunkId), 'discard');
+  }
+
+  async cherryPickHunk(hunkId: string, target: 'apply' | 'apply-index'): Promise<void> {
+    const parsed = this.parsedDiff();
+    if (!parsed) return;
+    await this.applyIndexes(selectableIndexesForHunk(parsed, hunkId), target);
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -420,6 +428,12 @@ export class PatchLinesView implements OnDestroy {
       event.preventDefault();
       event.stopPropagation();
       void this.applySelection('discard');
+      return;
+    }
+    if (key === 'c' && this.canCherryPick() && this.selectedCount() > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.applySelection(event.shiftKey ? 'apply-index' : 'apply');
     }
   }
 
@@ -427,10 +441,7 @@ export class PatchLinesView implements OnDestroy {
     return this.isMac && event.ctrlKey && !event.metaKey;
   }
 
-  private async applyIndexes(
-    indexes: number[],
-    mode: 'stage' | 'unstage' | 'discard',
-  ): Promise<void> {
+  private async applyIndexes(indexes: number[], mode: PatchApplyMode): Promise<void> {
     const parsed = this.parsedDiff();
     if (!parsed || !indexes.length || this.patchBusy()) return;
 
@@ -439,6 +450,10 @@ export class PatchLinesView implements OnDestroy {
     if (mode === 'unstage' && viewMode !== 'staged') return;
     if (mode === 'discard' && viewMode !== 'unstaged' && viewMode !== 'revert') {
       this.store.showWarning('Unstage first, or reset from the unstaged diff');
+      return;
+    }
+    if ((mode === 'apply' || mode === 'apply-index') && viewMode !== 'cherryPick') {
+      this.store.showWarning('Select lines in a commit diff to cherry-pick');
       return;
     }
 

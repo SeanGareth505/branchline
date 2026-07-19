@@ -15,8 +15,8 @@
 }
 
 .dialog {
-  width: min(440px, 100%);
-  max-height: min(560px, calc(100vh - 2.5rem));
+  width: min(520px, 100%);
+  max-height: min(620px, calc(100vh - 2.5rem));
   padding: 1rem 1.1rem 0.95rem;
   display: flex;
   flex-direction: column;
@@ -61,6 +61,45 @@ h2 {
   font-size: 0.82rem;
   line-height: 1.4;
   color: var(--text-secondary);
+}
+
+.details {
+  margin: 0.55rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--git-modified) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--git-modified) 8%, transparent);
+  max-height: 9rem;
+  overflow: auto;
+}
+
+.details-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--git-modified);
+}
+
+.details ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.details li {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .icon {
@@ -143,8 +182,12 @@ h2 {
 }
 
 .option.disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: not-allowed;
+}
+
+.option.disabled .option-hint {
+  color: var(--text-muted);
 }
 
 .option-main {

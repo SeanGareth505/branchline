@@ -38,6 +38,26 @@
             Reset lines (R)
           </button>
         }
+        @if (canCherryPick()) {
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="patchBusy()"
+            (click)="applySelection('apply')"
+            title="Copy these changes into your files (unstaged)"
+          >
+            Apply to files (C)
+          </button>
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="patchBusy()"
+            (click)="applySelection('apply-index')"
+            title="Copy these changes and stage them for commit"
+          >
+            Apply & stage (⇧C)
+          </button>
+        }
         <button type="button" class="bl-btn quiet" (click)="clearLineSelection()">Clear</button>
       </div>
     </div>
@@ -122,6 +142,25 @@
                             >
                               Reset hunk
                             </button>
+                          } @else if (canCherryPick()) {
+                            <button
+                              type="button"
+                              class="bl-btn quiet"
+                              [disabled]="patchBusy()"
+                              (click)="cherryPickHunk(line.hunkId, 'apply')"
+                              title="Copy this hunk into your files (unstaged)"
+                            >
+                              Apply hunk
+                            </button>
+                            <button
+                              type="button"
+                              class="bl-btn quiet"
+                              [disabled]="patchBusy()"
+                              (click)="cherryPickHunk(line.hunkId, 'apply-index')"
+                              title="Copy this hunk and stage it for commit"
+                            >
+                              Apply & stage
+                            </button>
                           }
                         </div>
                       }
@@ -192,6 +231,25 @@
                     >
                       Reset hunk
                     </button>
+                  } @else if (canCherryPick()) {
+                    <button
+                      type="button"
+                      class="bl-btn quiet"
+                      [disabled]="patchBusy()"
+                      (click)="cherryPickHunk(line.hunkId, 'apply')"
+                      title="Copy this hunk into your files (unstaged)"
+                    >
+                      Apply hunk
+                    </button>
+                    <button
+                      type="button"
+                      class="bl-btn quiet"
+                      [disabled]="patchBusy()"
+                      (click)="cherryPickHunk(line.hunkId, 'apply-index')"
+                      title="Copy this hunk and stage it for commit"
+                    >
+                      Apply & stage
+                    </button>
                   }
                 </div>
               }
@@ -256,6 +314,19 @@
       >
         Reset lines
         <span class="shortcut">R</span>
+      </button>
+    } @else if (canCherryPick()) {
+      <button type="button" [disabled]="!selectedCount() || patchBusy()" (click)="runLineMenuAction('apply')">
+        Apply to files
+        <span class="shortcut">C</span>
+      </button>
+      <button
+        type="button"
+        [disabled]="!selectedCount() || patchBusy()"
+        (click)="runLineMenuAction('apply-index')"
+      >
+        Apply & stage
+        <span class="shortcut">⇧C</span>
       </button>
     }
     <button type="button" (click)="clearLineSelection()">

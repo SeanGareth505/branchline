@@ -290,6 +290,15 @@ export class RevisionGrid {
     this.store.selectCommit(row.commit.sha, event.metaKey || event.ctrlKey);
   }
 
+  onRowDblClick(row: RowView, event: MouseEvent): void {
+    event.preventDefault();
+    this.closeMenu();
+    if (row.artificial && row.art) {
+      this.store.openCommitModal();
+      return;
+    }
+  }
+
   onContext(row: RowView, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
@@ -409,6 +418,15 @@ export class RevisionGrid {
     if (event.key === 'Escape') {
       this.closeMenu();
       return;
+    }
+
+    if (event.key === 'Enter') {
+      const source = this.store.diffSource();
+      if (source === 'workingDirectory' || source === 'staged') {
+        event.preventDefault();
+        this.store.openCommitModal();
+        return;
+      }
     }
 
     const commits = this.filterActive()

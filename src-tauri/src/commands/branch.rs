@@ -29,6 +29,9 @@ pub struct CheckoutBranchInput {
     pub path: String,
     pub name: String,
     pub create: Option<bool>,
+    /// keep (default) | merge | force — Git Extensions local-changes modes
+    #[serde(default)]
+    pub local_changes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,7 +142,23 @@ pub fn checkout_branch(input: CheckoutBranchInput) -> AppResult<MutationOutput> 
     if input.create.unwrap_or(false) {
         git_cli::run_git(&path, &["checkout", "-b", &input.name])?;
     } else {
-        git_cli::run_git(&path, &["checkout", &input.name])?;
+        let mode = input
+            .local_changes
+            .as_deref()
+            .unwrap_or("keep")
+            .trim()
+            .to_ascii_lowercase();
+        match mode.as_str() {
+            "merge" => {
+                git_cli::run_git(&path, &["checkout", "-m", &input.name])?;
+            }
+            "force" | "reset" => {
+                git_cli::run_git(&path, &["checkout", "-f", &input.name])?;
+            }
+            _ => {
+                git_cli::run_git(&path, &["checkout", &input.name])?;
+            }
+        }
     }
     Ok(MutationOutput {
         ok: true,

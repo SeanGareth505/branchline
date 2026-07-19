@@ -272,8 +272,23 @@ export class TauriService {
     return this.invoke<MutationOutput>('discard_paths', { input: { path, paths } });
   }
 
-  applyPatch(path: string, patch: string, mode: 'stage' | 'unstage' | 'discard') {
+  applyPatch(
+    path: string,
+    patch: string,
+    mode: 'stage' | 'unstage' | 'discard' | 'apply' | 'apply-index',
+  ) {
     return this.invoke<MutationOutput>('apply_patch', { input: { path, patch, mode } });
+  }
+
+  checkoutPathsFromRevision(
+    path: string,
+    revision: string,
+    paths: string[],
+    target: 'worktree' | 'index' | 'both' = 'both',
+  ) {
+    return this.invoke<MutationOutput>('checkout_paths_from_revision', {
+      input: { path, revision, paths, target },
+    });
   }
 
   createCommit(path: string, message: string, amend = false, allowEmpty = false) {
@@ -286,9 +301,14 @@ export class TauriService {
     return this.invoke<StashEntry[]>('list_stashes', { input: { path } });
   }
 
-  stashPush(path: string, message?: string, includeUntracked = false) {
+  stashPush(path: string, message?: string, includeUntracked = false, paths?: string[]) {
     return this.invoke<MutationOutput>('stash_push', {
-      input: { path, message: message ?? null, includeUntracked },
+      input: {
+        path,
+        message: message ?? null,
+        includeUntracked,
+        paths: paths?.length ? paths : null,
+      },
     });
   }
 
@@ -408,8 +428,14 @@ export class TauriService {
     });
   }
 
-  checkoutBranch(path: string, name: string) {
-    return this.invoke<MutationOutput>('checkout_branch', { input: { path, name } });
+  checkoutBranch(
+    path: string,
+    name: string,
+    localChanges: 'keep' | 'merge' | 'force' = 'keep',
+  ) {
+    return this.invoke<MutationOutput>('checkout_branch', {
+      input: { path, name, localChanges },
+    });
   }
 
   deleteBranch(path: string, name: string, force = false) {
@@ -1039,6 +1065,7 @@ export class TauriService {
       unstage_paths: mutation,
       discard_paths: mutation,
       apply_patch: mutation,
+      checkout_paths_from_revision: mutation,
       create_commit: { sha: 'abc1234deadbeef', shortSha: 'abc1234', message: 'commit' },
       create_branch: { ok: true, message: 'Created branch' },
       checkout_branch: { ok: true, message: 'Checked out' },
@@ -1801,7 +1828,11 @@ export class TauriService {
   ): SafetyAnalysis {
     if (action === 'forcePush') {
       const branch = target || 'main';
-      const protectedBranch = ['main', 'master', 'develop', 'release'].includes(branch);
+      const protectedBranch =
+        ['main', 'master', 'develop', 'dev', 'release', 'trunk'].includes(branch) ||
+        branch.startsWith('release/');
+      const behind = 1;
+      const leaseSafe = false;
       return {
         action: 'forcePush',
         title: `Force push '${branch}'?`,
@@ -1814,7 +1845,7 @@ export class TauriService {
           ? 'This branch is locked in Branchline. Unlock it from the Branches panel before pushing.'
           : protectedBranch
             ? `Force-pushing '${branch}' can disrupt the whole team. Prefer a new branch + PR. If you must continue, use --force-with-lease and type the branch name.`
-            : '--force-with-lease is the Git Extensions–style default. Only use bare --force if you intentionally overwrite the remote.',
+            : 'Fetch first so lease compares against the latest remote tip. Bare --force ignores collaborators\' new commits.',
         checks: [
           {
             id: 'not_locked',
@@ -1837,9 +1868,8 @@ export class TauriService {
           {
             id: 'lease_safe',
             label: 'Remote has not moved ahead',
-            ok: false,
-            detail:
-              'Upstream is 1 commit(s) ahead — fetch first; --force-with-lease will refuse if remote moved',
+            ok: leaseSafe,
+            detail: `Upstream is ${behind} commit(s) ahead — fetch first; --force-with-lease will refuse if remote moved`,
           },
           {
             id: 'has_local',
@@ -1860,7 +1890,7 @@ export class TauriService {
         gitCommand: `git push --force-with-lease origin ${branch}`,
         proceedGitCommand: `git push --force origin ${branch}`,
         confirmPrompt: `I understand this rewrites remote history on '${branch}'`,
-        requireTypedConfirm: !locked && protectedBranch,
+        requireTypedConfirm: !locked && (protectedBranch || !leaseSafe),
         blocked: locked,
         canProceed: !locked,
       };

@@ -27,8 +27,19 @@ pub struct MutationOutput {
 pub struct ApplyPatchInput {
     pub path: String,
     pub patch: String,
-    /// stage | unstage | discard
+    /// stage | unstage | discard | apply | apply-index
     pub mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutPathsFromRevisionInput {
+    pub path: String,
+    pub revision: String,
+    pub paths: Vec<String>,
+    /// worktree | index | both
+    #[serde(default)]
+    pub target: Option<String>,
 }
 
 #[command]
@@ -166,9 +177,19 @@ pub fn apply_patch(
             "Discarded selected changes",
             "discard_patch",
         ),
+        "apply" => (
+            vec!["apply", "--whitespace=nowarn", "-"],
+            "Cherry-picked lines into working tree",
+            "apply_patch",
+        ),
+        "apply-index" | "apply_index" | "applyindex" => (
+            vec!["apply", "--cached", "--whitespace=nowarn", "-"],
+            "Cherry-picked lines into index",
+            "apply_index_patch",
+        ),
         _ => {
             return Err(AppError::msg(
-                "Invalid patch mode — use stage, unstage, or discard",
+                "Invalid patch mode — use stage, unstage, discard, apply, or apply-index",
             ))
         }
     };
@@ -192,6 +213,101 @@ pub fn apply_patch(
         Ok(MutationOutput {
             ok: true,
             message: label.into(),
+        })
+    })
+}
+
+#[command]
+pub fn checkout_paths_from_revision(
+    state: State<'_, AppState>,
+    input: CheckoutPathsFromRevisionInput,
+) -> AppResult<MutationOutput> {
+    git_cli::validate_pathspecs(&input.paths)?;
+    let revision = input.revision.trim();
+    if revision.is_empty() {
+        return Err(AppError::msg("Revision is required"));
+    }
+    if input.paths.is_empty() {
+        return Err(AppError::msg("No paths to cherry-pick"));
+    }
+
+    let target = input
+        .target
+        .as_deref()
+        .unwrap_or("both")
+        .trim()
+        .to_ascii_lowercase();
+
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let path_refs: Vec<&str> = input.paths.iter().map(|s| s.as_str()).collect();
+
+        let mut stash_args = vec!["stash", "push", "-u", "-m", "branchline-cherry-file-backup", "--"];
+        stash_args.extend(path_refs.iter().copied());
+        let stash_ok = git_cli::run_git(path, &stash_args).is_ok();
+        let stash_ref = if stash_ok {
+            Some(git_cli::stash_tip_oid(path).unwrap_or_else(|_| "stash@{0}".into()))
+        } else {
+            None
+        };
+
+        match target.as_str() {
+            "worktree" | "working-tree" | "wt" => {
+                let mut args = vec!["restore", "--source", revision, "--worktree", "--"];
+                args.extend(path_refs.iter().copied());
+                if let Err(err) = git_cli::run_git(path, &args) {
+                    if let Some(reference) = stash_ref.as_deref() {
+                        let _ = git_cli::run_git(path, &["stash", "apply", reference]);
+                    }
+                    return Err(err);
+                }
+            }
+            "index" | "staged" => {
+                let mut args = vec!["restore", "--source", revision, "--staged", "--"];
+                args.extend(path_refs.iter().copied());
+                if let Err(err) = git_cli::run_git(path, &args) {
+                    if let Some(reference) = stash_ref.as_deref() {
+                        let _ = git_cli::run_git(path, &["stash", "apply", reference]);
+                    }
+                    return Err(err);
+                }
+            }
+            _ => {
+                let mut args = vec!["checkout", revision, "--"];
+                args.extend(path_refs.iter().copied());
+                if let Err(err) = git_cli::run_git(path, &args) {
+                    if let Some(reference) = stash_ref.as_deref() {
+                        let _ = git_cli::run_git(path, &["stash", "apply", reference]);
+                    }
+                    return Err(err);
+                }
+            }
+        }
+
+        let repo_key = path.to_string_lossy().to_string();
+        {
+            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+            let _ = undo::push_entry(
+                &db,
+                &repo_key,
+                "cherry_file",
+                "Cherry-picked file(s) from revision",
+                json!({
+                    "paths": input.paths,
+                    "revision": revision,
+                    "target": target,
+                    "stashRef": stash_ref,
+                }),
+            );
+        }
+
+        let n = input.paths.len();
+        Ok(MutationOutput {
+            ok: true,
+            message: if n == 1 {
+                "Cherry-picked file from revision".into()
+            } else {
+                format!("Cherry-picked {n} files from revision")
+            },
         })
     })
 }

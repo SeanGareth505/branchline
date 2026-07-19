@@ -265,9 +265,48 @@ export class CommandPalette {
       },
       {
         id: 'cherry',
-        label: 'Apply this commit here…',
+        label: 'Cherry-pick commit(s) onto HEAD…',
         group: 'Git',
         run: () => void store.openCherryPickPreview(),
+      },
+      {
+        id: 'cherry-file',
+        label: 'Apply selected file from commit',
+        group: 'Git',
+        run: () => {
+          const file = store.selectedDiffPath();
+          if (!file || !store.selectedSha()) {
+            store.showWarning('Select a commit and a file in the Diff tab first');
+            return;
+          }
+          void store.cherryPickPathsFromCommit([file], 'both');
+        },
+      },
+      {
+        id: 'cherry-file-wt',
+        label: 'Apply selected file to my files (unstaged)',
+        group: 'Git',
+        run: () => {
+          const file = store.selectedDiffPath();
+          if (!file || !store.selectedSha()) {
+            store.showWarning('Select a commit and a file in the Diff tab first');
+            return;
+          }
+          void store.cherryPickPathsFromCommit([file], 'worktree');
+        },
+      },
+      {
+        id: 'cherry-file-index',
+        label: 'Apply selected file and stage it',
+        group: 'Git',
+        run: () => {
+          const file = store.selectedDiffPath();
+          if (!file || !store.selectedSha()) {
+            store.showWarning('Select a commit and a file in the Diff tab first');
+            return;
+          }
+          void store.cherryPickPathsFromCommit([file], 'index');
+        },
       },
       {
         id: 'interactive-rebase',
