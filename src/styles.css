@@ -30,6 +30,7 @@
   --accent: #0284c7;
   --accent-muted: rgba(2, 132, 199, 0.16);
   --accent-hover: #0369a1;
+  --btn-primary-fg: #ffffff;
   --git-added: #059669;
   --git-modified: #b45309;
   --git-deleted: #dc2626;
@@ -104,6 +105,7 @@
   --accent: #38bdf8;
   --accent-muted: rgba(56, 189, 248, 0.2);
   --accent-hover: #7dd3fc;
+  --btn-primary-fg: #0b1220;
   --git-added: #34d399;
   --git-modified: #fbbf24;
   --git-deleted: #fb7185;
@@ -470,7 +472,7 @@ code,
 .bl-btn-primary {
   background: linear-gradient(165deg, color-mix(in srgb, var(--accent) 82%, white), var(--accent));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  color: #ffffff;
+  color: var(--btn-primary-fg, #ffffff);
   font-weight: 700;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.4) inset,
@@ -633,6 +635,14 @@ code,
 
 .cdk-overlay-transparent-backdrop {
   background: transparent;
+}
+
+.cdk-overlay-container {
+  z-index: 2000;
+}
+
+.patch-line-menu-panel {
+  pointer-events: auto;
 }
 
 .bl-tooltip {

@@ -14,6 +14,7 @@ pub struct CreateCommitInput {
     pub path: String,
     pub message: String,
     pub amend: Option<bool>,
+    pub allow_empty: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +36,7 @@ pub fn create_commit(
         }
 
         let amend = input.amend.unwrap_or(false);
+        let allow_empty = input.allow_empty.unwrap_or(false);
         let previous_head = if amend {
             Some(git_cli::run_git(path, &["rev-parse", "HEAD"])?)
         } else {
@@ -44,6 +46,9 @@ pub fn create_commit(
         let mut args = vec!["commit", "-m", input.message.trim()];
         if amend {
             args.push("--amend");
+        }
+        if allow_empty {
+            args.push("--allow-empty");
         }
         git_cli::run_git(path, &args)?;
 
