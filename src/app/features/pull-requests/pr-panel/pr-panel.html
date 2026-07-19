@@ -70,7 +70,9 @@
     <span><strong>{{ stats().total }}</strong> matching</span>
     <span><strong>{{ stats().open }}</strong> open</span>
     <span><strong>{{ stats().draft }}</strong> draft</span>
-    <span class="fail"><strong>{{ stats().failing }}</strong> failing CI</span>
+    @if (!liveMode()) {
+      <span class="fail"><strong>{{ stats().failing }}</strong> failing CI</span>
+    }
     <span><strong>{{ stats().needsReview }}</strong> need review</span>
   </div>
 
@@ -128,20 +130,22 @@
       }
     </select>
 
-    <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
-      <option value="all">Any CI</option>
-      <option value="success">CI success</option>
-      <option value="pending">CI pending</option>
-      <option value="failure">CI failure</option>
-      <option value="cancelled">CI cancelled</option>
-    </select>
+    @if (!liveMode()) {
+      <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
+        <option value="all">Any CI</option>
+        <option value="success">CI success</option>
+        <option value="pending">CI pending</option>
+        <option value="failure">CI failure</option>
+        <option value="cancelled">CI cancelled</option>
+      </select>
 
-    <select [ngModel]="review()" (ngModelChange)="review.set($event)">
-      <option value="all">Any review</option>
-      <option value="pending">Pending</option>
-      <option value="approved">Approved</option>
-      <option value="changesRequested">Changes requested</option>
-    </select>
+      <select [ngModel]="review()" (ngModelChange)="review.set($event)">
+        <option value="all">Any review</option>
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="changesRequested">Changes requested</option>
+      </select>
+    }
 
     <select [ngModel]="sortKey()" (ngModelChange)="sortKey.set($event)">
       <option value="updated">Sort: updated</option>
@@ -211,8 +215,12 @@
               <span class="bl-chip">draft</span>
             }
             <span class="bl-chip" [attr.data-status]="pr.status">{{ pr.status }}</span>
-            <span class="bl-chip" [attr.data-ci]="pr.pipelineStatus">{{ pr.pipelineStatus }}</span>
-            <span class="bl-chip" [attr.data-review]="pr.reviewState">{{ reviewLabel(pr.reviewState) }}</span>
+            @if (pr.pipelineStatus !== 'unknown') {
+              <span class="bl-chip" [attr.data-ci]="pr.pipelineStatus">{{ pr.pipelineStatus }}</span>
+            }
+            @if (pr.reviewState !== 'unknown') {
+              <span class="bl-chip" [attr.data-review]="pr.reviewState">{{ reviewLabel(pr.reviewState) }}</span>
+            }
           </div>
           <div class="meta">
             <span>{{ pr.repo }}</span>
@@ -237,41 +245,47 @@
 
           @if (pr.status === 'open') {
             <div class="review-bar">
-              @if (pr.draft) {
-                <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
-                  Mark ready
-                </button>
+              @if (showingDummy()) {
+                @if (pr.draft) {
+                  <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
+                    Mark ready
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    [class.done]="pr.reviewState === 'approved'"
+                    [disabled]="pr.reviewState === 'approved'"
+                    (click)="approve(pr)"
+                  >
+                    <ng-icon name="lucideCheck" size="13" />
+                    Approve
+                  </button>
+                  <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
+                    Request changes
+                  </button>
+                  <button type="button" class="bl-btn" (click)="startComment(pr)">
+                    <ng-icon name="lucideMessageSquare" size="13" />
+                    Comment
+                  </button>
+                  <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
+                    <ng-icon name="lucideGitMerge" size="13" />
+                    Merge
+                  </button>
+                }
+                <span class="sep" aria-hidden="true"></span>
+                <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
+                @if (!pr.draft) {
+                  <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
+                    Request my review
+                  </button>
+                }
+                <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
               } @else {
-                <button
-                  type="button"
-                  class="bl-btn"
-                  [class.done]="pr.reviewState === 'approved'"
-                  [disabled]="pr.reviewState === 'approved'"
-                  (click)="approve(pr)"
-                >
-                  <ng-icon name="lucideCheck" size="13" />
-                  Approve
-                </button>
-                <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
-                  Request changes
-                </button>
-                <button type="button" class="bl-btn" (click)="startComment(pr)">
-                  <ng-icon name="lucideMessageSquare" size="13" />
-                  Comment
-                </button>
-                <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
-                  <ng-icon name="lucideGitMerge" size="13" />
-                  Merge
+                <button type="button" class="bl-btn bl-btn-primary" (click)="openBrowser(pr)">
+                  Manage on GitHub
                 </button>
               }
-              <span class="sep" aria-hidden="true"></span>
-              <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
-              @if (!pr.draft) {
-                <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
-                  Request my review
-                </button>
-              }
-              <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
             </div>
           }
 

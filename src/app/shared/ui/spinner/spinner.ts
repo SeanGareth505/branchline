@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 @Component({
   selector: 'app-spinner',
@@ -8,6 +8,6 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Spinner {
-  @Input() size: 'sm' | 'md' | 'lg' = 'md';
-  @Input() label = 'Loading';
+  readonly size = input<'sm' | 'md' | 'lg'>('md');
+  readonly label = input('Loading');
 }

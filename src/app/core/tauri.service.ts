@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type {
   AppSettings,
-  ArtificialCommit,
   BlameLine,
   BranchInfo,
   BranchLockInfo,
@@ -243,10 +242,6 @@ export class TauriService {
 
   getCommitLog(path: string, limit = 200) {
     return this.invoke<CommitInfo[]>('get_commit_log', { input: { path, limit } });
-  }
-
-  getArtificialCommits(path: string) {
-    return this.invoke<ArtificialCommit[]>('get_artificial_commits', { input: { path } });
   }
 
   getDiff(
@@ -1447,6 +1442,7 @@ export class TauriService {
           deletions: 88,
           commentCount: 6,
           isMine: false,
+          needsMyReview: false,
         },
         {
           id: 'pr-98',
@@ -1470,6 +1466,7 @@ export class TauriService {
           deletions: 40,
           commentCount: 2,
           isMine: false,
+          needsMyReview: false,
         },
         {
           id: 'pr-95',
@@ -1493,6 +1490,7 @@ export class TauriService {
           deletions: 120,
           commentCount: 11,
           isMine: true,
+          needsMyReview: false,
         },
         {
           id: 'pr-92',
@@ -1516,6 +1514,7 @@ export class TauriService {
           deletions: 22,
           commentCount: 4,
           isMine: false,
+          needsMyReview: true,
         },
         {
           id: 'pr-88',
@@ -1539,6 +1538,7 @@ export class TauriService {
           deletions: 30,
           commentCount: 3,
           isMine: false,
+          needsMyReview: false,
         },
         {
           id: 'pr-81',
@@ -1562,6 +1562,7 @@ export class TauriService {
           deletions: 12,
           commentCount: 1,
           isMine: true,
+          needsMyReview: false,
         },
         {
           id: 'pr-77',
@@ -1585,6 +1586,7 @@ export class TauriService {
           deletions: 55,
           commentCount: 8,
           isMine: false,
+          needsMyReview: true,
         },
         {
           id: 'pr-70',
@@ -1608,6 +1610,7 @@ export class TauriService {
           deletions: 5,
           commentCount: 0,
           isMine: false,
+          needsMyReview: true,
         },
       ],
       list_mock_jira_issues: [
@@ -2210,8 +2213,18 @@ export class TauriService {
   private mockStatus(): RepoStatus {
     const conflicted = this.mockPreviewFlags.conflicts
       ? [
-          { path: 'src/app.ts', status: 'conflicted' as const },
-          { path: 'README.md', status: 'conflicted' as const },
+          {
+            path: 'src/app.ts',
+            status: 'conflicted' as const,
+            conflictKind: 'bothModified',
+            conflictLabel: 'both modified',
+          },
+          {
+            path: 'README.md',
+            status: 'conflicted' as const,
+            conflictKind: 'deletedByUs',
+            conflictLabel: 'deleted by us',
+          },
         ]
       : [];
     return {
@@ -2238,6 +2251,9 @@ export class TauriService {
         { path: 'docs/workflows.md', status: 'untracked' },
       ],
       conflicted,
+      operation: conflicted.length
+        ? { kind: 'merge', label: 'Merge in progress', detail: null }
+        : null,
     };
   }
 

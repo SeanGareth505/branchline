@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 @Component({
   selector: 'app-skeleton',
@@ -8,8 +8,8 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Skeleton {
-  @Input() width = '100%';
-  @Input() height = '0.85rem';
-  @Input() radius = '8px';
-  @Input() variant: 'line' | 'block' | 'circle' = 'line';
+  readonly width = input('100%');
+  readonly height = input('0.85rem');
+  readonly radius = input('8px');
+  readonly variant = input<'line' | 'block' | 'circle'>('line');
 }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { Skeleton } from '../skeleton/skeleton';
 
 @Component({
@@ -9,11 +9,11 @@ import { Skeleton } from '../skeleton/skeleton';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PageSkeleton {
-  @Input() set cards(value: number) {
-    const n = Math.max(1, Math.min(8, Math.floor(value || 4)));
-    this.cardSlots = Array.from({ length: n }, (_, i) => i);
-  }
-  @Input() showAside = false;
+  readonly cards = input(4);
+  readonly showAside = input(false);
 
-  cardSlots = [0, 1, 2, 3];
+  readonly cardSlots = computed(() => {
+    const n = Math.max(1, Math.min(8, Math.floor(this.cards() || 4)));
+    return Array.from({ length: n }, (_, i) => i);
+  });
 }

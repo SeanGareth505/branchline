@@ -24,6 +24,7 @@ pub struct MockPullRequest {
     pub deletions: u32,
     pub comment_count: u32,
     pub is_mine: bool,
+    pub needs_my_review: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +131,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 88,
             comment_count: 6,
             is_mine: false,
+            needs_my_review: false,
         },
         MockPullRequest {
             id: "pr-98".into(),
@@ -153,6 +155,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 40,
             comment_count: 2,
             is_mine: false,
+            needs_my_review: false,
         },
         MockPullRequest {
             id: "pr-95".into(),
@@ -176,6 +179,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 120,
             comment_count: 11,
             is_mine: true,
+            needs_my_review: false,
         },
         MockPullRequest {
             id: "pr-92".into(),
@@ -199,6 +203,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 22,
             comment_count: 4,
             is_mine: false,
+            needs_my_review: true,
         },
         MockPullRequest {
             id: "pr-88".into(),
@@ -222,6 +227,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 30,
             comment_count: 3,
             is_mine: false,
+            needs_my_review: false,
         },
         MockPullRequest {
             id: "pr-81".into(),
@@ -245,6 +251,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 12,
             comment_count: 1,
             is_mine: true,
+            needs_my_review: false,
         },
         MockPullRequest {
             id: "pr-77".into(),
@@ -268,6 +275,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 55,
             comment_count: 8,
             is_mine: false,
+            needs_my_review: true,
         },
         MockPullRequest {
             id: "pr-70".into(),
@@ -291,6 +299,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
             deletions: 5,
             comment_count: 0,
             is_mine: false,
+            needs_my_review: true,
         },
     ]
 }

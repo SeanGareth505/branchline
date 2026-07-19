@@ -12,6 +12,7 @@ interface TreeFile {
   name: string;
   status: FileStatusKind;
   area: FileArea;
+  conflictLabel?: string | null;
 }
 
 interface TreeDir {
@@ -74,6 +75,7 @@ export class FileTreePanel {
           name: e.path.split('/').pop() || e.path,
           status: e.status,
           area,
+          conflictLabel: e.conflictLabel,
         });
       }
     };

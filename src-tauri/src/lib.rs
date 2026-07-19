@@ -102,7 +102,6 @@ pub fn run() {
             commands::merge::reset_to,
             commands::conflicts::get_conflict_sides,
             commands::conflicts::resolve_conflict_file,
-            commands::conflicts::list_conflicted_paths,
             commands::conflicts::open_conflict_in_ide,
             commands::rebase::preview_interactive_rebase,
             commands::rebase::start_interactive_rebase,

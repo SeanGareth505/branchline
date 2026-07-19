@@ -270,7 +270,20 @@ export class AppStore {
   readonly changeCount = computed(() => {
     const s = this.status();
     if (!s) return 0;
-    return s.staged.length + s.unstaged.length + s.untracked.length;
+    return s.staged.length + s.unstaged.length + s.untracked.length + s.conflicted.length;
+  });
+
+  readonly hasActiveOperation = computed(() => !!this.status()?.operation);
+
+  readonly operationNeedsContinue = computed(() => {
+    const s = this.status();
+    return !!s?.operation && (s.conflicted.length === 0);
+  });
+
+  readonly showConflictBanner = computed(() => {
+    const s = this.status();
+    if (!s) return false;
+    return s.conflicted.length > 0 || !!s.operation;
   });
 
   readonly localBranches = computed(() => this.branches().filter((b) => !b.isRemote));
@@ -1262,7 +1275,13 @@ export class AppStore {
 
   updateNextAction(status: RepoStatus): void {
     if (status.conflicted.length) {
-      this.nextAction.set(`Resolve ${status.conflicted.length} conflicts`);
+      const op = status.operation?.label?.replace(/ in progress$/i, '') || 'Conflicts';
+      this.nextAction.set(`Resolve ${status.conflicted.length} ${op.toLowerCase()} conflict${status.conflicted.length === 1 ? '' : 's'}`);
+      return;
+    }
+    if (status.operation) {
+      const detail = status.operation.detail ? ` · ${status.operation.detail}` : '';
+      this.nextAction.set(`Continue ${status.operation.label.replace(/ in progress$/i, '').toLowerCase()}${detail}`);
       return;
     }
     const uncommitted = status.unstaged.length + status.untracked.length + status.staged.length;
@@ -1454,11 +1473,23 @@ export class AppStore {
 
     if (next.conflicted.length > 0 && prev.conflicted.length === 0) {
       const n = next.conflicted.length;
+      const title = next.operation?.label || 'Conflicts';
       this.notifyEvent(
         'conflicts',
-        'Merge conflicts',
+        title,
         `${repo}: ${n} conflict${n === 1 ? '' : 's'} to resolve`,
         { kind: 'warning' },
+      );
+    } else if (
+      next.operation &&
+      !prev.operation &&
+      next.conflicted.length === 0
+    ) {
+      this.notifyEvent(
+        'conflicts',
+        next.operation.label,
+        `${repo}: ready to Continue`,
+        { kind: 'info' },
       );
     }
 
@@ -2270,6 +2301,10 @@ export class AppStore {
           ? this.tauri.pullWithOptions(path, { rebase: true })
           : this.tauri.pull(path),
       );
+      if (!result.ok) {
+        await this.handleConflictResult(result);
+        return;
+      }
       await this.refreshRepo();
       this.showToast(result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'), {
         kind: 'success',
@@ -2277,6 +2312,11 @@ export class AppStore {
         category: 'pull',
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('conflict')) {
+        await this.handleConflictResult({ ok: false, message });
+        return;
+      }
       this.showError(err);
     } finally {
       this.remoteBusy.set(null);
@@ -2706,6 +2746,11 @@ export class AppStore {
     }
     if (status.conflicted.length) {
       this.setBrowseTab('files');
+      await this.openConflictResolver(status.conflicted[0]?.path);
+      return;
+    }
+    if (status.operation) {
+      await this.continueOperation();
       return;
     }
     if (status.staged.length || status.unstaged.length || status.untracked.length) {
@@ -3268,6 +3313,18 @@ export class AppStore {
       }
       await this.stagePaths([path]);
       this.showSuccess(`Took ${side} for ${path}`);
+      if (this.conflictResolverOpen() && this.conflictResolverPath() === path) {
+        await this.refreshRepo();
+        const remaining = this.status()?.conflicted ?? [];
+        if (remaining.length) {
+          await this.openConflictResolver(remaining[0].path);
+        } else {
+          this.closeConflictResolver();
+          if (this.status()?.operation) {
+            this.showInfo('All conflicts resolved — Continue when ready');
+          }
+        }
+      }
     } catch (err) {
       this.showError(err);
     }
@@ -3339,9 +3396,18 @@ export class AppStore {
         this.showWarning(result.message);
         return;
       }
-      this.closeConflictResolver();
       await this.refreshRepo();
       this.showSuccess(result.message);
+      const remaining = this.status()?.conflicted ?? [];
+      const next = remaining.find((f) => f.path !== filePath) ?? remaining[0];
+      if (next) {
+        await this.openConflictResolver(next.path);
+      } else {
+        this.closeConflictResolver();
+        if (this.status()?.operation) {
+          this.showInfo('All conflicts resolved — Continue when ready');
+        }
+      }
     } catch (err) {
       this.showError(err);
     }
@@ -3465,6 +3531,11 @@ export class AppStore {
     await this.refreshRepo();
     this.showToast(result.message, { kind: 'warning' });
     this.setBrowseTab('files');
+    const first = this.status()?.conflicted?.[0]?.path;
+    if (first) {
+      this.selectedDiffPath.set(first);
+      await this.openConflictResolver(first);
+    }
   }
 
   async resetTo(target: string, mode: ResetMode): Promise<void> {

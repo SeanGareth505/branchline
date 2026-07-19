@@ -38,6 +38,7 @@ export class DiffViewer {
     path: '',
   });
   private suppressMenuCloseUntil = 0;
+  private loadToken = 0;
 
   readonly menuOrigin = computed(() => ({ x: this.fileMenu().x, y: this.fileMenu().y }));
   readonly menuPositions: ConnectedPosition[] = [
@@ -249,6 +250,7 @@ export class DiffViewer {
     file: string | null,
     source: 'commit' | 'workingDirectory' | 'staged',
   ): Promise<void> {
+    const token = ++this.loadToken;
     const baseOpts: {
       pathspec?: string;
       staged?: boolean;
@@ -273,6 +275,7 @@ export class DiffViewer {
     this.loading.set(true);
     try {
       const listing = await this.tauri.getDiff(path, baseOpts);
+      if (token !== this.loadToken) return;
       const nextFiles = listing.files || [];
       this.files.set(nextFiles);
 
@@ -292,12 +295,14 @@ export class DiffViewer {
       }
 
       const diff = await this.tauri.getDiff(path, { ...baseOpts, pathspec: selected });
+      if (token !== this.loadToken) return;
       this.patch.set(diff.unified || '');
     } catch {
+      if (token !== this.loadToken) return;
       this.patch.set('Could not load diff.');
       this.files.set([]);
     } finally {
-      this.loading.set(false);
+      if (token === this.loadToken) this.loading.set(false);
     }
   }
 }

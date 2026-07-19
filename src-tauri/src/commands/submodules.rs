@@ -1,6 +1,7 @@
 use crate::infrastructure::git_cli;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::command;
 
@@ -181,23 +182,17 @@ pub fn list_lfs_files(input: RepoPathInput) -> AppResult<Vec<LfsFileInfo>> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let (ok, out, err) = git_cli::run_git_allow_fail(path, &["lfs", "ls-files", "-s"]);
         if !ok {
-            let msg = format!("{out}{err}").to_lowercase();
-            if msg.contains("is not a git command")
-                || msg.contains("git-lfs")
-                || msg.contains("lfs")
-            {
-                return Ok(vec![]);
-            }
+            let _ = (out, err);
             return Ok(vec![]);
         }
+        let locked_paths = lfs_locked_paths(path);
         let mut entries = Vec::new();
         for line in out.lines() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            // oid * path (size)
-            let locked = line.contains(" [");
+            // oid *|- path (size)
             let mut path_part = line.to_string();
             let mut size = String::new();
             if let Some(idx) = line.rfind('(') {
@@ -217,6 +212,7 @@ pub fn list_lfs_files(input: RepoPathInput) -> AppResult<Vec<LfsFileInfo>> {
             if file_path.is_empty() {
                 continue;
             }
+            let locked = locked_paths.contains(&file_path);
             entries.push(LfsFileInfo {
                 path: file_path,
                 locked,
@@ -225,6 +221,27 @@ pub fn list_lfs_files(input: RepoPathInput) -> AppResult<Vec<LfsFileInfo>> {
         }
         Ok(entries)
     })
+}
+
+fn lfs_locked_paths(repo: &std::path::Path) -> HashSet<String> {
+    let (ok, out, _) = git_cli::run_git_allow_fail(repo, &["lfs", "locks", "--json"]);
+    if !ok || out.trim().is_empty() {
+        return HashSet::new();
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&out) else {
+        return HashSet::new();
+    };
+    let mut set = HashSet::new();
+    if let Some(arr) = value.as_array() {
+        for item in arr {
+            if let Some(p) = item.get("path").and_then(|v| v.as_str()) {
+                if !p.is_empty() {
+                    set.insert(p.to_string());
+                }
+            }
+        }
+    }
+    set
 }
 
 #[command]

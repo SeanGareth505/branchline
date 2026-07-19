@@ -5,6 +5,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="commit-dialog-title"
+      [attr.aria-busy]="isBusy()"
     >
       <header class="toolbar">
         <div class="toolbar-left">
@@ -22,20 +23,40 @@
           <span class="stat staged">{{ stagedCount() }} staged</span>
         </div>
         <div class="toolbar-right">
-          <button type="button" class="bl-btn icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <button
+            type="button"
+            class="bl-btn icon-btn"
+            (click)="close()"
+            [disabled]="committing()"
+            aria-label="Close"
+            title="Close"
+          >
             <ng-icon name="lucideX" size="16" />
           </button>
         </div>
       </header>
 
+      @if (busyLabel(); as label) {
+        <div class="busy-strip" role="status" aria-live="polite">
+          <span class="busy-track" aria-hidden="true"></span>
+          <app-spinner size="sm" [label]="label" />
+          <span class="busy-label">{{ label }}</span>
+        </div>
+      }
+
       @if (conflictedCount()) {
         <div class="conflict-strip">
-          {{ conflictedCount() }} conflicted file(s) — stage resolved files, then commit.
+          {{ conflictedCount() }} conflicted file(s) — resolve them, then Continue to finish
+          {{ operationLabel() }}.
         </div>
       }
 
       <div class="workspace">
-        <div class="files-column" [class.has-conflicts]="conflictedCount() > 0">
+        <div
+          class="files-column"
+          [class.has-conflicts]="conflictedCount() > 0"
+          [class.is-busy]="isBusy()"
+        >
           <label class="filter">
             <ng-icon name="lucideSearch" size="14" />
             <input
@@ -112,7 +133,7 @@
                   type="button"
                   class="bl-btn quiet"
                   title="Stage all ({{ stageAllShortcut }})"
-                  [disabled]="!unstagedCount() && !conflictedCount()"
+                  [disabled]="isBusy() || (!unstagedCount() && !conflictedCount())"
                   (click)="stageAll()"
                 >
                   Stage all
@@ -154,7 +175,7 @@
               type="button"
               class="bl-btn"
               title="Stage selected (S)"
-              [disabled]="!hasUnstagedSelection() && !hasConflictedSelection()"
+              [disabled]="isBusy() || (!hasUnstagedSelection() && !hasConflictedSelection())"
               (click)="stageSelected()"
             >
               Stage
@@ -168,7 +189,7 @@
               type="button"
               class="bl-btn"
               title="Unstage selected (U)"
-              [disabled]="!hasStagedSelection()"
+              [disabled]="isBusy() || !hasStagedSelection()"
               (click)="unstageSelected()"
             >
               Unstage
@@ -182,7 +203,7 @@
               type="button"
               class="bl-btn quiet danger"
               title="Reset selected modified files (R)"
-              [disabled]="!hasDiscardableSelection()"
+              [disabled]="isBusy() || !hasDiscardableSelection()"
               (click)="resetSelected()"
             >
               Reset
@@ -191,7 +212,7 @@
               type="button"
               class="bl-btn quiet danger"
               title="Delete selected untracked files (⌫)"
-              [disabled]="!hasUntrackedSelection()"
+              [disabled]="isBusy() || !hasUntrackedSelection()"
               (click)="deleteUntrackedSelected()"
             >
               Delete
@@ -200,7 +221,7 @@
               type="button"
               class="bl-btn quiet"
               title="Add selected untracked files to .gitignore"
-              [disabled]="!hasUntrackedSelection()"
+              [disabled]="isBusy() || !hasUntrackedSelection()"
               (click)="ignoreSelected()"
             >
               Ignore
@@ -227,7 +248,7 @@
                   type="button"
                   class="bl-btn quiet"
                   title="Unstage all"
-                  [disabled]="!stagedCount()"
+                  [disabled]="isBusy() || !stagedCount()"
                   (click)="unstageAll()"
                 >
                   Unstage all
@@ -397,22 +418,36 @@
                 type="button"
                 class="bl-btn"
                 title="Undo the last Branchline action (often undoes the last commit)"
+                [disabled]="isBusy()"
                 (click)="store.softUndoLastCommit()"
               >
                 <ng-icon name="lucideUndo2" size="14" />
                 Undo
               </button>
-              <button type="button" class="bl-btn" title="Close without committing" (click)="close()">Cancel</button>
+              <button
+                type="button"
+                class="bl-btn"
+                title="Close without committing"
+                [disabled]="committing()"
+                (click)="close()"
+              >
+                Cancel
+              </button>
             </div>
             <button
               type="button"
               class="bl-btn bl-btn-primary commit-btn"
               [disabled]="!canCommit() || committing()"
-              [title]="commitBlockedReason() || ''"
+              [title]="commitBlockedReason() || busyLabel() || ''"
               (click)="commit()"
             >
-              {{ amend() ? 'Amend' : 'Commit' }}
-              <span class="kbd">{{ commitShortcut }}</span>
+              @if (committing()) {
+                <app-spinner size="sm" [label]="busyLabel() || 'Working'" />
+              }
+              {{ commitButtonLabel() }}
+              @if (!committing()) {
+                <span class="kbd">{{ commitShortcut }}</span>
+              }
             </button>
           </div>
         </div>

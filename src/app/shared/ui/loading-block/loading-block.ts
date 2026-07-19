@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { Spinner } from '../spinner/spinner';
 
 @Component({
@@ -9,6 +9,6 @@ import { Spinner } from '../spinner/spinner';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoadingBlock {
-  @Input() message = 'Loading…';
-  @Input() compact = false;
+  readonly message = input('Loading…');
+  readonly compact = input(false);
 }

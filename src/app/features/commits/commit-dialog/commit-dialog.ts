@@ -18,6 +18,7 @@ import {
 } from '../../../core/commit-types';
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { Spinner } from '../../../shared/ui/spinner/spinner';
 import {
   PatchLinesView,
   type PatchLinesLayout,
@@ -25,10 +26,11 @@ import {
 } from '../../diff/patch-lines-view/patch-lines-view';
 
 type FileKey = `${'s' | 'u' | 'c'}:${string}`;
+type CommitPhase = 'staging' | 'committing' | 'pushing';
 
 @Component({
   selector: 'app-commit-dialog',
-  imports: [FormsModule, NgIcon, PatchLinesView],
+  imports: [FormsModule, NgIcon, PatchLinesView, Spinner],
   templateUrl: './commit-dialog.html',
   styleUrl: './commit-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,6 +54,8 @@ export class CommitDialog {
   readonly templates = signal<TemplateInfo[]>([]);
   readonly identity = signal<{ name: string; email: string } | null>(null);
   readonly committing = signal(false);
+  readonly commitPhase = signal<CommitPhase | null>(null);
+  readonly filesBusy = signal(false);
   readonly addingType = signal(false);
   readonly newTypeDraft = signal('');
   readonly savingType = signal(false);
@@ -89,6 +93,12 @@ export class CommitDialog {
       (this.store.status()?.unstaged.length ?? 0) + (this.store.status()?.untracked.length ?? 0),
   );
   readonly conflictedCount = computed(() => this.store.status()?.conflicted.length ?? 0);
+
+  readonly operationLabel = computed(() => {
+    const label = this.store.status()?.operation?.label ?? '';
+    const cleaned = label.replace(/ in progress$/i, '').trim().toLowerCase();
+    return cleaned || 'the operation';
+  });
 
   readonly unstagedSelectedCount = computed(
     () => [...this.selectedFiles()].filter((k) => k.startsWith('u:')).length,
@@ -132,6 +142,25 @@ export class CommitDialog {
       return 'Nothing to commit';
     }
     return null;
+  });
+
+  readonly isBusy = computed(() => this.committing() || this.filesBusy());
+
+  readonly busyLabel = computed(() => {
+    const phase = this.commitPhase();
+    if (phase === 'staging') return 'Staging files…';
+    if (phase === 'committing') return this.amend() ? 'Amending commit…' : 'Creating commit…';
+    if (phase === 'pushing') return 'Pushing to remote…';
+    if (this.filesBusy()) return 'Updating staged files…';
+    return null;
+  });
+
+  readonly commitButtonLabel = computed(() => {
+    const phase = this.commitPhase();
+    if (phase === 'staging') return 'Staging…';
+    if (phase === 'committing') return this.amend() ? 'Amending…' : 'Committing…';
+    if (phase === 'pushing') return 'Pushing…';
+    return this.amend() ? 'Amend' : 'Commit';
   });
 
   readonly charHint = computed(() => {
@@ -203,6 +232,7 @@ export class CommitDialog {
   }
 
   close(completed = false): void {
+    if (this.committing()) return;
     this.store.closeCommitModal(completed);
   }
 
@@ -381,17 +411,21 @@ export class CommitDialog {
   }
 
   async stage(entry: FileStatusEntry): Promise<void> {
-    await this.store.stagePaths([entry.path]);
-    this.selectedFiles.set(new Set([this.fileKey(entry.path, 'staged')]));
-    this.selectFile(entry.path, true);
-    this.focusPane.set('staged');
+    await this.runFilesOp(async () => {
+      await this.store.stagePaths([entry.path]);
+      this.selectedFiles.set(new Set([this.fileKey(entry.path, 'staged')]));
+      this.selectFile(entry.path, true);
+      this.focusPane.set('staged');
+    });
   }
 
   async unstage(entry: FileStatusEntry): Promise<void> {
-    await this.store.unstagePaths([entry.path]);
-    this.selectedFiles.set(new Set([this.fileKey(entry.path, 'unstaged')]));
-    this.selectFile(entry.path, false);
-    this.focusPane.set('unstaged');
+    await this.runFilesOp(async () => {
+      await this.store.unstagePaths([entry.path]);
+      this.selectedFiles.set(new Set([this.fileKey(entry.path, 'unstaged')]));
+      this.selectFile(entry.path, false);
+      this.focusPane.set('unstaged');
+    });
   }
 
   async stageSelected(): Promise<void> {
@@ -400,10 +434,12 @@ export class CommitDialog {
       ...[...this.selectedFiles()].filter((k) => k.startsWith('c:')).map((k) => k.slice(2)),
     ];
     if (!paths.length) return;
-    await this.store.stagePaths(paths);
-    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'staged'))));
-    this.selectFile(paths[0], true);
-    this.focusPane.set('staged');
+    await this.runFilesOp(async () => {
+      await this.store.stagePaths(paths);
+      this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'staged'))));
+      this.selectFile(paths[0], true);
+      this.focusPane.set('staged');
+    });
   }
 
   async unstageSelected(): Promise<void> {
@@ -411,10 +447,12 @@ export class CommitDialog {
       .filter((k) => k.startsWith('s:'))
       .map((k) => k.slice(2));
     if (!paths.length) return;
-    await this.store.unstagePaths(paths);
-    this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'unstaged'))));
-    this.selectFile(paths[0], false);
-    this.focusPane.set('unstaged');
+    await this.runFilesOp(async () => {
+      await this.store.unstagePaths(paths);
+      this.selectedFiles.set(new Set(paths.map((p) => this.fileKey(p, 'unstaged'))));
+      this.selectFile(paths[0], false);
+      this.focusPane.set('unstaged');
+    });
   }
 
   async resetSelected(): Promise<void> {
@@ -427,8 +465,10 @@ export class CommitDialog {
       this.store.showWarning('Select modified unstaged files to reset');
       return;
     }
-    await this.store.discardPaths(paths);
-    this.selectedFiles.set(new Set());
+    await this.runFilesOp(async () => {
+      await this.store.discardPaths(paths);
+      this.selectedFiles.set(new Set());
+    });
   }
 
   async deleteUntrackedSelected(): Promise<void> {
@@ -441,8 +481,10 @@ export class CommitDialog {
       this.store.showWarning('Select untracked files to delete');
       return;
     }
-    await this.store.discardPaths(paths);
-    this.selectedFiles.set(new Set());
+    await this.runFilesOp(async () => {
+      await this.store.discardPaths(paths);
+      this.selectedFiles.set(new Set());
+    });
   }
 
   async ignoreSelected(): Promise<void> {
@@ -455,26 +497,34 @@ export class CommitDialog {
       this.store.showWarning('Select untracked files to ignore');
       return;
     }
-    for (const path of paths) {
-      await this.store.ignorePath(path);
-    }
-    this.selectedFiles.set(new Set());
+    await this.runFilesOp(async () => {
+      for (const path of paths) {
+        await this.store.ignorePath(path);
+      }
+      this.selectedFiles.set(new Set());
+    });
   }
 
   async stageAll(): Promise<void> {
     const status = this.store.status();
     if (!status) return;
-    await this.store.stagePaths([
-      ...status.unstaged.map((f) => f.path),
-      ...status.untracked.map((f) => f.path),
-      ...status.conflicted.map((f) => f.path),
-    ]);
+    await this.runFilesOp(async () => {
+      await this.store.stagePaths([
+        ...status.unstaged.map((f) => f.path),
+        ...status.untracked.map((f) => f.path),
+        ...status.conflicted.map((f) => f.path),
+      ]);
+      this.selectedFiles.set(new Set());
+    });
   }
 
   async unstageAll(): Promise<void> {
     const status = this.store.status();
     if (!status) return;
-    await this.store.unstagePaths(status.staged.map((f) => f.path));
+    await this.runFilesOp(async () => {
+      await this.store.unstagePaths(status.staged.map((f) => f.path));
+      this.selectedFiles.set(new Set());
+    });
   }
 
   async copySelectedPaths(): Promise<void> {
@@ -713,12 +763,14 @@ export class CommitDialog {
     this.committing.set(true);
     try {
       if (needsStageAll) {
+        this.commitPhase.set('staging');
         await this.stageAll();
         if (this.stagedCount() === 0) {
           this.store.showWarning('Nothing was staged');
           return;
         }
       }
+      this.commitPhase.set('committing');
       const ok = await this.store.createCommit(
         this.messagePreview(),
         this.amend(),
@@ -726,12 +778,25 @@ export class CommitDialog {
       );
       if (!ok) return;
       if (this.pushAfter()) {
+        this.commitPhase.set('pushing');
         await this.store.pushRemote();
       }
       this.resetForm();
       this.close(true);
     } finally {
+      this.commitPhase.set(null);
       this.committing.set(false);
+    }
+  }
+
+  private async runFilesOp(fn: () => Promise<void>): Promise<void> {
+    if (this.filesBusy()) return;
+    const nestedUnderCommit = this.committing();
+    if (!nestedUnderCommit) this.filesBusy.set(true);
+    try {
+      await fn();
+    } finally {
+      if (!nestedUnderCommit) this.filesBusy.set(false);
     }
   }
 
@@ -752,12 +817,13 @@ export class CommitDialog {
 
     if (event.key === 'Escape') {
       if (this.prompts.request()) return;
+      if (this.committing()) return;
       event.preventDefault();
       this.close();
       return;
     }
 
-    if (typing) return;
+    if (typing || this.isBusy()) return;
 
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's' && event.shiftKey) {
       event.preventDefault();

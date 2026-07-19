@@ -1,9 +1,16 @@
 <div
   class="patch-lines"
+  [class.busy]="patchBusy()"
   tabindex="0"
   (focus)="onFocus()"
   (blur)="onBlur($event)"
 >
+  @if (patchBusy()) {
+    <div class="patch-busy" role="status" aria-live="polite">
+      <span class="patch-busy-track" aria-hidden="true"></span>
+      Updating…
+    </div>
+  }
   @if (showToolbar() && interactive() && selectedCount() > 0) {
     <div class="selection-bar">
       <span>{{ selectedCount() }} line{{ selectedCount() === 1 ? '' : 's' }} selected</span>

@@ -1,9 +1,0 @@
-/Users/sean.nortje/Documents/Side projects/branchline/src-tauri/target-check/debug/deps/futures_macro-b33c5cc14681e153.d: /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/lib.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/executor.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/join.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/select.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/stream_select.rs
-
-/Users/sean.nortje/Documents/Side projects/branchline/src-tauri/target-check/debug/deps/libfutures_macro-b33c5cc14681e153.dylib: /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/lib.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/executor.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/join.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/select.rs /Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/stream_select.rs
-
-/Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/lib.rs:
-/Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/executor.rs:
-/Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/join.rs:
-/Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/select.rs:
-/Users/sean.nortje/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-macro-0.3.33/src/stream_select.rs:

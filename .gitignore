@@ -6,6 +6,7 @@
 /out-tsc
 /bazel-out
 /src-tauri/target
+/src-tauri/target-check
 
 # Node
 /node_modules

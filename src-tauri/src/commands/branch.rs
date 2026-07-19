@@ -249,11 +249,25 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
 pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let remote = input.remote.as_deref().unwrap_or("origin");
-        let out = git_cli::run_git(path, &["pull", remote])?;
-        Ok(MutationOutput {
-            ok: true,
-            message: if out.is_empty() { "Pulled".into() } else { out },
-        })
+        match git_cli::run_git(path, &["pull", remote]) {
+            Ok(out) => Ok(MutationOutput {
+                ok: true,
+                message: if out.is_empty() { "Pulled".into() } else { out },
+            }),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("conflict") {
+                    Ok(MutationOutput {
+                        ok: false,
+                        message: format!(
+                            "Pull conflicts — resolve files, then Continue. {msg}"
+                        ),
+                    })
+                } else {
+                    Err(e)
+                }
+            }
+        }
     })
 }
 

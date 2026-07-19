@@ -1,55 +1,82 @@
-<div class="banner">
+<div class="banner" [class.ready]="readyToContinue()">
   <div class="info">
-    <ng-icon name="lucideCircleAlert" size="16" />
+    <ng-icon [name]="readyToContinue() ? 'lucideCheck' : 'lucideCircleAlert'" size="16" />
     <div>
-      <strong>{{ store.status()?.conflicted?.length }} conflicted file(s)</strong>
-      <div class="files">
-        @for (f of store.status()?.conflicted ?? []; track f.path) {
-          <span class="mono">{{ f.path }}</span>
-        }
-      </div>
+      <strong>{{ title() }}</strong>
+      <p class="hint">{{ hint() }}</p>
+      @if (conflictCount() > 0 && conflictCount() <= 8) {
+        <div class="files">
+          @for (f of store.status()?.conflicted ?? []; track f.path) {
+            <button type="button" class="file" (click)="store.openConflictResolver(f.path)">
+              <span class="mono">{{ f.path }}</span>
+              @if (f.conflictLabel) {
+                <span class="kind">{{ f.conflictLabel }}</span>
+              }
+            </button>
+          }
+        </div>
+      } @else if (conflictCount() > 8) {
+        <div class="files">
+          <span class="more">{{ conflictCount() }} files — open Resolve to work through them</span>
+        </div>
+      }
     </div>
   </div>
   <div class="actions">
-    <button
-      type="button"
-      class="bl-btn bl-btn-primary"
-      (click)="openResolver()"
-      title="Resolve conflicts in Branchline or open an IDE"
-    >
-      Resolve
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="openInEditor()"
-      [title]="'Open conflicted files in ' + preferredLabel()"
-    >
-      Open in {{ preferredLabel() }}
-    </button>
-    @if (hasCursor()) {
-      <button type="button" class="bl-btn" (click)="openCursor()" title="Open in Cursor">
-        Cursor
+    @if (conflictCount() > 0) {
+      <button
+        type="button"
+        class="bl-btn bl-btn-primary"
+        (click)="openResolver()"
+        title="Resolve conflicts in Branchline or open an IDE"
+      >
+        Resolve
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="openInEditor()"
+        [title]="'Open conflicted files in ' + preferredLabel()"
+      >
+        {{ preferredLabel() }}
+      </button>
+      @if (hasCursor()) {
+        <button type="button" class="bl-btn" (click)="openCursor()" title="Open in Cursor">
+          Cursor
+        </button>
+      }
+      @if (hasVscode()) {
+        <button type="button" class="bl-btn" (click)="openVscode()" title="Open in VS Code">
+          VS Code
+        </button>
+      }
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="openIdeMerge()"
+        title="Open Cursor or VS Code 3-way merge editor"
+      >
+        IDE merge
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="openMergeTool()"
+        title="Open the configured merge tool"
+      >
+        Mergetool
       </button>
     }
-    @if (hasVscode()) {
-      <button type="button" class="bl-btn" (click)="openVscode()" title="Open in VS Code">
-        VS Code
-      </button>
-    }
     <button
       type="button"
       class="bl-btn"
-      (click)="openIdeMerge()"
-      title="Open Cursor or VS Code 3-way merge editor"
-    >
-      IDE merge
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
+      [class.bl-btn-primary]="readyToContinue()"
       (click)="continueOp()"
-      title="Continue merge, rebase, cherry-pick, or revert after resolving"
+      [title]="
+        operation()
+          ? 'Continue ' + (operation()?.label ?? 'operation')
+          : 'Continue merge, rebase, cherry-pick, or revert after resolving'
+      "
     >
       Continue
     </button>
@@ -57,17 +84,13 @@
       type="button"
       class="bl-btn"
       (click)="abortOp()"
-      title="Abort the in-progress merge, rebase, cherry-pick, or revert"
+      [title]="
+        operation()
+          ? 'Abort ' + (operation()?.label ?? 'operation')
+          : 'Abort the in-progress merge, rebase, cherry-pick, or revert'
+      "
     >
       Abort
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="openMergeTool()"
-      title="Open the configured merge tool"
-    >
-      Mergetool
     </button>
   </div>
 </div>

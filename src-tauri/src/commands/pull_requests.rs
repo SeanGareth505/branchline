@@ -191,6 +191,10 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         .and_then(|h| h.r#ref.clone().or(h.label.clone()))
         .unwrap_or_default();
     let comment_count = pr.comments.unwrap_or(0) + pr.review_comments.unwrap_or(0);
+    let needs_my_review = !me.is_empty()
+        && reviewers
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(me));
     MockPullRequest {
         id: format!("gh-{}", pr.id),
         number: pr.number,
@@ -207,16 +211,14 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         labels: pr.labels.into_iter().map(|l| l.name).collect(),
         updated_at: pr.updated_at,
         draft,
-        review_state: if reviewers.is_empty() {
-            "pending".into()
-        } else {
-            "pending".into()
-        },
+        // List endpoint does not include review decision / CI — UI hides those filters for live data.
+        review_state: "unknown".into(),
         pipeline_status: "unknown".into(),
         additions: pr.additions.unwrap_or(0),
         deletions: pr.deletions.unwrap_or(0),
         comment_count,
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
+        needs_my_review,
     }
 }
 

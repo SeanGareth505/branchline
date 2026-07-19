@@ -103,22 +103,38 @@ pub fn remove_remote(input: RemoveRemoteInput) -> AppResult<MutationOutput> {
 pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let remote = input.remote.as_deref().unwrap_or("origin");
-        let out = if input.rebase.unwrap_or(false) {
-            git_cli::run_git(path, &["pull", "--rebase", remote])?
+        let rebase = input.rebase.unwrap_or(false);
+        let result = if rebase {
+            git_cli::run_git(path, &["pull", "--rebase", remote])
         } else {
-            git_cli::run_git(path, &["pull", remote])?
+            git_cli::run_git(path, &["pull", remote])
         };
-        Ok(MutationOutput {
-            ok: true,
-            message: if out.is_empty() {
-                if input.rebase.unwrap_or(false) {
-                    "Pulled with rebase".into()
+        match result {
+            Ok(out) => Ok(MutationOutput {
+                ok: true,
+                message: if out.is_empty() {
+                    if rebase {
+                        "Pulled with rebase".into()
+                    } else {
+                        "Pulled".into()
+                    }
                 } else {
-                    "Pulled".into()
+                    out
+                },
+            }),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.to_lowercase().contains("conflict") {
+                    Ok(MutationOutput {
+                        ok: false,
+                        message: format!(
+                            "Pull conflicts — resolve files, then Continue. {msg}"
+                        ),
+                    })
+                } else {
+                    Err(e)
                 }
-            } else {
-                out
-            },
-        })
+            }
+        }
     })
 }

@@ -1,7 +1,7 @@
 use crate::infrastructure::git_cli;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -9,6 +9,10 @@ pub struct FileStatusEntry {
     pub path: String,
     pub status: FileStatusKind,
     pub original_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conflict_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conflict_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -28,6 +32,14 @@ pub enum FileStatusKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GitOperationInfo {
+    pub kind: String,
+    pub label: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepoStatus {
     pub path: String,
     pub branch: String,
@@ -39,6 +51,7 @@ pub struct RepoStatus {
     pub unstaged: Vec<FileStatusEntry>,
     pub untracked: Vec<FileStatusEntry>,
     pub conflicted: Vec<FileStatusEntry>,
+    pub operation: Option<GitOperationInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,16 +136,15 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
                     path: rest.to_string(),
                     status: FileStatusKind::Untracked,
                     original_path: None,
+                    conflict_kind: None,
+                    conflict_label: None,
                 });
             }
         } else if let Some(rest) = line.strip_prefix("u ") {
             if conflicted.len() < 2_000 {
-                let path_part = rest.split_whitespace().last().unwrap_or("").to_string();
-                conflicted.push(FileStatusEntry {
-                    path: path_part,
-                    status: FileStatusKind::Conflicted,
-                    original_path: None,
-                });
+                if let Some(entry) = parse_unmerged_change(rest) {
+                    conflicted.push(entry);
+                }
             }
         } else if let Some(rest) = line.strip_prefix("1 ") {
             if staged.len() + unstaged.len() < 8_000 {
@@ -145,6 +157,8 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
         }
     }
 
+    let operation = detect_git_operation(path);
+
     Ok(RepoStatus {
         path: path.to_string_lossy().to_string(),
         branch,
@@ -156,7 +170,113 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
         unstaged,
         untracked,
         conflicted,
+        operation,
     })
+}
+
+fn detect_git_operation(path: &Path) -> Option<GitOperationInfo> {
+    let git_dir = {
+        let (ok, out, _) = git_cli::run_git_allow_fail(path, &["rev-parse", "--git-dir"]);
+        if !ok {
+            return None;
+        }
+        let gd = PathBuf::from(out.trim());
+        if gd.is_absolute() {
+            gd
+        } else {
+            path.join(gd)
+        }
+    };
+
+    if git_dir.join("CHERRY_PICK_HEAD").exists() {
+        return Some(GitOperationInfo {
+            kind: "cherryPick".into(),
+            label: "Cherry-pick in progress".into(),
+            detail: None,
+        });
+    }
+    if git_dir.join("REVERT_HEAD").exists() {
+        return Some(GitOperationInfo {
+            kind: "revert".into(),
+            label: "Revert in progress".into(),
+            detail: None,
+        });
+    }
+    if git_dir.join("REBASE_HEAD").exists()
+        || git_dir.join("rebase-merge").exists()
+        || git_dir.join("rebase-apply").exists()
+    {
+        let detail = rebase_progress_detail(&git_dir);
+        return Some(GitOperationInfo {
+            kind: "rebase".into(),
+            label: "Rebase in progress".into(),
+            detail,
+        });
+    }
+    if git_dir.join("MERGE_HEAD").exists() {
+        return Some(GitOperationInfo {
+            kind: "merge".into(),
+            label: "Merge in progress".into(),
+            detail: None,
+        });
+    }
+    None
+}
+
+fn rebase_progress_detail(git_dir: &Path) -> Option<String> {
+    let dir = if git_dir.join("rebase-merge").exists() {
+        git_dir.join("rebase-merge")
+    } else if git_dir.join("rebase-apply").exists() {
+        git_dir.join("rebase-apply")
+    } else {
+        return None;
+    };
+    let msgnum = std::fs::read_to_string(dir.join("msgnum"))
+        .ok()?
+        .trim()
+        .to_string();
+    let end = std::fs::read_to_string(dir.join("end"))
+        .ok()?
+        .trim()
+        .to_string();
+    if msgnum.is_empty() || end.is_empty() {
+        return None;
+    }
+    Some(format!("step {msgnum} of {end}"))
+}
+
+fn parse_unmerged_change(rest: &str) -> Option<FileStatusEntry> {
+    // u <xy> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+    let mut parts = rest.splitn(10, ' ');
+    let xy = parts.next().unwrap_or("UU");
+    for _ in 0..8 {
+        let _ = parts.next();
+    }
+    let path = parts.next()?.to_string();
+    if path.is_empty() {
+        return None;
+    }
+    let (kind, label) = map_conflict_xy(xy);
+    Some(FileStatusEntry {
+        path,
+        status: FileStatusKind::Conflicted,
+        original_path: None,
+        conflict_kind: Some(kind.into()),
+        conflict_label: Some(label.into()),
+    })
+}
+
+fn map_conflict_xy(xy: &str) -> (&'static str, &'static str) {
+    match xy.trim() {
+        "UU" => ("bothModified", "both modified"),
+        "AA" => ("bothAdded", "both added"),
+        "DD" => ("bothDeleted", "both deleted"),
+        "AU" => ("addedByUs", "added by us"),
+        "UA" => ("addedByThem", "added by them"),
+        "DU" => ("deletedByUs", "deleted by us"),
+        "UD" => ("deletedByThem", "deleted by them"),
+        _ => ("conflict", "conflict"),
+    }
 }
 
 fn parse_ordinary_change(
@@ -178,6 +298,8 @@ fn parse_ordinary_change(
             path: path.clone(),
             status: map_status_char(x),
             original_path: None,
+            conflict_kind: None,
+            conflict_label: None,
         });
     }
     if y != '.' {
@@ -185,6 +307,8 @@ fn parse_ordinary_change(
             path,
             status: map_status_char(y),
             original_path: None,
+            conflict_kind: None,
+            conflict_label: None,
         });
     }
 }
@@ -214,6 +338,8 @@ fn parse_rename_change(
             path: new_path.clone(),
             status: FileStatusKind::Renamed,
             original_path: old_path.clone(),
+            conflict_kind: None,
+            conflict_label: None,
         });
     }
     if y != '.' {
@@ -221,6 +347,8 @@ fn parse_rename_change(
             path: new_path,
             status: map_status_char(y),
             original_path: old_path,
+            conflict_kind: None,
+            conflict_label: None,
         });
     }
 }
@@ -668,5 +796,21 @@ mod tests {
         assert_eq!(staged[0].path, "new/name.ts");
         assert_eq!(staged[0].original_path.as_deref(), Some("old/name.ts"));
         assert_eq!(staged[0].status, FileStatusKind::Renamed);
+    }
+
+    #[test]
+    fn parse_unmerged_both_modified() {
+        let rest = "UU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc docs/conflict demo.txt";
+        let entry = parse_unmerged_change(rest).expect("parsed");
+        assert_eq!(entry.path, "docs/conflict demo.txt");
+        assert_eq!(entry.conflict_kind.as_deref(), Some("bothModified"));
+        assert_eq!(entry.conflict_label.as_deref(), Some("both modified"));
+    }
+
+    #[test]
+    fn parse_unmerged_deleted_by_us() {
+        let rest = "DU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc src/gone.ts";
+        let entry = parse_unmerged_change(rest).expect("parsed");
+        assert_eq!(entry.conflict_kind.as_deref(), Some("deletedByUs"));
     }
 }

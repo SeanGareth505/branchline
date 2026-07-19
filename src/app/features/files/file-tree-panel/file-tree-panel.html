@@ -131,6 +131,9 @@
               </span>
               <ng-icon class="file-icon" name="lucideFileText" size="14" />
               <span class="name">{{ row.name }}</span>
+              @if (row.file.conflictLabel) {
+                <span class="kind">{{ row.file.conflictLabel }}</span>
+              }
               <span class="area">{{ areaLabel(row.file.area) }}</span>
             </button>
             <div class="actions">

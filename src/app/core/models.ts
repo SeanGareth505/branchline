@@ -68,6 +68,14 @@ export interface FileStatusEntry {
   path: string;
   status: FileStatusKind;
   originalPath?: string | null;
+  conflictKind?: string | null;
+  conflictLabel?: string | null;
+}
+
+export interface GitOperationInfo {
+  kind: 'merge' | 'rebase' | 'cherryPick' | 'revert' | string;
+  label: string;
+  detail?: string | null;
 }
 
 export interface RepoStatus {
@@ -81,6 +89,7 @@ export interface RepoStatus {
   unstaged: FileStatusEntry[];
   untracked: FileStatusEntry[];
   conflicted: FileStatusEntry[];
+  operation?: GitOperationInfo | null;
 }
 
 export interface CommitInfo {
@@ -346,6 +355,7 @@ export interface MockPullRequest {
   deletions: number;
   commentCount: number;
   isMine: boolean;
+  needsMyReview: boolean;
 }
 
 export interface JiraIssue {

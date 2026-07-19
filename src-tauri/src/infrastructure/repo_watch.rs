@@ -147,9 +147,10 @@ fn is_meta_path(root: &Path, path: &Path) -> bool {
         return false;
     }
     match parts.next().as_deref() {
-        Some("index") | Some("head") | Some("refs") | Some("commondir") | Some("packed-refs") => {
-            true
-        }
+        Some("index") | Some("head") | Some("refs") | Some("commondir") | Some("packed-refs")
+        | Some("merge_head") | Some("rebase_head") | Some("cherry_pick_head")
+        | Some("revert_head") | Some("sequencer") | Some("rebase-merge") | Some("rebase-apply")
+        | Some("auto_merge") => true,
         _ => false,
     }
 }
@@ -190,9 +191,19 @@ fn should_ignore_path(root: &Path, path: &Path) -> bool {
         let second = parts.next();
         return match second.as_deref() {
             Some("objects") | Some("lfs") | Some("logs") | Some("hooks") | Some("info") => true,
-            Some("index") | Some("head") | Some("refs") | Some("commondir") | Some("packed-refs") => {
-                false
-            }
+            Some("index")
+            | Some("head")
+            | Some("refs")
+            | Some("commondir")
+            | Some("packed-refs")
+            | Some("merge_head")
+            | Some("rebase_head")
+            | Some("cherry_pick_head")
+            | Some("revert_head")
+            | Some("sequencer")
+            | Some("rebase-merge")
+            | Some("rebase-apply")
+            | Some("auto_merge") => false,
             Some(_) => true,
             None => false,
         };

@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use tauri::command;
 
-use super::branch::{MutationOutput, RepoPathInput};
+use super::branch::MutationOutput;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -206,22 +206,6 @@ pub fn resolve_conflict_file(input: ResolveConflictInput) -> AppResult<MutationO
                 message: e.to_string(),
             }),
         }
-    })
-}
-
-#[command]
-pub fn list_conflicted_paths(input: RepoPathInput) -> AppResult<Vec<String>> {
-    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let (ok, out, _) = git_cli::run_git_allow_fail(path, &["diff", "--name-only", "--diff-filter=U"]);
-        if !ok {
-            return Ok(vec![]);
-        }
-        Ok(out
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .map(|s| s.to_string())
-            .collect())
     })
 }
 

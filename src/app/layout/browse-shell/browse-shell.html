@@ -29,7 +29,7 @@
     </div>
   }
 
-  @if (store.status()?.conflicted?.length) {
+  @if (store.showConflictBanner()) {
     <app-conflict-banner />
   }
 

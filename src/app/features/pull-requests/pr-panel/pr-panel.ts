@@ -49,6 +49,7 @@ export class PrPanel {
   readonly changesText = signal('');
 
   readonly liveError = signal<string | null>(null);
+  private reloadToken = 0;
 
   readonly showingDummy = computed(() => !this.store.hasLinkedPrHost());
 
@@ -59,6 +60,8 @@ export class PrPanel {
         (c) => c.provider === 'github' && c.enabled && (c.hasToken || c.token.trim()),
       ),
   );
+
+  readonly liveMode = computed(() => !this.showingDummy() && this.hasGithub());
 
   connectHosts(): void {
     this.store.openSettings('connections', 'github');
@@ -89,14 +92,16 @@ export class PrPanel {
     const q = this.query().trim().toLowerCase();
     let list = this.prs().filter((pr) => {
       if (this.mineOnly() && !pr.isMine) return false;
-      if (this.needsMyReview() && !pr.reviewers.includes('you')) return false;
+      if (this.needsMyReview() && !pr.needsMyReview) return false;
       if (this.team() !== 'all' && pr.team !== this.team()) return false;
       if (this.author() !== 'all' && pr.author !== this.author()) return false;
       if (this.reviewer() !== 'all' && !pr.reviewers.includes(this.reviewer())) return false;
       if (this.repo() !== 'all' && pr.repo !== this.repo()) return false;
       if (this.label() !== 'all' && !pr.labels.includes(this.label())) return false;
-      if (this.pipeline() !== 'all' && pr.pipelineStatus !== this.pipeline()) return false;
-      if (this.review() !== 'all' && pr.reviewState !== this.review()) return false;
+      if (!this.liveMode()) {
+        if (this.pipeline() !== 'all' && pr.pipelineStatus !== this.pipeline()) return false;
+        if (this.review() !== 'all' && pr.reviewState !== this.review()) return false;
+      }
 
       const status = this.status();
       if (status === 'draft') {
@@ -142,8 +147,11 @@ export class PrPanel {
       open: all.filter((p) => p.status === 'open' && !p.draft).length,
       draft: all.filter((p) => p.draft).length,
       failing: all.filter((p) => p.pipelineStatus === 'failure').length,
-      needsReview: all.filter((p) => p.reviewState === 'pending' || p.reviewState === 'changesRequested')
-        .length,
+      needsReview: all.filter((p) =>
+        this.liveMode()
+          ? p.needsMyReview
+          : p.reviewState === 'pending' || p.reviewState === 'changesRequested',
+      ).length,
     };
   });
 
@@ -197,21 +205,26 @@ export class PrPanel {
   }
 
   private async reloadPrs(): Promise<void> {
+    const token = ++this.reloadToken;
     this.loading.set(true);
     this.liveError.set(null);
     try {
       if (!this.store.hasLinkedPrHost()) {
-        this.prs.set(await this.tauri.listMockPullRequests());
+        const list = await this.tauri.listMockPullRequests();
+        if (token !== this.reloadToken) return;
+        this.prs.set(list);
         this.selected.set(new Set());
         return;
       }
       if (!this.hasGithub()) {
+        if (token !== this.reloadToken) return;
         this.prs.set([]);
         this.selected.set(new Set());
         return;
       }
       const path = this.store.currentRepo()?.path;
       if (!path) {
+        if (token !== this.reloadToken) return;
         this.prs.set([]);
         this.liveError.set('Open a repository with a GitHub remote to load pull requests.');
         return;
@@ -224,14 +237,25 @@ export class PrPanel {
             ? 'all'
             : 'open';
       const list = await this.tauri.listPullRequests(path, state);
+      if (token !== this.reloadToken) return;
       this.prs.set(list);
       this.selected.set(new Set());
     } catch (err) {
+      if (token !== this.reloadToken) return;
       this.prs.set([]);
       this.liveError.set(err instanceof Error ? err.message : String(err));
     } finally {
-      this.loading.set(false);
+      if (token === this.reloadToken) this.loading.set(false);
     }
+  }
+
+  private allowDummyMutation(pr: MockPullRequest, action: string): boolean {
+    if (this.showingDummy()) return true;
+    this.store.showInfo(
+      `${action} isn’t available for live GitHub PRs yet — opening #${pr.number} in the browser.`,
+    );
+    this.openBrowser(pr);
+    return false;
   }
 
   clearFilters(): void {
@@ -336,6 +360,7 @@ export class PrPanel {
   }
 
   approve(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Approve')) return;
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before reviewing` : `#${pr.number} is not open`);
       return;
@@ -348,11 +373,13 @@ export class PrPanel {
       reviewState: 'approved',
       updatedAt: new Date().toISOString(),
       reviewers: ensureYou(pr.reviewers),
+      needsMyReview: true,
     });
     this.store.showSuccess(`DUMMY: approved #${pr.number}`, undefined, 'prActivity');
   }
 
   startRequestChanges(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Request changes')) return;
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before reviewing` : `#${pr.number} is not open`);
       return;
@@ -369,6 +396,7 @@ export class PrPanel {
   }
 
   submitRequestChanges(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Request changes')) return;
     const note = this.changesText().trim();
     if (!note) {
       this.store.showWarning('Add a short note explaining the requested changes');
@@ -379,12 +407,14 @@ export class PrPanel {
       commentCount: pr.commentCount + 1,
       updatedAt: new Date().toISOString(),
       reviewers: ensureYou(pr.reviewers),
+      needsMyReview: true,
     });
     this.cancelRequestChanges();
     this.store.showWarning(`DUMMY: requested changes on #${pr.number}`);
   }
 
   startComment(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Comment')) return;
     if (pr.status === 'closed' || pr.status === 'merged') {
       this.store.showWarning(`#${pr.number} is ${pr.status} — comments are read-only here`);
       return;
@@ -401,6 +431,7 @@ export class PrPanel {
   }
 
   submitComment(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Comment')) return;
     const body = this.commentText().trim();
     if (!body) {
       this.store.showWarning('Write a comment before posting');
@@ -415,6 +446,7 @@ export class PrPanel {
   }
 
   merge(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Merge')) return;
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before merging` : `#${pr.number} cannot be merged`);
       return;
@@ -439,6 +471,7 @@ export class PrPanel {
   }
 
   closePr(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Close')) return;
     if (pr.status !== 'open') {
       this.store.showInfo(`#${pr.number} is already ${pr.status}`);
       return;
@@ -452,6 +485,7 @@ export class PrPanel {
   }
 
   markReady(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Mark ready')) return;
     if (!pr.draft || pr.status !== 'open') {
       this.store.showInfo(`#${pr.number} is already ready for review`);
       return;
@@ -464,6 +498,7 @@ export class PrPanel {
   }
 
   assignMyself(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Assign')) return;
     if (pr.assignees.includes('you')) {
       this.store.showInfo(`You are already assigned to #${pr.number}`);
       return;
@@ -476,16 +511,18 @@ export class PrPanel {
   }
 
   requestMyReview(pr: MockPullRequest): void {
+    if (!this.allowDummyMutation(pr, 'Request review')) return;
     if (!this.canReview(pr)) {
       this.store.showWarning(`#${pr.number} is not open for review`);
       return;
     }
-    if (pr.reviewers.includes('you')) {
+    if (pr.reviewers.includes('you') || pr.needsMyReview) {
       this.store.showInfo(`You are already a reviewer on #${pr.number}`);
       return;
     }
     this.patchPr(pr.id, {
       reviewers: [...pr.reviewers, 'you'],
+      needsMyReview: true,
       reviewState: pr.reviewState === 'approved' ? 'pending' : pr.reviewState,
       updatedAt: new Date().toISOString(),
     });
@@ -531,6 +568,8 @@ export class PrPanel {
         return 'Approved';
       case 'changesRequested':
         return 'Changes requested';
+      case 'unknown':
+        return 'Review n/a';
       default:
         return 'Review pending';
     }

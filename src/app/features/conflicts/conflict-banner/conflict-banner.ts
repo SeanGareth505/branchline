@@ -22,6 +22,38 @@ export class ConflictBanner {
   readonly hasCursor = computed(() => !!this.store.detectedEditors()?.cursor);
   readonly hasVscode = computed(() => !!this.store.detectedEditors()?.vscode);
 
+  readonly operation = computed(() => this.store.status()?.operation ?? null);
+  readonly conflictCount = computed(() => this.store.status()?.conflicted?.length ?? 0);
+  readonly readyToContinue = computed(() => this.store.operationNeedsContinue());
+
+  readonly title = computed(() => {
+    const op = this.operation();
+    const n = this.conflictCount();
+    if (n > 0) {
+      const kind = op?.label?.replace(/ in progress$/i, '') || 'Operation';
+      return `${n} conflicted file${n === 1 ? '' : 's'} · ${kind.toLowerCase()}`;
+    }
+    if (op) {
+      const detail = op.detail ? ` · ${op.detail}` : '';
+      return `All conflicts resolved · ${op.label}${detail}`;
+    }
+    return 'Conflicts';
+  });
+
+  readonly hint = computed(() => {
+    if (this.readyToContinue()) {
+      return 'Nothing left unmerged — Continue to finish, or Abort to cancel.';
+    }
+    const op = this.operation();
+    if (op?.kind === 'rebase') {
+      return 'During rebase, “ours” is the branch you rebase onto; “theirs” is the commit being applied.';
+    }
+    if (op?.kind === 'cherryPick' || op?.kind === 'revert') {
+      return 'Resolve each file, then Continue.';
+    }
+    return 'Resolve each file, then Continue the merge.';
+  });
+
   openResolver(): void {
     void this.store.openConflictResolver();
   }
