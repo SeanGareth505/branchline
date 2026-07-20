@@ -284,7 +284,7 @@ impl Default for AppSettings {
             confirm_abort_second: true,
             confirm_remove_remote: true,
             sign_off_by_default: false,
-            push_after_commit: false,
+            push_after_commit: true,
             my_branches_only: false,
             branch_prefix_enabled: true,
             branch_prefix: default_branch_prefix(),
