@@ -123,6 +123,8 @@ export interface ToastOptions {
   force?: boolean;
 }
 
+const RELEASE_ACTIVITY_STORAGE_KEY = 'branchline.releaseActivity';
+
 @Injectable({ providedIn: 'root' })
 export class AppStore {
   private readonly tauri = inject(TauriService);
@@ -609,6 +611,7 @@ export class AppStore {
       }
       void this.bindRepoFsWatcher();
       void this.bindReleaseProgressListener();
+      this.restoreReleaseActivity();
       try {
         this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
       } catch {
@@ -1340,12 +1343,55 @@ export class AppStore {
       finishedAt: finished ? Date.now() : current.finishedAt ?? null,
       ok: phase === 'done' ? true : phase === 'error' ? false : current.ok ?? null,
     });
+    this.persistReleaseActivity();
+  }
+
+  private persistReleaseActivity(): void {
+    if (typeof window === 'undefined') return;
+    const activity = this.releaseActivity();
+    if (!activity) {
+      localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
+      return;
+    }
+    try {
+      localStorage.setItem(RELEASE_ACTIVITY_STORAGE_KEY, JSON.stringify(activity));
+    } catch {
+      /* ignore quota errors */
+    }
+  }
+
+  private restoreReleaseActivity(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(RELEASE_ACTIVITY_STORAGE_KEY);
+      if (!raw) return;
+      const activity = JSON.parse(raw) as ReleaseActivity;
+      if (!activity?.path || !activity.tag) return;
+      this.releaseActivity.set(activity);
+      const resumeDeploy =
+        activity.willPush &&
+        !activity.needsPush &&
+        (activity.phase === 'deploying' ||
+          activity.phase === 'ci' ||
+          activity.phase === 'publishing' ||
+          (activity.phase === 'pushing' && activity.message.includes('background')));
+      if (resumeDeploy && activity.phase !== 'done' && activity.phase !== 'error') {
+        this.releaseBusy.set(true);
+        this.setView('release');
+        void this.watchReleaseDeploy(activity.path, activity.tag);
+      }
+    } catch {
+      localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
+    }
   }
 
   clearReleaseActivity(): void {
     if (this.releaseBusy()) return;
     this.stopReleaseDeployPoll();
     this.releaseActivity.set(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
+    }
   }
 
   private stopReleaseDeployPoll(): void {
@@ -4072,6 +4118,7 @@ export class AppStore {
       }
 
       const devSkipped = preview.devSkippedFiles ?? [];
+      const devRelease = devSkipped.length > 0;
       const confirmed = await this.prompts.ask({
         title: `Release ${preview.productName} ${preview.nextVersion}?`,
         message: [
@@ -4079,15 +4126,16 @@ export class AppStore {
           `Commit: ${preview.commitMessage}`,
           `Tag: ${preview.tagMessage}`,
           preview.willPush
-            ? 'Will bump, commit, tag, push, and track GitHub Actions until the release is live.'
+            ? devRelease
+              ? 'Will bump package.json, commit, tag, then finish Tauri/Cargo sync and push in the background (tauri:dev may restart once).'
+              : 'Will bump, commit, tag, push, and track GitHub Actions until the release is live.'
             : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
-          `Files: ${preview.files.join(', ')}`,
-          devSkipped.length && !preview.willPush
-            ? `Dev mode: ${devSkipped.join(', ')} skipped unless you push (full ship bumps all files).`
-            : '',
-          preview.willPush
-            ? 'Note: updating Tauri/Cargo files may restart tauri:dev while the release runs.'
-            : '',
+          `Files now: ${preview.files.join(', ')}`,
+          devRelease && preview.willPush
+            ? `Background sync: ${devSkipped.join(', ')}`
+            : devRelease
+              ? `Dev mode skips ${devSkipped.join(', ')} until you push.`
+              : '',
         ]
           .filter(Boolean)
           .join('\n'),
@@ -4138,6 +4186,7 @@ export class AppStore {
               tag: preview.tag,
             });
             this.showSuccess(result.message);
+            this.releaseBusy.set(true);
             void this.watchReleaseDeploy(path, preview.tag);
             return;
           }

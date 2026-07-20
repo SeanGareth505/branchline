@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::{command, AppHandle, Emitter, State};
 
 use super::branch::MutationOutput;
@@ -454,6 +454,33 @@ fn should_skip_dev_watch_write(file: &ReleaseFileSpec) -> bool {
         || file.path.replace('\\', "/").starts_with("src-tauri/")
 }
 
+fn effective_full_ship(will_push: bool) -> bool {
+    will_push && !cfg!(debug_assertions)
+}
+
+fn spawn_dev_release_finish(repo: &Path, version: &str) -> AppResult<()> {
+    let script = repo.join("scripts/release-finish-dev.mjs");
+    if script.exists() {
+        Command::new("node")
+            .arg(script)
+            .arg("--version")
+            .arg(version)
+            .current_dir(repo)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                crate::AppError::msg(format!(
+                    "Could not start background release finish: {e}"
+                ))
+            })?;
+        return Ok(());
+    }
+    git_cli::run_git(repo, &["push", "origin", "HEAD", "--tags"])?;
+    Ok(())
+}
+
 struct ApplyFilesResult {
     changed: Vec<String>,
     dev_skipped: Vec<String>,
@@ -467,7 +494,7 @@ fn apply_files(
     full_ship: bool,
 ) -> AppResult<ApplyFilesResult> {
     let mut ordered: Vec<&ReleaseFileSpec> = files.iter().collect();
-    ordered.sort_by_key(|f| is_cargo_watch_file(&f.kind));
+    ordered.sort_by_key(|f| is_cargo_watch_file(&f.kind) || f.path.replace('\\', "/").starts_with("src-tauri/"));
 
     let mut changed = Vec::new();
     let mut dev_skipped = Vec::new();
@@ -559,7 +586,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         &tag,
         &product_name,
     );
-    let applied = apply_files(repo, &cfg.files, &next, true, will_push)?;
+    let applied = apply_files(repo, &cfg.files, &next, true, effective_full_ship(will_push))?;
     let files = applied.changed;
     let dev_skipped_files = applied.dev_skipped;
 
@@ -714,8 +741,17 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             Some(&preview.next_version),
             Some(&preview.tag),
         );
-        let applied = apply_files(path, &cfg.files, &preview.next_version, false, preview.will_push)?;
+        let applied = apply_files(
+            path,
+            &cfg.files,
+            &preview.next_version,
+            false,
+            effective_full_ship(preview.will_push),
+        )?;
         let changed = applied.changed;
+        let dev_finish = cfg!(debug_assertions)
+            && preview.will_push
+            && !applied.dev_skipped.is_empty();
         emit_release_progress(
             &app,
             path,
@@ -751,6 +787,33 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             &["tag", "-a", &preview.tag, "-m", &preview.tag_message],
         )?;
         if preview.will_push {
+            if dev_finish {
+                emit_release_progress(
+                    &app,
+                    path,
+                    "pushing",
+                    "Finishing release in background (tauri:dev safe)…",
+                    Some(&preview.next_version),
+                    Some(&preview.tag),
+                );
+                spawn_dev_release_finish(path, &preview.next_version)?;
+                let message = format!(
+                    "Finishing {} in background — Branchline may restart while Tauri files sync, then GitHub Actions will build {}",
+                    preview.tag, preview.product_name
+                );
+                emit_release_progress(
+                    &app,
+                    path,
+                    "deploying",
+                    &message,
+                    Some(&preview.next_version),
+                    Some(&preview.tag),
+                );
+                return Ok(MutationOutput {
+                    ok: true,
+                    message,
+                });
+            }
             emit_release_progress(
                 &app,
                 path,
