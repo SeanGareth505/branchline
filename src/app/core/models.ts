@@ -634,6 +634,49 @@ export interface ReleaseRunOptions {
   branch?: string | null;
 }
 
+export type ReleasePhase =
+  | 'idle'
+  | 'preparing'
+  | 'bumping'
+  | 'staging'
+  | 'committing'
+  | 'tagging'
+  | 'pushing'
+  | 'done'
+  | 'error';
+
+export interface ReleaseProgressEvent {
+  path: string;
+  phase: ReleasePhase | string;
+  message: string;
+  version?: string | null;
+  tag?: string | null;
+}
+
+export interface ReleaseActivityStep {
+  id: string;
+  phase: ReleasePhase;
+  label: string;
+  message: string;
+  status: 'pending' | 'active' | 'done' | 'error';
+  at?: number | null;
+}
+
+export interface ReleaseActivity {
+  path: string;
+  productName: string;
+  currentVersion: string;
+  nextVersion: string;
+  tag: string;
+  willPush: boolean;
+  phase: ReleasePhase;
+  message: string;
+  steps: ReleaseActivityStep[];
+  startedAt: number;
+  finishedAt?: number | null;
+  ok?: boolean | null;
+}
+
 export interface CreatePullRequestOutput {
   ok: boolean;
   message: string;

@@ -4,9 +4,41 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::command;
+use tauri::{command, AppHandle, Emitter};
 
 use super::branch::MutationOutput;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseProgressPayload {
+    path: String,
+    phase: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tag: Option<String>,
+}
+
+fn emit_release_progress(
+    app: &AppHandle,
+    path: &Path,
+    phase: &str,
+    message: &str,
+    version: Option<&str>,
+    tag: Option<&str>,
+) {
+    let _ = app.emit(
+        "release-progress",
+        ReleaseProgressPayload {
+            path: path.to_string_lossy().to_string(),
+            phase: phase.into(),
+            message: message.into(),
+            version: version.map(str::to_string),
+            tag: tag.map(str::to_string),
+        },
+    );
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -405,9 +437,17 @@ fn set_cargo_lock_package_version(path: &Path, package_name: &str, version: &str
     Ok(())
 }
 
+fn is_cargo_watch_file(kind: &str) -> bool {
+    matches!(kind, "toml-package-version" | "cargo-lock-package")
+}
+
 fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: bool) -> AppResult<Vec<String>> {
+    let mut ordered: Vec<&ReleaseFileSpec> = files.iter().collect();
+    ordered.sort_by_key(|f| is_cargo_watch_file(&f.kind));
+
     let mut changed = Vec::new();
-    for file in files {
+    let mut marked_expected_restart = false;
+    for file in ordered {
         let path = repo.join(&file.path);
         if !path.exists() {
             return Err(crate::AppError::msg(format!("Missing file: {}", file.path)));
@@ -415,6 +455,12 @@ fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: b
         changed.push(file.path.clone());
         if dry_run {
             continue;
+        }
+        if !marked_expected_restart && is_cargo_watch_file(&file.kind) {
+            crate::infrastructure::diagnostics::mark_expected_restart(
+                "release bumps Cargo.toml/Cargo.lock under tauri:dev",
+            );
+            marked_expected_restart = true;
         }
         match file.kind.as_str() {
             "json" => {
@@ -589,43 +635,120 @@ pub fn preview_release(input: ReleasePreviewInput) -> AppResult<ReleasePreviewOu
 }
 
 #[command]
-pub fn run_release(input: ReleasePreviewInput) -> AppResult<MutationOutput> {
+pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        emit_release_progress(
+            &app,
+            path,
+            "preparing",
+            "Checking release preconditions…",
+            None,
+            None,
+        );
         let preview = build_preview(path, &input)?;
         if !preview.blockers.is_empty() {
+            let message = preview.blockers.join(" · ");
+            emit_release_progress(&app, path, "error", &message, None, None);
             return Ok(MutationOutput {
                 ok: false,
-                message: preview.blockers.join(" · "),
+                message,
             });
         }
         let cfg = load_config(path)?;
+        let touches_cargo = cfg.files.iter().any(|f| is_cargo_watch_file(&f.kind));
+        let bump_message = if cfg!(debug_assertions) && touches_cargo {
+            format!(
+                "Bumping version files to {}… (dev build: Cargo.toml/lock may restart the app)",
+                preview.next_version
+            )
+        } else {
+            format!("Bumping version files to {}…", preview.next_version)
+        };
+        emit_release_progress(
+            &app,
+            path,
+            "bumping",
+            &bump_message,
+            Some(&preview.next_version),
+            Some(&preview.tag),
+        );
         let changed = apply_files(path, &cfg.files, &preview.next_version, false)?;
+        emit_release_progress(
+            &app,
+            path,
+            "staging",
+            &format!("Staging {} file(s)…", changed.len()),
+            Some(&preview.next_version),
+            Some(&preview.tag),
+        );
         let add_args: Vec<&str> = std::iter::once("add")
             .chain(std::iter::once("--"))
             .chain(changed.iter().map(String::as_str))
             .collect();
         git_cli::run_git(path, &add_args)?;
+        emit_release_progress(
+            &app,
+            path,
+            "committing",
+            "Creating release commit…",
+            Some(&preview.next_version),
+            Some(&preview.tag),
+        );
         git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
+        emit_release_progress(
+            &app,
+            path,
+            "tagging",
+            &format!("Creating tag {}…", preview.tag),
+            Some(&preview.next_version),
+            Some(&preview.tag),
+        );
         git_cli::run_git(
             path,
             &["tag", "-a", &preview.tag, "-m", &preview.tag_message],
         )?;
         if preview.will_push {
+            emit_release_progress(
+                &app,
+                path,
+                "pushing",
+                "Pushing commit and tags to origin…",
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
             git_cli::run_git(path, &["push", "origin", "HEAD", "--tags"])?;
+            let message = format!(
+                "Released {} {} and pushed {}",
+                preview.product_name, preview.next_version, preview.tag
+            );
+            emit_release_progress(
+                &app,
+                path,
+                "done",
+                &message,
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
             return Ok(MutationOutput {
                 ok: true,
-                message: format!(
-                    "Released {} {} and pushed {}",
-                    preview.product_name, preview.next_version, preview.tag
-                ),
+                message,
             });
         }
+        let message = format!(
+            "Released {} {} ({}) — push when ready",
+            preview.product_name, preview.next_version, preview.tag
+        );
+        emit_release_progress(
+            &app,
+            path,
+            "done",
+            &message,
+            Some(&preview.next_version),
+            Some(&preview.tag),
+        );
         Ok(MutationOutput {
             ok: true,
-            message: format!(
-                "Released {} {} ({}) — push when ready",
-                preview.product_name, preview.next_version, preview.tag
-            ),
+            message,
         })
     })
 }

@@ -29,6 +29,10 @@ import type {
   SubmoduleInfo,
   LfsFileInfo,
   ConflictSidesOutput,
+  ReleaseActivity,
+  ReleaseActivityStep,
+  ReleasePhase,
+  ReleaseProgressEvent,
   TagInfo,
   TemplateInfo,
   UiSession,
@@ -59,7 +63,15 @@ import {
   slugifyUser,
 } from './workflow-placeholders';
 
-export type BrowseTab = 'commit' | 'diff' | 'files' | 'blame' | 'history' | 'reflog' | 'console';
+export type BrowseTab =
+  | 'commit'
+  | 'diff'
+  | 'files'
+  | 'blame'
+  | 'history'
+  | 'reflog'
+  | 'console'
+  | 'release';
 export type AppView =
   | 'dashboard'
   | 'browse'
@@ -142,6 +154,7 @@ export class AppStore {
   readonly conflictIdeLabel = signal<string | null>(null);
   private conflictFocusBound = false;
   private conflictSyncInFlight = false;
+  private conflictAutoStageInFlight = false;
   readonly selectedSha = signal<string | null>(null);
   readonly selectedShas = signal<string[]>([]);
   readonly compareSha = signal<string | null>(null);
@@ -224,6 +237,9 @@ export class AppStore {
   readonly refreshingRepo = signal(false);
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
+  readonly releaseBusy = signal(false);
+  readonly releaseActivity = signal<ReleaseActivity | null>(null);
+  private releaseProgressUnlisten: UnlistenFn | null = null;
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -587,6 +603,7 @@ export class AppStore {
         this.bindConflictFocusWatch();
       }
       void this.bindRepoFsWatcher();
+      void this.bindReleaseProgressListener();
       try {
         this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
       } catch {
@@ -1273,6 +1290,110 @@ export class AppStore {
           void this.refreshWorkingTree();
         }
       }
+    }
+  }
+
+  private async bindReleaseProgressListener(): Promise<void> {
+    if (this.isDummyBackend) return;
+    if (this.releaseProgressUnlisten) {
+      this.releaseProgressUnlisten();
+      this.releaseProgressUnlisten = null;
+    }
+    try {
+      this.releaseProgressUnlisten = await listen<ReleaseProgressEvent>(
+        'release-progress',
+        (event) => {
+          this.applyReleaseProgress(event.payload);
+        },
+      );
+    } catch {
+      this.releaseProgressUnlisten = null;
+    }
+  }
+
+  private applyReleaseProgress(payload: ReleaseProgressEvent): void {
+    const current = this.releaseActivity();
+    if (!current) return;
+    if (!sameRepoPath(current.path, payload.path)) return;
+    const phase = normalizeReleasePhase(payload.phase);
+    const message = payload.message?.trim() || current.message;
+    const nextVersion = payload.version?.trim() || current.nextVersion;
+    const tag = payload.tag?.trim() || current.tag;
+    const steps = advanceReleaseSteps(current.steps, phase, message);
+    const finished = phase === 'done' || phase === 'error';
+    this.releaseActivity.set({
+      ...current,
+      phase,
+      message,
+      nextVersion,
+      tag,
+      steps,
+      finishedAt: finished ? Date.now() : current.finishedAt ?? null,
+      ok: phase === 'done' ? true : phase === 'error' ? false : current.ok ?? null,
+    });
+  }
+
+  clearReleaseActivity(): void {
+    if (this.releaseBusy()) return;
+    this.releaseActivity.set(null);
+  }
+
+  openReleaseTab(): void {
+    if (this.currentRepo()) {
+      this.setView('browse');
+    }
+    this.setBrowseTab('release');
+  }
+
+  private beginReleaseActivity(input: {
+    path: string;
+    productName: string;
+    currentVersion: string;
+    nextVersion: string;
+    tag: string;
+    willPush: boolean;
+  }): void {
+    const steps = buildReleaseSteps(input.willPush);
+    this.releaseActivity.set({
+      path: input.path,
+      productName: input.productName,
+      currentVersion: input.currentVersion,
+      nextVersion: input.nextVersion,
+      tag: input.tag,
+      willPush: input.willPush,
+      phase: 'preparing',
+      message: `Releasing ${input.productName} ${input.currentVersion} → ${input.nextVersion}`,
+      steps: advanceReleaseSteps(steps, 'preparing', 'Checking release preconditions…'),
+      startedAt: Date.now(),
+      finishedAt: null,
+      ok: null,
+    });
+    this.releaseBusy.set(true);
+    this.openReleaseTab();
+  }
+
+  private async simulateReleaseProgress(willPush: boolean): Promise<void> {
+    const phases: Array<{ phase: ReleasePhase; message: string; delay: number }> = [
+      { phase: 'preparing', message: 'Checking release preconditions…', delay: 180 },
+      { phase: 'bumping', message: 'Bumping version files…', delay: 220 },
+      { phase: 'staging', message: 'Staging version files…', delay: 180 },
+      { phase: 'committing', message: 'Creating release commit…', delay: 220 },
+      { phase: 'tagging', message: 'Creating release tag…', delay: 180 },
+    ];
+    if (willPush) {
+      phases.push({ phase: 'pushing', message: 'Pushing commit and tags to origin…', delay: 320 });
+    }
+    const activity = this.releaseActivity();
+    const path = activity?.path ?? this.currentRepo()?.path ?? '';
+    for (const step of phases) {
+      await new Promise((r) => setTimeout(r, step.delay));
+      this.applyReleaseProgress({
+        path,
+        phase: step.phase,
+        message: step.message,
+        version: activity?.nextVersion,
+        tag: activity?.tag,
+      });
     }
   }
 
@@ -3562,7 +3683,8 @@ export class AppStore {
   private async autoStageClearedConflicts(paths: string[]): Promise<void> {
     const repo = this.currentRepo()?.path;
     const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
-    if (!repo || !unique.length) return;
+    if (!repo || !unique.length || this.conflictAutoStageInFlight) return;
+    this.conflictAutoStageInFlight = true;
     try {
       await this.withRepoMutation(() => this.tauri.stagePaths(repo, unique));
       await this.refreshWorkingTree();
@@ -3582,6 +3704,8 @@ export class AppStore {
       }
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.conflictAutoStageInFlight = false;
     }
   }
 
@@ -3922,6 +4046,9 @@ export class AppStore {
         return;
       }
 
+      const touchesCargoWatch = preview.files.some(
+        (f) => f.endsWith('Cargo.toml') || f.endsWith('Cargo.lock'),
+      );
       const confirmed = await this.prompts.ask({
         title: `Release ${preview.productName} ${preview.nextVersion}?`,
         message: [
@@ -3930,20 +4057,67 @@ export class AppStore {
           `Tag: ${preview.tagMessage}`,
           preview.willPush ? 'Will push commit + tags to origin' : 'Will not push',
           `Files: ${preview.files.join(', ')}`,
-        ].join('\n'),
+          touchesCargoWatch
+            ? 'Note: Cargo.toml/Cargo.lock bumps restart tauri:dev (looks like a crash). Prefer a built app or the CLI release script while developing.'
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
         confirmLabel: preview.willPush ? 'Release & push' : 'Create release',
         cancelLabel: 'Cancel',
         confirmOnly: true,
       });
       if (confirmed === null) return;
 
-      const result = await this.tauri.runRelease(path, opts);
-      await this.refreshRepo();
-      if (!result.ok) {
-        this.showWarning(result.message);
-        return;
+      this.beginReleaseActivity({
+        path,
+        productName: preview.productName,
+        currentVersion: preview.currentVersion,
+        nextVersion: preview.nextVersion,
+        tag: preview.tag,
+        willPush: preview.willPush,
+      });
+
+      try {
+        await this.withRepoMutation(async () => {
+          if (this.isDummyBackend) {
+            await this.simulateReleaseProgress(preview.willPush);
+          }
+          const result = await this.tauri.runRelease(path, opts);
+          await this.refreshRepo();
+          if (!result.ok) {
+            this.applyReleaseProgress({
+              path,
+              phase: 'error',
+              message: result.message,
+              version: preview.nextVersion,
+              tag: preview.tag,
+            });
+            this.showWarning(result.message);
+            return;
+          }
+          this.applyReleaseProgress({
+            path,
+            phase: 'done',
+            message: result.message,
+            version: preview.nextVersion,
+            tag: preview.tag,
+          });
+          this.showSuccess(result.message);
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.applyReleaseProgress({
+          path,
+          phase: 'error',
+          message,
+          version: preview.nextVersion,
+          tag: preview.tag,
+        });
+        this.showError(err);
+      } finally {
+        this.releaseBusy.set(false);
       }
-      this.showSuccess(result.message);
     } catch (err) {
       this.showError(err);
     }
@@ -4155,8 +4329,116 @@ function isBrowseTab(value: unknown): value is BrowseTab {
     value === 'blame' ||
     value === 'history' ||
     value === 'reflog' ||
-    value === 'console'
+    value === 'console' ||
+    value === 'release'
   );
+}
+
+function normalizeReleasePhase(value: string): ReleasePhase {
+  switch (value) {
+    case 'preparing':
+    case 'bumping':
+    case 'staging':
+    case 'committing':
+    case 'tagging':
+    case 'pushing':
+    case 'done':
+    case 'error':
+    case 'idle':
+      return value;
+    default:
+      return 'preparing';
+  }
+}
+
+function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
+  const steps: ReleaseActivityStep[] = [
+    {
+      id: 'preparing',
+      phase: 'preparing',
+      label: 'Prepare',
+      message: 'Check branch, cleanliness, and tag',
+      status: 'pending',
+    },
+    {
+      id: 'bumping',
+      phase: 'bumping',
+      label: 'Bump versions',
+      message: 'Update package and app version files',
+      status: 'pending',
+    },
+    {
+      id: 'staging',
+      phase: 'staging',
+      label: 'Stage files',
+      message: 'Stage version bumps',
+      status: 'pending',
+    },
+    {
+      id: 'committing',
+      phase: 'committing',
+      label: 'Commit',
+      message: 'Create the release commit',
+      status: 'pending',
+    },
+    {
+      id: 'tagging',
+      phase: 'tagging',
+      label: 'Tag',
+      message: 'Create the annotated tag',
+      status: 'pending',
+    },
+  ];
+  if (willPush) {
+    steps.push({
+      id: 'pushing',
+      phase: 'pushing',
+      label: 'Push',
+      message: 'Push commit and tags to origin',
+      status: 'pending',
+    });
+  }
+  return steps;
+}
+
+function advanceReleaseSteps(
+  steps: ReleaseActivityStep[],
+  phase: ReleasePhase,
+  message: string,
+): ReleaseActivityStep[] {
+  if (phase === 'idle') return steps;
+  if (phase === 'done') {
+    return steps.map((step) => ({
+      ...step,
+      status: 'done',
+      at: step.at ?? Date.now(),
+      message: step.status === 'active' ? message : step.message,
+    }));
+  }
+  if (phase === 'error') {
+    let hitActive = false;
+    return steps.map((step) => {
+      if (step.status === 'done') return step;
+      if (!hitActive && (step.status === 'active' || step.status === 'pending')) {
+        hitActive = true;
+        return { ...step, status: 'error', message, at: Date.now() };
+      }
+      return step.status === 'pending' ? step : step;
+    });
+  }
+  const order = ['preparing', 'bumping', 'staging', 'committing', 'tagging', 'pushing'];
+  const activeIndex = order.indexOf(phase);
+  return steps.map((step) => {
+    const stepIndex = order.indexOf(step.phase);
+    if (stepIndex < 0) return step;
+    if (stepIndex < activeIndex) {
+      return { ...step, status: 'done', at: step.at ?? Date.now() };
+    }
+    if (stepIndex === activeIndex) {
+      return { ...step, status: 'active', message, at: Date.now() };
+    }
+    return { ...step, status: 'pending' };
+  });
 }
 
 function isAppView(value: unknown): value is AppView {

@@ -1,22 +1,26 @@
 <div class="browse">
-  @if (store.syncingRepo() || store.remoteBusy()) {
+  @if (store.syncingRepo() || store.remoteBusy() || store.releaseBusy()) {
     <div
       class="sync-bar"
       role="status"
       aria-live="polite"
       [attr.aria-label]="
-        store.remoteBusy() === 'fetch'
-          ? 'Fetching from remote'
-          : store.remoteBusy() === 'pull'
-            ? 'Pulling from remote'
-            : store.remoteBusy() === 'push'
-              ? 'Pushing to remote'
-              : 'Refreshing repository'
+        store.releaseBusy()
+          ? 'Releasing version'
+          : store.remoteBusy() === 'fetch'
+            ? 'Fetching from remote'
+            : store.remoteBusy() === 'pull'
+              ? 'Pulling from remote'
+              : store.remoteBusy() === 'push'
+                ? 'Pushing to remote'
+                : 'Refreshing repository'
       "
     >
       <span class="sync-track" aria-hidden="true"></span>
       <span class="sync-label">
-        @if (store.remoteBusy() === 'fetch') {
+        @if (store.releaseBusy()) {
+          Releasing…
+        } @else if (store.remoteBusy() === 'fetch') {
           Fetching…
         } @else if (store.remoteBusy() === 'pull') {
           Pulling…
@@ -118,6 +122,17 @@
               >
                 Console
               </button>
+              <button
+                type="button"
+                [class.active]="store.browseTab() === 'release'"
+                title="Watch release progress (bump, tag, push)"
+                (click)="setTab('release')"
+              >
+                Release
+                @if (store.releaseBusy()) {
+                  <span class="tab-dot" aria-hidden="true"></span>
+                }
+              </button>
             </div>
             <div class="tab-body">
               @switch (store.browseTab()) {
@@ -150,6 +165,11 @@
                 @case ('console') {
                   @defer (on immediate) {
                     <app-git-console />
+                  }
+                }
+                @case ('release') {
+                  @defer (on immediate) {
+                    <app-release-panel />
                   }
                 }
               }

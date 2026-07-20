@@ -1,0 +1,60 @@
+<div class="release">
+  <header>
+    <span class="title">Release</span>
+    @if (activity(); as activity) {
+      <span class="meta mono">{{ activity.currentVersion }} → {{ activity.nextVersion }}</span>
+      <span class="tag mono">{{ activity.tag }}</span>
+    } @else {
+      <span class="meta">Ship a version bump, tag, and optional push</span>
+    }
+  </header>
+
+  @if (busy()) {
+    <div class="busy-strip" role="status" aria-live="polite">
+      <span class="busy-track" aria-hidden="true"></span>
+      <span class="busy-label">{{ statusLabel() }}</span>
+    </div>
+  }
+
+  @if (activity(); as activity) {
+    <div class="summary">
+      <p class="headline">{{ headline() }}</p>
+      <p class="message">{{ activity.message }}</p>
+      @if (activity.willPush) {
+        <p class="hint">Push to origin is included after the tag.</p>
+      } @else {
+        <p class="hint">Tag only — push later when ready.</p>
+      }
+    </div>
+
+    <ol class="steps">
+      @for (step of activity.steps; track trackStep($index, step)) {
+        <li [class]="step.status">
+          <span class="marker" aria-hidden="true"></span>
+          <div class="step-body">
+            <span class="step-label">{{ step.label }}</span>
+            <span class="step-message">{{ step.message }}</span>
+          </div>
+        </li>
+      }
+    </ol>
+
+    <div class="actions">
+      @if (!busy() && (activity.phase === 'done' || activity.phase === 'error')) {
+        <button type="button" class="bl-btn" (click)="clear()">Clear</button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Release again</button>
+      }
+    </div>
+  } @else {
+    <div class="state">
+      <p class="state-title">No release activity yet</p>
+      <p class="state-hint">
+        Start a release from the toolbar rocket, command palette, or Settings → About. Progress
+        appears here so you can keep browsing while it runs.
+      </p>
+      <div class="state-actions">
+        <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>
+      </div>
+    </div>
+  }
+</div>

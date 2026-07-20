@@ -1,0 +1,231 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.release {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.meta,
+.tag {
+  color: var(--text-muted);
+}
+
+.tag {
+  color: var(--accent);
+}
+
+.busy-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.35rem;
+  padding: 0.15rem 0.7rem;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg-soft));
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.busy-track {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 45%, transparent),
+    transparent
+  );
+  animation: bl-release-slide 1.1s ease-in-out infinite;
+}
+
+.busy-label {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes bl-release-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busy-track {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
+  }
+}
+
+.summary {
+  padding: 0.85rem 0.9rem 0.35rem;
+  flex-shrink: 0;
+}
+
+.headline {
+  margin: 0 0 0.25rem;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.message {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.hint {
+  margin: 0.35rem 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.75rem 0.75rem;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 0.55rem;
+  align-items: start;
+  padding: 0.4rem 0.45rem;
+  border-radius: 6px;
+}
+
+.steps li.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.steps li.error {
+  background: color-mix(in srgb, var(--danger, #ef4444) 10%, transparent);
+}
+
+.marker {
+  width: 8px;
+  height: 8px;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: var(--border-subtle);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-subtle) 40%, transparent);
+}
+
+.steps li.pending .marker {
+  background: var(--border-subtle);
+}
+
+.steps li.active .marker {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.steps li.done .marker {
+  background: color-mix(in srgb, var(--accent) 70%, #22c55e);
+}
+
+.steps li.error .marker {
+  background: var(--danger, #ef4444);
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.step-label {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.steps li.pending .step-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.step-message {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.55rem 0.85rem 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: auto;
+  padding: 1.5rem 1.25rem;
+  max-width: 28rem;
+}
+
+.state-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.state-hint {
+  margin: 0 0 0.35rem;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

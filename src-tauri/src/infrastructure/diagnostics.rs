@@ -10,6 +10,7 @@ const MAX_ERROR_ENTRIES: usize = 50;
 const ERROR_FILE: &str = "recent-errors.jsonl";
 const CRASH_FILE: &str = "last-crash.json";
 const SESSION_FILE: &str = "session.json";
+const EXPECTED_RESTART_FILE: &str = "expected-restart.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,29 +87,48 @@ pub fn mark_session_start() {
         return;
     };
     let session_path = dir.join(SESSION_FILE);
+    let expected_restart = dir.join(EXPECTED_RESTART_FILE).exists();
+    if expected_restart {
+        let _ = fs::remove_file(dir.join(EXPECTED_RESTART_FILE));
+    }
     if let Ok(raw) = fs::read_to_string(&session_path) {
         if let Ok(prev) = serde_json::from_str::<SessionState>(&raw) {
             if !prev.clean_exit {
-                let _ = record_client_error(
-                    "unclean-shutdown",
-                    &format!(
-                        "Previous session did not exit cleanly (started {})",
-                        prev.started_at
-                    ),
-                    Some("App may have crashed, been force-quit, or been killed by the OS"),
-                );
-                let report = CrashReport {
-                    at: now_rfc3339(),
-                    message: format!(
-                        "Unclean shutdown detected from session started {}",
-                        prev.started_at
-                    ),
-                    location: None,
-                    version: env!("CARGO_PKG_VERSION").into(),
-                    os: std::env::consts::OS.into(),
-                };
-                if let Ok(json) = serde_json::to_string_pretty(&report) {
-                    let _ = fs::write(dir.join(CRASH_FILE), json);
+                if expected_restart || cfg!(debug_assertions) {
+                    let _ = record_client_error(
+                        "dev-restart",
+                        &format!(
+                            "Previous debug session ended abruptly (started {})",
+                            prev.started_at
+                        ),
+                        Some(if expected_restart {
+                            "Expected restart after Cargo.toml/lock version bump during release"
+                        } else {
+                            "Usually tauri:dev rebuilding after Cargo.toml/source changes — not a crash"
+                        }),
+                    );
+                } else {
+                    let _ = record_client_error(
+                        "unclean-shutdown",
+                        &format!(
+                            "Previous session did not exit cleanly (started {})",
+                            prev.started_at
+                        ),
+                        Some("App may have crashed, been force-quit, or been killed by the OS"),
+                    );
+                    let report = CrashReport {
+                        at: now_rfc3339(),
+                        message: format!(
+                            "Unclean shutdown detected from session started {}",
+                            prev.started_at
+                        ),
+                        location: None,
+                        version: env!("CARGO_PKG_VERSION").into(),
+                        os: std::env::consts::OS.into(),
+                    };
+                    if let Ok(json) = serde_json::to_string_pretty(&report) {
+                        let _ = fs::write(dir.join(CRASH_FILE), json);
+                    }
                 }
             }
         }
@@ -135,6 +155,19 @@ pub fn mark_session_clean_exit() {
     };
     if let Ok(json) = serde_json::to_string_pretty(&next) {
         let _ = fs::write(session_path, json);
+    }
+}
+
+pub fn mark_expected_restart(reason: &str) {
+    let Ok(dir) = diagnostics_dir() else {
+        return;
+    };
+    let payload = serde_json::json!({
+        "at": now_rfc3339(),
+        "reason": reason,
+    });
+    if let Ok(json) = serde_json::to_string_pretty(&payload) {
+        let _ = fs::write(dir.join(EXPECTED_RESTART_FILE), json);
     }
 }
 
@@ -278,6 +311,7 @@ pub fn clear_diagnostics() -> AppResult<()> {
     let _ = fs::remove_file(dir.join(CRASH_FILE));
     let _ = fs::remove_file(dir.join(ERROR_FILE));
     let _ = fs::remove_file(dir.join(SESSION_FILE));
+    let _ = fs::remove_file(dir.join(EXPECTED_RESTART_FILE));
     Ok(())
 }
 

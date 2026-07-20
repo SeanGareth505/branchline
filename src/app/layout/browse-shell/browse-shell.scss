@@ -140,6 +140,17 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+.tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
 .tab-body {
   flex: 1;
   min-height: 0;
