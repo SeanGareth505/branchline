@@ -122,17 +122,6 @@
               >
                 Console
               </button>
-              <button
-                type="button"
-                [class.active]="store.browseTab() === 'release'"
-                title="Watch release progress (bump, tag, push)"
-                (click)="setTab('release')"
-              >
-                Release
-                @if (store.releaseBusy()) {
-                  <span class="tab-dot" aria-hidden="true"></span>
-                }
-              </button>
             </div>
             <div class="tab-body">
               @switch (store.browseTab()) {
@@ -165,11 +154,6 @@
                 @case ('console') {
                   @defer (on immediate) {
                     <app-git-console />
-                  }
-                }
-                @case ('release') {
-                  @defer (on immediate) {
-                    <app-release-panel />
                   }
                 }
               }

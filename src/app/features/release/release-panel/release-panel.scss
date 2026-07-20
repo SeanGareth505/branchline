@@ -142,12 +142,16 @@ header {
 }
 
 .marker {
-  width: 8px;
-  height: 8px;
-  margin-top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 0.28rem;
   border-radius: 50%;
   background: var(--border-subtle);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-subtle) 40%, transparent);
+  color: #fff;
 }
 
 .steps li.pending .marker {

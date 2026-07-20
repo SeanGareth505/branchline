@@ -11,7 +11,6 @@ import { ReflogPanel } from '../../features/reflog/reflog-panel/reflog-panel';
 import { RevisionGrid } from '../../features/graph/revision-grid/revision-grid';
 import { GitConsole } from '../../features/terminal/git-console/git-console';
 import { FileTreePanel } from '../../features/files/file-tree-panel/file-tree-panel';
-import { ReleasePanel } from '../../features/release/release-panel/release-panel';
 
 @Component({
   selector: 'app-browse-shell',
@@ -27,7 +26,6 @@ import { ReleasePanel } from '../../features/release/release-panel/release-panel
     FileHistoryPanel,
     ReflogPanel,
     FileTreePanel,
-    ReleasePanel,
   ],
   templateUrl: './browse-shell.html',
   styleUrl: './browse-shell.scss',

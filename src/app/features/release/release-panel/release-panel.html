@@ -30,7 +30,13 @@
     <ol class="steps">
       @for (step of activity.steps; track trackStep($index, step)) {
         <li [class]="step.status">
-          <span class="marker" aria-hidden="true"></span>
+          <span class="marker" aria-hidden="true">
+            @if (step.status === 'done') {
+              <ng-icon name="lucideCheck" size="10" />
+            } @else if (step.status === 'error') {
+              <ng-icon name="lucideX" size="10" />
+            }
+          </span>
           <div class="step-body">
             <span class="step-label">{{ step.label }}</span>
             <span class="step-message">{{ step.message }}</span>
@@ -49,8 +55,8 @@
     <div class="state">
       <p class="state-title">No release activity yet</p>
       <p class="state-hint">
-        Start a release from the toolbar rocket, command palette, or Settings → About. Progress
-        appears here so you can keep browsing while it runs.
+        Start a release from the toolbar rocket, the Release screen, command palette, or Settings → About.
+        Progress appears here so you can keep browsing while it runs.
       </p>
       <div class="state-actions">
         <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>

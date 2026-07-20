@@ -56,6 +56,12 @@ export class CommandPalette {
       { id: 'prs', label: 'Open Pull Requests', group: 'Navigate', run: () => store.setView('prs') },
       { id: 'jira', label: 'Open Jira', group: 'Navigate', run: () => store.setView('jira') },
       {
+        id: 'release-view',
+        label: 'Open Release',
+        group: 'Navigate',
+        run: () => store.openReleaseTab(),
+      },
+      {
         id: 'settings',
         label: 'Open Settings',
         group: 'Navigate',
@@ -226,6 +232,12 @@ export class CommandPalette {
         label: 'Release…',
         group: 'Git',
         run: () => void store.startReleaseFlow(),
+      },
+      {
+        id: 'release-progress',
+        label: 'Open release progress',
+        group: 'Git',
+        run: () => store.openReleaseTab(),
       },
       {
         id: 'continue',

@@ -1,0 +1,55 @@
+<section class="page">
+  <header class="hero">
+    <div>
+      <div class="title-row">
+        <h1>Release</h1>
+        @if (busy()) {
+          <span class="live-badge">In progress</span>
+        } @else if (activity()?.phase === 'done') {
+          <span class="done-badge">Complete</span>
+        } @else if (activity()?.phase === 'error') {
+          <span class="error-badge">Failed</span>
+        }
+      </div>
+      <p>{{ subtitle() }}</p>
+    </div>
+    <div class="hero-actions">
+      @if (hasRepo() && status()?.available) {
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="busy()"
+          (click)="startRelease()"
+        >
+          <ng-icon name="lucideRocket" size="14" />
+          {{ busy() ? 'Releasing…' : 'Start release' }}
+        </button>
+      }
+    </div>
+  </header>
+
+  @if (!hasRepo()) {
+    <div class="empty bl-glass">
+      <p class="empty-title">No repository open</p>
+      <p class="empty-hint">Open a repo from the project switcher, then return here to track releases.</p>
+    </div>
+  } @else if (loading()) {
+    <app-loading-block message="Loading release settings…" />
+  } @else if (status(); as releaseStatus) {
+    @if (releaseStatus.available && releaseStatus.config; as cfg) {
+      <div class="meta bl-glass">
+        <span><strong>Product</strong> {{ cfg.productName }}</span>
+        <span><strong>Branch</strong> {{ cfg.branch }}</span>
+        <span><strong>Tag</strong> {{ cfg.tagPrefix }}x.y.z</span>
+        <span><strong>Push</strong> {{ cfg.pushDefault ? 'default on' : 'default off' }}</span>
+        @if (releaseStatus.currentVersion) {
+          <span><strong>Current</strong> {{ releaseStatus.currentVersion }}</span>
+        }
+      </div>
+    }
+
+    <div class="panel bl-glass">
+      <app-release-panel />
+    </div>
+  }
+</section>

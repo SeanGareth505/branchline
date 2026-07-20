@@ -1,10 +1,11 @@
 import { Component, computed, inject } from '@angular/core';
+import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { ReleaseActivityStep, ReleasePhase } from '../../../core/models';
 
 @Component({
   selector: 'app-release-panel',
-  imports: [],
+  imports: [NgIcon],
   templateUrl: './release-panel.html',
   styleUrl: './release-panel.scss',
 })

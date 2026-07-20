@@ -71,8 +71,7 @@ export type BrowseTab =
   | 'blame'
   | 'history'
   | 'reflog'
-  | 'console'
-  | 'release';
+  | 'console';
 export type AppView =
   | 'dashboard'
   | 'browse'
@@ -81,6 +80,7 @@ export type AppView =
   | 'prs'
   | 'jira'
   | 'profiles'
+  | 'release'
   | 'automation'
   | 'templates';
 export type SettingsSection =
@@ -1342,9 +1342,8 @@ export class AppStore {
 
   openReleaseTab(): void {
     if (this.currentRepo()) {
-      this.setView('browse');
+      this.setView('release');
     }
-    this.setBrowseTab('release');
   }
 
   private beginReleaseActivity(input: {
@@ -4300,8 +4299,7 @@ function isBrowseTab(value: unknown): value is BrowseTab {
     value === 'blame' ||
     value === 'history' ||
     value === 'reflog' ||
-    value === 'console' ||
-    value === 'release'
+    value === 'console'
   );
 }
 
@@ -4421,6 +4419,7 @@ function isAppView(value: unknown): value is AppView {
     value === 'prs' ||
     value === 'jira' ||
     value === 'profiles' ||
+    value === 'release' ||
     value === 'automation' ||
     value === 'templates'
   );

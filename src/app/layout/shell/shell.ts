@@ -24,6 +24,7 @@ import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/i
 import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
 import { ReleaseDialog } from '../../features/release/release-dialog/release-dialog';
+import { ReleasePage } from '../../features/release/release-page/release-page';
 import { BrowseShell } from '../browse-shell/browse-shell';
 import { CommandPalette } from '../command-palette/command-palette';
 import { ProjectSwitcher } from '../project-switcher/project-switcher';
@@ -48,6 +49,7 @@ import { UpdateService } from '../../core/update.service';
     SettingsPage,
     PrPanel,
     JiraPanel,
+    ReleasePage,
     ProfilesPage,
     WorkflowsPage,
     TemplatesPage,

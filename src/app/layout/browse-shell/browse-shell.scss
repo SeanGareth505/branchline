@@ -99,10 +99,16 @@
   padding: 0.3rem 0.5rem 0;
   border-bottom: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+  scrollbar-width: thin;
 }
 
 .tabs button {
   position: relative;
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);

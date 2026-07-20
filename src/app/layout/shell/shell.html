@@ -58,6 +58,18 @@
             </button>
             <button
               type="button"
+              [class.active]="isActive('release')"
+              (click)="nav('release')"
+              title="Ship versions, track release progress"
+            >
+              <ng-icon name="lucideRocket" size="14" />
+              <span>Release</span>
+              @if (store.releaseBusy() || store.releaseActivity()) {
+                <span class="nav-dot" aria-hidden="true"></span>
+              }
+            </button>
+            <button
+              type="button"
               [class.active]="isActive('profiles')"
               (click)="nav('profiles')"
               title="Git author name and email used for commits"
@@ -157,6 +169,9 @@
       }
       @case ('jira') {
         <app-jira-panel />
+      }
+      @case ('release') {
+        <app-release-page />
       }
       @case ('profiles') {
         <app-profiles-page />
