@@ -44,7 +44,7 @@ export class CommitDialog {
   readonly body = signal('');
   readonly amend = signal(false);
   readonly signOff = signal(false);
-  readonly pushAfter = signal(false);
+  readonly pushAfter = signal(true);
   readonly allowEmpty = signal(false);
   readonly commitType = signal('');
   readonly fileFilter = signal('');
@@ -771,15 +771,31 @@ export class CommitDialog {
         }
       }
       this.commitPhase.set('committing');
-      const ok = await this.store.createCommit(
+      const willPush = this.pushAfter();
+      const commit = await this.store.createCommit(
         this.messagePreview(),
         this.amend(),
         this.allowEmpty(),
+        { toast: !willPush },
       );
-      if (!ok) return;
-      if (this.pushAfter()) {
+      if (!commit.ok) return;
+      if (willPush) {
         this.commitPhase.set('pushing');
-        await this.store.pushRemote();
+        const pushed = await this.store.pushRemote({ toast: false });
+        const short = commit.shortSha ?? 'commit';
+        if (pushed) {
+          this.store.showToast(`Committed ${short} and pushed`, {
+            kind: 'success',
+            category: 'commit',
+            undo: () => void this.store.undoLastActionQuiet(),
+          });
+        } else {
+          this.store.showToast(`Committed ${short} (push failed)`, {
+            kind: 'warning',
+            category: 'commit',
+            undo: () => void this.store.undoLastActionQuiet(),
+          });
+        }
       }
       this.resetForm();
       const treeClean =
@@ -898,7 +914,7 @@ export class CommitDialog {
     this.identity.set(identity);
     const settings = this.store.settings();
     this.signOff.set(settings.signOffByDefault);
-    this.pushAfter.set(settings.pushAfterCommit);
+    await this.applyPushAfterDefault(settings.pushAfterCommit);
     this.allowEmpty.set(false);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
@@ -928,6 +944,24 @@ export class CommitDialog {
     }
   }
 
+  private async applyPushAfterDefault(current: boolean): Promise<void> {
+    if (current) {
+      this.pushAfter.set(true);
+      return;
+    }
+    try {
+      if (localStorage.getItem('branchline.migratedPushAfterCommit') === '1') {
+        this.pushAfter.set(false);
+        return;
+      }
+      localStorage.setItem('branchline.migratedPushAfterCommit', '1');
+      await this.store.saveSettings({ pushAfterCommit: true });
+      this.pushAfter.set(true);
+    } catch {
+      this.pushAfter.set(true);
+    }
+  }
+
   private async loadDiff(path: string, staged: boolean): Promise<void> {
     const repo = this.store.currentRepo()?.path;
     if (!repo) return;
@@ -950,7 +984,7 @@ export class CommitDialog {
     this.body.set('');
     this.amend.set(false);
     this.signOff.set(false);
-    this.pushAfter.set(false);
+    this.pushAfter.set(this.store.settings().pushAfterCommit ?? true);
     this.allowEmpty.set(false);
     this.commitType.set('');
     this.cancelAddType();

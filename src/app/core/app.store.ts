@@ -592,8 +592,9 @@ export class AppStore {
 
   async init(): Promise<void> {
     try {
-      const settings = await this.tauri.getSettings();
-      this.settings.set(normalizeSettings(settings));
+      const settings = normalizeSettings(await this.tauri.getSettings());
+      this.settings.set(settings);
+      await this.migratePushAfterCommitDefault();
       this.myBranchesOnly.set(this.settings().myBranchesOnly);
       this.applyTheme(this.settings());
       void this.refreshDetectedEditors();
@@ -1701,6 +1702,18 @@ export class AppStore {
     this.applyTheme(saved);
   }
 
+  private async migratePushAfterCommitDefault(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    if (this.settings().pushAfterCommit) return;
+    try {
+      if (localStorage.getItem('branchline.migratedPushAfterCommit') === '1') return;
+      localStorage.setItem('branchline.migratedPushAfterCommit', '1');
+    } catch {
+      return;
+    }
+    await this.saveSettings({ pushAfterCommit: true });
+  }
+
   setMyBranchesOnly(value: boolean): void {
     if (value) {
       const id = this.identity();
@@ -1822,21 +1835,26 @@ export class AppStore {
     }
   }
 
-  async createCommit(message: string, amend = false, allowEmpty = false): Promise<boolean> {
+  async createCommit(
+    message: string,
+    amend = false,
+    allowEmpty = false,
+    opts?: { toast?: boolean },
+  ): Promise<{ ok: boolean; shortSha?: string }> {
     const path = this.currentRepo()?.path;
-    if (!path) return false;
+    if (!path) return { ok: false };
     if (!message.trim() && !allowEmpty) {
       this.showWarning('Write a commit message first');
-      return false;
+      return { ok: false };
     }
     const status = this.status();
     if ((status?.conflicted.length ?? 0) > 0) {
       this.showToast('Resolve conflicts before committing', { kind: 'warning' });
-      return false;
+      return { ok: false };
     }
     if (!amend && !allowEmpty && !status?.staged.length) {
       this.showToast('Stage at least one file before committing', { kind: 'warning' });
-      return false;
+      return { ok: false };
     }
     if (amend && !(await this.confirmIfEnabled('confirmAmend', {
       title: 'Amend last commit?',
@@ -1844,23 +1862,23 @@ export class AppStore {
         'Amending rewrites the tip of this branch. If that commit was already pushed, you will need a force push with lease afterward.',
       confirmLabel: 'Amend',
     }))) {
-      return false;
+      return { ok: false };
     }
     try {
       const result = await this.tauri.createCommit(path, message.trim(), amend, allowEmpty);
       await this.refreshRepo();
-      this.showToast(
-        amend ? `Amended ${result.sha.slice(0, 7)}` : `Committed ${result.sha.slice(0, 7)}`,
-        {
+      const shortSha = result.sha.slice(0, 7);
+      if (opts?.toast !== false) {
+        this.showToast(amend ? `Amended ${shortSha}` : `Committed ${shortSha}`, {
           kind: 'success',
           category: 'commit',
           undo: () => void this.tauri.undoLast(path).then(() => this.refreshRepo()),
-        },
-      );
-      return true;
+        });
+      }
+      return { ok: true, shortSha };
     } catch (err) {
       this.showError(err);
-      return false;
+      return { ok: false };
     }
   }
 
@@ -1879,6 +1897,17 @@ export class AppStore {
       const entry = await this.tauri.undoLast(path);
       await this.refreshRepo();
       this.showToast(entry?.label ?? 'Nothing to undo', { kind: 'info' });
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async undoLastActionQuiet(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      await this.tauri.undoLast(path);
+      await this.refreshRepo();
     } catch (err) {
       this.showError(err);
     }
@@ -2494,9 +2523,9 @@ export class AppStore {
     }
   }
 
-  async pushRemote(): Promise<void> {
+  async pushRemote(opts?: { toast?: boolean }): Promise<boolean> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
+    if (!path) return false;
     if (this.currentBranchLocked()) {
       const branch = this.status()?.branch ?? 'branch';
       const reason = this.currentBranchLockReason();
@@ -2505,47 +2534,51 @@ export class AppStore {
           ? `Branch '${branch}' is locked: ${reason}`
           : `Branch '${branch}' is locked. Unlock it before pushing.`,
       );
-      return;
+      return false;
     }
 
     let status = this.status();
     if (status && status.ahead > 0 && status.behind > 0) {
       const choice = await this.resolveDivergedPush(status);
-      if (choice === 'cancel') return;
+      if (choice === 'cancel') return false;
       if (choice === 'force') {
         await this.openForcePushSafety(status.branch);
-        return;
+        return false;
       }
 
       await this.pullRemote(this.settings().defaultPullAction === 'rebase');
       status = this.status();
-      if (!status || status.ahead === 0) return;
+      if (!status || status.ahead === 0) return false;
       if (status.behind > 0) {
         this.showWarning('Still diverged after pull. Resolve conflicts, then push again.');
-        return;
+        return false;
       }
     }
 
     const pushOpts = await this.preparePushOptions(status);
-    if (!pushOpts) return;
-    if (this.remoteBusy()) return;
+    if (!pushOpts) return false;
+    if (this.remoteBusy()) return false;
 
     this.remoteBusy.set('push');
     try {
       const result = await this.tauri.push(path, pushOpts);
       await this.refreshRepo();
-      this.showToast(result.message || 'Pushed to remote', {
-        kind: 'success',
-        durationMs: 3200,
-        category: 'push',
-      });
+      if (opts?.toast !== false) {
+        this.showToast(result.message || 'Pushed to remote', {
+          kind: 'success',
+          durationMs: 3200,
+          category: 'push',
+        });
+      }
+      return true;
     } catch (err) {
       const message = this.formatError(err);
       if (/non-fast-forward|rejected|fetch first/i.test(message)) {
         await this.openForcePushSafety(status?.branch);
-        return;
+        return false;
       }
       this.showError(message);
+      return false;
     } finally {
       this.remoteBusy.set(null);
     }
