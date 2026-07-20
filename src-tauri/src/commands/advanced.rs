@@ -41,6 +41,9 @@ pub struct RunGitInput {
     /// When true, only read-only console commands are allowed.
     #[serde(default)]
     pub console: Option<bool>,
+    /// When true, run without holding the repo lock (mergetool/difftool).
+    #[serde(default)]
+    pub external_tool: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -238,25 +241,35 @@ pub fn squash_commits(input: SquashInput) -> AppResult<MutationOutput> {
 
 #[command]
 pub fn run_git_command(input: RunGitInput) -> AppResult<RunGitOutput> {
-    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let console = input.console.unwrap_or(false);
-        if console {
-            if let Err(stderr) = args_are_safe(&input.args) {
-                return Ok(RunGitOutput {
-                    ok: false,
-                    stdout: String::new(),
-                    stderr,
-                });
-            }
-        } else if let Err(stderr) = args_block_dangerous_globals(&input.args) {
+    let console = input.console.unwrap_or(false);
+    let external_tool = input.external_tool.unwrap_or(false);
+    if console {
+        if let Err(stderr) = args_are_safe(&input.args) {
             return Ok(RunGitOutput {
                 ok: false,
                 stdout: String::new(),
                 stderr,
             });
         }
-        let args: Vec<&str> = input.args.iter().map(|s| s.as_str()).collect();
-        let (ok, stdout, stderr) = git_cli::run_git_allow_fail(path, &args);
+    } else if let Err(stderr) = args_block_dangerous_globals(&input.args) {
+        return Ok(RunGitOutput {
+            ok: false,
+            stdout: String::new(),
+            stderr,
+        });
+    }
+
+    let args: Vec<&str> = input.args.iter().map(|s| s.as_str()).collect();
+    let path = PathBuf::from(&input.path);
+
+    // Mergetool/difftool can block for minutes — never hold the repo mutex.
+    if external_tool {
+        let (ok, stdout, stderr) = git_cli::run_git_allow_fail(&path, &args);
+        return Ok(RunGitOutput { ok, stdout, stderr });
+    }
+
+    git_cli::with_repo_lock(&path, |locked| {
+        let (ok, stdout, stderr) = git_cli::run_git_allow_fail(locked, &args);
         Ok(RunGitOutput { ok, stdout, stderr })
     })
 }

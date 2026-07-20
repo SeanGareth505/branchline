@@ -51,6 +51,9 @@ import type {
   LfsFileInfo,
   ConflictSidesOutput,
   CreatePullRequestOutput,
+  ReleaseStatusOutput,
+  ReleasePreviewOutput,
+  ReleaseRunOptions,
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -541,6 +544,40 @@ export class TauriService {
     return this.invoke<MutationOutput>('delete_tag', { input: { path, name } });
   }
 
+  getReleaseStatus(path: string) {
+    return this.invoke<ReleaseStatusOutput>('get_release_status', { input: { path } });
+  }
+
+  previewRelease(path: string, opts: ReleaseRunOptions) {
+    return this.invoke<ReleasePreviewOutput>('preview_release', {
+      input: {
+        path,
+        bump: opts.bump,
+        preid: opts.preid ?? null,
+        push: opts.push ?? null,
+        message: opts.message ?? null,
+        tagMessage: opts.tagMessage ?? null,
+        allowDirty: opts.allowDirty ?? null,
+        branch: opts.branch ?? null,
+      },
+    });
+  }
+
+  runRelease(path: string, opts: ReleaseRunOptions) {
+    return this.invoke<MutationOutput>('run_release', {
+      input: {
+        path,
+        bump: opts.bump,
+        preid: opts.preid ?? null,
+        push: opts.push ?? null,
+        message: opts.message ?? null,
+        tagMessage: opts.tagMessage ?? null,
+        allowDirty: opts.allowDirty ?? null,
+        branch: opts.branch ?? null,
+      },
+    });
+  }
+
   listBranches(path: string) {
     return this.invoke<BranchInfo[]>('list_branches', { input: { path } });
   }
@@ -647,9 +684,18 @@ export class TauriService {
     return this.invoke<MutationOutput>('squash_commits', { input: { path, count, message } });
   }
 
-  runGitCommand(path: string, args: string[], opts?: { console?: boolean }) {
+  runGitCommand(
+    path: string,
+    args: string[],
+    opts?: { console?: boolean; externalTool?: boolean },
+  ) {
     return this.invoke<RunGitOutput>('run_git_command', {
-      input: { path, args, console: opts?.console ?? false },
+      input: {
+        path,
+        args,
+        console: opts?.console ?? false,
+        externalTool: opts?.externalTool ?? false,
+      },
     });
   }
 
@@ -1120,6 +1166,42 @@ export class TauriService {
       ],
       create_tag: { ok: true, message: 'Created tag' },
       delete_tag: { ok: true, message: 'Deleted tag' },
+      get_release_status: {
+        available: true,
+        message: 'Demo App release ready (currently 0.1.0)',
+        config: {
+          productName: 'Demo App',
+          tagPrefix: 'v',
+          branch: 'main',
+          requireClean: true,
+          pushDefault: false,
+          commitMessage: 'Release {{version}}',
+          tagMessage: '{{productName}} {{version}}',
+          files: ['package.json'],
+          configPath: '/demo/release.config.json',
+        },
+        currentVersion: '0.1.0',
+        currentBranch: 'main',
+        dirty: false,
+      },
+      preview_release: {
+        ok: true,
+        message: 'Ready to release Demo App 0.1.0 → 0.1.1',
+        productName: 'Demo App',
+        currentVersion: '0.1.0',
+        nextVersion: '0.1.1',
+        tag: 'v0.1.1',
+        branch: 'main',
+        currentBranch: 'main',
+        requireClean: true,
+        dirty: false,
+        willPush: false,
+        commitMessage: 'Release 0.1.1',
+        tagMessage: 'Demo App 0.1.1',
+        files: ['package.json'],
+        blockers: [],
+      },
+      run_release: { ok: true, message: 'Released Demo App 0.1.1 (v0.1.1) — push when ready' },
       list_remotes: [
         {
           name: 'origin',

@@ -265,6 +265,10 @@ export class AppStore {
   private mutationDepth = 0;
   private refreshQueued = false;
   private refreshInFlight: Promise<void> | null = null;
+  private workingTreeRefreshQueued = false;
+  private workingTreeRefreshInFlight: Promise<void> | null = null;
+  private lastWorkingTreeRefreshAt = 0;
+  private conflictDraftDirty = false;
 
   readonly selectedCommit = computed(() => {
     const sha = this.selectedSha();
@@ -1133,17 +1137,36 @@ export class AppStore {
   async refreshWorkingTree(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    try {
-      const prev = this.status();
-      const status = await this.tauri.getRepoStatus(path);
-      this.status.set(status);
-      this.artificial.set(artificialFromStatus(status));
-      this.updateNextAction(status);
-      this.maybeNotifyStatusChanges(prev, status);
-      void this.syncConflictManager(prev, status);
-    } catch (err) {
-      this.showError(err);
+    if (this.mutationDepth > 0) {
+      this.workingTreeRefreshQueued = true;
+      return;
     }
+    if (this.workingTreeRefreshInFlight) {
+      this.workingTreeRefreshQueued = true;
+      await this.workingTreeRefreshInFlight;
+      return;
+    }
+    this.workingTreeRefreshInFlight = this.runRefreshWorkingTree(path)
+      .catch((err) => this.showError(err))
+      .finally(() => {
+        this.workingTreeRefreshInFlight = null;
+        if (this.workingTreeRefreshQueued && this.mutationDepth === 0) {
+          this.workingTreeRefreshQueued = false;
+          void this.refreshWorkingTree();
+        }
+      });
+    await this.workingTreeRefreshInFlight;
+  }
+
+  private async runRefreshWorkingTree(path: string): Promise<void> {
+    const prev = this.status();
+    const status = await this.tauri.getRepoStatus(path);
+    this.status.set(status);
+    this.artificial.set(artificialFromStatus(status));
+    this.updateNextAction(status);
+    this.maybeNotifyStatusChanges(prev, status);
+    this.lastWorkingTreeRefreshAt = Date.now();
+    void this.syncConflictManager(prev, status);
   }
 
   async refreshRepo(opts?: { notify?: boolean }): Promise<void> {
@@ -1180,18 +1203,14 @@ export class AppStore {
 
   private async runRefreshRepo(path: string, opts?: { notify?: boolean }): Promise<void> {
     const prev = this.status();
-    const [status, commits, branches, stashes, tags, remotes, worktrees, submodules, lfsFiles] =
-      await Promise.all([
-        this.tauri.getRepoStatus(path),
-        this.tauri.getCommitLog(path, 300),
-        this.tauri.listBranches(path),
-        this.tauri.listStashes(path),
-        this.tauri.listTags(path),
-        this.tauri.listRemotes(path),
-        this.tauri.listWorktrees(path),
-        this.tauri.listSubmodules(path).catch(() => [] as SubmoduleInfo[]),
-        this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[]),
-      ]);
+    const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
+      this.tauri.getRepoStatus(path),
+      this.tauri.getCommitLog(path, 300),
+      this.tauri.listBranches(path),
+      this.tauri.listStashes(path),
+      this.tauri.listTags(path),
+      this.tauri.listRemotes(path),
+    ]);
     this.status.set(status);
     this.commits.set(commits);
     this.artificial.set(artificialFromStatus(status));
@@ -1199,9 +1218,7 @@ export class AppStore {
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
-    this.worktrees.set(worktrees);
-    this.submodules.set(submodules);
-    this.lfsFiles.set(lfsFiles);
+    this.lastWorkingTreeRefreshAt = Date.now();
     void this.refreshIdentity();
     if (!this.selectedSha() && commits[0]) {
       this.selectedSha.set(commits[0].sha);
@@ -1210,6 +1227,7 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
+    void this.refreshHeavyLists(path);
     if (opts?.notify) {
       const changed =
         status.staged.length + status.unstaged.length + status.untracked.length;
@@ -1223,15 +1241,37 @@ export class AppStore {
     }
   }
 
+  private async refreshHeavyLists(path: string): Promise<void> {
+    try {
+      const [worktrees, submodules, lfsFiles] = await Promise.all([
+        this.tauri.listWorktrees(path),
+        this.tauri.listSubmodules(path).catch(() => [] as SubmoduleInfo[]),
+        this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[]),
+      ]);
+      if (this.currentRepo()?.path !== path) return;
+      this.worktrees.set(worktrees);
+      this.submodules.set(submodules);
+      this.lfsFiles.set(lfsFiles);
+    } catch {
+      /* heavy lists are best-effort */
+    }
+  }
+
   private async withRepoMutation<T>(fn: () => Promise<T>): Promise<T> {
     this.mutationDepth++;
     try {
       return await fn();
     } finally {
       this.mutationDepth--;
-      if (this.mutationDepth === 0 && this.refreshQueued) {
-        this.refreshQueued = false;
-        void this.refreshRepo();
+      if (this.mutationDepth === 0) {
+        if (this.refreshQueued) {
+          this.refreshQueued = false;
+          this.workingTreeRefreshQueued = false;
+          void this.refreshRepo();
+        } else if (this.workingTreeRefreshQueued) {
+          this.workingTreeRefreshQueued = false;
+          void this.refreshWorkingTree();
+        }
       }
     }
   }
@@ -1260,7 +1300,7 @@ export class AppStore {
           if (this.repoFsRefreshTimer !== null) {
             window.clearTimeout(this.repoFsRefreshTimer);
           }
-          const delayMs = this.repoFsPendingScope === 'worktree' ? 900 : 750;
+          const delayMs = this.repoFsPendingScope === 'worktree' ? 1100 : 850;
           this.repoFsRefreshTimer = window.setTimeout(() => {
             this.repoFsRefreshTimer = null;
             if (this.mutationDepth > 0) {
@@ -2699,7 +2739,7 @@ export class AppStore {
       const next = file.content.trimEnd();
       const content = next ? `${next}\n${pattern}\n` : `${pattern}\n`;
       const result = await this.tauri.saveIgnoreFile(path, 'gitignore', content);
-      await this.refreshRepo();
+      await this.refreshWorkingTree();
       this.showSuccess(result.message || `Ignored ${pattern}`);
     } catch (err) {
       this.showError(err);
@@ -3040,12 +3080,27 @@ export class AppStore {
     }
   }
 
+  private async refreshWorkingTreeAndStashes(path: string): Promise<void> {
+    const [status, stashes] = await Promise.all([
+      this.tauri.getRepoStatus(path),
+      this.tauri.listStashes(path),
+    ]);
+    const prev = this.status();
+    this.status.set(status);
+    this.artificial.set(artificialFromStatus(status));
+    this.stashes.set(stashes);
+    this.updateNextAction(status);
+    this.maybeNotifyStatusChanges(prev, status);
+    this.lastWorkingTreeRefreshAt = Date.now();
+    void this.syncConflictManager(prev, status);
+  }
+
   async stashPush(message?: string): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashPush(path, message));
-      await this.refreshRepo();
+      await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
@@ -3057,7 +3112,7 @@ export class AppStore {
     if (!path) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashPop(path, index));
-      await this.refreshRepo();
+      await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
@@ -3069,7 +3124,7 @@ export class AppStore {
     if (!path) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashApply(path, index));
-      await this.refreshRepo();
+      await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
@@ -3090,7 +3145,7 @@ export class AppStore {
     }
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashDrop(path, index));
-      await this.refreshRepo();
+      await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
@@ -3232,7 +3287,9 @@ export class AppStore {
     const label =
       editor === 'cursor' ? 'Cursor' : editor === 'vscode' ? 'VS Code' : 'editor';
     try {
-      await this.refreshDetectedEditors();
+      if (!this.detectedEditors()) {
+        await this.refreshDetectedEditors();
+      }
       const detected = this.detectedEditors();
       const result = await this.tauri.openConflictInIde(repo, target, {
         editor,
@@ -3247,7 +3304,6 @@ export class AppStore {
         return;
       }
       this.showSuccess(result.message);
-      await this.refreshRepo();
     } catch (err) {
       this.showError(err);
     }
@@ -3267,7 +3323,8 @@ export class AppStore {
         repoPath: repo,
         toolName: this.settings().mergeTool,
         paths: targets,
-        runGitCommand: (path, args) => this.tauri.runGitCommand(path, args),
+        runGitCommand: (path, args) =>
+          this.tauri.runGitCommand(path, args, { externalTool: true }),
       });
       if (!result.ok) {
         this.showWarning(
@@ -3278,7 +3335,6 @@ export class AppStore {
       } else {
         this.showSuccess(result.stdout || 'Opened merge tool');
       }
-      await this.refreshRepo();
     } catch (err) {
       this.showError(err);
     }
@@ -3299,7 +3355,8 @@ export class AppStore {
         repoPath: repo,
         toolName: this.settings().diffTool,
         paths: pathArgs,
-        runGitCommand: (path, args) => this.tauri.runGitCommand(path, args),
+        runGitCommand: (path, args) =>
+          this.tauri.runGitCommand(path, args, { externalTool: true }),
       });
       if (!result.ok) {
         this.showWarning(
@@ -3327,7 +3384,6 @@ export class AppStore {
       }
       await this.stagePaths([path]);
       this.showSuccess(`Took ${side} for ${path}`);
-      await this.refreshRepo();
       await this.advanceConflictResolverAfter(path);
     } catch (err) {
       this.showError(err);
@@ -3350,6 +3406,7 @@ export class AppStore {
       this.conflictResolverDraft.set(
         sides.binary ? '' : sides.working || sides.ours || sides.theirs || sides.base,
       );
+      this.conflictDraftDirty = false;
       this.conflictResolverOpen.set(true);
     } catch (err) {
       this.showError(err);
@@ -3361,10 +3418,12 @@ export class AppStore {
     this.conflictResolverPath.set(null);
     this.conflictResolver.set(null);
     this.conflictResolverDraft.set('');
+    this.conflictDraftDirty = false;
   }
 
   setConflictResolverDraft(content: string): void {
     this.conflictResolverDraft.set(content);
+    this.conflictDraftDirty = true;
   }
 
   useConflictSide(side: 'base' | 'ours' | 'theirs' | 'working'): void {
@@ -3379,6 +3438,7 @@ export class AppStore {
             ? sides.theirs
             : sides.working;
     this.conflictResolverDraft.set(next);
+    this.conflictDraftDirty = true;
   }
 
   async saveConflictResolution(): Promise<void> {
@@ -3400,7 +3460,8 @@ export class AppStore {
         this.showWarning(result.message);
         return;
       }
-      await this.refreshRepo();
+      this.conflictDraftDirty = false;
+      await this.refreshWorkingTree();
       this.showSuccess(result.message);
       await this.advanceConflictResolverAfter(filePath);
     } catch (err) {
@@ -3414,7 +3475,6 @@ export class AppStore {
     await this.stagePaths([target]);
     this.showSuccess(`Marked ${target} as resolved`);
     if (this.conflictResolverOpen() && this.conflictResolverPath() === target) {
-      await this.refreshRepo();
       await this.advanceConflictResolverAfter(target);
     }
   }
@@ -3422,16 +3482,18 @@ export class AppStore {
   private bindConflictFocusWatch(): void {
     if (this.conflictFocusBound || typeof document === 'undefined') return;
     this.conflictFocusBound = true;
+    const maybeRefresh = (): void => {
+      if (!this.showConflictBanner() && !this.conflictResolverOpen()) return;
+      if (this.conflictIdeBusy()) return;
+      if (Date.now() - this.lastWorkingTreeRefreshAt < 2500) return;
+      void this.refreshWorkingTree();
+    };
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
-      if (!this.showConflictBanner() && !this.conflictResolverOpen()) return;
-      if (this.conflictIdeBusy()) return;
-      void this.refreshWorkingTree();
+      maybeRefresh();
     });
     window.addEventListener('focus', () => {
-      if (!this.showConflictBanner() && !this.conflictResolverOpen()) return;
-      if (this.conflictIdeBusy()) return;
-      void this.refreshWorkingTree();
+      maybeRefresh();
     });
   }
 
@@ -3469,7 +3531,7 @@ export class AppStore {
         return;
       }
 
-      if (current && nextPaths.has(current)) {
+      if (current && nextPaths.has(current) && !this.conflictDraftDirty) {
         await this.reloadConflictResolverFromDisk(current);
       }
     } finally {
@@ -3498,6 +3560,7 @@ export class AppStore {
       this.conflictResolverDraft.set(
         sides.binary ? '' : sides.working || sides.ours || sides.theirs || sides.base,
       );
+      this.conflictDraftDirty = false;
       if (
         prev?.hasMarkers === true &&
         sides.hasMarkers === false &&
@@ -3647,7 +3710,7 @@ export class AppStore {
   }
 
   private async handleConflictResult(result: MutationOutput): Promise<void> {
-    await this.refreshRepo();
+    await this.refreshWorkingTree();
     this.showToast(result.message, { kind: 'warning' });
     this.setBrowseTab('files');
     const first = this.status()?.conflicted?.[0]?.path;
@@ -3680,6 +3743,138 @@ export class AppStore {
       const result = await this.tauri.createTag(path, name.trim(), target, message);
       await this.refreshRepo();
       this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async startReleaseFlow(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    try {
+      const status = await this.tauri.getReleaseStatus(path);
+      if (!status.available) {
+        this.showWarning(
+          status.message ||
+            'Add release.config.json to this repo to enable Release (see release.config.example.jsonc).',
+        );
+        return;
+      }
+      const cfg = status.config;
+      const bump = await this.selects.ask({
+        title: `Release ${cfg?.productName || 'app'}`,
+        message: status.currentVersion
+          ? `Current version ${status.currentVersion}. Choose a bump.`
+          : 'Choose a version bump.',
+        label: 'Bump',
+        confirmLabel: 'Preview',
+        options: [
+          {
+            value: 'patch',
+            label: 'Patch',
+            hint: 'Bug fixes — 0.1.0 → 0.1.1',
+          },
+          {
+            value: 'minor',
+            label: 'Minor',
+            hint: 'New features — 0.1.0 → 0.2.0',
+          },
+          {
+            value: 'major',
+            label: 'Major',
+            hint: 'Breaking changes — 0.1.0 → 1.0.0',
+          },
+        ],
+        initialValue: 'patch',
+        details: cfg
+          ? [
+              `Branch: ${cfg.branch}`,
+              `Tag prefix: ${cfg.tagPrefix}`,
+              `Files: ${cfg.files.join(', ')}`,
+              cfg.pushDefault ? 'Config pushes to origin after tag' : 'Config does not auto-push',
+            ]
+          : undefined,
+        detailsLabel: 'From release.config.json',
+      });
+      if (!bump) return;
+
+      const pushChoice = await this.selects.ask({
+        title: 'Push after tagging?',
+        message: 'Push the release commit and tag to origin so CI / updates can pick it up.',
+        label: 'Push',
+        confirmLabel: 'Continue',
+        options: [
+          {
+            value: 'yes',
+            label: 'Push to origin',
+            hint: 'git push origin HEAD --tags',
+          },
+          {
+            value: 'no',
+            label: 'Tag only',
+            hint: 'Leave push for later',
+          },
+        ],
+        initialValue: cfg?.pushDefault ? 'yes' : 'no',
+      });
+      if (!pushChoice) return;
+
+      const message = await this.prompts.ask({
+        title: 'Release notes / commit message',
+        message:
+          'Optional. Supports {{version}}, {{previousVersion}}, {{tag}}, {{productName}}. Leave blank to use the config template.',
+        label: 'Message',
+        placeholder: cfg?.commitMessage || 'Release {{version}}',
+        initialValue: '',
+        confirmLabel: 'Preview',
+        required: false,
+        multiline: true,
+      });
+      if (message === null) return;
+
+      const opts = {
+        bump,
+        push: pushChoice === 'yes',
+        message: message.trim() || null,
+      };
+      const preview = await this.tauri.previewRelease(path, opts);
+      if (!preview.ok) {
+        const blocked = await this.prompts.ask({
+          title: 'Cannot release yet',
+          message: preview.message,
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          confirmOnly: true,
+        });
+        void blocked;
+        return;
+      }
+
+      const confirmed = await this.prompts.ask({
+        title: `Release ${preview.productName} ${preview.nextVersion}?`,
+        message: [
+          `${preview.currentVersion} → ${preview.nextVersion} (${preview.tag})`,
+          `Commit: ${preview.commitMessage}`,
+          `Tag: ${preview.tagMessage}`,
+          preview.willPush ? 'Will push commit + tags to origin' : 'Will not push',
+          `Files: ${preview.files.join(', ')}`,
+        ].join('\n'),
+        confirmLabel: preview.willPush ? 'Release & push' : 'Create release',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+      });
+      if (confirmed === null) return;
+
+      const result = await this.tauri.runRelease(path, opts);
+      await this.refreshRepo();
+      if (!result.ok) {
+        this.showWarning(result.message);
+        return;
+      }
+      this.showSuccess(result.message);
     } catch (err) {
       this.showError(err);
     }

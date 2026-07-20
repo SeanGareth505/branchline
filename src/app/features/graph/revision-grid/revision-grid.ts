@@ -42,6 +42,22 @@ interface RefChipView {
   disabled: boolean;
 }
 
+interface StaticRowView {
+  id: string;
+  node: GraphNode;
+  alt: boolean;
+  artificial: boolean;
+  head: boolean;
+  cx: number;
+  nodeFill: string;
+  baseTopLinks: LinkView[];
+  baseBottomLinks: LinkView[];
+  art?: ArtificialCommit;
+  commit?: CommitInfo;
+  timeLabel: string;
+  refs: RefChipView[];
+}
+
 interface RowView {
   id: string;
   node: GraphNode;
@@ -165,8 +181,38 @@ export class RevisionGrid {
     () => `${this.graphWidth()}px minmax(200px, 1fr) 120px 128px 80px`,
   );
 
-  readonly rows = computed((): RowView[] => {
+  readonly staticRows = computed((): StaticRowView[] => {
     const nodes = this.layout().nodes;
+    const remotes = this.remoteRefNames();
+
+    return nodes.map((node, i) => {
+      const commit = node.commit;
+      const fill = laneColor(node.colorIndex);
+      return {
+        id: node.id,
+        node,
+        alt: i % 2 === 1,
+        artificial: node.kind === 'artificial',
+        head: !!commit?.refs.includes('HEAD'),
+        cx: laneX(node.lane),
+        nodeFill: fill,
+        baseTopLinks: mapLinks(node, node.topLinks, 'top', false, false),
+        baseBottomLinks: mapLinks(node, node.bottomLinks, 'bottom', false, false),
+        art: node.artificial,
+        commit,
+        timeLabel: commit ? formatTime(commit.timestamp) : '',
+        refs: (commit?.refs ?? []).map((ref) => ({
+          ref,
+          className: chipClass(ref, remotes),
+          title: ref === 'HEAD' ? 'HEAD' : `Checkout ${ref}`,
+          disabled: ref === 'HEAD' || ref.startsWith('tag:') || ref.startsWith('tags/'),
+        })),
+      };
+    });
+  });
+
+  readonly rows = computed((): RowView[] => {
+    const staticRows = this.staticRows();
     const selectedSha = this.store.selectedSha();
     const selectedShas = this.store.selectedShas();
     const compareSha = this.store.compareSha();
@@ -174,13 +220,13 @@ export class RevisionGrid {
     const selected = this.store.selectedCommit();
     const focusMode = this.store.settings().focusMode;
     const lineage = this.lineageShas();
-    const remotes = this.remoteRefNames();
     const selectedSet = new Set(selectedShas);
     if (selectedSha) selectedSet.add(selectedSha);
 
-    return nodes.map((node, i) => {
-      const commit = node.commit;
+    return staticRows.map((row) => {
+      const commit = row.commit;
       const sha = commit?.sha;
+      const node = row.node;
       const artSelected =
         node.kind === 'artificial' &&
         !!node.artificial &&
@@ -189,7 +235,6 @@ export class RevisionGrid {
             (node.artificial.kind === 'workingDirectory' || node.artificial.kind === 'working')));
       const selectedRow = artSelected || (!!sha && selectedSet.has(sha));
       const compare = !!sha && compareSha === sha;
-      const head = !!commit?.refs.includes('HEAD');
       const inLineage = !!sha && lineage.has(sha);
       const dim =
         focusMode &&
@@ -207,36 +252,34 @@ export class RevisionGrid {
         commit.sha !== selected.sha &&
         commit.parents.some((p) => matchesSha(p, selected.sha));
       const lineageNode = inLineage && !selectedRow;
-      const fill = laneColor(node.colorIndex);
-      const cx = laneX(node.lane);
+      const fill = row.nodeFill;
 
       return {
-        id: node.id,
+        id: row.id,
         node,
-        alt: i % 2 === 1,
-        artificial: node.kind === 'artificial',
+        alt: row.alt,
+        artificial: row.artificial,
         selected: selectedRow,
         compare,
-        head,
+        head: row.head,
         dim,
         parentOf,
         childOf,
-        cx,
+        cx: row.cx,
         nodeFill: fill,
         nodeStroke: selectedRow ? 'var(--text-primary)' : fill,
         nodeRadius: selectedRow ? NODE_RADIUS_SELECTED : NODE_RADIUS,
         lineageNode,
-        topLinks: mapLinks(node, node.topLinks, 'top', inLineage, selectedRow),
-        bottomLinks: mapLinks(node, node.bottomLinks, 'bottom', inLineage, selectedRow),
-        art: node.artificial,
+        topLinks: inLineage
+          ? mapLinks(node, node.topLinks, 'top', true, selectedRow)
+          : row.baseTopLinks,
+        bottomLinks: inLineage
+          ? mapLinks(node, node.bottomLinks, 'bottom', true, selectedRow)
+          : row.baseBottomLinks,
+        art: row.art,
         commit,
-        timeLabel: commit ? formatTime(commit.timestamp) : '',
-        refs: (commit?.refs ?? []).map((ref) => ({
-          ref,
-          className: chipClass(ref, remotes),
-          title: ref === 'HEAD' ? 'HEAD' : `Checkout ${ref}`,
-          disabled: ref === 'HEAD' || ref.startsWith('tag:') || ref.startsWith('tags/'),
-        })),
+        timeLabel: row.timeLabel,
+        refs: row.refs,
       };
     });
   });

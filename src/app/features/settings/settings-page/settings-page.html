@@ -992,6 +992,38 @@
           </article>
 
           <article class="bl-panel block">
+            <h2 class="block-title">Ship a release</h2>
+            <p class="block-hint">
+              Bump versions from this repo’s
+              <span class="mono">release.config.json</span>, commit, tag, and optionally push.
+              Any app can use the same config file — customize product name, files, messages, and
+              branch there.
+            </p>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Release</strong>
+                <span>
+                  @if (store.currentRepo(); as repo) {
+                    For {{ repo.name }}
+                  } @else {
+                    Open a repository first
+                  }
+                </span>
+              </div>
+              <div class="setting-control">
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-primary"
+                  [disabled]="!store.currentRepo() || releasing()"
+                  (click)="startRelease()"
+                >
+                  {{ releasing() ? 'Working…' : 'Release…' }}
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
             <h2 class="block-title">Crash &amp; diagnostics</h2>
             <p class="block-hint">
               Local crash reports and recent errors stay on this machine. Use these tools when

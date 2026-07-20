@@ -18,6 +18,7 @@ pub mod merge;
 pub mod onboarding;
 pub mod pull_requests;
 pub mod rebase;
+pub mod release;
 pub mod remotes;
 pub mod repos;
 pub mod safety;

@@ -63,7 +63,8 @@ export class ConflictResolverDialog {
         this.syncedKey = '';
         return;
       }
-      const key = `${path}::${sides.working}::${sides.binary}::${sides.hasMarkers}::${sides.unmerged}`;
+      const w = sides.working;
+      const key = `${path}::${w.length}::${w.slice(0, 64)}::${w.slice(-64)}::${sides.hasMarkers}::${sides.unmerged}::${sides.binary}`;
       if (key === this.syncedKey) return;
       this.syncedKey = key;
       this.syncFromSides();

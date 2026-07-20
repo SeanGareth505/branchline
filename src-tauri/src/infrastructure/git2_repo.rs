@@ -161,7 +161,11 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
         }
     }
 
-    for entry in &mut conflicted {
+    const MAX_MARKER_CHECKS: usize = 32;
+    for (i, entry) in conflicted.iter_mut().enumerate() {
+        if i >= MAX_MARKER_CHECKS {
+            break;
+        }
         entry.markers_cleared = Some(conflict_markers_cleared(path, &entry.path));
     }
 
@@ -182,26 +186,28 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
     })
 }
 
-fn conflict_working_has_markers(content: &str) -> bool {
-    content.lines().any(|line| {
-        line.starts_with("<<<<<<< ")
-            || line == "<<<<<<<"
-            || line.starts_with(">>>>>>> ")
-            || line == ">>>>>>>"
-    })
-}
-
 fn conflict_markers_cleared(repo: &Path, rel: &str) -> bool {
     let file = repo.join(rel);
     if !file.exists() {
         return true;
     }
-    match fs::read_to_string(&file) {
-        Ok(content) => {
-            if content.bytes().take(8192).any(|b| b == 0) {
-                return true;
+    match fs::File::open(&file) {
+        Ok(f) => {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::with_capacity(64 * 1024, f);
+            for line in reader.lines() {
+                let Ok(line) = line else {
+                    return false;
+                };
+                if line.starts_with("<<<<<<< ")
+                    || line == "<<<<<<<"
+                    || line.starts_with(">>>>>>> ")
+                    || line == ">>>>>>>"
+                {
+                    return false;
+                }
             }
-            !conflict_working_has_markers(&content)
+            true
         }
         Err(_) => false,
     }

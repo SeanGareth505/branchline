@@ -222,6 +222,12 @@ export class CommandPalette {
         run: () => void store.openConflictResolver(),
       },
       {
+        id: 'release',
+        label: 'Release…',
+        group: 'Git',
+        run: () => void store.startReleaseFlow(),
+      },
+      {
         id: 'continue',
         label: 'Continue merge / rebase / cherry-pick',
         group: 'Git',

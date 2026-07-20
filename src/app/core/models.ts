@@ -585,6 +585,55 @@ export interface ConflictSidesOutput {
   hasMarkers?: boolean;
 }
 
+export interface ReleaseConfigInfo {
+  productName: string;
+  tagPrefix: string;
+  branch: string;
+  requireClean: boolean;
+  pushDefault: boolean;
+  commitMessage: string;
+  tagMessage: string;
+  files: string[];
+  configPath: string;
+}
+
+export interface ReleaseStatusOutput {
+  available: boolean;
+  message: string;
+  config?: ReleaseConfigInfo | null;
+  currentVersion?: string | null;
+  currentBranch?: string | null;
+  dirty: boolean;
+}
+
+export interface ReleasePreviewOutput {
+  ok: boolean;
+  message: string;
+  productName: string;
+  currentVersion: string;
+  nextVersion: string;
+  tag: string;
+  branch: string;
+  currentBranch: string;
+  requireClean: boolean;
+  dirty: boolean;
+  willPush: boolean;
+  commitMessage: string;
+  tagMessage: string;
+  files: string[];
+  blockers: string[];
+}
+
+export interface ReleaseRunOptions {
+  bump: string;
+  preid?: string | null;
+  push?: boolean;
+  message?: string | null;
+  tagMessage?: string | null;
+  allowDirty?: boolean;
+  branch?: string | null;
+}
+
 export interface CreatePullRequestOutput {
   ok: boolean;
   message: string;

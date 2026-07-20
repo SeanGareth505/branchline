@@ -40,6 +40,7 @@ export class SettingsPage implements OnInit {
   readonly newTypeDescription = signal('');
   readonly savingTypes = signal(false);
   readonly connectingId = signal<string | null>(null);
+  readonly releasing = signal(false);
 
   readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
     { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
@@ -53,7 +54,7 @@ export class SettingsPage implements OnInit {
     { id: 'connections', label: 'Connections', hint: 'Link GitHub, GitLab, Azure DevOps, and Jira' },
     { id: 'ssh', label: 'SSH', hint: 'Keys and credential helper' },
     { id: 'tools', label: 'Tools', hint: 'Editor, diff, and merge tools' },
-    { id: 'about', label: 'About', hint: 'Version, updates, and crash diagnostics' },
+    { id: 'about', label: 'About', hint: 'Version, updates, releases, and crash diagnostics' },
   ];
 
   readonly sectionMeta = computed(
@@ -424,6 +425,16 @@ export class SettingsPage implements OnInit {
       return;
     }
     this.store.showSuccess('You are on the latest version', undefined, 'updates');
+  }
+
+  async startRelease(): Promise<void> {
+    if (this.releasing()) return;
+    this.releasing.set(true);
+    try {
+      await this.store.startReleaseFlow();
+    } finally {
+      this.releasing.set(false);
+    }
   }
 
   async setCredentialHelper(value: string): Promise<void> {

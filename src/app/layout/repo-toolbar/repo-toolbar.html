@@ -257,6 +257,15 @@
     <button
       type="button"
       class="tool icon-only"
+      title="Ship a version release (bump, tag, optional push)"
+      aria-label="Release"
+      (click)="store.startReleaseFlow()"
+    >
+      <ng-icon name="lucideRocket" size="15" />
+    </button>
+    <button
+      type="button"
+      class="tool icon-only"
       title="Create a pull request on the host in your browser"
       aria-label="Create pull request"
       (click)="createPullRequest()"
