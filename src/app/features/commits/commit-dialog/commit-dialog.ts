@@ -232,7 +232,7 @@ export class CommitDialog {
   }
 
   close(completed = false): void {
-    if (this.committing()) return;
+    if (this.committing() && !completed) return;
     this.store.closeCommitModal(completed);
   }
 
@@ -782,7 +782,13 @@ export class CommitDialog {
         await this.store.pushRemote();
       }
       this.resetForm();
-      this.close(true);
+      const treeClean =
+        this.stagedCount() === 0 &&
+        this.unstagedCount() === 0 &&
+        this.conflictedCount() === 0;
+      if (needsStageAll || treeClean) {
+        this.close(true);
+      }
     } finally {
       this.commitPhase.set(null);
       this.committing.set(false);
