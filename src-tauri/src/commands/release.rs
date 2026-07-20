@@ -1,10 +1,13 @@
+use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
 use crate::infrastructure::git_cli;
+use crate::state::AppState;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{command, AppHandle, Emitter};
+use std::process::Command;
+use tauri::{command, AppHandle, Emitter, State};
 
 use super::branch::MutationOutput;
 
@@ -456,7 +459,13 @@ struct ApplyFilesResult {
     dev_skipped: Vec<String>,
 }
 
-fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: bool) -> AppResult<ApplyFilesResult> {
+fn apply_files(
+    repo: &Path,
+    files: &[ReleaseFileSpec],
+    version: &str,
+    dry_run: bool,
+    full_ship: bool,
+) -> AppResult<ApplyFilesResult> {
     let mut ordered: Vec<&ReleaseFileSpec> = files.iter().collect();
     ordered.sort_by_key(|f| is_cargo_watch_file(&f.kind));
 
@@ -467,7 +476,7 @@ fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: b
         if !path.exists() {
             return Err(crate::AppError::msg(format!("Missing file: {}", file.path)));
         }
-        if should_skip_dev_watch_write(file) {
+        if !full_ship && should_skip_dev_watch_write(file) {
             dev_skipped.push(file.path.clone());
             continue;
         }
@@ -550,7 +559,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         &tag,
         &product_name,
     );
-    let applied = apply_files(repo, &cfg.files, &next, true)?;
+    let applied = apply_files(repo, &cfg.files, &next, true, will_push)?;
     let files = applied.changed;
     let dev_skipped_files = applied.dev_skipped;
 
@@ -705,7 +714,7 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             Some(&preview.next_version),
             Some(&preview.tag),
         );
-        let applied = apply_files(path, &cfg.files, &preview.next_version, false)?;
+        let applied = apply_files(path, &cfg.files, &preview.next_version, false, preview.will_push)?;
         let changed = applied.changed;
         emit_release_progress(
             &app,
@@ -751,19 +760,14 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
                 Some(&preview.tag),
             );
             git_cli::run_git(path, &["push", "origin", "HEAD", "--tags"])?;
-            let mut message = format!(
-                "Released {} {} and pushed {}",
-                preview.product_name, preview.next_version, preview.tag
+            let message = format!(
+                "Pushed {} — waiting for GitHub Actions to build {}",
+                preview.tag, preview.product_name
             );
-            if !preview.dev_skipped_files.is_empty() {
-                message.push_str(
-                    " — run npm run release from a terminal to sync Cargo/tauri.conf versions",
-                );
-            }
             emit_release_progress(
                 &app,
                 path,
-                "done",
+                "deploying",
                 &message,
                 Some(&preview.next_version),
                 Some(&preview.tag),
@@ -773,13 +777,10 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
                 message,
             });
         }
-        let mut message = format!(
-            "Released {} {} ({}) — push when ready",
+        let message = format!(
+            "Released {} {} ({}) — push to origin to deploy",
             preview.product_name, preview.next_version, preview.tag
         );
-        if !preview.dev_skipped_files.is_empty() {
-            message.push_str(" — run npm run release from a terminal to sync Cargo/tauri.conf versions");
-        }
         emit_release_progress(
             &app,
             path,
@@ -793,4 +794,575 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             message,
         })
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseSetupFileHint {
+    pub path: String,
+    pub kind: String,
+    pub keys: Option<Vec<String>>,
+    pub package: Option<String>,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseSetupHintsOutput {
+    pub product_name: String,
+    pub branch: String,
+    pub current_version: Option<String>,
+    pub push_default: bool,
+    pub suggested_files: Vec<ReleaseSetupFileHint>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveReleaseConfigInput {
+    pub path: String,
+    pub product_name: String,
+    pub branch: String,
+    pub push: bool,
+    pub files: Vec<ReleaseSetupFileHint>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollReleaseDeployInput {
+    pub path: String,
+    pub tag: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollReleaseDeployOutput {
+    pub status: String,
+    pub phase: String,
+    pub message: String,
+    pub run_url: Option<String>,
+    pub release_url: Option<String>,
+}
+
+fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
+    let u = url.trim();
+    let rest = if let Some(r) = u.strip_prefix("git@github.com:") {
+        r
+    } else if let Some(r) = u.strip_prefix("ssh://git@github.com/") {
+        r
+    } else if let Some(r) = u.strip_prefix("https://github.com/") {
+        r
+    } else if let Some(r) = u.strip_prefix("http://github.com/") {
+        r
+    } else if let Some(idx) = u.find("github.com/") {
+        &u[idx + "github.com/".len()..]
+    } else if let Some(idx) = u.find("github.com:") {
+        &u[idx + "github.com:".len()..]
+    } else {
+        return None;
+    };
+    let rest = rest.trim_end_matches('/').trim_end_matches(".git");
+    let mut parts = rest.split('/');
+    let owner = parts.next()?.trim();
+    let repo = parts.next()?.trim();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((owner.to_string(), repo.to_string()))
+}
+
+fn resolve_github_repo(path: &Path) -> AppResult<(String, String)> {
+    for remote in ["origin", "upstream"] {
+        let (ok, out, _) = git_cli::run_git_allow_fail(path, &["remote", "get-url", remote]);
+        if ok {
+            if let Some(pair) = parse_github_owner_repo(out.trim()) {
+                return Ok(pair);
+            }
+        }
+    }
+    Err(crate::AppError::msg(
+        "Could not detect a GitHub remote. Add an origin pointing at github.com.",
+    ))
+}
+
+fn cargo_package_name(repo: &Path) -> Option<String> {
+    let cargo = repo.join("src-tauri/Cargo.toml");
+    let text = fs::read_to_string(&cargo).ok()?;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("name = ") {
+            return trimmed
+                .trim_start_matches("name = ")
+                .trim_matches('"')
+                .to_string()
+                .into();
+        }
+    }
+    None
+}
+
+fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
+    let branch = git_cli::run_git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "main".into());
+    let mut suggested = Vec::new();
+    let pkg = path.join("package.json");
+    if pkg.exists() {
+        suggested.push(ReleaseSetupFileHint {
+            path: "package.json".into(),
+            kind: "json".into(),
+            keys: Some(vec!["version".into()]),
+            package: None,
+            label: "package.json".into(),
+        });
+    }
+    let tauri_conf = path.join("src-tauri/tauri.conf.json");
+    if tauri_conf.exists() {
+        suggested.push(ReleaseSetupFileHint {
+            path: "src-tauri/tauri.conf.json".into(),
+            kind: "json".into(),
+            keys: Some(vec!["version".into()]),
+            package: None,
+            label: "Tauri app version".into(),
+        });
+    }
+    let cargo = path.join("src-tauri/Cargo.toml");
+    if cargo.exists() {
+        suggested.push(ReleaseSetupFileHint {
+            path: "src-tauri/Cargo.toml".into(),
+            kind: "toml-package-version".into(),
+            keys: None,
+            package: None,
+            label: "Cargo package version".into(),
+        });
+    }
+    let lock = path.join("src-tauri/Cargo.lock");
+    if lock.exists() {
+        suggested.push(ReleaseSetupFileHint {
+            path: "src-tauri/Cargo.lock".into(),
+            kind: "cargo-lock-package".into(),
+            keys: None,
+            package: cargo_package_name(path).or_else(|| Some("app".into())),
+            label: "Cargo.lock".into(),
+        });
+    }
+    if suggested.is_empty() {
+        suggested.push(ReleaseSetupFileHint {
+            path: "package.json".into(),
+            kind: "json".into(),
+            keys: Some(vec!["version".into()]),
+            package: None,
+            label: "package.json".into(),
+        });
+    }
+    let product_name = if config_path(path).exists() {
+        infer_product_name(path, &load_config(path)?)
+    } else {
+        infer_product_name(
+            path,
+            &ReleaseConfig {
+                product_name: None,
+                tag_prefix: default_tag_prefix(),
+                branch: branch.clone(),
+                require_clean: true,
+                push: true,
+                commit_message: default_commit_message(),
+                tag_message: default_tag_message(),
+                files: vec![],
+            },
+        )
+    };
+    let current_version = if pkg.exists() {
+        read_json_version(&pkg, &["version".into()]).ok()
+    } else {
+        None
+    };
+    Ok(ReleaseSetupHintsOutput {
+        product_name,
+        branch,
+        current_version,
+        push_default: true,
+        suggested_files: suggested,
+    })
+}
+
+#[command]
+pub fn get_release_setup_hints(input: ReleaseRepoInput) -> AppResult<ReleaseSetupHintsOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), build_setup_hints)
+}
+
+#[command]
+pub fn save_release_config(input: SaveReleaseConfigInput) -> AppResult<MutationOutput> {
+    let path = PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
+    let product_name = input.product_name.trim();
+    if product_name.is_empty() {
+        return Err(crate::AppError::msg("Product name is required"));
+    }
+    let branch = input.branch.trim();
+    if branch.is_empty() {
+        return Err(crate::AppError::msg("Release branch is required"));
+    }
+    if input.files.is_empty() {
+        return Err(crate::AppError::msg("Select at least one version file"));
+    }
+    let files: Vec<Value> = input
+        .files
+        .iter()
+        .map(|file| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("path".into(), Value::String(file.path.clone()));
+            obj.insert("kind".into(), Value::String(file.kind.clone()));
+            if let Some(keys) = &file.keys {
+                obj.insert(
+                    "keys".into(),
+                    Value::Array(keys.iter().cloned().map(Value::String).collect()),
+                );
+            }
+            if let Some(package) = &file.package {
+                obj.insert("package".into(), Value::String(package.clone()));
+            }
+            Value::Object(obj)
+        })
+        .collect();
+    let config = serde_json::json!({
+        "productName": product_name,
+        "tagPrefix": "v",
+        "branch": branch,
+        "requireClean": true,
+        "push": input.push,
+        "commitMessage": "Release {{version}}",
+        "tagMessage": "{{productName}} {{version}}",
+        "files": files,
+    });
+    let out_path = config_path(&path);
+    let text = serde_json::to_string_pretty(&config)
+        .map_err(|e| crate::AppError::msg(format!("Could not serialize release config: {e}")))?;
+    fs::write(&out_path, format!("{text}\n"))
+        .map_err(|e| crate::AppError::msg(format!("Could not write release.config.json: {e}")))?;
+    Ok(MutationOutput {
+        ok: true,
+        message: format!("Saved release.config.json for {product_name}"),
+    })
+}
+
+#[command]
+pub fn push_release_tags(input: ReleaseRepoInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        git_cli::run_git(path, &["push", "origin", "HEAD", "--tags"])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: "Pushed commit and tags to origin".into(),
+        })
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct GhWorkflowRun {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    conclusion: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    head_branch: Option<String>,
+    #[serde(default)]
+    display_title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhReleaseView {
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    is_draft: Option<bool>,
+}
+
+fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
+    let settings = load_settings_with_tokens(state)?;
+    settings
+        .connections
+        .into_iter()
+        .find(|c| {
+            c.provider == "github"
+                && c.enabled
+                && !c.token.trim().is_empty()
+        })
+        .ok_or_else(|| {
+            crate::AppError::msg(
+                "GitHub is not linked. Open Settings → Connections and sign in or paste a PAT.",
+            )
+        })
+}
+
+fn gh_available() -> bool {
+    Command::new("gh")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
+    if !gh_available() {
+        return None;
+    }
+    let release_url = Command::new("gh")
+        .args(["release", "view", tag, "-R", repo, "--json", "url,isDraft"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|raw| serde_json::from_str::<GhReleaseView>(&raw).ok())
+        .and_then(|r| {
+            if r.is_draft.unwrap_or(false) {
+                None
+            } else {
+                r.url
+            }
+        });
+    if let Some(url) = release_url {
+        return Some(PollReleaseDeployOutput {
+            status: "success".into(),
+            phase: "done".into(),
+            message: format!(
+                "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+            ),
+            run_url: None,
+            release_url: Some(url),
+        });
+    }
+    let output = Command::new("gh")
+        .args([
+            "run",
+            "list",
+            "-R",
+            repo,
+            "--workflow=release-desktop.yml",
+            "--limit",
+            "20",
+            "--json",
+            "status,conclusion,url,headBranch,displayTitle",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let runs: Vec<GhWorkflowRun> = serde_json::from_str(&String::from_utf8(output.stdout).ok()?).ok()?;
+    let matched = runs.into_iter().find(|run| {
+        run.head_branch
+            .as_deref()
+            .is_some_and(|b| b == tag)
+            || run.display_title
+                .as_deref()
+                .is_some_and(|t| t.contains(tag))
+    });
+    let Some(run) = matched else {
+        return Some(PollReleaseDeployOutput {
+            status: "pending".into(),
+            phase: "deploying".into(),
+            message: "Waiting for GitHub Actions to start…".into(),
+            run_url: None,
+            release_url: None,
+        });
+    };
+    let status = run.status.unwrap_or_default();
+    let conclusion = run.conclusion.unwrap_or_default();
+    let run_url = run.url;
+    if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
+        return Some(PollReleaseDeployOutput {
+            status: "running".into(),
+            phase: "ci".into(),
+            message: "GitHub Actions is building release artifacts…".into(),
+            run_url,
+            release_url: None,
+        });
+    }
+    if conclusion == "success" {
+        return Some(PollReleaseDeployOutput {
+            status: "running".into(),
+            phase: "publishing".into(),
+            message: "Build finished — publishing GitHub release…".into(),
+            run_url,
+            release_url: None,
+        });
+    }
+    if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
+        return Some(PollReleaseDeployOutput {
+            status: "failure".into(),
+            phase: "error".into(),
+            message: format!("GitHub Actions {conclusion} for {tag}"),
+            run_url,
+            release_url: None,
+        });
+    }
+    Some(PollReleaseDeployOutput {
+        status: "pending".into(),
+        phase: "deploying".into(),
+        message: "Waiting for GitHub Actions…".into(),
+        run_url,
+        release_url: None,
+    })
+}
+
+fn poll_deploy_with_api(
+    connection: &ConnectionConfig,
+    owner: &str,
+    repo: &str,
+    tag: &str,
+) -> AppResult<PollReleaseDeployOutput> {
+    let full = format!("{owner}/{repo}");
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let client = reqwest::blocking::Client::new();
+    let release_resp = client
+        .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send();
+    if let Ok(resp) = release_resp {
+        if resp.status().is_success() {
+            if let Ok(value) = resp.json::<Value>() {
+                if value.get("draft").and_then(|v| v.as_bool()) != Some(true) {
+                    let url = value
+                        .get("html_url")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string);
+                    return Ok(PollReleaseDeployOutput {
+                        status: "success".into(),
+                        phase: "done".into(),
+                        message: format!(
+                            "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+                        ),
+                        run_url: None,
+                        release_url: url,
+                    });
+                }
+            }
+        }
+    }
+    let runs_resp = client
+        .get(format!(
+            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?event=push&per_page=15"
+        ))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| crate::AppError::msg(format!("GitHub Actions request failed: {e}")))?;
+    if !runs_resp.status().is_success() {
+        return Ok(PollReleaseDeployOutput {
+            status: "unavailable".into(),
+            phase: "done".into(),
+            message: "Tag pushed. Link GitHub or install gh to track CI progress here.".into(),
+            run_url: None,
+            release_url: None,
+        });
+    }
+    let payload: Value = runs_resp
+        .json()
+        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub Actions response: {e}")))?;
+    let runs = payload
+        .get("workflow_runs")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let matched = runs.into_iter().find(|run| {
+        run.get("head_branch")
+            .and_then(|v| v.as_str())
+            .is_some_and(|b| b == tag)
+            || run
+                .get("display_title")
+                .and_then(|v| v.as_str())
+                .is_some_and(|t| t.contains(tag))
+    });
+    let Some(run) = matched else {
+        return Ok(PollReleaseDeployOutput {
+            status: "pending".into(),
+            phase: "deploying".into(),
+            message: "Waiting for GitHub Actions to start…".into(),
+            run_url: None,
+            release_url: None,
+        });
+    };
+    let status = run
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let conclusion = run
+        .get("conclusion")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let run_url = run
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
+        return Ok(PollReleaseDeployOutput {
+            status: "running".into(),
+            phase: "ci".into(),
+            message: "GitHub Actions is building release artifacts…".into(),
+            run_url,
+            release_url: None,
+        });
+    }
+    if conclusion == "success" {
+        return Ok(PollReleaseDeployOutput {
+            status: "running".into(),
+            phase: "publishing".into(),
+            message: "Build finished — publishing GitHub release…".into(),
+            run_url,
+            release_url: None,
+        });
+    }
+    if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
+        return Ok(PollReleaseDeployOutput {
+            status: "failure".into(),
+            phase: "error".into(),
+            message: format!("GitHub Actions {conclusion} for {tag}"),
+            run_url,
+            release_url: None,
+        });
+    }
+    Ok(PollReleaseDeployOutput {
+        status: "pending".into(),
+        phase: "deploying".into(),
+        message: "Waiting for GitHub Actions…".into(),
+        run_url,
+        release_url: None,
+    })
+}
+
+#[command]
+pub fn poll_release_deploy(
+    state: State<'_, AppState>,
+    input: PollReleaseDeployInput,
+) -> AppResult<PollReleaseDeployOutput> {
+    let path = PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
+    let tag = input.tag.trim();
+    if tag.is_empty() {
+        return Err(crate::AppError::msg("Tag is required"));
+    }
+    let (owner, repo) = resolve_github_repo(&path)?;
+    let full = format!("{owner}/{repo}");
+    if let Some(result) = poll_deploy_with_gh(&full, tag) {
+        return Ok(result);
+    }
+    match github_connection(&state) {
+        Ok(connection) => poll_deploy_with_api(&connection, &owner, &repo, tag),
+        Err(_) => Ok(PollReleaseDeployOutput {
+            status: "unavailable".into(),
+            phase: "done".into(),
+            message: "Tag pushed. Install gh or link GitHub in Settings to track CI here.".into(),
+            run_url: None,
+            release_url: None,
+        }),
+    }
 }

@@ -643,8 +643,35 @@ export type ReleasePhase =
   | 'committing'
   | 'tagging'
   | 'pushing'
+  | 'deploying'
+  | 'ci'
+  | 'publishing'
   | 'done'
   | 'error';
+
+export interface ReleaseSetupFileHint {
+  path: string;
+  kind: string;
+  keys?: string[] | null;
+  package?: string | null;
+  label: string;
+}
+
+export interface ReleaseSetupHintsOutput {
+  productName: string;
+  branch: string;
+  currentVersion?: string | null;
+  pushDefault: boolean;
+  suggestedFiles: ReleaseSetupFileHint[];
+}
+
+export interface PollReleaseDeployOutput {
+  status: 'pending' | 'running' | 'success' | 'failure' | 'unavailable' | string;
+  phase: ReleasePhase | string;
+  message: string;
+  runUrl?: string | null;
+  releaseUrl?: string | null;
+}
 
 export interface ReleaseProgressEvent {
   path: string;
@@ -670,6 +697,9 @@ export interface ReleaseActivity {
   nextVersion: string;
   tag: string;
   willPush: boolean;
+  needsPush?: boolean;
+  deployRunUrl?: string | null;
+  releaseUrl?: string | null;
   phase: ReleasePhase;
   message: string;
   steps: ReleaseActivityStep[];

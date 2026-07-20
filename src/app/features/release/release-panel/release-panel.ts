@@ -1,5 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
 import type { ReleaseActivityStep, ReleasePhase } from '../../../core/models';
 
@@ -24,6 +25,9 @@ export class ReleasePanel {
     if (activity.phase === 'error') {
       return `Release failed`;
     }
+    if (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') {
+      return `Deploying ${activity.productName} ${activity.nextVersion}`;
+    }
     return `Releasing ${activity.productName} ${activity.currentVersion} → ${activity.nextVersion}`;
   });
 
@@ -32,8 +36,38 @@ export class ReleasePanel {
     if (!activity) return '';
     if (activity.phase === 'done') return 'Complete';
     if (activity.phase === 'error') return 'Failed';
-    if (this.busy()) return phaseLabel(activity.phase);
     return phaseLabel(activity.phase);
+  });
+
+  readonly showPushFallback = computed(() => {
+    const activity = this.activity();
+    return !!activity?.needsPush && !this.busy();
+  });
+
+  readonly shippedLive = computed(() => {
+    const activity = this.activity();
+    return (
+      !!activity &&
+      activity.phase === 'done' &&
+      activity.ok !== false &&
+      !activity.needsPush &&
+      (activity.willPush || !!activity.releaseUrl)
+    );
+  });
+
+  readonly finalStatus = computed(() => {
+    const activity = this.activity();
+    if (!activity) return '';
+    if (this.shippedLive()) {
+      return 'Waiting for users to get the update banner (next app launch/check)';
+    }
+    if (activity.phase === 'done' && activity.needsPush) {
+      return 'Tagged locally — push to origin to publish and notify users';
+    }
+    if (activity.phase === 'error') {
+      return activity.message;
+    }
+    return '';
   });
 
   clear(): void {
@@ -42,6 +76,15 @@ export class ReleasePanel {
 
   startRelease(): void {
     void this.store.startReleaseFlow();
+  }
+
+  pushRelease(): void {
+    void this.store.pushReleaseTags();
+  }
+
+  openLink(url: string | null | undefined): void {
+    if (!url) return;
+    void openUrl(url);
   }
 
   trackStep(_index: number, step: ReleaseActivityStep): string {
@@ -63,6 +106,12 @@ function phaseLabel(phase: ReleasePhase): string {
       return 'Tagging…';
     case 'pushing':
       return 'Pushing…';
+    case 'deploying':
+      return 'Starting deploy…';
+    case 'ci':
+      return 'Building on GitHub…';
+    case 'publishing':
+      return 'Publishing release…';
     case 'done':
       return 'Complete';
     case 'error':

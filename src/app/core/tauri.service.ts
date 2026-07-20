@@ -54,6 +54,9 @@ import type {
   ReleaseStatusOutput,
   ReleasePreviewOutput,
   ReleaseRunOptions,
+  ReleaseSetupHintsOutput,
+  ReleaseSetupFileHint,
+  PollReleaseDeployOutput,
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -575,6 +578,34 @@ export class TauriService {
         allowDirty: opts.allowDirty ?? null,
         branch: opts.branch ?? null,
       },
+    });
+  }
+
+  getReleaseSetupHints(path: string) {
+    return this.invoke<ReleaseSetupHintsOutput>('get_release_setup_hints', { input: { path } });
+  }
+
+  saveReleaseConfig(
+    path: string,
+    input: {
+      productName: string;
+      branch: string;
+      push: boolean;
+      files: ReleaseSetupFileHint[];
+    },
+  ) {
+    return this.invoke<MutationOutput>('save_release_config', {
+      input: { path, ...input },
+    });
+  }
+
+  pushReleaseTags(path: string) {
+    return this.invoke<MutationOutput>('push_release_tags', { input: { path } });
+  }
+
+  pollReleaseDeploy(path: string, tag: string) {
+    return this.invoke<PollReleaseDeployOutput>('poll_release_deploy', {
+      input: { path, tag },
     });
   }
 
@@ -1174,7 +1205,7 @@ export class TauriService {
           tagPrefix: 'v',
           branch: 'main',
           requireClean: true,
-          pushDefault: false,
+          pushDefault: true,
           commitMessage: 'Release {{version}}',
           tagMessage: '{{productName}} {{version}}',
           files: ['package.json'],
@@ -1202,7 +1233,25 @@ export class TauriService {
         devSkippedFiles: [],
         blockers: [],
       },
-      run_release: { ok: true, message: 'Released Demo App 0.1.1 (v0.1.1) — push when ready' },
+      run_release: { ok: true, message: 'Released Demo App 0.1.1 and pushed v0.1.1' },
+      get_release_setup_hints: {
+        productName: 'Demo App',
+        branch: 'main',
+        currentVersion: '0.1.0',
+        pushDefault: true,
+        suggestedFiles: [
+          { path: 'package.json', kind: 'json', keys: ['version'], label: 'package.json' },
+        ],
+      },
+      save_release_config: { ok: true, message: 'Saved release.config.json for Demo App' },
+      push_release_tags: { ok: true, message: 'Pushed commit and tags to origin' },
+      poll_release_deploy: {
+        status: 'success',
+        phase: 'done',
+        message: 'Release v0.1.1 is live on GitHub',
+        runUrl: null,
+        releaseUrl: 'https://github.com/example/navigo/releases/tag/v0.1.1',
+      },
       list_remotes: [
         {
           name: 'origin',

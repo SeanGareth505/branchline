@@ -26,7 +26,7 @@ export class ReleaseDialog {
   readonly bump = signal<BumpKind>('patch');
   readonly customVersion = signal('');
   readonly branch = signal('');
-  readonly push = signal(false);
+  readonly push = signal(true);
   readonly allowDirty = signal(false);
   readonly preid = signal('');
   readonly tagMessage = signal('');
@@ -40,7 +40,7 @@ export class ReleaseDialog {
       `Branch: ${this.branch().trim() || cfg.branch}`,
       `Tag prefix: ${cfg.tagPrefix}`,
       `Files: ${cfg.files.join(', ')}`,
-      this.push() ? 'Will push to origin after tag' : 'Will not push automatically',
+      this.push() ? 'Will push & deploy via GitHub Actions' : 'Local tag only — push later from Release screen',
     ];
     if (this.allowDirty()) {
       lines.push('Allows dirty working tree');

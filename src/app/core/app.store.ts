@@ -33,6 +33,7 @@ import type {
   ReleaseActivityStep,
   ReleasePhase,
   ReleaseProgressEvent,
+  ReleaseSetupFileHint,
   TagInfo,
   TemplateInfo,
   UiSession,
@@ -242,6 +243,7 @@ export class AppStore {
   readonly releaseBusy = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
   private releaseProgressUnlisten: UnlistenFn | null = null;
+  private releaseDeployPollTimer: number | null = null;
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -1314,7 +1316,10 @@ export class AppStore {
     }
   }
 
-  private applyReleaseProgress(payload: ReleaseProgressEvent): void {
+  private applyReleaseProgress(
+    payload: ReleaseProgressEvent,
+    extras?: Partial<Pick<ReleaseActivity, 'needsPush' | 'deployRunUrl' | 'releaseUrl'>>,
+  ): void {
     const current = this.releaseActivity();
     if (!current) return;
     if (!sameRepoPath(current.path, payload.path)) return;
@@ -1326,6 +1331,7 @@ export class AppStore {
     const finished = phase === 'done' || phase === 'error';
     this.releaseActivity.set({
       ...current,
+      ...extras,
       phase,
       message,
       nextVersion,
@@ -1338,7 +1344,15 @@ export class AppStore {
 
   clearReleaseActivity(): void {
     if (this.releaseBusy()) return;
+    this.stopReleaseDeployPoll();
     this.releaseActivity.set(null);
+  }
+
+  private stopReleaseDeployPoll(): void {
+    if (this.releaseDeployPollTimer !== null) {
+      window.clearTimeout(this.releaseDeployPollTimer);
+      this.releaseDeployPollTimer = null;
+    }
   }
 
   openReleaseTab(): void {
@@ -1384,6 +1398,9 @@ export class AppStore {
     ];
     if (willPush) {
       phases.push({ phase: 'pushing', message: 'Pushing commit and tags to origin…', delay: 320 });
+      phases.push({ phase: 'deploying', message: 'Waiting for GitHub Actions to start…', delay: 400 });
+      phases.push({ phase: 'ci', message: 'Building release artifacts…', delay: 500 });
+      phases.push({ phase: 'publishing', message: 'Publishing GitHub release…', delay: 400 });
     }
     const activity = this.releaseActivity();
     const path = activity?.path ?? this.currentRepo()?.path ?? '';
@@ -3959,14 +3976,17 @@ export class AppStore {
       this.showWarning('Open a repository first');
       return;
     }
+    this.openReleaseTab();
     try {
-      const status = await this.tauri.getReleaseStatus(path);
+      let status = await this.tauri.getReleaseStatus(path);
       if (!status.available) {
-        this.showWarning(
-          status.message ||
-            'Add release.config.json to this repo to enable Release (see release.config.example.jsonc).',
-        );
-        return;
+        const configured = await this.ensureReleaseSetup(path, status.message);
+        if (!configured) return;
+        status = await this.tauri.getReleaseStatus(path);
+        if (!status.available) {
+          this.showWarning(status.message || 'Release is not configured yet.');
+          return;
+        }
       }
       const cfg = status.config;
       if (!cfg) return;
@@ -4058,15 +4078,20 @@ export class AppStore {
           `${preview.currentVersion} → ${preview.nextVersion} (${preview.tag})`,
           `Commit: ${preview.commitMessage}`,
           `Tag: ${preview.tagMessage}`,
-          preview.willPush ? 'Will push commit + tags to origin' : 'Will not push',
+          preview.willPush
+            ? 'Will bump, commit, tag, push, and track GitHub Actions until the release is live.'
+            : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
           `Files: ${preview.files.join(', ')}`,
-          devSkipped.length
-            ? `Dev mode: skipping ${devSkipped.join(', ')} so tauri:dev does not restart the app. Run npm run release from a terminal for full version sync before shipping.`
+          devSkipped.length && !preview.willPush
+            ? `Dev mode: ${devSkipped.join(', ')} skipped unless you push (full ship bumps all files).`
+            : '',
+          preview.willPush
+            ? 'Note: updating Tauri/Cargo files may restart tauri:dev while the release runs.'
             : '',
         ]
           .filter(Boolean)
           .join('\n'),
-        confirmLabel: preview.willPush ? 'Release & push' : 'Create release',
+        confirmLabel: preview.willPush ? 'Release & deploy' : 'Create release',
         cancelLabel: 'Cancel',
         confirmOnly: true,
       });
@@ -4085,6 +4110,11 @@ export class AppStore {
         await this.withRepoMutation(async () => {
           if (this.isDummyBackend) {
             await this.simulateReleaseProgress(preview.willPush);
+            if (preview.willPush) {
+              void this.watchReleaseDeploy(path, preview.tag);
+              return;
+            }
+            return;
           }
           const result = await this.tauri.runRelease(path, opts);
           await this.refreshRepo();
@@ -4099,13 +4129,28 @@ export class AppStore {
             this.showWarning(result.message);
             return;
           }
-          this.applyReleaseProgress({
-            path,
-            phase: 'done',
-            message: result.message,
-            version: preview.nextVersion,
-            tag: preview.tag,
-          });
+          if (preview.willPush) {
+            this.applyReleaseProgress({
+              path,
+              phase: 'deploying',
+              message: result.message,
+              version: preview.nextVersion,
+              tag: preview.tag,
+            });
+            this.showSuccess(result.message);
+            void this.watchReleaseDeploy(path, preview.tag);
+            return;
+          }
+          this.applyReleaseProgress(
+            {
+              path,
+              phase: 'done',
+              message: result.message,
+              version: preview.nextVersion,
+              tag: preview.tag,
+            },
+            { needsPush: true },
+          );
           this.showSuccess(result.message);
         });
       } catch (err) {
@@ -4119,11 +4164,278 @@ export class AppStore {
         });
         this.showError(err);
       } finally {
-        this.releaseBusy.set(false);
+        const activity = this.releaseActivity();
+        if (!preview.willPush || activity?.phase === 'error') {
+          this.releaseBusy.set(false);
+        }
       }
     } catch (err) {
       this.showError(err);
     }
+  }
+
+  async saveReleaseSetup(input: {
+    productName: string;
+    branch: string;
+    push: boolean;
+    files: ReleaseSetupFileHint[];
+  }): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    try {
+      const result = await this.tauri.saveReleaseConfig(path, input);
+      this.showSuccess(result.message);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  private async ensureReleaseSetup(path: string, reason?: string): Promise<boolean> {
+    const proceed = await this.prompts.ask({
+      title: 'Set up Release',
+      message: [
+        reason?.trim() || 'Release is not configured for this repository.',
+        'Create release.config.json now so Start release can run end-to-end?',
+      ].join('\n'),
+      confirmLabel: 'Set up',
+      cancelLabel: 'Cancel',
+      confirmOnly: true,
+    });
+    if (proceed === null) return false;
+    const hints = await this.tauri.getReleaseSetupHints(path);
+    const productName = await this.prompts.ask({
+      title: 'Release setup',
+      message: 'Choose the product name used in release messages and tags.',
+      label: 'Product name',
+      initialValue: hints.productName,
+      confirmLabel: 'Next',
+      required: true,
+    });
+    if (productName === null) return false;
+    const branch = await this.prompts.ask({
+      title: 'Release setup',
+      message: 'Choose the branch where releases should run.',
+      label: 'Release branch',
+      initialValue: hints.branch,
+      confirmLabel: 'Next',
+      required: true,
+    });
+    if (branch === null) return false;
+    const pushChoice = await this.selects.ask({
+      title: 'Release setup',
+      message: 'Should release push commit and tags by default?',
+      label: 'Default push behavior',
+      options: [
+        { value: 'yes', label: 'Push by default (recommended)' },
+        { value: 'no', label: 'Tag only by default' },
+      ],
+      initialValue: hints.pushDefault ? 'yes' : 'no',
+      confirmLabel: 'Next',
+    });
+    if (pushChoice !== 'yes' && pushChoice !== 'no') return false;
+    const availableFiles = hints.suggestedFiles ?? [];
+    if (!availableFiles.length) {
+      this.showWarning('No version files were detected for release setup.');
+      return false;
+    }
+    const fileChoice = await this.selects.ask({
+      title: 'Release setup',
+      message: availableFiles.map((file) => `• ${file.path}`).join('\n'),
+      label: 'Version files',
+      options: [
+        { value: 'all', label: 'Use all detected version files' },
+        {
+          value: 'package',
+          label: 'Use package.json only',
+          hint: 'Only available when package.json is detected',
+        },
+      ],
+      initialValue: 'all',
+      confirmLabel: 'Create config',
+    });
+    if (fileChoice !== 'all' && fileChoice !== 'package') return false;
+    const packageOnly = availableFiles.filter((file) => file.path === 'package.json');
+    const files = fileChoice === 'package' && packageOnly.length ? packageOnly : availableFiles;
+    const saved = await this.saveReleaseSetup({
+      productName: productName.trim(),
+      branch: branch.trim(),
+      push: pushChoice === 'yes',
+      files,
+    });
+    if (!saved) return false;
+    await this.refreshRepo();
+    return true;
+  }
+
+  async pushReleaseTags(): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const activity = this.releaseActivity();
+    if (!path || !activity) return false;
+    this.releaseBusy.set(true);
+    try {
+      const result = await this.tauri.pushReleaseTags(path);
+      await this.refreshRepo();
+      this.applyReleaseProgress(
+        {
+          path,
+          phase: 'deploying',
+          message: result.message,
+          version: activity.nextVersion,
+          tag: activity.tag,
+        },
+        { needsPush: false },
+      );
+      this.showSuccess(result.message);
+      void this.watchReleaseDeploy(path, activity.tag);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      if (this.releaseActivity()?.phase !== 'deploying') {
+        this.releaseBusy.set(false);
+      }
+    }
+  }
+
+  async openReleaseDeployRun(): Promise<void> {
+    const url = this.releaseActivity()?.deployRunUrl;
+    if (!url) return;
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch {
+      this.showWarning(`Could not open workflow run. Open manually: ${url}`);
+    }
+  }
+
+  async openReleasePage(): Promise<void> {
+    const url = this.releaseActivity()?.releaseUrl;
+    if (!url) return;
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch {
+      this.showWarning(`Could not open release page. Open manually: ${url}`);
+    }
+  }
+
+  private async watchReleaseDeploy(path: string, tag: string): Promise<void> {
+    this.stopReleaseDeployPoll();
+    const activity = this.releaseActivity();
+    if (!activity) return;
+    let attempts = 0;
+    const poll = async (): Promise<void> => {
+      attempts += 1;
+      const current = this.releaseActivity();
+      if (!current || !sameRepoPath(current.path, path) || current.tag !== tag) {
+        this.stopReleaseDeployPoll();
+        return;
+      }
+      try {
+        const result = await this.tauri.pollReleaseDeploy(path, tag);
+        const phase = normalizeReleasePhase(result.phase);
+        this.applyReleaseProgress(
+          {
+            path,
+            phase,
+            message: result.message,
+            version: current.nextVersion,
+            tag,
+          },
+          {
+            deployRunUrl: result.runUrl ?? null,
+            releaseUrl: result.releaseUrl ?? null,
+            needsPush: false,
+          },
+        );
+        if (result.status === 'success') {
+          this.releaseBusy.set(false);
+          const doneMessage =
+            result.message.trim() ||
+            `Release ${tag} is live — waiting for users to get the update banner (next app launch/check)`;
+          this.applyReleaseProgress(
+            {
+              path,
+              phase: 'done',
+              message: doneMessage,
+              version: current.nextVersion,
+              tag,
+            },
+            {
+              deployRunUrl: result.runUrl ?? null,
+              releaseUrl: result.releaseUrl ?? null,
+              needsPush: false,
+            },
+          );
+          this.showSuccess(doneMessage);
+          this.stopReleaseDeployPoll();
+          return;
+        }
+        if (result.status === 'failure') {
+          this.releaseBusy.set(false);
+          this.applyReleaseProgress(
+            {
+              path,
+              phase: 'error',
+              message: result.message,
+              version: current.nextVersion,
+              tag,
+            },
+            { deployRunUrl: result.runUrl ?? null },
+          );
+          this.showWarning(result.message);
+          this.stopReleaseDeployPoll();
+          return;
+        }
+        if (result.status === 'unavailable') {
+          this.releaseBusy.set(false);
+          this.applyReleaseProgress(
+            {
+              path,
+              phase: 'done',
+              message: result.message,
+              version: current.nextVersion,
+              tag,
+            },
+            { needsPush: false },
+          );
+          this.stopReleaseDeployPoll();
+          return;
+        }
+      } catch {
+        if (attempts >= 3) {
+          this.releaseBusy.set(false);
+          this.applyReleaseProgress({
+            path,
+            phase: 'done',
+            message: 'Tag pushed. Check GitHub Actions for build progress.',
+            version: current.nextVersion,
+            tag,
+          });
+          this.stopReleaseDeployPoll();
+          return;
+        }
+      }
+      if (attempts >= 120) {
+        this.releaseBusy.set(false);
+        this.applyReleaseProgress({
+          path,
+          phase: 'done',
+          message: 'Deploy is taking longer than expected — check GitHub Actions.',
+          version: current.nextVersion,
+          tag,
+        });
+        this.stopReleaseDeployPoll();
+        return;
+      }
+      this.releaseDeployPollTimer = window.setTimeout(() => {
+        void poll();
+      }, 5000);
+    };
+    this.releaseDeployPollTimer = window.setTimeout(() => {
+      void poll();
+    }, 3000);
   }
 
   async deleteTag(name: string): Promise<void> {
@@ -4344,6 +4656,9 @@ function normalizeReleasePhase(value: string): ReleasePhase {
     case 'committing':
     case 'tagging':
     case 'pushing':
+    case 'deploying':
+    case 'ci':
+    case 'publishing':
     case 'done':
     case 'error':
     case 'idle':
@@ -4399,6 +4714,27 @@ function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
       message: 'Push commit and tags to origin',
       status: 'pending',
     });
+    steps.push({
+      id: 'deploying',
+      phase: 'deploying',
+      label: 'Deploy',
+      message: 'Wait for GitHub Actions to start',
+      status: 'pending',
+    });
+    steps.push({
+      id: 'ci',
+      phase: 'ci',
+      label: 'Build',
+      message: 'Build release artifacts on GitHub',
+      status: 'pending',
+    });
+    steps.push({
+      id: 'publishing',
+      phase: 'publishing',
+      label: 'Publish',
+      message: 'Publish GitHub release and updater files',
+      status: 'pending',
+    });
   }
   return steps;
 }
@@ -4428,7 +4764,17 @@ function advanceReleaseSteps(
       return step.status === 'pending' ? step : step;
     });
   }
-  const order = ['preparing', 'bumping', 'staging', 'committing', 'tagging', 'pushing'];
+  const order = [
+    'preparing',
+    'bumping',
+    'staging',
+    'committing',
+    'tagging',
+    'pushing',
+    'deploying',
+    'ci',
+    'publishing',
+  ];
   const activeIndex = order.indexOf(phase);
   return steps.map((step) => {
     const stepIndex = order.indexOf(step.phase);

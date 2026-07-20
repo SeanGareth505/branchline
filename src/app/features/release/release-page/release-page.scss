@@ -127,3 +127,101 @@
   line-height: 1.45;
   color: var(--text-muted);
 }
+
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.1rem 1.25rem;
+  max-width: 38rem;
+}
+
+.setup-copy h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.setup-copy p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 12px;
+}
+
+.field > span {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.field input[type='text'] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.toggle {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toggle.active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 12px;
+}
+
+.check .mono {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.setup-actions {
+  display: flex;
+  gap: 0.35rem;
+  padding-top: 0.25rem;
+}

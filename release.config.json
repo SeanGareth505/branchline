@@ -3,7 +3,7 @@
   "tagPrefix": "v",
   "branch": "main",
   "requireClean": true,
-  "push": false,
+  "push": true,
   "commitMessage": "Release {{version}}",
   "tagMessage": "{{productName}} {{version}}",
   "files": [

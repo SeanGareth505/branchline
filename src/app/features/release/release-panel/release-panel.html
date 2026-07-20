@@ -5,7 +5,7 @@
       <span class="meta mono">{{ activity.currentVersion }} → {{ activity.nextVersion }}</span>
       <span class="tag mono">{{ activity.tag }}</span>
     } @else {
-      <span class="meta">Ship a version bump, tag, and optional push</span>
+      <span class="meta">Bump, commit, tag, push, and track deploy</span>
     }
   </header>
 
@@ -19,11 +19,30 @@
   @if (activity(); as activity) {
     <div class="summary">
       <p class="headline">{{ headline() }}</p>
+      @if (finalStatus(); as statusLine) {
+        <p class="final-status" role="status">{{ statusLine }}</p>
+      }
       <p class="message">{{ activity.message }}</p>
-      @if (activity.willPush) {
-        <p class="hint">Push to origin is included after the tag.</p>
-      } @else {
-        <p class="hint">Tag only — push later when ready.</p>
+      @if (shippedLive()) {
+        <p class="hint">Update banner appears when users open or check for updates in a built app.</p>
+      } @else if (activity.willPush && busy()) {
+        <p class="hint">Push and GitHub Actions deploy are included in this release.</p>
+      } @else if (activity.needsPush) {
+        <p class="hint">Tagged locally — push to origin to trigger deploy and the update banner.</p>
+      }
+      @if (activity.deployRunUrl || activity.releaseUrl) {
+        <div class="links">
+          @if (activity.deployRunUrl) {
+            <button type="button" class="link-btn" (click)="openLink(activity.deployRunUrl)">
+              View GitHub Actions run
+            </button>
+          }
+          @if (activity.releaseUrl) {
+            <button type="button" class="link-btn" (click)="openLink(activity.releaseUrl)">
+              Open GitHub release
+            </button>
+          }
+        </div>
       }
     </div>
 
@@ -46,6 +65,11 @@
     </ol>
 
     <div class="actions">
+      @if (showPushFallback()) {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="pushRelease()">
+          Push release
+        </button>
+      }
       @if (!busy() && (activity.phase === 'done' || activity.phase === 'error')) {
         <button type="button" class="bl-btn" (click)="clear()">Clear</button>
         <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Release again</button>
@@ -55,8 +79,8 @@
     <div class="state">
       <p class="state-title">No release activity yet</p>
       <p class="state-hint">
-        Start a release from the toolbar rocket, the Release screen, command palette, or Settings → About.
-        Progress appears here so you can keep browsing while it runs.
+        Start a release from here, the toolbar rocket, or the command palette. Branchline bumps
+        version files, commits, tags, pushes, and tracks GitHub Actions until the release is live.
       </p>
       <div class="state-actions">
         <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>

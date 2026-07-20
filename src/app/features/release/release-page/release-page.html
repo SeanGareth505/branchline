@@ -14,7 +14,7 @@
       <p>{{ subtitle() }}</p>
     </div>
     <div class="hero-actions">
-      @if (hasRepo() && status()?.available) {
+      @if (hasRepo() && configured()) {
         <button
           type="button"
           class="bl-btn bl-btn-primary"
@@ -35,13 +35,93 @@
     </div>
   } @else if (loading()) {
     <app-loading-block message="Loading release settings…" />
+  } @else if (!configured()) {
+    <div class="setup bl-glass">
+      <div class="setup-copy">
+        <h2>Release setup</h2>
+        <p>
+          This repo does not have <code>release.config.json</code> yet. Configure it once, then
+          Branchline can bump versions, commit, tag, push, and track GitHub Actions for you.
+        </p>
+      </div>
+
+      @if (setupHints(); as hints) {
+        <div class="setup-form">
+          <label class="field">
+            <span>Product name</span>
+            <input type="text" [ngModel]="productName()" (ngModelChange)="productName.set($event)" />
+          </label>
+
+          <label class="field">
+            <span>Release branch</span>
+            <input type="text" [ngModel]="branch()" (ngModelChange)="branch.set($event)" spellcheck="false" />
+          </label>
+
+          <div class="field toggles">
+            <span>After tagging</span>
+            <div class="toggle-row">
+              <button
+                type="button"
+                class="toggle"
+                [class.active]="pushDefault()"
+                (click)="pushDefault.set(true)"
+              >
+                Push & deploy
+              </button>
+              <button
+                type="button"
+                class="toggle"
+                [class.active]="!pushDefault()"
+                (click)="pushDefault.set(false)"
+              >
+                Tag only
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Version files</span>
+            <ul class="file-list">
+              @for (file of hints.suggestedFiles; track file.path) {
+                <li>
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      [ngModel]="selectedFiles()[file.path]"
+                      (ngModelChange)="setFileSelected(file.path, $event)"
+                    />
+                    <span>{{ file.label }}</span>
+                    <span class="mono muted">{{ file.path }}</span>
+                  </label>
+                </li>
+              }
+            </ul>
+          </div>
+
+          @if (hints.currentVersion) {
+            <p class="hint">Current version: {{ hints.currentVersion }}</p>
+          }
+
+          <div class="setup-actions">
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary"
+              [disabled]="!canSaveSetup() || setupBusy()"
+              (click)="saveSetup()"
+            >
+              {{ setupBusy() ? 'Saving…' : 'Save & enable release' }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
   } @else if (status(); as releaseStatus) {
-    @if (releaseStatus.available && releaseStatus.config; as cfg) {
+    @if (releaseStatus.config; as cfg) {
       <div class="meta bl-glass">
         <span><strong>Product</strong> {{ cfg.productName }}</span>
         <span><strong>Branch</strong> {{ cfg.branch }}</span>
         <span><strong>Tag</strong> {{ cfg.tagPrefix }}x.y.z</span>
-        <span><strong>Push</strong> {{ cfg.pushDefault ? 'default on' : 'default off' }}</span>
+        <span><strong>Push</strong> {{ cfg.pushDefault ? 'on' : 'off' }}</span>
         @if (releaseStatus.currentVersion) {
           <span><strong>Current</strong> {{ releaseStatus.currentVersion }}</span>
         }
