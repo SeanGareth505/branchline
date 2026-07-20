@@ -212,6 +212,7 @@ export interface HostRepository {
   fullName: string;
   cloneUrl: string;
   sshUrl: string;
+  htmlUrl: string;
   private: boolean;
   provider: string;
   updatedAt?: string | null;
@@ -665,12 +666,23 @@ export interface ReleaseSetupHintsOutput {
   suggestedFiles: ReleaseSetupFileHint[];
 }
 
+export interface ReleaseDeployJob {
+  name: string;
+  status: string;
+  conclusion?: string | null;
+  url?: string | null;
+}
+
 export interface PollReleaseDeployOutput {
   status: 'pending' | 'running' | 'success' | 'failure' | 'unavailable' | string;
   phase: ReleasePhase | string;
   message: string;
   runUrl?: string | null;
   releaseUrl?: string | null;
+  websiteUrl?: string | null;
+  actionsPageUrl?: string | null;
+  repoUrl?: string | null;
+  jobs?: ReleaseDeployJob[];
 }
 
 export interface ReleaseProgressEvent {
@@ -700,6 +712,10 @@ export interface ReleaseActivity {
   needsPush?: boolean;
   deployRunUrl?: string | null;
   releaseUrl?: string | null;
+  websiteUrl?: string | null;
+  actionsPageUrl?: string | null;
+  repoUrl?: string | null;
+  deployJobs?: ReleaseDeployJob[];
   phase: ReleasePhase;
   message: string;
   steps: ReleaseActivityStep[];

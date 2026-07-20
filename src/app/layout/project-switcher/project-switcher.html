@@ -176,6 +176,17 @@
                           >
                             <ng-icon name="lucidePin" size="12" />
                           </button>
+                          @if (hasLocalWebUrl(repo.path)) {
+                            <button
+                              type="button"
+                              class="row-action external"
+                              title="View on host"
+                              aria-label="View on host"
+                              (click)="openLocalWeb(repo.path, $event)"
+                            >
+                              <ng-icon name="lucideExternalLink" size="12" />
+                            </button>
+                          }
                           <button
                             type="button"
                             class="row-action"
@@ -231,6 +242,15 @@
                                 {{ repo.provider }}{{ repo.private ? ' · private' : '' }}
                               </em>
                             </span>
+                          </button>
+                          <button
+                            type="button"
+                            class="row-action external"
+                            title="View repository"
+                            aria-label="View repository"
+                            (click)="openHostWeb(repo, $event)"
+                          >
+                            <ng-icon name="lucideExternalLink" size="12" />
                           </button>
                         </li>
                       }
@@ -296,6 +316,17 @@
                         >
                           <ng-icon name="lucidePin" size="12" />
                         </button>
+                        @if (hasLocalWebUrl(repo.path)) {
+                          <button
+                            type="button"
+                            class="row-action external"
+                            title="View on host"
+                            aria-label="View on host"
+                            (click)="openLocalWeb(repo.path, $event)"
+                          >
+                            <ng-icon name="lucideExternalLink" size="12" />
+                          </button>
+                        }
                         <button
                           type="button"
                           class="row-action"
@@ -388,6 +419,15 @@
                               {{ repo.provider }}{{ repo.private ? ' · private' : '' }}
                             </em>
                           </span>
+                        </button>
+                        <button
+                          type="button"
+                          class="row-action external"
+                          title="View repository"
+                          aria-label="View repository"
+                          (click)="openHostWeb(repo, $event)"
+                        >
+                          <ng-icon name="lucideExternalLink" size="12" />
                         </button>
                       </li>
                     }

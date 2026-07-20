@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -105,6 +105,23 @@ export class Dashboard {
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   });
+
+  constructor() {
+    effect(() => {
+      for (const repo of this.store.repos()) {
+        void this.store.ensureRepoWebUrl(repo.path);
+      }
+    });
+  }
+
+  hasRepoWebUrl(path: string): boolean {
+    return !!this.store.repoWebUrl(path);
+  }
+
+  openRepoWeb(path: string, event: Event): void {
+    event.stopPropagation();
+    this.store.openRepoWebUrl(path);
+  }
 
   relativeTime(iso: string): string {
     try {

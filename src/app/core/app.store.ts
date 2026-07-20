@@ -52,6 +52,7 @@ import {
 } from '../shared/git/open-in-editor';
 import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
+import { parseRemoteWebBase } from '../shared/git/repo-links';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
@@ -263,6 +264,7 @@ export class AppStore {
   readonly hostRepos = signal<HostRepository[]>([]);
   readonly hostReposLoading = signal(false);
   readonly hostReposError = signal<string | null>(null);
+  readonly repoWebUrls = signal<Record<string, string | null>>({});
   private hostReposFetchedAt = 0;
   private static readonly HOST_REPOS_TTL_MS = 5 * 60 * 1000;
   readonly createBranchDialogOpen = signal(false);
@@ -954,6 +956,50 @@ export class AppStore {
     }
   }
 
+  repoWebUrl(path: string): string | null {
+    const value = this.repoWebUrls()[path];
+    return value ?? null;
+  }
+
+  async ensureRepoWebUrl(path: string): Promise<string | null> {
+    const cached = this.repoWebUrls()[path];
+    if (cached !== undefined) return cached;
+    try {
+      const remotes = await this.tauri.listRemotes(path);
+      const origin = remotes.find((r) => r.name === 'origin') ?? remotes[0];
+      const url = origin
+        ? parseRemoteWebBase(origin.fetchUrl || origin.pushUrl)?.webBase ?? null
+        : null;
+      this.repoWebUrls.update((map) => ({ ...map, [path]: url }));
+      return url;
+    } catch {
+      this.repoWebUrls.update((map) => ({ ...map, [path]: null }));
+      return null;
+    }
+  }
+
+  openRepoWebUrl(path: string): void {
+    void this.ensureRepoWebUrl(path).then((url) => {
+      if (!url) {
+        this.showWarning('No GitHub or GitLab remote found for this repository.');
+        return;
+      }
+      void this.tauri.openExternalUrl(url);
+    });
+  }
+
+  openHostRepoWeb(repo: HostRepository): void {
+    const url =
+      repo.htmlUrl?.trim() ||
+      parseRemoteWebBase(repo.cloneUrl)?.webBase ||
+      null;
+    if (!url) {
+      this.showWarning('Could not resolve a web URL for this repository.');
+      return;
+    }
+    void this.tauri.openExternalUrl(url);
+  }
+
   async signInGitHost(provider: 'github' | 'gitlab', token: string, username = ''): Promise<boolean> {
     const cleaned = token.trim();
     if (!cleaned) {
@@ -1321,7 +1367,18 @@ export class AppStore {
 
   private applyReleaseProgress(
     payload: ReleaseProgressEvent,
-    extras?: Partial<Pick<ReleaseActivity, 'needsPush' | 'deployRunUrl' | 'releaseUrl'>>,
+    extras?: Partial<
+      Pick<
+        ReleaseActivity,
+        | 'needsPush'
+        | 'deployRunUrl'
+        | 'releaseUrl'
+        | 'websiteUrl'
+        | 'actionsPageUrl'
+        | 'repoUrl'
+        | 'deployJobs'
+      >
+    >,
   ): void {
     const current = this.releaseActivity();
     if (!current) return;
@@ -4384,6 +4441,15 @@ export class AppStore {
       try {
         const result = await this.tauri.pollReleaseDeploy(path, tag);
         const phase = normalizeReleasePhase(result.phase);
+        const deployExtras = {
+          deployRunUrl: result.runUrl ?? current.deployRunUrl ?? null,
+          releaseUrl: result.releaseUrl ?? current.releaseUrl ?? null,
+          websiteUrl: result.websiteUrl ?? current.websiteUrl ?? null,
+          actionsPageUrl: result.actionsPageUrl ?? current.actionsPageUrl ?? null,
+          repoUrl: result.repoUrl ?? current.repoUrl ?? null,
+          deployJobs: result.jobs?.length ? result.jobs : current.deployJobs ?? [],
+          needsPush: false,
+        };
         this.applyReleaseProgress(
           {
             path,
@@ -4392,11 +4458,7 @@ export class AppStore {
             version: current.nextVersion,
             tag,
           },
-          {
-            deployRunUrl: result.runUrl ?? null,
-            releaseUrl: result.releaseUrl ?? null,
-            needsPush: false,
-          },
+          deployExtras,
         );
         if (result.status === 'success') {
           this.releaseBusy.set(false);
@@ -4411,11 +4473,7 @@ export class AppStore {
               version: current.nextVersion,
               tag,
             },
-            {
-              deployRunUrl: result.runUrl ?? null,
-              releaseUrl: result.releaseUrl ?? null,
-              needsPush: false,
-            },
+            deployExtras,
           );
           this.showSuccess(doneMessage);
           this.stopReleaseDeployPoll();
@@ -4431,7 +4489,7 @@ export class AppStore {
               version: current.nextVersion,
               tag,
             },
-            { deployRunUrl: result.runUrl ?? null },
+            deployExtras,
           );
           this.showWarning(result.message);
           this.stopReleaseDeployPoll();
@@ -4447,7 +4505,7 @@ export class AppStore {
               version: current.nextVersion,
               tag,
             },
-            { needsPush: false },
+            deployExtras,
           );
           this.stopReleaseDeployPoll();
           return;
@@ -4884,35 +4942,6 @@ function buildCompareUrl(
   }
   const base = encodeURIComponent(upstreamBranch || 'main');
   return `${parsed.webBase}/compare/${base}...${head}?expand=1`;
-}
-
-function parseRemoteWebBase(
-  remoteUrl: string,
-): { host: string; webBase: string } | null {
-  const raw = remoteUrl.trim();
-  if (!raw) return null;
-
-  let host = '';
-  let path = '';
-
-  const ssh = raw.match(/^git@([^:]+):(.+)$/i);
-  if (ssh) {
-    host = ssh[1].toLowerCase();
-    path = ssh[2];
-  } else {
-    try {
-      const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-      const url = new URL(withScheme);
-      host = url.host.toLowerCase();
-      path = url.pathname.replace(/^\/+/, '');
-    } catch {
-      return null;
-    }
-  }
-
-  path = path.replace(/\.git$/i, '').replace(/\/+$/, '');
-  if (!host || !path) return null;
-  return { host, webBase: `https://${host}/${path}` };
 }
 
 function defaultConnections(): AppSettings['connections'] {

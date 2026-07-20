@@ -30,21 +30,64 @@
       } @else if (activity.needsPush) {
         <p class="hint">Tagged locally — push to origin to trigger deploy and the update banner.</p>
       }
-      @if (activity.deployRunUrl || activity.releaseUrl) {
-        <div class="links">
-          @if (activity.deployRunUrl) {
-            <button type="button" class="link-btn" (click)="openLink(activity.deployRunUrl)">
-              View GitHub Actions run
-            </button>
-          }
-          @if (activity.releaseUrl) {
-            <button type="button" class="link-btn" (click)="openLink(activity.releaseUrl)">
-              Open GitHub release
+
+      @if (linkCards().length) {
+        <div class="link-grid">
+          @for (card of linkCards(); track card.id) {
+            <button type="button" class="link-card" (click)="openLink(card.url)" [title]="card.url">
+              <span class="link-card-icon" aria-hidden="true">
+                <ng-icon [name]="card.icon" size="14" />
+              </span>
+              <span class="link-card-copy">
+                <span class="link-card-label">{{ card.label }}</span>
+                <span class="link-card-hint">{{ card.hint }}</span>
+              </span>
+              <ng-icon name="lucideExternalLink" size="12" class="link-card-arrow" />
             </button>
           }
         </div>
       }
     </div>
+
+    @if (showDeploySection()) {
+      <section class="deploy-section">
+        <div class="deploy-head">
+          <span class="deploy-title">GitHub Actions</span>
+          <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
+        </div>
+        @if (deployJobs().length) {
+          <ul class="job-list">
+            @for (job of deployJobs(); track trackJob($index, job)) {
+              <li>
+                <button
+                  type="button"
+                  class="job-row"
+                  [disabled]="!job.url"
+                  (click)="openLink(job.url)"
+                >
+                  <span class="job-marker" [attr.data-status]="jobChipStatus(job)" aria-hidden="true">
+                    @if (jobChipStatus(job) === 'success') {
+                      <ng-icon name="lucideCheck" size="10" />
+                    } @else if (jobChipStatus(job) === 'failure') {
+                      <ng-icon name="lucideX" size="10" />
+                    }
+                  </span>
+                  <span class="job-copy">
+                    <span class="job-name">{{ job.name }}</span>
+                    <span class="job-status">{{ jobStatusLabel(job) }}</span>
+                  </span>
+                  @if (job.url) {
+                    <ng-icon name="lucideExternalLink" size="11" class="job-link" />
+                  }
+                </button>
+              </li>
+            }
+          </ul>
+        } @else if (busy()) {
+          <p class="deploy-wait">Waiting for workflow jobs to appear…</p>
+        }
+      </section>
+    }
 
     <ol class="steps">
       @for (step of activity.steps; track trackStep($index, step)) {

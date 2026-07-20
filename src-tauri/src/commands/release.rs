@@ -898,12 +898,150 @@ pub struct PollReleaseDeployInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReleaseDeployJob {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PollReleaseDeployOutput {
     pub status: String,
     pub phase: String,
     pub message: String,
     pub run_url: Option<String>,
     pub release_url: Option<String>,
+    pub website_url: Option<String>,
+    pub actions_page_url: Option<String>,
+    pub repo_url: Option<String>,
+    #[serde(default)]
+    pub jobs: Vec<ReleaseDeployJob>,
+}
+
+struct DeployUrls {
+    repo_url: String,
+    website_url: String,
+    actions_page_url: String,
+}
+
+impl DeployUrls {
+    fn for_repo(owner: &str, repo: &str) -> Self {
+        Self {
+            repo_url: format!("https://github.com/{owner}/{repo}"),
+            website_url: github_pages_url(owner, repo),
+            actions_page_url: github_actions_page_url(owner, repo),
+        }
+    }
+
+    fn output(
+        &self,
+        status: &str,
+        phase: &str,
+        message: &str,
+        run_url: Option<String>,
+        release_url: Option<String>,
+        jobs: Vec<ReleaseDeployJob>,
+    ) -> PollReleaseDeployOutput {
+        PollReleaseDeployOutput {
+            status: status.into(),
+            phase: phase.into(),
+            message: message.into(),
+            run_url,
+            release_url,
+            website_url: Some(self.website_url.clone()),
+            actions_page_url: Some(self.actions_page_url.clone()),
+            repo_url: Some(self.repo_url.clone()),
+            jobs,
+        }
+    }
+}
+
+fn parse_deploy_jobs(value: &Value) -> Vec<ReleaseDeployJob> {
+    value
+        .get("jobs")
+        .and_then(|v| v.as_array())
+        .map(|jobs| {
+            jobs.iter()
+                .filter_map(|job| {
+                    let name = job.get("name")?.as_str()?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(ReleaseDeployJob {
+                        name: name.to_string(),
+                        status: job
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        conclusion: job
+                            .get("conclusion")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
+                        url: job
+                            .get("html_url")
+                            .or_else(|| job.get("url"))
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn fetch_run_jobs_with_api(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    run_id: u64,
+) -> Vec<ReleaseDeployJob> {
+    let response = client
+        .get(format!(
+            "{base}/repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=100"
+        ))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send();
+    match response {
+        Ok(resp) if resp.status().is_success() => resp
+            .json::<Value>()
+            .map(|payload| parse_deploy_jobs(&payload))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn fetch_run_jobs_with_gh(gh: &str, repo: &str, run_id: u64) -> Vec<ReleaseDeployJob> {
+    let output = match Command::new(gh)
+        .args([
+            "run",
+            "view",
+            &run_id.to_string(),
+            "-R",
+            repo,
+            "--json",
+            "jobs",
+        ])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+    let stdout = match String::from_utf8(output.stdout) {
+        Ok(text) => text,
+        Err(_) => return Vec::new(),
+    };
+    match serde_json::from_str::<Value>(&stdout) {
+        Ok(payload) => parse_deploy_jobs(&payload),
+        Err(_) => Vec::new(),
+    }
 }
 
 fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
@@ -1122,7 +1260,10 @@ pub fn push_release_tags(input: ReleaseRepoInput) -> AppResult<MutationOutput> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GhWorkflowRun {
+    #[serde(default)]
+    database_id: Option<u64>,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
@@ -1136,11 +1277,34 @@ struct GhWorkflowRun {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GhReleaseView {
     #[serde(default)]
     url: Option<String>,
     #[serde(default)]
     is_draft: Option<bool>,
+}
+
+fn github_pages_url(owner: &str, repo: &str) -> String {
+    format!("https://{owner}.github.io/{repo}/")
+}
+
+fn github_actions_page_url(owner: &str, repo: &str) -> String {
+    format!("https://github.com/{owner}/{repo}/actions/workflows/release-desktop.yml")
+}
+
+fn tag_matches_run(tag: &str, head_branch: Option<&str>, display_title: Option<&str>) -> bool {
+    if head_branch.is_some_and(|b| b == tag) {
+        return true;
+    }
+    if display_title.is_some_and(|t| t.contains(tag)) {
+        return true;
+    }
+    let version = tag.strip_prefix('v').unwrap_or(tag);
+    if display_title.is_some_and(|t| t.contains(version)) {
+        return true;
+    }
+    head_branch.is_some_and(|b| b.strip_prefix('v').unwrap_or(b) == version)
 }
 
 fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
@@ -1160,19 +1324,29 @@ fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
         })
 }
 
+fn gh_command() -> Option<String> {
+    for candidate in ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"] {
+        if Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
 fn gh_available() -> bool {
-    Command::new("gh")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    gh_command().is_some()
 }
 
 fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
-    if !gh_available() {
-        return None;
-    }
-    let release_url = Command::new("gh")
+    let gh = gh_command()?;
+    let (owner, repo_name) = repo.split_once('/')?;
+    let urls = DeployUrls::for_repo(owner, repo_name);
+    let release_url = Command::new(&gh)
         .args(["release", "view", tag, "-R", repo, "--json", "url,isDraft"])
         .output()
         .ok()
@@ -1187,17 +1361,18 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             }
         });
     if let Some(url) = release_url {
-        return Some(PollReleaseDeployOutput {
-            status: "success".into(),
-            phase: "done".into(),
-            message: format!(
+        return Some(urls.output(
+            "success",
+            "done",
+            &format!(
                 "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
             ),
-            run_url: None,
-            release_url: Some(url),
-        });
+            None,
+            Some(url),
+            Vec::new(),
+        ));
     }
-    let output = Command::new("gh")
+    let output = Command::new(&gh)
         .args([
             "run",
             "list",
@@ -1207,7 +1382,7 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             "--limit",
             "20",
             "--json",
-            "status,conclusion,url,headBranch,displayTitle",
+            "databaseId,status,conclusion,url,headBranch,displayTitle",
         ])
         .output()
         .ok()?;
@@ -1216,59 +1391,67 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
     }
     let runs: Vec<GhWorkflowRun> = serde_json::from_str(&String::from_utf8(output.stdout).ok()?).ok()?;
     let matched = runs.into_iter().find(|run| {
-        run.head_branch
-            .as_deref()
-            .is_some_and(|b| b == tag)
-            || run.display_title
-                .as_deref()
-                .is_some_and(|t| t.contains(tag))
+        tag_matches_run(
+            tag,
+            run.head_branch.as_deref(),
+            run.display_title.as_deref(),
+        )
     });
     let Some(run) = matched else {
-        return Some(PollReleaseDeployOutput {
-            status: "pending".into(),
-            phase: "deploying".into(),
-            message: "Waiting for GitHub Actions to start…".into(),
-            run_url: None,
-            release_url: None,
-        });
+        return Some(urls.output(
+            "pending",
+            "deploying",
+            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
+            None,
+            None,
+            Vec::new(),
+        ));
     };
     let status = run.status.unwrap_or_default();
     let conclusion = run.conclusion.unwrap_or_default();
     let run_url = run.url;
+    let jobs = run
+        .database_id
+        .map(|id| fetch_run_jobs_with_gh(&gh, repo, id))
+        .unwrap_or_default();
     if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
-        return Some(PollReleaseDeployOutput {
-            status: "running".into(),
-            phase: "ci".into(),
-            message: "GitHub Actions is building release artifacts…".into(),
+        return Some(urls.output(
+            "running",
+            "ci",
+            "GitHub Actions is building release artifacts…",
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
     if conclusion == "success" {
-        return Some(PollReleaseDeployOutput {
-            status: "running".into(),
-            phase: "publishing".into(),
-            message: "Build finished — publishing GitHub release…".into(),
+        return Some(urls.output(
+            "running",
+            "publishing",
+            "Build finished — publishing GitHub release…",
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
     if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
-        return Some(PollReleaseDeployOutput {
-            status: "failure".into(),
-            phase: "error".into(),
-            message: format!("GitHub Actions {conclusion} for {tag}"),
+        return Some(urls.output(
+            "failure",
+            "error",
+            &format!("GitHub Actions {conclusion} for {tag}"),
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
-    Some(PollReleaseDeployOutput {
-        status: "pending".into(),
-        phase: "deploying".into(),
-        message: "Waiting for GitHub Actions…".into(),
+    Some(urls.output(
+        "pending",
+        "deploying",
+        "Waiting for GitHub Actions…",
         run_url,
-        release_url: None,
-    })
+        None,
+        jobs,
+    ))
 }
 
 fn poll_deploy_with_api(
@@ -1278,6 +1461,7 @@ fn poll_deploy_with_api(
     tag: &str,
 ) -> AppResult<PollReleaseDeployOutput> {
     let full = format!("{owner}/{repo}");
+    let urls = DeployUrls::for_repo(owner, repo);
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
     let client = reqwest::blocking::Client::new();
@@ -1296,22 +1480,23 @@ fn poll_deploy_with_api(
                         .get("html_url")
                         .and_then(|v| v.as_str())
                         .map(str::to_string);
-                    return Ok(PollReleaseDeployOutput {
-                        status: "success".into(),
-                        phase: "done".into(),
-                        message: format!(
+                    return Ok(urls.output(
+                        "success",
+                        "done",
+                        &format!(
                             "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
                         ),
-                        run_url: None,
-                        release_url: url,
-                    });
+                        None,
+                        url,
+                        Vec::new(),
+                    ));
                 }
             }
         }
     }
     let runs_resp = client
         .get(format!(
-            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?event=push&per_page=15"
+            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=20"
         ))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "Branchline")
@@ -1320,13 +1505,14 @@ fn poll_deploy_with_api(
         .send()
         .map_err(|e| crate::AppError::msg(format!("GitHub Actions request failed: {e}")))?;
     if !runs_resp.status().is_success() {
-        return Ok(PollReleaseDeployOutput {
-            status: "unavailable".into(),
-            phase: "done".into(),
-            message: "Tag pushed. Link GitHub or install gh to track CI progress here.".into(),
-            run_url: None,
-            release_url: None,
-        });
+        return Ok(urls.output(
+            "unavailable",
+            "done",
+            "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
+            None,
+            None,
+            Vec::new(),
+        ));
     }
     let payload: Value = runs_resp
         .json()
@@ -1337,22 +1523,21 @@ fn poll_deploy_with_api(
         .cloned()
         .unwrap_or_default();
     let matched = runs.into_iter().find(|run| {
-        run.get("head_branch")
-            .and_then(|v| v.as_str())
-            .is_some_and(|b| b == tag)
-            || run
-                .get("display_title")
-                .and_then(|v| v.as_str())
-                .is_some_and(|t| t.contains(tag))
+        tag_matches_run(
+            tag,
+            run.get("head_branch").and_then(|v| v.as_str()),
+            run.get("display_title").and_then(|v| v.as_str()),
+        )
     });
     let Some(run) = matched else {
-        return Ok(PollReleaseDeployOutput {
-            status: "pending".into(),
-            phase: "deploying".into(),
-            message: "Waiting for GitHub Actions to start…".into(),
-            run_url: None,
-            release_url: None,
-        });
+        return Ok(urls.output(
+            "pending",
+            "deploying",
+            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
+            None,
+            None,
+            Vec::new(),
+        ));
     };
     let status = run
         .get("status")
@@ -1366,40 +1551,48 @@ fn poll_deploy_with_api(
         .get("html_url")
         .and_then(|v| v.as_str())
         .map(str::to_string);
+    let run_id = run.get("id").and_then(|v| v.as_u64());
+    let jobs = run_id
+        .map(|id| fetch_run_jobs_with_api(&client, base, token, owner, repo, id))
+        .unwrap_or_default();
     if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
-        return Ok(PollReleaseDeployOutput {
-            status: "running".into(),
-            phase: "ci".into(),
-            message: "GitHub Actions is building release artifacts…".into(),
+        return Ok(urls.output(
+            "running",
+            "ci",
+            "GitHub Actions is building release artifacts…",
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
     if conclusion == "success" {
-        return Ok(PollReleaseDeployOutput {
-            status: "running".into(),
-            phase: "publishing".into(),
-            message: "Build finished — publishing GitHub release…".into(),
+        return Ok(urls.output(
+            "running",
+            "publishing",
+            "Build finished — publishing GitHub release…",
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
     if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
-        return Ok(PollReleaseDeployOutput {
-            status: "failure".into(),
-            phase: "error".into(),
-            message: format!("GitHub Actions {conclusion} for {tag}"),
+        return Ok(urls.output(
+            "failure",
+            "error",
+            &format!("GitHub Actions {conclusion} for {tag}"),
             run_url,
-            release_url: None,
-        });
+            None,
+            jobs,
+        ));
     }
-    Ok(PollReleaseDeployOutput {
-        status: "pending".into(),
-        phase: "deploying".into(),
-        message: "Waiting for GitHub Actions…".into(),
+    Ok(urls.output(
+        "pending",
+        "deploying",
+        "Waiting for GitHub Actions…",
         run_url,
-        release_url: None,
-    })
+        None,
+        jobs,
+    ))
 }
 
 #[command]
@@ -1420,12 +1613,13 @@ pub fn poll_release_deploy(
     }
     match github_connection(&state) {
         Ok(connection) => poll_deploy_with_api(&connection, &owner, &repo, tag),
-        Err(_) => Ok(PollReleaseDeployOutput {
-            status: "unavailable".into(),
-            phase: "done".into(),
-            message: "Tag pushed. Install gh or link GitHub in Settings to track CI here.".into(),
-            run_url: None,
-            release_url: None,
-        }),
+        Err(_) => Ok(DeployUrls::for_repo(&owner, &repo).output(
+            "unavailable",
+            "done",
+            "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
+            None,
+            None,
+            Vec::new(),
+        )),
     }
 }

@@ -533,6 +533,11 @@ li.active .row-action,
   color: var(--accent);
 }
 
+.row-action.external:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-hover));
+  color: var(--accent);
+}
+
 .empty {
   margin: 0;
   padding: 0.75rem 0.45rem;

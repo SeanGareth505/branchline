@@ -4,6 +4,7 @@ import {
   ElementRef,
   HostListener,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
@@ -55,6 +56,14 @@ export class ProjectSwitcher {
   readonly activeKey = signal('');
   readonly collapsedGroups = signal<Record<string, boolean>>({});
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+
+  constructor() {
+    effect(() => {
+      for (const repo of this.store.repos()) {
+        void this.store.ensureRepoWebUrl(repo.path);
+      }
+    });
+  }
 
   readonly menuPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
@@ -437,6 +446,20 @@ export class ProjectSwitcher {
   async togglePin(repo: RecentRepo, event: Event): Promise<void> {
     event.stopPropagation();
     await this.store.pinRepo(repo.path, !repo.pinned);
+  }
+
+  hasLocalWebUrl(path: string): boolean {
+    return !!this.store.repoWebUrl(path);
+  }
+
+  openLocalWeb(path: string, event: Event): void {
+    event.stopPropagation();
+    this.store.openRepoWebUrl(path);
+  }
+
+  openHostWeb(repo: HostRepository, event: Event): void {
+    event.stopPropagation();
+    this.store.openHostRepoWeb(repo);
   }
 }
 

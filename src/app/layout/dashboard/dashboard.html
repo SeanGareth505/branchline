@@ -181,6 +181,17 @@
               >
                 <ng-icon name="lucidePin" size="14" />
               </button>
+              @if (hasRepoWebUrl(repo.path)) {
+                <button
+                  type="button"
+                  class="pin external"
+                  (click)="openRepoWeb(repo.path, $event)"
+                  aria-label="View repository on host"
+                  title="View on GitHub/GitLab"
+                >
+                  <ng-icon name="lucideExternalLink" size="14" />
+                </button>
+              }
               <button
                 type="button"
                 class="pin remove"
@@ -247,6 +258,17 @@
                 >
                   <ng-icon name="lucidePin" size="14" />
                 </button>
+                @if (hasRepoWebUrl(repo.path)) {
+                  <button
+                    type="button"
+                    class="pin external"
+                    (click)="openRepoWeb(repo.path, $event)"
+                    aria-label="View repository on host"
+                    title="View on GitHub/GitLab"
+                  >
+                    <ng-icon name="lucideExternalLink" size="14" />
+                  </button>
+                }
                 <button
                   type="button"
                   class="pin remove"

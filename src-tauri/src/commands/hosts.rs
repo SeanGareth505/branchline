@@ -15,6 +15,7 @@ pub struct HostRepository {
     pub full_name: String,
     pub clone_url: String,
     pub ssh_url: String,
+    pub html_url: String,
     pub private: bool,
     pub provider: String,
     pub updated_at: Option<String>,
@@ -89,6 +90,7 @@ struct GitLabProject {
     path_with_namespace: String,
     http_url_to_repo: String,
     ssh_url_to_repo: String,
+    web_url: Option<String>,
     visibility: Option<String>,
     last_activity_at: Option<String>,
 }
@@ -417,9 +419,12 @@ fn fetch_github_repos(connection: &ConnectionConfig) -> AppResult<Vec<HostReposi
         out.extend(repos.into_iter().map(|r| HostRepository {
             id: format!("github:{}", r.id),
             name: r.name,
-            full_name: r.full_name,
+            full_name: r.full_name.clone(),
             clone_url: r.clone_url,
             ssh_url: r.ssh_url,
+            html_url: r
+                .html_url
+                .unwrap_or_else(|| format!("https://github.com/{}", r.full_name)),
             private: r.private,
             provider: "github".into(),
             updated_at: r.updated_at,
@@ -471,9 +476,16 @@ fn fetch_gitlab_repos(connection: &ConnectionConfig) -> AppResult<Vec<HostReposi
             HostRepository {
                 id: format!("gitlab:{}", p.id),
                 name: p.name,
-                full_name: p.path_with_namespace,
+                full_name: p.path_with_namespace.clone(),
                 clone_url: p.http_url_to_repo,
                 ssh_url: p.ssh_url_to_repo,
+                html_url: p.web_url.unwrap_or_else(|| {
+                    format!(
+                        "{}/{}",
+                        connection.base_url.trim().trim_end_matches("/api/v4"),
+                        p.path_with_namespace
+                    )
+                }),
                 private: p
                     .visibility
                     .as_deref()

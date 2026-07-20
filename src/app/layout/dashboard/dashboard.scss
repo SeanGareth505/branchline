@@ -676,6 +676,11 @@ h1 {
   color: var(--git-deleted);
 }
 
+.pin.external:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-hover));
+  color: var(--accent);
+}
+
 .muted {
   margin: 0;
   padding: 0.75rem 0.15rem;

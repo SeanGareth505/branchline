@@ -2,7 +2,16 @@ import { Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
-import type { ReleaseActivityStep, ReleasePhase } from '../../../core/models';
+import { UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
+import type { ReleaseActivityStep, ReleaseDeployJob, ReleasePhase } from '../../../core/models';
+
+interface ReleaseLinkCard {
+  id: string;
+  label: string;
+  hint: string;
+  url: string;
+  icon: string;
+}
 
 @Component({
   selector: 'app-release-panel',
@@ -15,6 +24,82 @@ export class ReleasePanel {
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
+
+  readonly downloadPageUrl = computed(() => {
+    const activity = this.activity();
+    return activity?.websiteUrl?.trim() || UPDATE_DOWNLOAD_PAGE;
+  });
+
+  readonly linkCards = computed((): ReleaseLinkCard[] => {
+    const activity = this.activity();
+    if (!activity) return [];
+    const cards: ReleaseLinkCard[] = [];
+    if (activity.repoUrl) {
+      cards.push({
+        id: 'repo',
+        label: 'Repository',
+        hint: 'View on GitHub',
+        url: activity.repoUrl,
+        icon: 'lucideGithub',
+      });
+    }
+    if (activity.deployRunUrl) {
+      cards.push({
+        id: 'run',
+        label: 'Workflow run',
+        hint: 'Live build log',
+        url: activity.deployRunUrl,
+        icon: 'lucidePlay',
+      });
+    } else if (activity.actionsPageUrl) {
+      cards.push({
+        id: 'actions',
+        label: 'Actions',
+        hint: 'release-desktop.yml',
+        url: activity.actionsPageUrl,
+        icon: 'lucideWorkflow',
+      });
+    }
+    if (activity.releaseUrl) {
+      cards.push({
+        id: 'release',
+        label: 'Release',
+        hint: activity.tag,
+        url: activity.releaseUrl,
+        icon: 'lucideTag',
+      });
+    }
+    const pageUrl = this.downloadPageUrl();
+    if (pageUrl) {
+      cards.push({
+        id: 'website',
+        label: 'Download page',
+        hint: 'Updates & installers',
+        url: pageUrl,
+        icon: 'lucideGlobe',
+      });
+    }
+    return cards;
+  });
+
+  readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
+
+  readonly showDeploySection = computed(() => {
+    const activity = this.activity();
+    if (!activity?.willPush && !activity?.deployRunUrl && !activity?.actionsPageUrl) return false;
+    return this.deployJobs().length > 0 || this.busy() || !!activity?.deployRunUrl;
+  });
+
+  readonly workflowStatus = computed(() => {
+    const activity = this.activity();
+    if (!activity) return 'idle';
+    if (activity.phase === 'error') return 'failure';
+    if (activity.phase === 'done') return 'success';
+    if (activity.phase === 'ci' || activity.phase === 'deploying' || activity.phase === 'publishing') {
+      return 'running';
+    }
+    return 'idle';
+  });
 
   readonly headline = computed(() => {
     const activity = this.activity();
@@ -89,6 +174,36 @@ export class ReleasePanel {
 
   trackStep(_index: number, step: ReleaseActivityStep): string {
     return step.id;
+  }
+
+  trackJob(_index: number, job: ReleaseDeployJob): string {
+    return `${job.name}:${job.status}:${job.conclusion ?? ''}`;
+  }
+
+  jobChipStatus(job: ReleaseDeployJob): string {
+    const conclusion = job.conclusion?.trim();
+    if (conclusion === 'success') return 'success';
+    if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
+      return 'failure';
+    }
+    const status = job.status.trim();
+    if (
+      status === 'queued' ||
+      status === 'in_progress' ||
+      status === 'waiting' ||
+      status === 'requested'
+    ) {
+      return 'pending';
+    }
+    return 'unknown';
+  }
+
+  jobStatusLabel(job: ReleaseDeployJob): string {
+    const chip = this.jobChipStatus(job);
+    if (chip === 'success') return 'Passed';
+    if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
+    if (chip === 'pending') return 'Running';
+    return job.status || 'Pending';
   }
 }
 
