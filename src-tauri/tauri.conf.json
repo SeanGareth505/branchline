@@ -1,34 +1,33 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Branchline",
-  "version": "0.1.10",
-  "identifier": "app.branchline.git",
-  "build": {
-    "frontendDist": "../dist/branchline-app/browser",
-    "devUrl": "http://localhost:4200",
-    "beforeDevCommand": "npm run start",
-    "beforeBuildCommand": "npm run build"
-  },
   "app": {
-    "windows": [
-      {
-        "title": "Branchline",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1024,
-        "minHeight": 680,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
     "security": {
       "csp": null
-    }
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 900,
+        "minHeight": 680,
+        "minWidth": 1024,
+        "resizable": true,
+        "title": "Branchline",
+        "width": 1440
+      }
+    ]
+  },
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run start",
+    "devUrl": "http://localhost:4200",
+    "frontendDist": "../dist/branchline-app/browser"
   },
   "bundle": {
     "active": true,
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    },
     "createUpdaterArtifacts": true,
-    "targets": "all",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,16 +35,17 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
-    }
+    "targets": "all"
   },
+  "identifier": "app.branchline.git",
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzRDIwMjE3OTM5OEI4RkYKUldUL3VKaVRGd0xTZzZ2Q2MwTGxXb29Jb25CZmRZZjN4cHI5NXlVQlY5cEwxc2wyaFdhME5yQncK",
       "endpoints": [
         "https://github.com/SeanGareth505/branchline/releases/latest/download/latest.json"
-      ]
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzRDIwMjE3OTM5OEI4RkYKUldUL3VKaVRGd0xTZzZ2Q2MwTGxXb29Jb25CZmRZZjN4cHI5NXlVQlY5cEwxc2wyaFdhME5yQncK"
     }
-  }
+  },
+  "productName": "Branchline",
+  "version": "0.1.11"
 }

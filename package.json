@@ -1,35 +1,4 @@
 {
-  "name": "branchline",
-  "version": "0.1.10",
-  "scripts": {
-    "ng": "ng",
-    "start": "ng serve --port 4200",
-    "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "test": "ng test",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:android:build": "tauri android build -- --apk",
-    "release": "node scripts/release.mjs",
-    "release:init": "node scripts/release.mjs --init",
-    "release:patch": "node scripts/release.mjs patch",
-    "release:minor": "node scripts/release.mjs minor",
-    "release:major": "node scripts/release.mjs major"
-  },
-  "prettier": {
-    "printWidth": 100,
-    "singleQuote": true,
-    "overrides": [
-      {
-        "files": "*.html",
-        "options": {
-          "parser": "angular"
-        }
-      }
-    ]
-  },
-  "private": true,
   "dependencies": {
     "@angular/cdk": "^20.2.14",
     "@angular/common": "^20.3.0",
@@ -71,5 +40,36 @@
     "postcss": "^8.5.19",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.2"
-  }
+  },
+  "name": "branchline",
+  "prettier": {
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ],
+    "printWidth": 100,
+    "singleQuote": true
+  },
+  "private": true,
+  "scripts": {
+    "build": "ng build",
+    "ng": "ng",
+    "release": "node scripts/release.mjs",
+    "release:init": "node scripts/release.mjs --init",
+    "release:major": "node scripts/release.mjs major",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:patch": "node scripts/release.mjs patch",
+    "start": "ng serve --port 4200",
+    "tauri": "tauri",
+    "tauri:android:build": "tauri android build -- --apk",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
+    "test": "ng test",
+    "watch": "ng build --watch --configuration development"
+  },
+  "version": "0.1.11"
 }
