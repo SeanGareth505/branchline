@@ -5,6 +5,7 @@ import { DiagnosticsService } from './core/diagnostics.service';
 import { UpdateService } from './core/update.service';
 import { PromptService } from './shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from './shared/ui/select-dialog/select.service';
+import { ReleaseDialogService } from './features/release/release-dialog/release-dialog.service';
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 
 @Component({
@@ -20,6 +21,7 @@ export class App implements OnInit {
   private readonly tooltips = inject(TooltipService);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
+  private readonly releaseDialog = inject(ReleaseDialogService);
 
   ngOnInit(): void {
     this.tooltips.init();
@@ -75,6 +77,10 @@ export class App implements OnInit {
       }
       if (this.selects.request()) {
         this.selects.cancel();
+        return;
+      }
+      if (this.releaseDialog.request()) {
+        this.releaseDialog.cancel();
         return;
       }
       if (this.store.paletteOpen()) {

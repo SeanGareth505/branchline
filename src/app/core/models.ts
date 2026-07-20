@@ -621,6 +621,7 @@ export interface ReleasePreviewOutput {
   commitMessage: string;
   tagMessage: string;
   files: string[];
+  devSkippedFiles?: string[];
   blockers: string[];
 }
 

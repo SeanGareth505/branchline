@@ -108,6 +108,8 @@ pub struct ReleasePreviewOutput {
     pub commit_message: String,
     pub tag_message: String,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub dev_skipped_files: Vec<String>,
     pub blockers: Vec<String>,
 }
 
@@ -441,26 +443,37 @@ fn is_cargo_watch_file(kind: &str) -> bool {
     matches!(kind, "toml-package-version" | "cargo-lock-package")
 }
 
-fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: bool) -> AppResult<Vec<String>> {
+fn should_skip_dev_watch_write(file: &ReleaseFileSpec) -> bool {
+    if !cfg!(debug_assertions) {
+        return false;
+    }
+    is_cargo_watch_file(&file.kind)
+        || file.path.replace('\\', "/").starts_with("src-tauri/")
+}
+
+struct ApplyFilesResult {
+    changed: Vec<String>,
+    dev_skipped: Vec<String>,
+}
+
+fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: bool) -> AppResult<ApplyFilesResult> {
     let mut ordered: Vec<&ReleaseFileSpec> = files.iter().collect();
     ordered.sort_by_key(|f| is_cargo_watch_file(&f.kind));
 
     let mut changed = Vec::new();
-    let mut marked_expected_restart = false;
+    let mut dev_skipped = Vec::new();
     for file in ordered {
         let path = repo.join(&file.path);
         if !path.exists() {
             return Err(crate::AppError::msg(format!("Missing file: {}", file.path)));
         }
+        if should_skip_dev_watch_write(file) {
+            dev_skipped.push(file.path.clone());
+            continue;
+        }
         changed.push(file.path.clone());
         if dry_run {
             continue;
-        }
-        if !marked_expected_restart && is_cargo_watch_file(&file.kind) {
-            crate::infrastructure::diagnostics::mark_expected_restart(
-                "release bumps Cargo.toml/Cargo.lock under tauri:dev",
-            );
-            marked_expected_restart = true;
         }
         match file.kind.as_str() {
             "json" => {
@@ -480,7 +493,10 @@ fn apply_files(repo: &Path, files: &[ReleaseFileSpec], version: &str, dry_run: b
             }
         }
     }
-    Ok(changed)
+    Ok(ApplyFilesResult {
+        changed,
+        dev_skipped,
+    })
 }
 
 fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleasePreviewOutput> {
@@ -534,7 +550,9 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         &tag,
         &product_name,
     );
-    let files = apply_files(repo, &cfg.files, &next, true)?;
+    let applied = apply_files(repo, &cfg.files, &next, true)?;
+    let files = applied.changed;
+    let dev_skipped_files = applied.dev_skipped;
 
     let mut blockers = Vec::new();
     if current_branch != branch {
@@ -550,11 +568,24 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
     if tag_exists {
         blockers.push(format!("Tag {tag} already exists"));
     }
+    if files.is_empty() && !dev_skipped_files.is_empty() {
+        blockers.push(
+            "No version files can be updated in this dev build. Use npm run release from a terminal."
+                .into(),
+        );
+    }
 
     Ok(ReleasePreviewOutput {
         ok: blockers.is_empty(),
         message: if blockers.is_empty() {
-            format!("Ready to release {product_name} {current} → {next}")
+            if dev_skipped_files.is_empty() {
+                format!("Ready to release {product_name} {current} → {next}")
+            } else {
+                format!(
+                    "Ready to release {product_name} {current} → {next} (dev: skipping {} tauri:dev watch file(s))",
+                    dev_skipped_files.len()
+                )
+            }
         } else {
             blockers.join(" · ")
         },
@@ -570,6 +601,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         commit_message,
         tag_message,
         files,
+        dev_skipped_files,
         blockers,
     })
 }
@@ -655,14 +687,15 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             });
         }
         let cfg = load_config(path)?;
-        let touches_cargo = cfg.files.iter().any(|f| is_cargo_watch_file(&f.kind));
-        let bump_message = if cfg!(debug_assertions) && touches_cargo {
-            format!(
-                "Bumping version files to {}… (dev build: Cargo.toml/lock may restart the app)",
-                preview.next_version
-            )
-        } else {
+        let bump_message = if preview.dev_skipped_files.is_empty() {
             format!("Bumping version files to {}…", preview.next_version)
+        } else {
+            format!(
+                "Bumping {} file(s) to {}… (skipping {} under tauri:dev)",
+                preview.files.len(),
+                preview.next_version,
+                preview.dev_skipped_files.len()
+            )
         };
         emit_release_progress(
             &app,
@@ -672,7 +705,8 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             Some(&preview.next_version),
             Some(&preview.tag),
         );
-        let changed = apply_files(path, &cfg.files, &preview.next_version, false)?;
+        let applied = apply_files(path, &cfg.files, &preview.next_version, false)?;
+        let changed = applied.changed;
         emit_release_progress(
             &app,
             path,
@@ -717,10 +751,15 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
                 Some(&preview.tag),
             );
             git_cli::run_git(path, &["push", "origin", "HEAD", "--tags"])?;
-            let message = format!(
+            let mut message = format!(
                 "Released {} {} and pushed {}",
                 preview.product_name, preview.next_version, preview.tag
             );
+            if !preview.dev_skipped_files.is_empty() {
+                message.push_str(
+                    " — run npm run release from a terminal to sync Cargo/tauri.conf versions",
+                );
+            }
             emit_release_progress(
                 &app,
                 path,
@@ -734,10 +773,13 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
                 message,
             });
         }
-        let message = format!(
+        let mut message = format!(
             "Released {} {} ({}) — push when ready",
             preview.product_name, preview.next_version, preview.tag
         );
+        if !preview.dev_skipped_files.is_empty() {
+            message.push_str(" — run npm run release from a terminal to sync Cargo/tauri.conf versions");
+        }
         emit_release_progress(
             &app,
             path,

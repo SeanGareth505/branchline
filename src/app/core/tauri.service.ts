@@ -1199,6 +1199,7 @@ export class TauriService {
         commitMessage: 'Release 0.1.1',
         tagMessage: 'Demo App 0.1.1',
         files: ['package.json'],
+        devSkippedFiles: [],
         blockers: [],
       },
       run_release: { ok: true, message: 'Released Demo App 0.1.1 (v0.1.1) — push when ready' },

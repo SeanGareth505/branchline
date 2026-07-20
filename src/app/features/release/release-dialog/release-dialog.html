@@ -1,0 +1,222 @@
+@if (dialog.request(); as prompt) {
+  <div class="backdrop" (click)="cancel()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'release-title'"
+    >
+      <header>
+        <div class="copy">
+          <h2 id="release-title">Release {{ prompt.productName }}</h2>
+          <p>
+            Current version {{ prompt.currentVersion }}.
+            @if (prompt.dirty && !allowDirty()) {
+              Working tree has uncommitted changes.
+            } @else {
+              Choose a bump.
+            }
+          </p>
+          <div class="details">
+            <span class="details-label">Release settings</span>
+            <ul>
+              @for (item of summaryDetails(); track item) {
+                <li [title]="item">{{ item }}</li>
+              }
+            </ul>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button
+            type="button"
+            class="bl-btn icon settings-btn"
+            [class.active]="settingsOpen()"
+            (click)="toggleSettings()"
+            title="Release settings"
+            aria-label="Release settings"
+          >
+            <ng-icon name="lucideSettings2" size="16" />
+          </button>
+          <button type="button" class="bl-btn icon" (click)="cancel()" aria-label="Close" title="Close">
+            <ng-icon name="lucideX" size="16" />
+          </button>
+        </div>
+      </header>
+
+      @if (settingsOpen()) {
+        <section class="settings">
+          <label class="field">
+            <span>Release branch</span>
+            <select [ngModel]="branch()" (ngModelChange)="branch.set($event)">
+              @for (name of prompt.branches; track name) {
+                <option [value]="name">
+                  {{ name }}
+                  @if (name === prompt.currentBranch) {
+                    (current)
+                  }
+                </option>
+              }
+            </select>
+          </label>
+
+          <div class="field toggles">
+            <span>Push after tag</span>
+            <div class="toggle-row">
+              <button
+                type="button"
+                class="toggle"
+                [class.active]="push()"
+                (click)="push.set(true)"
+              >
+                Push to origin
+              </button>
+              <button
+                type="button"
+                class="toggle"
+                [class.active]="!push()"
+                (click)="push.set(false)"
+              >
+                Tag only
+              </button>
+            </div>
+          </div>
+
+          @if (prompt.dirty || prompt.config.requireClean) {
+            <label class="check">
+              <input
+                type="checkbox"
+                [ngModel]="allowDirty()"
+                (ngModelChange)="allowDirty.set($event)"
+              />
+              <span>Allow dirty working tree</span>
+            </label>
+          }
+
+          <label class="field">
+            <span>Pre-release id</span>
+            <input
+              type="text"
+              placeholder="beta, rc, alpha…"
+              [ngModel]="preid()"
+              (ngModelChange)="preid.set($event)"
+              spellcheck="false"
+            />
+          </label>
+
+          @if (bump() === 'custom') {
+            <label class="field">
+              <span>Custom version</span>
+              <input
+                type="text"
+                placeholder="1.2.3"
+                [ngModel]="customVersion()"
+                (ngModelChange)="customVersion.set($event)"
+                spellcheck="false"
+              />
+            </label>
+          }
+
+          <label class="field">
+            <span>Tag message</span>
+            <input
+              type="text"
+              [placeholder]="prompt.config.tagMessage"
+              [ngModel]="tagMessage()"
+              (ngModelChange)="tagMessage.set($event)"
+            />
+          </label>
+        </section>
+      }
+
+      <p class="field-label">Bump</p>
+      <ul class="options" role="listbox" aria-label="Version bump">
+        <li>
+          <button
+            type="button"
+            class="option"
+            role="option"
+            [class.active]="bump() === 'patch'"
+            [attr.aria-selected]="bump() === 'patch'"
+            (click)="pickBump('patch')"
+          >
+            <span class="option-main">
+              <span class="option-label">Patch</span>
+              <span class="option-hint">Bug fixes — 0.1.0 → 0.1.1</span>
+            </span>
+            @if (bump() === 'patch') {
+              <ng-icon name="lucideCheck" size="16" />
+            }
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="option"
+            role="option"
+            [class.active]="bump() === 'minor'"
+            [attr.aria-selected]="bump() === 'minor'"
+            (click)="pickBump('minor')"
+          >
+            <span class="option-main">
+              <span class="option-label">Minor</span>
+              <span class="option-hint">New features — 0.1.0 → 0.2.0</span>
+            </span>
+            @if (bump() === 'minor') {
+              <ng-icon name="lucideCheck" size="16" />
+            }
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="option"
+            role="option"
+            [class.active]="bump() === 'major'"
+            [attr.aria-selected]="bump() === 'major'"
+            (click)="pickBump('major')"
+          >
+            <span class="option-main">
+              <span class="option-label">Major</span>
+              <span class="option-hint">Breaking changes — 0.1.0 → 1.0.0</span>
+            </span>
+            @if (bump() === 'major') {
+              <ng-icon name="lucideCheck" size="16" />
+            }
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="option"
+            role="option"
+            [class.active]="bump() === 'custom'"
+            [attr.aria-selected]="bump() === 'custom'"
+            (click)="pickBump('custom')"
+          >
+            <span class="option-main">
+              <span class="option-label">Custom</span>
+              <span class="option-hint">Set an explicit x.y.z version in settings</span>
+            </span>
+            @if (bump() === 'custom') {
+              <ng-icon name="lucideCheck" size="16" />
+            }
+          </button>
+        </li>
+      </ul>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="cancel()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          Preview
+          <span class="kbd">↵</span>
+        </button>
+      </footer>
+    </div>
+  </div>
+}

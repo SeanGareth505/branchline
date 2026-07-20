@@ -43,6 +43,7 @@ import { DiagnosticsService } from './diagnostics.service';
 import { NotificationService } from './notification.service';
 import { PromptService } from '../shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from '../shared/ui/select-dialog/select.service';
+import { ReleaseDialogService } from '../features/release/release-dialog/release-dialog.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 import {
   openPathsInPreferredEditor,
@@ -128,6 +129,7 @@ export class AppStore {
   private readonly notifications = inject(NotificationService);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
+  private readonly releaseDialog = inject(ReleaseDialogService);
 
   readonly isDummyBackend = this.tauri.isDummyBackend;
   readonly view = signal<AppView>('settings');
@@ -3935,68 +3937,35 @@ export class AppStore {
         return;
       }
       const cfg = status.config;
-      const bump = await this.selects.ask({
-        title: `Release ${cfg?.productName || 'app'}`,
-        message: status.currentVersion
-          ? `Current version ${status.currentVersion}. Choose a bump.`
-          : 'Choose a version bump.',
-        label: 'Bump',
-        confirmLabel: 'Preview',
-        options: [
-          {
-            value: 'patch',
-            label: 'Patch',
-            hint: 'Bug fixes — 0.1.0 → 0.1.1',
-          },
-          {
-            value: 'minor',
-            label: 'Minor',
-            hint: 'New features — 0.1.0 → 0.2.0',
-          },
-          {
-            value: 'major',
-            label: 'Major',
-            hint: 'Breaking changes — 0.1.0 → 1.0.0',
-          },
-        ],
-        initialValue: 'patch',
-        details: cfg
-          ? [
-              `Branch: ${cfg.branch}`,
-              `Tag prefix: ${cfg.tagPrefix}`,
-              `Files: ${cfg.files.join(', ')}`,
-              cfg.pushDefault ? 'Config pushes to origin after tag' : 'Config does not auto-push',
-            ]
-          : undefined,
-        detailsLabel: 'From release.config.json',
-      });
-      if (!bump) return;
+      if (!cfg) return;
 
-      const pushChoice = await this.selects.ask({
-        title: 'Push after tagging?',
-        message: 'Push the release commit and tag to origin so CI / updates can pick it up.',
-        label: 'Push',
-        confirmLabel: 'Continue',
-        options: [
-          {
-            value: 'yes',
-            label: 'Push to origin',
-            hint: 'git push origin HEAD --tags',
-          },
-          {
-            value: 'no',
-            label: 'Tag only',
-            hint: 'Leave push for later',
-          },
-        ],
-        initialValue: cfg?.pushDefault ? 'yes' : 'no',
+      const branchNames = this.localBranches().map((b) => b.name);
+      const branches = [
+        ...new Set(
+          [cfg.branch, status.currentBranch ?? '', ...branchNames].filter(
+            (name): name is string => !!name.trim(),
+          ),
+        ),
+      ];
+
+      const setup = await this.releaseDialog.ask({
+        productName: cfg.productName,
+        currentVersion: status.currentVersion ?? '0.0.0',
+        currentBranch: status.currentBranch ?? cfg.branch,
+        dirty: status.dirty,
+        config: cfg,
+        branches,
       });
-      if (!pushChoice) return;
+      if (!setup) return;
 
       const baseOpts = {
-        bump,
-        push: pushChoice === 'yes',
+        bump: setup.bump,
+        push: setup.push,
         message: null as string | null,
+        branch: setup.branch,
+        allowDirty: setup.allowDirty,
+        preid: setup.preid,
+        tagMessage: setup.tagMessage,
       };
       const draft = await this.tauri.previewRelease(path, baseOpts);
       const suggested =
@@ -4029,9 +3998,13 @@ export class AppStore {
       if (message === null) return;
 
       const opts = {
-        bump,
-        push: pushChoice === 'yes',
+        bump: setup.bump,
+        push: setup.push,
         message: message.trim() || null,
+        branch: setup.branch,
+        allowDirty: setup.allowDirty,
+        preid: setup.preid,
+        tagMessage: setup.tagMessage,
       };
       const preview = await this.tauri.previewRelease(path, opts);
       if (!preview.ok) {
@@ -4046,9 +4019,7 @@ export class AppStore {
         return;
       }
 
-      const touchesCargoWatch = preview.files.some(
-        (f) => f.endsWith('Cargo.toml') || f.endsWith('Cargo.lock'),
-      );
+      const devSkipped = preview.devSkippedFiles ?? [];
       const confirmed = await this.prompts.ask({
         title: `Release ${preview.productName} ${preview.nextVersion}?`,
         message: [
@@ -4057,8 +4028,8 @@ export class AppStore {
           `Tag: ${preview.tagMessage}`,
           preview.willPush ? 'Will push commit + tags to origin' : 'Will not push',
           `Files: ${preview.files.join(', ')}`,
-          touchesCargoWatch
-            ? 'Note: Cargo.toml/Cargo.lock bumps restart tauri:dev (looks like a crash). Prefer a built app or the CLI release script while developing.'
+          devSkipped.length
+            ? `Dev mode: skipping ${devSkipped.join(', ')} so tauri:dev does not restart the app. Run npm run release from a terminal for full version sync before shipping.`
             : '',
         ]
           .filter(Boolean)

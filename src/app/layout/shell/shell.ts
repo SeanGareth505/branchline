@@ -23,6 +23,7 @@ import { ConflictResolverDialog } from '../../features/conflicts/conflict-resolv
 import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/ignore-editor-dialog';
 import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
+import { ReleaseDialog } from '../../features/release/release-dialog/release-dialog';
 import { BrowseShell } from '../browse-shell/browse-shell';
 import { CommandPalette } from '../command-palette/command-palette';
 import { ProjectSwitcher } from '../project-switcher/project-switcher';
@@ -66,6 +67,7 @@ import { UpdateService } from '../../core/update.service';
     IgnoreEditorDialog,
     PublishGithubDialog,
     GithubDeviceLoginDialog,
+    ReleaseDialog,
     UpdateBanner,
   ],
   templateUrl: './shell.html',
