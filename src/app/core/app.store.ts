@@ -3303,7 +3303,9 @@ export class AppStore {
         this.showWarning(result.message);
         return;
       }
-      this.showSuccess(result.message);
+      this.showSuccess(
+        `${result.message} Save when done — Branchline marks it resolved when conflict markers are gone.`,
+      );
     } catch (err) {
       this.showError(err);
     }
@@ -3503,6 +3505,7 @@ export class AppStore {
   ): Promise<void> {
     if (this.conflictSyncInFlight || this.conflictIdeBusy()) return;
     this.conflictSyncInFlight = true;
+    let autoStagePaths: string[] = [];
     try {
       const prevPaths = new Set((prev?.conflicted ?? []).map((f) => f.path));
       const nextPaths = new Set(next.conflicted.map((f) => f.path));
@@ -3522,6 +3525,14 @@ export class AppStore {
         );
       }
 
+      autoStagePaths = next.conflicted
+        .filter((f) => f.markersCleared === true)
+        .map((f) => f.path)
+        .filter(
+          (p) =>
+            !(this.conflictDraftDirty && this.conflictResolverPath() === p),
+        );
+
       if (!this.conflictResolverOpen()) return;
 
       const current = this.conflictResolverPath();
@@ -3531,11 +3542,46 @@ export class AppStore {
         return;
       }
 
-      if (current && nextPaths.has(current) && !this.conflictDraftDirty) {
+      if (
+        current &&
+        nextPaths.has(current) &&
+        !this.conflictDraftDirty &&
+        !autoStagePaths.includes(current)
+      ) {
         await this.reloadConflictResolverFromDisk(current);
       }
     } finally {
       this.conflictSyncInFlight = false;
+    }
+
+    if (autoStagePaths.length) {
+      await this.autoStageClearedConflicts(autoStagePaths);
+    }
+  }
+
+  private async autoStageClearedConflicts(paths: string[]): Promise<void> {
+    const repo = this.currentRepo()?.path;
+    const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
+    if (!repo || !unique.length) return;
+    try {
+      await this.withRepoMutation(() => this.tauri.stagePaths(repo, unique));
+      await this.refreshWorkingTree();
+      const n = unique.length;
+      this.showSuccess(
+        n === 1
+          ? `Resolved ${this.fileBaseName(unique[0])} (markers cleared)`
+          : `Resolved ${n} files (markers cleared)`,
+        undefined,
+        'conflicts',
+      );
+      if (this.conflictResolverOpen()) {
+        const current = this.conflictResolverPath();
+        if (current && unique.includes(current)) {
+          await this.advanceConflictResolverAfter(current);
+        }
+      }
+    } catch (err) {
+      this.showError(err);
     }
   }
 
@@ -3562,11 +3608,12 @@ export class AppStore {
       );
       this.conflictDraftDirty = false;
       if (
+        !sides.binary &&
         prev?.hasMarkers === true &&
         sides.hasMarkers === false &&
         sides.unmerged !== false
       ) {
-        this.showInfo('Markers cleared — Stage to mark this file resolved');
+        await this.autoStageClearedConflicts([path]);
       }
     } catch {
       /* keep previous sides if disk read fails mid-edit */
@@ -3822,13 +3869,35 @@ export class AppStore {
       });
       if (!pushChoice) return;
 
+      const baseOpts = {
+        bump,
+        push: pushChoice === 'yes',
+        message: null as string | null,
+      };
+      const draft = await this.tauri.previewRelease(path, baseOpts);
+      const suggested =
+        draft.commitMessage?.trim() ||
+        cfg?.commitMessage ||
+        'Release {{version}}';
+      const tokenHints = [
+        `{{version}} → ${draft.nextVersion || '?'}`,
+        `{{previousVersion}} → ${draft.currentVersion || status.currentVersion || '?'}`,
+        `{{tag}} → ${draft.tag || '?'}`,
+        `{{productName}} → ${draft.productName || cfg?.productName || '?'}`,
+      ];
+
       const message = await this.prompts.ask({
         title: 'Release notes / commit message',
-        message:
-          'Optional. Supports {{version}}, {{previousVersion}}, {{tag}}, {{productName}}. Leave blank to use the config template.',
+        message: [
+          draft.nextVersion
+            ? `Suggested for ${draft.currentVersion} → ${draft.nextVersion} (${draft.tag}).`
+            : 'Edit the release commit message.',
+          'Tokens still work if you prefer a template:',
+          tokenHints.join(' · '),
+        ].join(' '),
         label: 'Message',
         placeholder: cfg?.commitMessage || 'Release {{version}}',
-        initialValue: '',
+        initialValue: suggested,
         confirmLabel: 'Preview',
         required: false,
         multiline: true,

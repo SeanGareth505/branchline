@@ -192,8 +192,16 @@ fn conflict_markers_cleared(repo: &Path, rel: &str) -> bool {
         return true;
     }
     match fs::File::open(&file) {
-        Ok(f) => {
-            use std::io::{BufRead, BufReader};
+        Ok(mut f) => {
+            use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+            let mut probe = [0u8; 8 * 1024];
+            let n = f.read(&mut probe).unwrap_or(0);
+            if probe[..n].contains(&0) {
+                return false;
+            }
+            if f.seek(SeekFrom::Start(0)).is_err() {
+                return false;
+            }
             let reader = BufReader::with_capacity(64 * 1024, f);
             for line in reader.lines() {
                 let Ok(line) = line else {

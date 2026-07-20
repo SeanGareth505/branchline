@@ -62,7 +62,7 @@ export class ConflictBanner {
       return 'Nothing left unmerged — Continue to finish, or Abort to cancel.';
     }
     if (this.readyToStageCount() > 0) {
-      return 'Some files have no conflict markers left — Stage them to mark resolved.';
+      return 'Markers cleared in some files — staging them as resolved…';
     }
     if (this.conflictCount() > PREVIEW_LIMIT) {
       return 'Open Resolve to work through the list, or use Files → Conflicts.';
@@ -74,7 +74,7 @@ export class ConflictBanner {
     if (op?.kind === 'cherryPick' || op?.kind === 'revert') {
       return 'Resolve each file, then Continue.';
     }
-    return 'Resolve each file, then Continue the merge.';
+    return 'Open in VS Code/Cursor, fix markers, save — Branchline stages resolved files automatically.';
   });
 
   @HostListener('document:click')
