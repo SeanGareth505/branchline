@@ -432,8 +432,8 @@ export class TauriService {
         mode: opts.mode ?? 'file',
         cursorPath: opts.cursorPath ?? null,
         vscodePath: opts.vscodePath ?? null,
-        wait: opts.wait ?? true,
-        stageIfResolved: opts.stageIfResolved ?? true,
+        wait: opts.wait ?? false,
+        stageIfResolved: opts.stageIfResolved ?? false,
       },
     });
   }

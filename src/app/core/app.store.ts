@@ -3229,37 +3229,27 @@ export class AppStore {
       this.showToast('No conflicted file to open', { kind: 'info' });
       return;
     }
-    if (this.conflictIdeBusy()) {
-      this.showInfo('Waiting for the editor to close…');
-      return;
-    }
     const label =
       editor === 'cursor' ? 'Cursor' : editor === 'vscode' ? 'VS Code' : 'editor';
-    this.conflictIdeBusy.set(true);
-    this.conflictIdeLabel.set(label);
     try {
       await this.refreshDetectedEditors();
       const detected = this.detectedEditors();
-      this.showInfo(`Waiting for ${label} — close the file/tab when done`);
       const result = await this.tauri.openConflictInIde(repo, target, {
         editor,
         mode,
         cursorPath: detected?.cursorPath,
         vscodePath: detected?.vscodePath,
-        wait: true,
-        stageIfResolved: true,
+        wait: false,
+        stageIfResolved: false,
       });
-      await this.refreshRepo();
       if (!result.ok) {
         this.showWarning(result.message);
         return;
       }
       this.showSuccess(result.message);
+      await this.refreshRepo();
     } catch (err) {
       this.showError(err);
-    } finally {
-      this.conflictIdeBusy.set(false);
-      this.conflictIdeLabel.set(null);
     }
   }
 

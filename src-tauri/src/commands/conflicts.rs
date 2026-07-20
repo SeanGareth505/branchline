@@ -3,7 +3,7 @@ use crate::AppResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::command;
 
 use super::branch::MutationOutput;
@@ -121,23 +121,6 @@ fn read_working(repo: &Path, rel: &str) -> String {
     }
 }
 
-fn try_stage_if_resolved(repo: &Path, rel: &str) -> Option<String> {
-    if !path_is_unmerged(repo, rel) {
-        return Some(format!("{rel} is already marked resolved"));
-    }
-    let working = read_working(repo, rel);
-    if looks_binary(&working) {
-        return None;
-    }
-    if working_has_markers(&working) {
-        return None;
-    }
-    match git_cli::run_git(repo, &["add", "--", rel]) {
-        Ok(_) => Some(format!("Staged {rel} — conflict resolved")),
-        Err(_) => None,
-    }
-}
-
 fn resolve_ide_bin(
     editor: &str,
     cursor_path: Option<&str>,
@@ -201,56 +184,6 @@ fn resolve_ide_bin(
 
 fn dirs_home() -> String {
     std::env::var("HOME").unwrap_or_default()
-}
-
-fn finish_after_ide(
-    repo: &Path,
-    rel: &str,
-    label: &str,
-    wait: bool,
-    stage_if_resolved: bool,
-    launched_ok: bool,
-    launch_err: Option<String>,
-) -> MutationOutput {
-    if !launched_ok {
-        return MutationOutput {
-            ok: false,
-            message: launch_err.unwrap_or_else(|| format!("Could not launch {label}")),
-        };
-    }
-    if !wait {
-        return MutationOutput {
-            ok: true,
-            message: format!("Opened {rel} in {label} — save there; Branchline will detect when it is resolved"),
-        };
-    }
-    if stage_if_resolved {
-        if let Some(msg) = try_stage_if_resolved(repo, rel) {
-            return MutationOutput { ok: true, message: msg };
-        }
-    }
-    let working = read_working(repo, rel);
-    let unmerged = path_is_unmerged(repo, rel);
-    if !unmerged {
-        return MutationOutput {
-            ok: true,
-            message: format!("{rel} is resolved"),
-        };
-    }
-    if working_has_markers(&working) {
-        return MutationOutput {
-            ok: true,
-            message: format!(
-                "{label} closed — {rel} still has conflict markers"
-            ),
-        };
-    }
-    MutationOutput {
-        ok: true,
-        message: format!(
-            "{label} closed — {rel} looks resolved; stage it to mark complete"
-        ),
-    }
 }
 
 #[command]
@@ -321,8 +254,8 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
         .unwrap_or("file")
         .trim()
         .to_ascii_lowercase();
-    let wait = input.wait.unwrap_or(true);
-    let stage_if_resolved = input.stage_if_resolved.unwrap_or(true);
+    // Never block Branchline on the IDE. Cursor --wait especially can freeze the machine
+    // when Cursor is already open (nested window + wait for close).
     let abs = repo.join(&rel);
     if !abs.exists() {
         let (_, ours) = stage_blob(&repo, 2, &rel);
@@ -341,7 +274,7 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
         if looks_binary(&base) || looks_binary(&ours) || looks_binary(&theirs) {
             return Ok(MutationOutput {
                 ok: false,
-                message: "Binary conflicts need Take ours/theirs or an external merge tool".into(),
+                message: "Binary conflicts need Take yours/theirs or an external merge tool".into(),
             });
         }
         let tmp = std::env::temp_dir().join(format!(
@@ -366,107 +299,33 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
         })?;
 
         let mut cmd = Command::new(&bin);
-        if wait {
-            cmd.arg("--wait");
-        }
         cmd.arg("--merge")
             .arg(&ours_path)
             .arg(&theirs_path)
             .arg(&base_path)
             .arg(&abs);
-
-        if wait {
-            return match cmd.status() {
-                Ok(_) => Ok(finish_after_ide(
-                    &repo,
-                    &rel,
-                    label,
-                    true,
-                    stage_if_resolved,
-                    true,
-                    None,
-                )),
-                Err(e) => Ok(finish_after_ide(
-                    &repo,
-                    &rel,
-                    label,
-                    true,
-                    stage_if_resolved,
-                    false,
-                    Some(format!("Could not launch {label}: {e}")),
-                )),
-            };
-        }
-
-        return match cmd.spawn() {
-            Ok(_) => Ok(finish_after_ide(
-                &repo,
-                &rel,
-                label,
-                false,
-                stage_if_resolved,
-                true,
-                None,
-            )),
-            Err(e) => Ok(finish_after_ide(
-                &repo,
-                &rel,
-                label,
-                false,
-                stage_if_resolved,
-                false,
-                Some(format!("Could not launch {label}: {e}")),
-            )),
-        };
+        return Ok(spawn_ide(cmd, &rel, label));
     }
 
     let mut cmd = Command::new(&bin);
-    if wait {
-        cmd.arg("--wait");
-    }
     cmd.arg(&abs);
+    Ok(spawn_ide(cmd, &rel, label))
+}
 
-    if wait {
-        return match cmd.status() {
-            Ok(_) => Ok(finish_after_ide(
-                &repo,
-                &rel,
-                label,
-                true,
-                stage_if_resolved,
-                true,
-                None,
-            )),
-            Err(e) => Ok(finish_after_ide(
-                &repo,
-                &rel,
-                label,
-                true,
-                stage_if_resolved,
-                false,
-                Some(format!("Could not launch {label}: {e}")),
-            )),
-        };
-    }
-
+fn spawn_ide(mut cmd: Command, rel: &str, label: &str) -> MutationOutput {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     match cmd.spawn() {
-        Ok(_) => Ok(finish_after_ide(
-            &repo,
-            &rel,
-            label,
-            false,
-            stage_if_resolved,
-            true,
-            None,
-        )),
-        Err(e) => Ok(finish_after_ide(
-            &repo,
-            &rel,
-            label,
-            false,
-            stage_if_resolved,
-            false,
-            Some(format!("Could not launch {label}: {e}")),
-        )),
+        Ok(_) => MutationOutput {
+            ok: true,
+            message: format!(
+                "Opened {rel} in {label}. Save there, then return here to Stage / Continue."
+            ),
+        },
+        Err(e) => MutationOutput {
+            ok: false,
+            message: format!("Could not launch {label}: {e}"),
+        },
     }
 }
