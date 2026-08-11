@@ -12,6 +12,12 @@ pub struct GitEnvSnapshot {
     pub merge_tool: String,
     pub ssh_keys_found: bool,
     pub ssh_key_paths: Vec<String>,
+    #[serde(default)]
+    pub commit_gpgsign: bool,
+    #[serde(default)]
+    pub gpg_format: String,
+    #[serde(default)]
+    pub user_signing_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +60,9 @@ fn key_allowed(key: &str) -> bool {
 #[command]
 pub fn get_git_env() -> AppResult<GitEnvSnapshot> {
     let keys = ssh_key_paths();
+    let gpgsign = git_cli::config_get("commit.gpgsign")?
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false);
     Ok(GitEnvSnapshot {
         credential_helper: git_cli::config_get("credential.helper")?.unwrap_or_default(),
         core_editor: git_cli::config_get("core.editor")?.unwrap_or_default(),
@@ -61,6 +70,9 @@ pub fn get_git_env() -> AppResult<GitEnvSnapshot> {
         merge_tool: git_cli::config_get("merge.tool")?.unwrap_or_default(),
         ssh_keys_found: !keys.is_empty(),
         ssh_key_paths: keys,
+        commit_gpgsign: gpgsign,
+        gpg_format: git_cli::config_get("gpg.format")?.unwrap_or_default(),
+        user_signing_key: git_cli::config_get("user.signingkey")?.unwrap_or_default(),
     })
 }
 

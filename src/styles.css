@@ -708,3 +708,21 @@ code,
     animation: none;
   }
 }
+
+
+[data-density='comfortable'] {
+  --ui-row-height: 34px;
+  --ui-font-size: 13px;
+  --ui-pad-y: 0.35rem;
+}
+
+[data-density='compact'] {
+  --ui-row-height: 28px;
+  --ui-font-size: 12px;
+  --ui-pad-y: 0.2rem;
+}
+
+[data-density='compact'] .row,
+[data-density='compact'] .file-row {
+  font-size: var(--ui-font-size);
+}

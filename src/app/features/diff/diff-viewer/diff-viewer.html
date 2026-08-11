@@ -12,40 +12,43 @@
           <span class="source-chip" [attr.data-source]="store.diffSource()">{{ sourceLabel() }}</span>
           <span class="file-count">{{ files().length }}</span>
         </header>
-        <ul
+        <cdk-virtual-scroll-viewport
           class="file-list"
+          [itemSize]="fileRowHeight"
           role="listbox"
           tabindex="0"
           aria-label="Changed files"
           (keydown)="onFileListKey($event)"
         >
-          @for (f of files(); track f.path) {
-            <li
-              role="option"
-              [attr.data-path]="f.path"
-              [class.active]="store.selectedDiffPath() === f.path"
-              [attr.aria-selected]="store.selectedDiffPath() === f.path"
-              (click)="selectFile(f.path)"
-              (dblclick)="canCherryPickFiles() && cherryPickFile('both', f.path)"
-              (contextmenu)="onFileContextMenu(f.path, $event)"
-              [title]="
-                canCherryPickFiles()
-                  ? f.path + ' — click to view, right-click to cherry-pick, double-click to cherry-pick file'
-                  : f.path
-              "
-            >
-              <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
-              <span class="name">{{ fileName(f.path) }}</span>
-              <span class="dir">{{ fileDir(f.path) }}</span>
-              <span class="stats" aria-hidden="true">
-                <span class="add">+{{ formatStat(f.additions) }}</span>
-                <span class="del">−{{ formatStat(f.deletions) }}</span>
-              </span>
-            </li>
-          } @empty {
-            <li class="empty-row">No files in this diff</li>
+          <div
+            *cdkVirtualFor="let f of files(); trackBy: trackFile"
+            class="file-row"
+            role="option"
+            [style.height.px]="fileRowHeight"
+            [attr.data-path]="f.path"
+            [class.active]="store.selectedDiffPath() === f.path"
+            [attr.aria-selected]="store.selectedDiffPath() === f.path"
+            (click)="selectFile(f.path)"
+            (dblclick)="canCherryPickFiles() && cherryPickFile('both', f.path)"
+            (contextmenu)="onFileContextMenu(f.path, $event)"
+            [title]="
+              canCherryPickFiles()
+                ? f.path + ' — click to view, right-click to cherry-pick, double-click to cherry-pick file'
+                : f.path
+            "
+          >
+            <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+            <span class="name">{{ fileName(f.path) }}</span>
+            <span class="dir">{{ fileDir(f.path) }}</span>
+            <span class="stats" aria-hidden="true">
+              <span class="add">+{{ formatStat(f.additions) }}</span>
+              <span class="del">−{{ formatStat(f.deletions) }}</span>
+            </span>
+          </div>
+          @if (!files().length) {
+            <div class="empty-row">No files in this diff</div>
           }
-        </ul>
+        </cdk-virtual-scroll-viewport>
       </aside>
     </as-split-area>
 

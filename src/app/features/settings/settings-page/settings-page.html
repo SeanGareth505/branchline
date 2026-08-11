@@ -103,6 +103,50 @@
                 </label>
               </div>
             </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Density</strong>
+                <span>Compact packs more into each panel</span>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button
+                    type="button"
+                    class="seg-btn"
+                    [class.on]="store.settings().uiDensity === 'comfortable'"
+                    (click)="store.saveSettings({ uiDensity: 'comfortable' })"
+                  >
+                    Comfortable
+                  </button>
+                  <button
+                    type="button"
+                    class="seg-btn"
+                    [class.on]="store.settings().uiDensity === 'compact'"
+                    (click)="store.saveSettings({ uiDensity: 'compact' })"
+                  >
+                    Compact
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Hide untracked files</strong>
+                <span>Faster status on huge repos</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().hideUntracked"
+                    (ngModelChange)="onHideUntracked($event)"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
           </article>
         }
 
@@ -127,6 +171,36 @@
                 Save
               </button>
             </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Commit signing</h2>
+            <p class="block-hint">
+              Read from your Git config (<code>commit.gpgsign</code> / <code>gpg.format</code>).
+            </p>
+            @if (gitEnv(); as env) {
+              <div class="setting">
+                <div class="setting-label">
+                  <strong>Status</strong>
+                  <span>
+                    @if (env.commitGpgsign) {
+                      Signing enabled
+                      @if (env.gpgFormat) {
+                        · {{ env.gpgFormat }}
+                      }
+                      @if (env.userSigningKey) {
+                        · {{ env.userSigningKey }}
+                      }
+                    } @else {
+                      Signing off — enable with
+                      <code>git config --global commit.gpgsign true</code>
+                    }
+                  </span>
+                </div>
+              </div>
+            } @else {
+              <p class="block-hint">Open Git settings to load signing status.</p>
+            }
           </article>
 
           <article class="bl-panel block">

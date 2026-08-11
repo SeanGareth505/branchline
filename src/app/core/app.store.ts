@@ -125,6 +125,18 @@ export interface ToastOptions {
 }
 
 const RELEASE_ACTIVITY_STORAGE_KEY = 'branchline.releaseActivity';
+const REPO_CACHE_KEY = 'branchline.repoCache.v1';
+
+interface RepoCacheEntry {
+  savedAt: number;
+  status: RepoStatus;
+  commits?: CommitInfo[];
+  branches?: BranchInfo[];
+  artificial?: ArtificialCommit[];
+  stashes?: StashEntry[];
+  tags?: TagInfo[];
+  remotes?: RemoteInfo[];
+}
 
 @Injectable({ providedIn: 'root' })
 export class AppStore {
@@ -231,6 +243,8 @@ export class AppStore {
     notifyAppUpdates: true,
     notifyPrActivity: true,
     notifyPrCi: true,
+    hideUntracked: false,
+    uiDensity: 'comfortable',
   });
   readonly detectedEditors = signal<DetectedEditors | null>(null);
   readonly loading = signal(false);
@@ -703,21 +717,96 @@ export class AppStore {
           : 'dark'
         : preference;
     root.setAttribute('data-theme', theme);
+    root.setAttribute('data-density', settings.uiDensity === 'compact' ? 'compact' : 'comfortable');
     root.style.setProperty('--accent', settings.accent);
     try {
       localStorage.setItem('branchline.theme', preference);
       localStorage.setItem('branchline.accent', settings.accent);
+      localStorage.setItem('branchline.density', settings.uiDensity);
     } catch {
       /* ignore quota / private mode */
     }
   }
 
   formatError(err: unknown): string {
-    if (typeof err === 'string') return err;
+    if (typeof err === 'string') {
+      return this.humanizeError(err);
+    }
     if (err && typeof err === 'object' && 'message' in err) {
-      return String((err as { message: unknown }).message);
+      return this.humanizeError(String((err as { message: unknown }).message));
     }
     return 'Something went wrong';
+  }
+
+  private humanizeError(message: string): string {
+    const m = message.trim();
+    if (!m) return 'Something went wrong';
+    if (/failed to fetch|networkerror|net::err_|econnrefused|enotfound|timed out|timeout/i.test(m)) {
+      return 'Network unavailable — Branchline will keep working with local Git. Try again when you are online.';
+    }
+    if (/403|401|unauthorized|bad credentials/i.test(m)) {
+      return `${m} — check your GitHub or host connection in Settings.`;
+    }
+    return m;
+  }
+
+  private statusFetchOpts(): { hideUntracked?: boolean } {
+    return { hideUntracked: this.settings().hideUntracked };
+  }
+
+  private hydrateRepoCache(path: string): boolean {
+    try {
+      const raw = localStorage.getItem(REPO_CACHE_KEY);
+      if (!raw) return false;
+      const all = JSON.parse(raw) as Record<string, RepoCacheEntry>;
+      const entry = all[normalizeCachePath(path)];
+      if (!entry?.status) return false;
+      if (Date.now() - (entry.savedAt || 0) > 7 * 24 * 60 * 60 * 1000) return false;
+      this.status.set(entry.status);
+      this.commits.set(entry.commits ?? []);
+      this.branches.set(entry.branches ?? []);
+      this.artificial.set(entry.artificial ?? artificialFromStatus(entry.status));
+      this.stashes.set(entry.stashes ?? []);
+      this.tags.set(entry.tags ?? []);
+      this.remotes.set(entry.remotes ?? []);
+      this.updateNextAction(entry.status);
+      if (!this.selectedSha() && entry.commits?.[0]) {
+        this.selectedSha.set(entry.commits[0].sha);
+        this.selectedShas.set([entry.commits[0].sha]);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private persistRepoCache(path: string): void {
+    try {
+      const status = this.status();
+      if (!status) return;
+      const raw = localStorage.getItem(REPO_CACHE_KEY);
+      const all = (raw ? JSON.parse(raw) : {}) as Record<string, RepoCacheEntry>;
+      all[normalizeCachePath(path)] = {
+        savedAt: Date.now(),
+        status,
+        commits: this.commits().slice(0, 200),
+        branches: this.branches(),
+        artificial: this.artificial(),
+        stashes: this.stashes(),
+        tags: this.tags(),
+        remotes: this.remotes(),
+      };
+      const keys = Object.keys(all);
+      if (keys.length > 12) {
+        keys
+          .sort((a, b) => (all[a].savedAt || 0) - (all[b].savedAt || 0))
+          .slice(0, keys.length - 12)
+          .forEach((k) => delete all[k]);
+      }
+      localStorage.setItem(REPO_CACHE_KEY, JSON.stringify(all));
+    } catch {
+      /* ignore quota */
+    }
   }
 
   async openRepo(
@@ -746,15 +835,21 @@ export class AppStore {
       return;
     }
 
-    this.loadingLabel.set('Opening repository…');
-    this.loading.set(true);
-    try {
+    const hadCache = this.hydrateRepoCache(normalized);
+    if (!hadCache) {
       this.clearWorkingState();
+      this.loadingLabel.set('Opening repository…');
+      this.loading.set(true);
+    } else {
+      this.syncingRepo.set(true);
+    }
+    try {
       const summary = await this.tauri.openRepository(normalized);
       this.currentRepo.set(summary);
       this.upsertOpenRepo(summary);
       this.repos.set(await this.tauri.listRecentRepos());
       await this.refreshRepo();
+      this.persistRepoCache(normalized);
       this.persistOpenRepos();
       if (restoreView) {
         this.setView('browse');
@@ -777,6 +872,7 @@ export class AppStore {
       if (!this.openRepos().length) this.goHome();
     } finally {
       this.loading.set(false);
+      this.syncingRepo.set(false);
     }
   }
 
@@ -1234,7 +1330,7 @@ export class AppStore {
 
   private async runRefreshWorkingTree(path: string): Promise<void> {
     const prev = this.status();
-    const status = await this.tauri.getRepoStatus(path);
+    const status = await this.tauri.getRepoStatus(path, this.statusFetchOpts());
     this.lastWorkingTreeRefreshAt = Date.now();
     if (prev && statusFingerprint(prev) === statusFingerprint(status)) {
       return;
@@ -1281,7 +1377,7 @@ export class AppStore {
   private async runRefreshRepo(path: string, opts?: { notify?: boolean }): Promise<void> {
     const prev = this.status();
     const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
-      this.tauri.getRepoStatus(path),
+      this.tauri.getRepoStatus(path, this.statusFetchOpts()),
       this.tauri.getCommitLog(path, 200),
       this.tauri.listBranches(path),
       this.tauri.listStashes(path),
@@ -1304,6 +1400,7 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
+    this.persistRepoCache(path);
     if (opts?.notify) {
       void this.refreshHeavyLists(path, { includeLfs: true });
       const changed =
@@ -1347,7 +1444,7 @@ export class AppStore {
   private async runRefreshRepoMeta(path: string): Promise<void> {
     const prev = this.status();
     const [status, commits, branches] = await Promise.all([
-      this.tauri.getRepoStatus(path),
+      this.tauri.getRepoStatus(path, this.statusFetchOpts()),
       this.tauri.getCommitLog(path, 200),
       this.tauri.listBranches(path),
     ]);
@@ -1364,6 +1461,7 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
+    this.persistRepoCache(path);
   }
 
   async refreshLfsFiles(): Promise<void> {
@@ -3458,7 +3556,7 @@ export class AppStore {
 
   private async refreshWorkingTreeAndStashes(path: string): Promise<void> {
     const [status, stashes] = await Promise.all([
-      this.tauri.getRepoStatus(path),
+      this.tauri.getRepoStatus(path, this.statusFetchOpts()),
       this.tauri.listStashes(path),
     ]);
     const prev = this.status();
@@ -5177,6 +5275,8 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     notifyAppUpdates: raw.notifyAppUpdates ?? true,
     notifyPrActivity: raw.notifyPrActivity ?? true,
     notifyPrCi: raw.notifyPrCi ?? true,
+    hideUntracked: raw.hideUntracked ?? false,
+    uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
   };
 }
 
@@ -5202,6 +5302,14 @@ function sameRepoPath(a: string, b: string): boolean {
       .replace(/\/+$/, '')
       .toLowerCase();
   return norm(a) === norm(b);
+}
+
+function normalizeCachePath(path: string): string {
+  return path
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
 }
 
 function statusFingerprint(status: RepoStatus): string {

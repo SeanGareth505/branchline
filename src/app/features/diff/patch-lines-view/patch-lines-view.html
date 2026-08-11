@@ -70,193 +70,117 @@
     </div>
   }
 
-  <div
-    class="patch-scroll mono"
-    [class.split]="sideBySide()"
-    (contextmenu)="onPatchContextMenu($event)"
-  >
-    @if (!patch()) {
-      <p class="patch-empty">{{ emptyMessage() }}</p>
-    } @else if (parsedDiff(); as diff) {
-      @if (sideBySide()) {
-        <div class="split-rows">
-          @for (row of sideBySideRows(); track $index) {
-            <div class="split-row">
-              <div class="split-cell">
-                @if (row.left.line; as line) {
-                  @if (line.kind === 'hunk') {
-                    <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
-                  } @else {
-                    <div
-                      class="pline"
-                      role="button"
-                      tabindex="-1"
-                      [attr.data-kind]="line.kind"
-                      [class.selectable]="interactive() && line.selectable"
-                      [class.selected]="isLineSelected(line.index)"
-                      [class.inert]="!interactive() || !line.selectable"
-                      (mousedown)="onDiffLineMouseDown(line.index, $event)"
-                      (mouseenter)="onDiffLineMouseEnter(line.index)"
-                      (click)="onDiffLineClick(line.index, $event)"
-                      (contextmenu)="onDiffLineContextMenu(line.index, $event)"
-                    >
-                      {{ line.text }}
-                    </div>
-                  }
-                } @else {
-                  <div class="pline spacer" aria-hidden="true">&nbsp;</div>
-                }
-              </div>
-              <div class="split-cell">
-                @if (row.right.line; as line) {
-                  @if (line.kind === 'hunk') {
-                    <div class="hunk-bar">
-                      <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
-                      @if (interactive() && line.hunkId) {
-                        <div class="hunk-actions">
-                          @if (canStage()) {
-                            <button
-                              type="button"
-                              class="bl-btn quiet"
-                              [disabled]="patchBusy()"
-                              (click)="stageHunk(line.hunkId)"
-                            >
-                              Stage hunk
-                            </button>
-                            <button
-                              type="button"
-                              class="bl-btn quiet danger"
-                              [disabled]="patchBusy()"
-                              (click)="discardHunk(line.hunkId)"
-                            >
-                              Reset hunk
-                            </button>
-                          } @else if (canUnstage()) {
-                            <button
-                              type="button"
-                              class="bl-btn quiet"
-                              [disabled]="patchBusy()"
-                              (click)="unstageHunk(line.hunkId)"
-                            >
-                              Unstage hunk
-                            </button>
-                          } @else if (canReset()) {
-                            <button
-                              type="button"
-                              class="bl-btn quiet danger"
-                              [disabled]="patchBusy()"
-                              (click)="discardHunk(line.hunkId)"
-                            >
-                              Reset hunk
-                            </button>
-                          } @else if (canCherryPick()) {
-                            <button
-                              type="button"
-                              class="bl-btn quiet"
-                              [disabled]="patchBusy()"
-                              (click)="cherryPickHunk(line.hunkId, 'apply')"
-                              title="Copy this hunk into your files (unstaged)"
-                            >
-                              Apply hunk
-                            </button>
-                            <button
-                              type="button"
-                              class="bl-btn quiet"
-                              [disabled]="patchBusy()"
-                              (click)="cherryPickHunk(line.hunkId, 'apply-index')"
-                              title="Copy this hunk and stage it for commit"
-                            >
-                              Apply & stage
-                            </button>
-                          }
-                        </div>
+  @if (isTruncated()) {
+    <div class="patch-truncated" role="status">
+      Showing first {{ maxRenderLines.toLocaleString() }} lines for speed
+    </div>
+  }
+
+  @if (!patch()) {
+    <p class="patch-empty">{{ emptyMessage() }}</p>
+  } @else if (parsedDiff(); as diff) {
+    @if (sideBySide()) {
+      <cdk-virtual-scroll-viewport
+        class="patch-scroll mono split"
+        [itemSize]="lineHeight"
+        (contextmenu)="onPatchContextMenu($event)"
+      >
+        <div
+          *cdkVirtualFor="let row of sideBySideRows(); trackBy: trackSideRow"
+          class="split-row"
+          [style.height.px]="lineHeight"
+        >
+          <div class="split-cell">
+            @if (row.left.line; as line) {
+              @if (line.kind === 'hunk') {
+                <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+              } @else {
+                <div
+                  class="pline"
+                  role="button"
+                  tabindex="-1"
+                  [attr.data-kind]="line.kind"
+                  [class.selectable]="interactive() && line.selectable"
+                  [class.selected]="isLineSelected(line.index)"
+                  [class.inert]="!interactive() || !line.selectable"
+                  (mousedown)="onDiffLineMouseDown(line.index, $event)"
+                  (mouseenter)="onDiffLineMouseEnter(line.index)"
+                  (click)="onDiffLineClick(line.index, $event)"
+                  (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+                >
+                  {{ line.text }}
+                </div>
+              }
+            } @else {
+              <div class="pline spacer" aria-hidden="true">&nbsp;</div>
+            }
+          </div>
+          <div class="split-cell">
+            @if (row.right.line; as line) {
+              @if (line.kind === 'hunk') {
+                <div class="hunk-bar">
+                  <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
+                  @if (interactive() && line.hunkId) {
+                    <div class="hunk-actions">
+                      @if (canStage()) {
+                        <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="stageHunk(line.hunkId)">Stage</button>
+                        <button type="button" class="bl-btn quiet danger" [disabled]="patchBusy()" (click)="discardHunk(line.hunkId)">Reset</button>
+                      } @else if (canUnstage()) {
+                        <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="unstageHunk(line.hunkId)">Unstage</button>
+                      } @else if (canReset()) {
+                        <button type="button" class="bl-btn quiet danger" [disabled]="patchBusy()" (click)="discardHunk(line.hunkId)">Reset</button>
+                      } @else if (canCherryPick()) {
+                        <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="cherryPickHunk(line.hunkId, 'apply')">Apply</button>
+                        <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="cherryPickHunk(line.hunkId, 'apply-index')">Stage</button>
                       }
                     </div>
-                  } @else {
-                    <div
-                      class="pline"
-                      role="button"
-                      tabindex="-1"
-                      [attr.data-kind]="line.kind"
-                      [class.selectable]="interactive() && line.selectable"
-                      [class.selected]="isLineSelected(line.index)"
-                      [class.inert]="!interactive() || !line.selectable"
-                      (mousedown)="onDiffLineMouseDown(line.index, $event)"
-                      (mouseenter)="onDiffLineMouseEnter(line.index)"
-                      (click)="onDiffLineClick(line.index, $event)"
-                      (contextmenu)="onDiffLineContextMenu(line.index, $event)"
-                    >
-                      {{ line.text }}
-                    </div>
                   }
-                } @else {
-                  <div class="pline spacer" aria-hidden="true">&nbsp;</div>
-                }
-              </div>
-            </div>
-          }
+                </div>
+              } @else {
+                <div
+                  class="pline"
+                  role="button"
+                  tabindex="-1"
+                  [attr.data-kind]="line.kind"
+                  [class.selectable]="interactive() && line.selectable"
+                  [class.selected]="isLineSelected(line.index)"
+                  [class.inert]="!interactive() || !line.selectable"
+                  (mousedown)="onDiffLineMouseDown(line.index, $event)"
+                  (mouseenter)="onDiffLineMouseEnter(line.index)"
+                  (click)="onDiffLineClick(line.index, $event)"
+                  (contextmenu)="onDiffLineContextMenu(line.index, $event)"
+                >
+                  {{ line.text }}
+                </div>
+              }
+            } @else {
+              <div class="pline spacer" aria-hidden="true">&nbsp;</div>
+            }
+          </div>
         </div>
-      } @else {
-        @for (line of diff.lines; track line.index) {
+      </cdk-virtual-scroll-viewport>
+    } @else {
+      <cdk-virtual-scroll-viewport
+        class="patch-scroll mono"
+        [itemSize]="lineHeight"
+        (contextmenu)="onPatchContextMenu($event)"
+      >
+        <div *cdkVirtualFor="let line of displayLines(); trackBy: trackLine" [style.height.px]="lineHeight">
           @if (line.kind === 'hunk') {
             <div class="hunk-bar">
               <div class="pline hunk-line" data-kind="hunk">{{ line.text }}</div>
               @if (interactive() && line.hunkId) {
                 <div class="hunk-actions">
                   @if (canStage()) {
-                    <button
-                      type="button"
-                      class="bl-btn quiet"
-                      [disabled]="patchBusy()"
-                      (click)="stageHunk(line.hunkId)"
-                    >
-                      Stage hunk
-                    </button>
-                    <button
-                      type="button"
-                      class="bl-btn quiet danger"
-                      [disabled]="patchBusy()"
-                      (click)="discardHunk(line.hunkId)"
-                    >
-                      Reset hunk
-                    </button>
+                    <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="stageHunk(line.hunkId)">Stage</button>
+                    <button type="button" class="bl-btn quiet danger" [disabled]="patchBusy()" (click)="discardHunk(line.hunkId)">Reset</button>
                   } @else if (canUnstage()) {
-                    <button
-                      type="button"
-                      class="bl-btn quiet"
-                      [disabled]="patchBusy()"
-                      (click)="unstageHunk(line.hunkId)"
-                    >
-                      Unstage hunk
-                    </button>
+                    <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="unstageHunk(line.hunkId)">Unstage</button>
                   } @else if (canReset()) {
-                    <button
-                      type="button"
-                      class="bl-btn quiet danger"
-                      [disabled]="patchBusy()"
-                      (click)="discardHunk(line.hunkId)"
-                    >
-                      Reset hunk
-                    </button>
+                    <button type="button" class="bl-btn quiet danger" [disabled]="patchBusy()" (click)="discardHunk(line.hunkId)">Reset</button>
                   } @else if (canCherryPick()) {
-                    <button
-                      type="button"
-                      class="bl-btn quiet"
-                      [disabled]="patchBusy()"
-                      (click)="cherryPickHunk(line.hunkId, 'apply')"
-                      title="Copy this hunk into your files (unstaged)"
-                    >
-                      Apply hunk
-                    </button>
-                    <button
-                      type="button"
-                      class="bl-btn quiet"
-                      [disabled]="patchBusy()"
-                      (click)="cherryPickHunk(line.hunkId, 'apply-index')"
-                      title="Copy this hunk and stage it for commit"
-                    >
-                      Apply & stage
-                    </button>
+                    <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="cherryPickHunk(line.hunkId, 'apply')">Apply</button>
+                    <button type="button" class="bl-btn quiet" [disabled]="patchBusy()" (click)="cherryPickHunk(line.hunkId, 'apply-index')">Stage</button>
                   }
                 </div>
               }
@@ -278,14 +202,20 @@
               {{ line.text }}
             </div>
           }
-        }
-      }
-    } @else {
-      @for (line of patch().split('\n'); track $index) {
-        <div class="pline">{{ line || ' ' }}</div>
-      }
+        </div>
+      </cdk-virtual-scroll-viewport>
     }
-  </div>
+  } @else {
+    <cdk-virtual-scroll-viewport class="patch-scroll mono" [itemSize]="lineHeight">
+      <div
+        *cdkVirtualFor="let line of fallbackLines(); trackBy: trackFallback"
+        class="pline"
+        [style.height.px]="lineHeight"
+      >
+        {{ line || ' ' }}
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
 </div>
 
 <ng-template #lineMenuTpl>

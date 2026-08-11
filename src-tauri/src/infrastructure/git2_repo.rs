@@ -103,7 +103,12 @@ pub struct BranchInfo {
 }
 
 pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
+    repo_status_with(path, false)
+}
+
+pub fn repo_status_with(path: &Path, hide_untracked: bool) -> AppResult<RepoStatus> {
     git_cli::ensure_repo(path)?;
+    let untracked = if hide_untracked { "no" } else { "normal" };
     let porcelain = git_cli::run_git(
         path,
         &[
@@ -111,7 +116,7 @@ pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
             "--porcelain=v2",
             "--branch",
             "--ignore-submodules=dirty",
-            "--untracked-files=normal",
+            &format!("--untracked-files={untracked}"),
         ],
     )?;
 

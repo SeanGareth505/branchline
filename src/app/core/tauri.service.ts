@@ -242,8 +242,10 @@ export class TauriService {
     return this.invoke<RecentRepo[]>('pin_repo', { input: { path, pinned } });
   }
 
-  getRepoStatus(path: string) {
-    return this.invoke<RepoStatus>('get_repo_status', { input: { path } });
+  getRepoStatus(path: string, opts?: { hideUntracked?: boolean }) {
+    return this.invoke<RepoStatus>('get_repo_status', {
+      input: { path, hideUntracked: opts?.hideUntracked ?? false },
+    });
   }
 
   getCommitLog(path: string, limit = 200) {
@@ -1506,6 +1508,8 @@ export class TauriService {
         notifyAppUpdates: true,
         notifyPrActivity: true,
         notifyPrCi: true,
+        hideUntracked: false,
+        uiDensity: 'comfortable',
       },
       save_settings: args?.['input'] ?? {},
       get_git_env: {
@@ -1515,6 +1519,9 @@ export class TauriService {
         mergeTool: '',
         sshKeysFound: true,
         sshKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+        commitGpgsign: false,
+        gpgFormat: '',
+        userSigningKey: '',
       },
       get_ssh_setup: {
         keysFound: true,
@@ -2759,6 +2766,8 @@ export class TauriService {
       notifyAppUpdates: true,
       notifyPrActivity: true,
       notifyPrCi: true,
+      hideUntracked: false,
+      uiDensity: 'comfortable' as const,
     };
 
     try {

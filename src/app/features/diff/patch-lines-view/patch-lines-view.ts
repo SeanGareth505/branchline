@@ -15,6 +15,11 @@ import {
 } from '@angular/core';
 import { Overlay, type OverlayRef, type ConnectedPosition } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
+import {
+  CdkVirtualScrollViewport,
+  CdkFixedSizeVirtualScroll,
+  CdkVirtualForOf,
+} from '@angular/cdk/scrolling';
 import { AppStore } from '../../../core/app.store';
 import {
   buildPartialPatch,
@@ -31,6 +36,7 @@ export type PatchLinesLayout = 'unified' | 'sideBySide';
 
 @Component({
   selector: 'app-patch-lines-view',
+  imports: [CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
   templateUrl: './patch-lines-view.html',
   styleUrl: './patch-lines-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -62,6 +68,9 @@ export class PatchLinesView implements OnDestroy {
   private focused = false;
   private suppressMenuCloseUntil = 0;
 
+  readonly lineHeight = 22;
+  readonly maxRenderLines = 4000;
+
   private readonly menuPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'top' },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
@@ -74,6 +83,25 @@ export class PatchLinesView implements OnDestroy {
     return parseUnifiedDiff(raw);
   });
 
+  readonly displayLines = computed(() => {
+    const parsed = this.parsedDiff();
+    if (!parsed) return [];
+    return parsed.lines.length > this.maxRenderLines
+      ? parsed.lines.slice(0, this.maxRenderLines)
+      : parsed.lines;
+  });
+
+  readonly isTruncated = computed(
+    () => (this.parsedDiff()?.lines.length ?? 0) > this.maxRenderLines,
+  );
+
+  readonly fallbackLines = computed(() => {
+    const raw = this.patch();
+    if (!raw) return [];
+    const lines = raw.split('\n');
+    return lines.length > this.maxRenderLines ? lines.slice(0, this.maxRenderLines) : lines;
+  });
+
   readonly selectedCount = computed(() => this.selectedLines().size);
   readonly interactive = computed(() => this.mode() !== 'readonly');
   readonly canStage = computed(() => this.mode() === 'unstaged');
@@ -84,8 +112,13 @@ export class PatchLinesView implements OnDestroy {
   readonly sideBySideRows = computed((): SideBySideRow[] => {
     const parsed = this.parsedDiff();
     if (!parsed || !this.sideBySide()) return [];
-    return buildSideBySideRows(parsed);
+    const rows = buildSideBySideRows(parsed);
+    return rows.length > this.maxRenderLines ? rows.slice(0, this.maxRenderLines) : rows;
   });
+
+  trackLine = (_: number, line: { index: number }) => line.index;
+  trackFallback = (index: number) => index;
+  trackSideRow = (index: number) => index;
 
   private dragSelecting = false;
   private dragAdditive = false;

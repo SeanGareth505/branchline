@@ -132,6 +132,11 @@ export class SettingsPage implements OnInit {
     void this.store.saveSettings({ theme });
   }
 
+  async onHideUntracked(hideUntracked: boolean): Promise<void> {
+    await this.store.saveSettings({ hideUntracked });
+    await this.store.refreshRepo();
+  }
+
   setAccent(accent: string): void {
     void this.store.saveSettings({ accent });
   }

@@ -7,6 +7,11 @@ import {
   signal,
 } from '@angular/core';
 import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
+import {
+  CdkVirtualScrollViewport,
+  CdkFixedSizeVirtualScroll,
+  CdkVirtualForOf,
+} from '@angular/cdk/scrolling';
 import { AngularSplitModule, type SplitGutterInteractionEvent } from 'angular-split';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -15,7 +20,15 @@ import { PatchLinesView, type PatchLinesMode } from '../patch-lines-view/patch-l
 
 @Component({
   selector: 'app-diff-viewer',
-  imports: [AngularSplitModule, PatchLinesView, CdkConnectedOverlay, LoadingBlock],
+  imports: [
+    AngularSplitModule,
+    PatchLinesView,
+    CdkConnectedOverlay,
+    LoadingBlock,
+    CdkVirtualScrollViewport,
+    CdkFixedSizeVirtualScroll,
+    CdkVirtualForOf,
+  ],
   templateUrl: './diff-viewer.html',
   styleUrl: './diff-viewer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,6 +44,7 @@ export class DiffViewer {
   >([]);
   readonly loading = signal(false);
   readonly splitSizes = signal<[number, number]>([28, 72]);
+  readonly fileRowHeight = 34;
   readonly fileMenu = signal<{ open: boolean; x: number; y: number; path: string }>({
     open: false,
     x: 0,
@@ -46,6 +60,8 @@ export class DiffViewer {
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'top' },
   ];
+
+  trackFile = (_: number, f: { path: string }) => f.path;
 
   readonly linesMode = computed((): PatchLinesMode => {
     const source = this.store.diffSource();
@@ -127,7 +143,7 @@ export class DiffViewer {
     this.selectFile(path);
     queueMicrotask(() => {
       document
-        .querySelector<HTMLElement>(`.file-list li[data-path="${CSS.escape(path)}"]`)
+        .querySelector<HTMLElement>(`.file-list .file-row[data-path="${CSS.escape(path)}"]`)
         ?.scrollIntoView({ block: 'nearest' });
     });
   }

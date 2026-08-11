@@ -228,6 +228,68 @@ export class CommandPalette {
         run: () => void store.openConflictResolver(),
       },
       {
+        id: 'interactive-rebase',
+        label: 'Interactive rebase from selected…',
+        group: 'Git',
+        run: () => {
+          const sha = store.selectedSha();
+          if (sha) void store.openInteractiveRebase(sha);
+        },
+      },
+      {
+        id: 'hide-untracked',
+        label: store.settings().hideUntracked
+          ? 'Show untracked files'
+          : 'Hide untracked files (faster)',
+        group: 'View',
+        run: () => {
+          void store.saveSettings({ hideUntracked: !store.settings().hideUntracked }).then(() =>
+            store.refreshRepo(),
+          );
+        },
+      },
+      {
+        id: 'density-compact',
+        label: 'Use compact density',
+        group: 'View',
+        run: () => void store.saveSettings({ uiDensity: 'compact' }),
+      },
+      {
+        id: 'density-comfortable',
+        label: 'Use comfortable density',
+        group: 'View',
+        run: () => void store.saveSettings({ uiDensity: 'comfortable' }),
+      },
+      ...store
+        .commits()
+        .slice(0, 40)
+        .map((c) => ({
+          id: `commit:${c.sha}`,
+          label: `${c.shortSha} ${c.subject}`,
+          group: 'Commits',
+          run: () => {
+            store.setView('browse');
+            store.selectCommit(c.sha);
+          },
+        })),
+      ...[
+        ...store.status()?.staged ?? [],
+        ...store.status()?.unstaged ?? [],
+        ...store.status()?.untracked ?? [],
+        ...store.status()?.conflicted ?? [],
+      ]
+        .slice(0, 60)
+        .map((f) => ({
+          id: `file:${f.path}`,
+          label: f.path,
+          group: 'Changed files',
+          run: () => {
+            store.setView('browse');
+            store.setBrowseTab('diff');
+            store.selectedDiffPath.set(f.path);
+          },
+        })),
+      {
         id: 'release',
         label: 'Release…',
         group: 'Git',

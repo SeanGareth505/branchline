@@ -118,6 +118,14 @@ pub struct AppSettings {
     pub notify_pr_activity: bool,
     #[serde(default = "default_true")]
     pub notify_pr_ci: bool,
+    #[serde(default)]
+    pub hide_untracked: bool,
+    #[serde(default = "default_density")]
+    pub ui_density: String,
+}
+
+fn default_density() -> String {
+    "comfortable".into()
 }
 
 fn default_pull_action() -> String {
@@ -309,6 +317,8 @@ impl Default for AppSettings {
             notify_app_updates: true,
             notify_pr_activity: true,
             notify_pr_ci: true,
+            hide_untracked: false,
+            ui_density: default_density(),
         }
     }
 }
@@ -322,6 +332,9 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
     }
     if settings.ssh_client.is_empty() {
         settings.ssh_client = default_ssh_client();
+    }
+    if settings.ui_density != "compact" && settings.ui_density != "comfortable" {
+        settings.ui_density = default_density();
     }
     if settings.branch_prefix.trim().is_empty() {
         settings.branch_prefix = default_branch_prefix();

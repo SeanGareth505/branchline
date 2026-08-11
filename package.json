@@ -63,6 +63,7 @@
     "release:major": "node scripts/release.mjs major",
     "release:minor": "node scripts/release.mjs minor",
     "release:patch": "node scripts/release.mjs patch",
+    "perf:smoke": "node scripts/perf-smoke.mjs",
     "start": "ng serve --port 4200",
     "tauri": "tauri",
     "tauri:android:build": "tauri android build -- --apk",

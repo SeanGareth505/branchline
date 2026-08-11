@@ -306,6 +306,8 @@ export interface AppSettings {
   notifyAppUpdates: boolean;
   notifyPrActivity: boolean;
   notifyPrCi: boolean;
+  hideUntracked: boolean;
+  uiDensity: 'comfortable' | 'compact';
 }
 
 export interface GitEnvSnapshot {
@@ -315,6 +317,9 @@ export interface GitEnvSnapshot {
   mergeTool: string;
   sshKeysFound: boolean;
   sshKeyPaths: string[];
+  commitGpgsign: boolean;
+  gpgFormat: string;
+  userSigningKey: string;
 }
 
 export interface BlameLine {
