@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::{AppError, AppResult};
+use crate::AppResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -104,7 +104,16 @@ pub struct BranchInfo {
 
 pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
     git_cli::ensure_repo(path)?;
-    let porcelain = git_cli::run_git(path, &["status", "--porcelain=v2", "--branch"])?;
+    let porcelain = git_cli::run_git(
+        path,
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--ignore-submodules=dirty",
+            "--untracked-files=normal",
+        ],
+    )?;
 
     let mut branch = "HEAD".to_string();
     let mut upstream = None;
@@ -420,37 +429,21 @@ fn map_status_char(c: char) -> FileStatusKind {
 
 pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
     git_cli::ensure_repo(path)?;
-    let repo = git2::Repository::open(path).map_err(|e| AppError::git(e.message()))?;
-    let head_oid = repo.head().ok().and_then(|h| h.target());
 
-    // Cap the ancestry walk — never materialize the entire history.
     let mut relative = std::collections::HashSet::new();
-    if let Some(oid) = head_oid {
-        if let Ok(mut walk) = repo.revwalk() {
-            let _ = walk.push(oid);
-            let walk_limit = limit.saturating_mul(3).clamp(64, 2_000);
-            for (i, walked) in walk.flatten().enumerate() {
-                if i >= walk_limit {
-                    break;
-                }
-                relative.insert(walked);
+    if let Ok(head_list) = git_cli::run_git(
+        path,
+        &["rev-list", &format!("--max-count={limit}"), "HEAD"],
+    ) {
+        for line in head_list.lines() {
+            let sha = line.trim();
+            if !sha.is_empty() {
+                relative.insert(sha.to_string());
             }
         }
     }
 
-    let mut ref_map: std::collections::HashMap<git2::Oid, Vec<String>> =
-        std::collections::HashMap::new();
-    if let Ok(refs) = repo.references() {
-        for reference in refs.flatten() {
-            if let Some(oid) = reference.target() {
-                if let Some(name) = reference.shorthand() {
-                    ref_map.entry(oid).or_default().push(name.to_string());
-                }
-            }
-        }
-    }
-
-    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1e";
+    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1e";
     let out = git_cli::run_git(
         path,
         &[
@@ -474,16 +467,13 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             continue;
         }
         let sha = parts[0].to_string();
-        let oid = git2::Oid::from_str(&sha).ok();
         let parents: Vec<String> = parts[6]
             .split_whitespace()
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .collect();
-        let refs = oid
-            .and_then(|o| ref_map.get(&o).cloned())
-            .unwrap_or_default();
-        let is_relative = oid.map(|o| relative.contains(&o)).unwrap_or(false);
+        let refs = parse_decorate_refs(parts.get(7).copied().unwrap_or(""));
+        let is_relative = relative.contains(&sha);
         let subject = parts[2].to_string();
         let message = subject.clone();
         commits.push(CommitInfo {
@@ -502,6 +492,33 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
         lane += 1;
     }
     Ok(commits)
+}
+
+fn parse_decorate_refs(raw: &str) -> Vec<String> {
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut refs = Vec::new();
+    for part in raw.split(',') {
+        let mut token = part.trim();
+        if token.is_empty() {
+            continue;
+        }
+        if let Some(rest) = token.strip_prefix("HEAD -> ") {
+            refs.push("HEAD".into());
+            token = rest.trim();
+        } else if token == "HEAD" {
+            refs.push("HEAD".into());
+            continue;
+        }
+        if let Some(rest) = token.strip_prefix("tag: ") {
+            token = rest.trim();
+        }
+        if !token.is_empty() {
+            refs.push(token.to_string());
+        }
+    }
+    refs
 }
 
 pub fn commit_range(

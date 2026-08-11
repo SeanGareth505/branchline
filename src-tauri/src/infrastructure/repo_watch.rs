@@ -6,13 +6,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-const DEBOUNCE: Duration = Duration::from_millis(450);
+const DEBOUNCE: Duration = Duration::from_millis(600);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RepoFsChanged {
     path: String,
-    /// "meta" when .git refs/HEAD/index changed; "worktree" for working-tree files only.
+    /// Always "meta" — we only watch .git. Worktree refreshes are polled/focus-driven.
     scope: String,
 }
 
@@ -42,7 +42,7 @@ impl RepoWatcher {
             }
         }
 
-        let watch_root = path;
+        let repo_root = path;
         thread::spawn(move || {
             use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -60,28 +60,44 @@ impl RepoWatcher {
                 }
             };
 
-            if let Err(err) = watcher.watch(&watch_root, RecursiveMode::Recursive) {
-                log::warn!("repo watcher could not watch {}: {err}", watch_root.display());
+            let Some(git_dir) = resolve_git_dir(&repo_root) else {
+                log::warn!(
+                    "repo watcher: could not resolve .git for {}",
+                    repo_root.display()
+                );
                 return;
+            };
+
+            if let Err(err) = watcher.watch(&git_dir, RecursiveMode::NonRecursive) {
+                log::warn!(
+                    "repo watcher could not watch {}: {err}",
+                    git_dir.display()
+                );
+                return;
+            }
+
+            let refs_dir = git_dir.join("refs");
+            if refs_dir.is_dir() {
+                if let Err(err) = watcher.watch(&refs_dir, RecursiveMode::Recursive) {
+                    log::warn!(
+                        "repo watcher could not watch {}: {err}",
+                        refs_dir.display()
+                    );
+                }
             }
 
             let mut last_emit = Instant::now()
                 .checked_sub(DEBOUNCE)
                 .unwrap_or_else(Instant::now);
-            let mut pending_meta = false;
-            let mut pending_worktree = false;
+            let mut pending = false;
 
             while !stop.load(Ordering::Relaxed) {
                 match rx.recv_timeout(Duration::from_millis(100)) {
                     Ok(Ok(event)) => {
-                        if should_ignore_event(&watch_root, &event.kind, &event.paths) {
+                        if should_ignore_git_event(&git_dir, &event.kind, &event.paths) {
                             continue;
                         }
-                        if event_is_meta(&watch_root, &event.paths) {
-                            pending_meta = true;
-                        } else {
-                            pending_worktree = true;
-                        }
+                        pending = true;
                     }
                     Ok(Err(err)) => {
                         log::debug!("repo watcher event error: {err}");
@@ -90,14 +106,12 @@ impl RepoWatcher {
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
 
-                if (pending_meta || pending_worktree) && last_emit.elapsed() >= DEBOUNCE {
-                    let scope = if pending_meta { "meta" } else { "worktree" };
-                    pending_meta = false;
-                    pending_worktree = false;
+                if pending && last_emit.elapsed() >= DEBOUNCE {
+                    pending = false;
                     last_emit = Instant::now();
                     let payload = RepoFsChanged {
-                        path: watch_root.to_string_lossy().to_string(),
-                        scope: scope.into(),
+                        path: repo_root.to_string_lossy().to_string(),
+                        scope: "meta".into(),
                     };
                     let _ = app.emit("repo-fs-changed", payload);
                 }
@@ -114,7 +128,29 @@ impl RepoWatcher {
     }
 }
 
-fn should_ignore_event(root: &Path, kind: &notify::EventKind, paths: &[PathBuf]) -> bool {
+fn resolve_git_dir(repo_root: &Path) -> Option<PathBuf> {
+    let marker = repo_root.join(".git");
+    if marker.is_dir() {
+        return Some(marker);
+    }
+    if marker.is_file() {
+        let contents = std::fs::read_to_string(&marker).ok()?;
+        for line in contents.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix("gitdir:") {
+                let raw = rest.trim();
+                let path = PathBuf::from(raw);
+                if path.is_absolute() {
+                    return Some(path);
+                }
+                return Some(repo_root.join(path));
+            }
+        }
+    }
+    None
+}
+
+fn should_ignore_git_event(git_dir: &Path, kind: &notify::EventKind, paths: &[PathBuf]) -> bool {
     match kind {
         notify::EventKind::Access(_) | notify::EventKind::Other => return true,
         _ => {}
@@ -122,92 +158,26 @@ fn should_ignore_event(root: &Path, kind: &notify::EventKind, paths: &[PathBuf])
     if paths.is_empty() {
         return false;
     }
-    paths.iter().all(|p| should_ignore_path(root, p))
+    paths.iter().all(|p| should_ignore_git_path(git_dir, p))
 }
 
-fn event_is_meta(root: &Path, paths: &[PathBuf]) -> bool {
-    if paths.is_empty() {
+fn should_ignore_git_path(git_dir: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(git_dir) else {
         return true;
-    }
-    paths.iter().any(|p| is_meta_path(root, p))
-}
-
-fn is_meta_path(root: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(root) else {
-        return false;
     };
     let mut parts = rel.components().filter_map(|c| match c {
         std::path::Component::Normal(s) => Some(s.to_string_lossy().to_lowercase()),
         _ => None,
     });
-    let Some(first) = parts.next() else {
-        return false;
-    };
-    if first != ".git" {
-        return false;
-    }
+
     match parts.next().as_deref() {
-        Some("index") | Some("head") | Some("refs") | Some("commondir") | Some("packed-refs")
-        | Some("merge_head") | Some("rebase_head") | Some("cherry_pick_head")
-        | Some("revert_head") | Some("sequencer") | Some("rebase-merge") | Some("rebase-apply")
-        | Some("auto_merge") => true,
-        _ => false,
+        None => false,
+        Some("index") | Some("head") | Some("packed-refs") | Some("commondir")
+        | Some("fetch_head") | Some("orig_head") | Some("merge_head") | Some("rebase_head")
+        | Some("cherry_pick_head") | Some("revert_head") | Some("sequencer")
+        | Some("rebase-merge") | Some("rebase-apply") | Some("auto_merge") | Some("refs") => false,
+        Some("objects") | Some("lfs") | Some("logs") | Some("hooks") | Some("info")
+        | Some("modules") | Some("worktrees") | Some("tmp") | Some("filter-repo") => true,
+        Some(_) => true,
     }
-}
-
-fn should_ignore_path(root: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(root) else {
-        return false;
-    };
-    let mut parts = rel.components().filter_map(|c| match c {
-        std::path::Component::Normal(s) => Some(s.to_string_lossy().to_lowercase()),
-        _ => None,
-    });
-
-    let Some(first) = parts.next() else {
-        return false;
-    };
-
-    const NOISE_DIRS: &[&str] = &[
-        "node_modules",
-        "target",
-        "dist",
-        "build",
-        ".angular",
-        ".next",
-        ".nuxt",
-        ".turbo",
-        ".cache",
-        "coverage",
-        "__pycache__",
-        ".venv",
-        "venv",
-    ];
-    if NOISE_DIRS.contains(&first.as_str()) {
-        return true;
-    }
-
-    if first == ".git" {
-        let second = parts.next();
-        return match second.as_deref() {
-            Some("objects") | Some("lfs") | Some("logs") | Some("hooks") | Some("info") => true,
-            Some("index")
-            | Some("head")
-            | Some("refs")
-            | Some("commondir")
-            | Some("packed-refs")
-            | Some("merge_head")
-            | Some("rebase_head")
-            | Some("cherry_pick_head")
-            | Some("revert_head")
-            | Some("sequencer")
-            | Some("rebase-merge")
-            | Some("rebase-apply")
-            | Some("auto_merge") => false,
-            Some(_) => true,
-            None => false,
-        };
-    }
-
-    false
 }

@@ -357,6 +357,9 @@ export class RefsPanel {
 
   setExpanded(group: RefsGroup, value: boolean): void {
     this.expanded.update((state) => ({ ...state, [group]: value }));
+    if (group === 'lfs' && value) {
+      void this.store.refreshLfsFiles();
+    }
   }
 
   chevron(group: RefsGroup): string {

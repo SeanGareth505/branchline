@@ -285,13 +285,14 @@ export class AppStore {
   private restoringSession = false;
   private repoFsUnlisten: UnlistenFn | null = null;
   private repoFsRefreshTimer: number | null = null;
-  private repoFsPendingScope: 'worktree' | 'meta' = 'worktree';
   private mutationDepth = 0;
   private refreshQueued = false;
   private refreshInFlight: Promise<void> | null = null;
   private workingTreeRefreshQueued = false;
   private workingTreeRefreshInFlight: Promise<void> | null = null;
   private lastWorkingTreeRefreshAt = 0;
+  private worktreePollTimer: number | null = null;
+  private worktreeFocusBound = false;
   private conflictDraftDirty = false;
 
   readonly selectedCommit = computed(() => {
@@ -610,10 +611,12 @@ export class AppStore {
         window.addEventListener('beforeunload', () => this.flushSession());
         window.addEventListener('pagehide', () => this.flushSession());
         this.bindConflictFocusWatch();
+        this.bindWorktreeFocusWatch();
       }
       void this.bindRepoFsWatcher();
       void this.bindReleaseProgressListener();
       this.restoreReleaseActivity();
+      this.startWorktreePoll();
       try {
         this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
       } catch {
@@ -1232,11 +1235,14 @@ export class AppStore {
   private async runRefreshWorkingTree(path: string): Promise<void> {
     const prev = this.status();
     const status = await this.tauri.getRepoStatus(path);
+    this.lastWorkingTreeRefreshAt = Date.now();
+    if (prev && statusFingerprint(prev) === statusFingerprint(status)) {
+      return;
+    }
     this.status.set(status);
     this.artificial.set(artificialFromStatus(status));
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
-    this.lastWorkingTreeRefreshAt = Date.now();
     void this.syncConflictManager(prev, status);
   }
 
@@ -1276,7 +1282,7 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
       this.tauri.getRepoStatus(path),
-      this.tauri.getCommitLog(path, 300),
+      this.tauri.getCommitLog(path, 200),
       this.tauri.listBranches(path),
       this.tauri.listStashes(path),
       this.tauri.listTags(path),
@@ -1298,8 +1304,8 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
-    void this.refreshHeavyLists(path);
     if (opts?.notify) {
+      void this.refreshHeavyLists(path, { includeLfs: true });
       const changed =
         status.staged.length + status.unstaged.length + status.untracked.length;
       const branch = status.branch || 'HEAD';
@@ -1309,20 +1315,86 @@ export class AppStore {
           : `Refreshed ${branch} · clean`,
         { kind: 'success', durationMs: 2500, category: 'general' },
       );
+    } else {
+      void this.refreshHeavyLists(path, { includeLfs: false });
     }
   }
 
-  private async refreshHeavyLists(path: string): Promise<void> {
+  private async refreshRepoMeta(path: string): Promise<void> {
+    if (this.mutationDepth > 0) {
+      this.refreshQueued = true;
+      return;
+    }
+    if (this.refreshInFlight) {
+      this.refreshQueued = true;
+      await this.refreshInFlight;
+      return;
+    }
+    this.syncingRepo.set(true);
+    this.refreshInFlight = this.runRefreshRepoMeta(path)
+      .catch((err) => this.showError(err))
+      .finally(() => {
+        this.refreshInFlight = null;
+        this.syncingRepo.set(false);
+        if (this.refreshQueued && this.mutationDepth === 0) {
+          this.refreshQueued = false;
+          void this.refreshRepoMeta(path);
+        }
+      });
+    await this.refreshInFlight;
+  }
+
+  private async runRefreshRepoMeta(path: string): Promise<void> {
+    const prev = this.status();
+    const [status, commits, branches] = await Promise.all([
+      this.tauri.getRepoStatus(path),
+      this.tauri.getCommitLog(path, 200),
+      this.tauri.listBranches(path),
+    ]);
+    if (this.currentRepo()?.path !== path) return;
+    this.status.set(status);
+    this.commits.set(commits);
+    this.artificial.set(artificialFromStatus(status));
+    this.branches.set(branches);
+    this.lastWorkingTreeRefreshAt = Date.now();
+    if (!this.selectedSha() && commits[0]) {
+      this.selectedSha.set(commits[0].sha);
+      this.selectedShas.set([commits[0].sha]);
+    }
+    this.updateNextAction(status);
+    this.maybeNotifyStatusChanges(prev, status);
+    void this.syncConflictManager(prev, status);
+  }
+
+  async refreshLfsFiles(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
     try {
+      const lfsFiles = await this.tauri.listLfsFiles(path);
+      if (this.currentRepo()?.path !== path) return;
+      this.lfsFiles.set(lfsFiles);
+    } catch {
+      /* optional */
+    }
+  }
+
+  private async refreshHeavyLists(
+    path: string,
+    opts?: { includeLfs?: boolean },
+  ): Promise<void> {
+    try {
+      const includeLfs = opts?.includeLfs === true;
       const [worktrees, submodules, lfsFiles] = await Promise.all([
         this.tauri.listWorktrees(path),
         this.tauri.listSubmodules(path).catch(() => [] as SubmoduleInfo[]),
-        this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[]),
+        includeLfs
+          ? this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[])
+          : Promise.resolve(this.lfsFiles()),
       ]);
       if (this.currentRepo()?.path !== path) return;
       this.worktrees.set(worktrees);
       this.submodules.set(submodules);
-      this.lfsFiles.set(lfsFiles);
+      if (includeLfs) this.lfsFiles.set(lfsFiles);
     } catch {
       /* heavy lists are best-effort */
     }
@@ -1536,33 +1608,62 @@ export class AppStore {
             this.refreshQueued = true;
             return;
           }
-          const scope = event.payload.scope === 'worktree' ? 'worktree' : 'meta';
-          if (scope === 'meta' || this.repoFsPendingScope !== 'meta') {
-            this.repoFsPendingScope = scope;
-          }
           if (this.repoFsRefreshTimer !== null) {
             window.clearTimeout(this.repoFsRefreshTimer);
           }
-          const delayMs = this.repoFsPendingScope === 'worktree' ? 1100 : 850;
           this.repoFsRefreshTimer = window.setTimeout(() => {
             this.repoFsRefreshTimer = null;
             if (this.mutationDepth > 0) {
               this.refreshQueued = true;
               return;
             }
-            const pending = this.repoFsPendingScope;
-            this.repoFsPendingScope = 'worktree';
-            if (pending === 'worktree') {
-              void this.refreshWorkingTree();
-            } else {
-              void this.refreshRepo();
+            if (this.refreshInFlight || this.workingTreeRefreshInFlight) {
+              this.refreshQueued = true;
+              return;
             }
-          }, delayMs);
+            void this.refreshRepoMeta(current);
+          }, 700);
         },
       );
     } catch {
       /* watch unavailable outside desktop shell */
     }
+  }
+
+  private bindWorktreeFocusWatch(): void {
+    if (this.worktreeFocusBound || typeof document === 'undefined') return;
+    this.worktreeFocusBound = true;
+    const maybeRefresh = (): void => {
+      if (!this.currentRepo()) return;
+      if (this.mutationDepth > 0 || this.refreshInFlight || this.workingTreeRefreshInFlight) {
+        return;
+      }
+      if (Date.now() - this.lastWorkingTreeRefreshAt < 1500) return;
+      void this.refreshWorkingTree();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      maybeRefresh();
+    });
+    window.addEventListener('focus', () => {
+      maybeRefresh();
+    });
+  }
+
+  private startWorktreePoll(): void {
+    if (typeof window === 'undefined') return;
+    if (this.worktreePollTimer !== null) {
+      window.clearInterval(this.worktreePollTimer);
+    }
+    this.worktreePollTimer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (!this.currentRepo()) return;
+      if (this.mutationDepth > 0 || this.refreshInFlight || this.workingTreeRefreshInFlight) {
+        return;
+      }
+      if (Date.now() - this.lastWorkingTreeRefreshAt < 2800) return;
+      void this.refreshWorkingTree();
+    }, 3500);
   }
 
   updateNextAction(status: RepoStatus): void {
@@ -5101,6 +5202,23 @@ function sameRepoPath(a: string, b: string): boolean {
       .replace(/\/+$/, '')
       .toLowerCase();
   return norm(a) === norm(b);
+}
+
+function statusFingerprint(status: RepoStatus): string {
+  const fileKey = (f: { path: string; status: string; originalPath?: string | null }) =>
+    `${f.status}:${f.path}:${f.originalPath ?? ''}`;
+  return [
+    status.branch,
+    status.upstream ?? '',
+    status.ahead,
+    status.behind,
+    status.isDetached ? 1 : 0,
+    status.operation?.kind ?? '',
+    status.staged.map(fileKey).join('|'),
+    status.unstaged.map(fileKey).join('|'),
+    status.untracked.map(fileKey).join('|'),
+    status.conflicted.map(fileKey).join('|'),
+  ].join('\n');
 }
 
 function artificialFromStatus(status: RepoStatus): ArtificialCommit[] {
