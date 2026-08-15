@@ -111,9 +111,7 @@ export class Dashboard {
 
   constructor() {
     effect(() => {
-      for (const repo of this.store.repos()) {
-        void this.store.ensureRepoWebUrl(repo.path);
-      }
+      this.store.prefetchRepoWebUrls(this.store.repos().map((repo) => repo.path));
     });
   }
 

@@ -62,12 +62,15 @@ export class RepoToolbar {
 
   runDefaultPull(): void {
     this.menu.set(null);
-    void this.applyPull(this.store.settings().defaultPullAction);
+    const action = this.store.settings().defaultPullAction;
+    this.store.armRemoteBusy(action === 'fetch' ? 'fetch' : 'pull');
+    void this.applyPull(action);
   }
 
   choosePull(action: DefaultPullAction): void {
     this.menu.set(null);
     void this.store.saveSettings({ defaultPullAction: action });
+    this.store.armRemoteBusy(action === 'fetch' ? 'fetch' : 'pull');
     void this.applyPull(action);
   }
 

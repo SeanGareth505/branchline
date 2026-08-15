@@ -53,9 +53,10 @@ export class ChangelogDialog {
     { id: 'plain', label: 'Plain list', hint: 'Simple bullets' },
   ];
 
-  readonly sortedTags = computed(() =>
-    this.changelog.sortTagsNewestFirst(this.store.tags(), this.store.commits()),
-  );
+  readonly sortedTags = computed(() => {
+    if (!this.store.changelogModalOpen()) return [];
+    return this.changelog.sortTagsNewestFirst(this.store.tags(), this.store.commits());
+  });
 
   readonly fromOptions = computed(() => {
     const tags = this.sortedTags();
@@ -88,6 +89,9 @@ export class ChangelogDialog {
   });
 
   readonly resolvedRange = computed(() => {
+    if (!this.store.changelogModalOpen()) {
+      return { fromSha: null, toSha: null, fromLabel: 'start', toLabel: 'HEAD' };
+    }
     const commits = this.store.commits();
     const tags = this.store.tags();
     const fromId = this.fromRef();
@@ -145,6 +149,9 @@ export class ChangelogDialog {
   }));
 
   readonly result = computed(() => {
+    if (!this.store.changelogModalOpen()) {
+      return { markdown: '', commits: [], fromLabel: '', toLabel: '' };
+    }
     const range = this.resolvedRange();
     return this.changelog.generate(
       this.rangeCommits(),

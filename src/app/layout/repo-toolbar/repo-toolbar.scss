@@ -63,6 +63,11 @@
   cursor: not-allowed;
 }
 
+.tool[aria-busy='true']:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+
 .tool.locked {
   color: var(--text-muted);
 }

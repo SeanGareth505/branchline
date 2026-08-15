@@ -37,6 +37,7 @@ export class CommandPalette {
   }
 
   private readonly actions = computed<PaletteItem[]>(() => {
+    if (!this.store.paletteOpen()) return [];
     const store = this.store;
     const prompts = this.prompts;
     const updates = this.updates;
@@ -588,6 +589,12 @@ export class CommandPalette {
         label: 'Clone repository…',
         group: 'Repositories',
         run: () => store.openCloneDialog(),
+      },
+      {
+        id: 'preview-loader',
+        label: 'Preview loading overlay',
+        group: 'Preferences',
+        run: () => store.previewBusyOverlay('Pulling from remote…'),
       },
       {
         id: 'theme',

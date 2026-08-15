@@ -193,7 +193,7 @@
 
     @if (store.busyMessage(); as message) {
       <div class="boot-overlay" role="status" aria-live="polite">
-        <div class="boot-card bl-glass-dialog">
+        <div class="boot-status">
           <app-spinner size="lg" [label]="message" />
           <p>{{ message }}</p>
         </div>

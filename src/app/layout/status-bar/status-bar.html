@@ -3,7 +3,7 @@
     @if (store.isDummyBackend) {
       <span class="dummy-pill" title="Browser preview — fake Git data only">DUMMY DATA</span>
     }
-    @if (store.releaseActivity(); as activity) {
+    @if (store.visibleReleaseActivity(); as activity) {
       @if (
         store.releaseBusy() ||
         (activity.phase !== 'done' && activity.phase !== 'error') ||
@@ -139,7 +139,7 @@
         type="button"
         class="bl-btn bl-btn-primary"
         (click)="store.runNextAction()"
-        [disabled]="!!store.busyMessage()"
+        [disabled]="!!store.loading() || !!store.remoteBusy() || !!store.actionBusy()"
         [title]="'Suggested next step: ' + store.nextAction()"
       >
         {{ store.nextAction() }}

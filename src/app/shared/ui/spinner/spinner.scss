@@ -6,129 +6,61 @@
 }
 
 .spinner {
-  --ring: 1.6px;
-  --cyan: #3ecfff;
-  --cyan-hi: #7ae0ff;
-  --cyan-node: #b8f0ff;
-  display: grid;
-  place-items: center;
-  position: relative;
-  width: 2.35rem;
-  height: 2.35rem;
+  --spin-size: 1.75rem;
+  --spin-stroke: 2.25px;
+  display: block;
+  width: var(--spin-size);
+  height: var(--spin-size);
 }
 
 .spinner[data-size='sm'] {
-  --ring: 1.35px;
-  width: 1.25rem;
-  height: 1.25rem;
+  --spin-size: 1rem;
+  --spin-stroke: 1.75px;
 }
 
 .spinner[data-size='lg'] {
-  --ring: 2px;
-  width: 5.25rem;
-  height: 5.25rem;
+  --spin-size: 2.5rem;
+  --spin-stroke: 2.75px;
 }
 
-.halo,
-.ring,
-.track,
-.arc {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.halo {
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--cyan) 28%, transparent) 0%,
-    color-mix(in srgb, var(--cyan) 10%, transparent) 42%,
-    transparent 70%
-  );
-  transform: scale(1.12);
-}
-
-.spinner[data-size='lg'] .halo {
-  animation: bl-halo 2.8s ease-in-out infinite;
+svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  animation: bl-spin 0.75s linear infinite;
 }
 
 .track,
 .arc {
-  border-radius: 50%;
+  fill: none;
+  stroke-width: var(--spin-stroke);
+  stroke-linecap: round;
 }
 
 .track {
-  border: var(--ring) solid color-mix(in srgb, var(--cyan) 16%, transparent);
+  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .arc {
-  background: conic-gradient(
-    from 0deg,
-    transparent 0 58%,
-    color-mix(in srgb, var(--cyan) 18%, transparent) 72%,
-    var(--cyan-hi) 88%,
-    var(--cyan-node) 100%
-  );
-  -webkit-mask: radial-gradient(
-    farthest-side,
-    transparent calc(100% - var(--ring) - 0.45px),
-    #000 calc(100% - var(--ring))
-  );
-  mask: radial-gradient(
-    farthest-side,
-    transparent calc(100% - var(--ring) - 0.45px),
-    #000 calc(100% - var(--ring))
-  );
-  animation: bl-orbit 1.15s linear infinite;
+  stroke: var(--accent);
+  stroke-dasharray: 28 49;
 }
 
-.spinner[data-size='lg'] .arc {
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--cyan) 40%, transparent));
-}
-
-.logo {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  line-height: 0;
-}
-
-.logo app-brand-mark {
-  display: block;
-}
-
-@keyframes bl-orbit {
+@keyframes bl-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-@keyframes bl-halo {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(1.08);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.18);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .arc,
-  .halo {
+  svg {
     animation: none;
   }
 
   .arc {
+    stroke-dasharray: 38 39;
     transform: rotate(-80deg);
-  }
-
-  .halo {
-    opacity: 0.7;
-    transform: scale(1.1);
+    transform-origin: 16px 16px;
   }
 }

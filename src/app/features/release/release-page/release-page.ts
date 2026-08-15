@@ -90,11 +90,14 @@ export class ReleasePage {
     return !!this.productName().trim() && !!this.branch().trim() && this.selectedFileList().length > 0;
   });
 
+  private loadGen = 0;
+
   constructor() {
     effect(() => {
       const view = this.store.view();
       const path = this.store.currentRepo()?.path;
       if (view !== 'release') {
+        this.loadGen += 1;
         return;
       }
       if (!path) {
@@ -115,12 +118,15 @@ export class ReleasePage {
   }
 
   private async load(path: string): Promise<void> {
+    const gen = ++this.loadGen;
     this.loading.set(true);
     try {
       const status = await this.tauri.getReleaseStatus(path);
+      if (gen !== this.loadGen || this.store.view() !== 'release') return;
       this.status.set(status);
       if (!status.available) {
         const hints = await this.tauri.getReleaseSetupHints(path);
+        if (gen !== this.loadGen || this.store.view() !== 'release') return;
         this.setupHints.set(hints);
         this.productName.set(hints.productName);
         this.branch.set(hints.branch);
@@ -135,10 +141,11 @@ export class ReleasePage {
         void this.store.attachLatestRelease();
       }
     } catch {
+      if (gen !== this.loadGen) return;
       this.status.set(null);
       this.setupHints.set(null);
     } finally {
-      this.loading.set(false);
+      if (gen === this.loadGen) this.loading.set(false);
     }
   }
 

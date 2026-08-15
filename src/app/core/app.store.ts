@@ -345,22 +345,21 @@ export class AppStore {
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly actionBusy = signal<string | null>(null);
+  readonly busyPreview = signal<string | null>(null);
+  private busyPreviewTimer: number | null = null;
   readonly busyMessage = computed(() => {
     if (this.loading()) return this.loadingLabel();
-    switch (this.remoteBusy()) {
-      case 'fetch':
-        return 'Fetching from remote…';
-      case 'pull':
-        return 'Pulling from remote…';
-      case 'push':
-        return 'Pushing to remote…';
-      default:
-        return this.actionBusy();
-    }
+    return this.busyPreview();
   });
   readonly releaseBusy = signal(false);
   readonly releaseAttaching = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
+  readonly visibleReleaseActivity = computed(() => {
+    const activity = this.releaseActivity();
+    const path = this.currentRepo()?.path;
+    if (!activity || !path || !sameRepoPath(activity.path, path)) return null;
+    return activity;
+  });
   readonly releaseNotesDraft = signal<ReleaseNotesDraft | null>(null);
   readonly releaseNotesBusy = signal(false);
   readonly releaseNotesGenerating = signal(false);
@@ -378,6 +377,7 @@ export class AppStore {
   });
   readonly releaseNotesSynced = computed(() => !!this.releaseActivity()?.notesSynced);
   private releaseAttachInFlight: Promise<boolean> | null = null;
+  private releaseAttachPath: string | null = null;
   readonly releasingLocally = computed(() => {
     if (!this.releaseBusy()) return false;
     const phase = this.releaseActivity()?.phase;
@@ -424,6 +424,9 @@ export class AppStore {
   readonly remoteTroubleshootError = signal('');
   readonly githubGitStatus = signal<GithubGitStatus | null>(null);
   readonly githubGitBusy = signal(false);
+  private githubGitStatusAt = 0;
+  private static readonly GITHUB_GIT_STATUS_TTL_MS = 30_000;
+  private readonly repoWebUrlInflight = new Map<string, Promise<string | null>>();
   readonly pendingRefsReveal = signal<string | null>(null);
   readonly createBranchStartPoint = signal<string | null>(null);
   readonly createBranchSuggestedName = signal('');
@@ -591,6 +594,9 @@ export class AppStore {
       return;
     }
     if (this.view() === view) return;
+    if (this.view() === 'release' && view !== 'release') {
+      this.pauseBackgroundReleaseWork();
+    }
     this.view.set(view);
     if (view !== 'onboarding' && !this.restoringSession) {
       this.patchSession({ view });
@@ -600,6 +606,7 @@ export class AppStore {
   openSettings(section: SettingsSection = 'repos', connectionId?: string): void {
     this.settingsSection.set(normalizeSettingsSection(section));
     this.settingsFocusConnectionId.set(connectionId ?? null);
+    if (this.view() === 'release') this.pauseBackgroundReleaseWork();
     this.view.set('settings');
     if (!this.restoringSession) {
       this.patchSession({ view: 'settings' });
@@ -1295,10 +1302,23 @@ export class AppStore {
       return;
     }
 
+    if (this.view() !== 'onboarding') {
+      if (restoreView) this.setView('browse');
+      else {
+        if (this.view() === 'release') this.pauseBackgroundReleaseWork();
+        this.view.set('browse');
+      }
+    }
+
     const alreadyOpen = this.openRepos().some((r) => sameRepoPath(r.path, normalized));
     const switching =
       alreadyOpen && !!this.currentRepo() && !sameRepoPath(this.currentRepo()!.path, normalized);
     const gen = ++this.repoLoadGen;
+
+    const activity = this.releaseActivity();
+    if (activity && !sameRepoPath(activity.path, normalized)) {
+      this.pauseBackgroundReleaseWork();
+    }
 
     this.snapshotCurrentRepo();
     this.graphReveal.set(null);
@@ -1336,11 +1356,6 @@ export class AppStore {
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistRepoCache(normalized);
       this.persistOpenRepos();
-      if (restoreView) {
-        this.setView('browse');
-      } else {
-        this.view.set('browse');
-      }
       if (!switching && (this.isDummyBackend || this.isDummyRepoPath(normalized))) {
         this.showWarning(
           'DUMMY DATA — browser preview. Open a real repo in the desktop app for live Git.',
@@ -1575,6 +1590,32 @@ export class AppStore {
   async ensureRepoWebUrl(path: string): Promise<string | null> {
     const cached = this.repoWebUrls()[path];
     if (cached !== undefined) return cached;
+    const inflight = this.repoWebUrlInflight.get(path);
+    if (inflight) return inflight;
+    const run = this.loadRepoWebUrl(path).finally(() => {
+      this.repoWebUrlInflight.delete(path);
+    });
+    this.repoWebUrlInflight.set(path, run);
+    return run;
+  }
+
+  prefetchRepoWebUrls(paths: string[]): void {
+    const missing = paths.filter(
+      (path) => this.repoWebUrls()[path] === undefined && !this.repoWebUrlInflight.has(path),
+    );
+    if (!missing.length) return;
+    const limit = 3;
+    let index = 0;
+    const worker = async (): Promise<void> => {
+      while (index < missing.length) {
+        const path = missing[index++];
+        await this.ensureRepoWebUrl(path);
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(limit, missing.length) }, () => worker()));
+  }
+
+  private async loadRepoWebUrl(path: string): Promise<string | null> {
     try {
       const remotes = await this.tauri.listRemotes(path);
       const origin = remotes.find((r) => r.name === 'origin') ?? remotes[0];
@@ -1955,7 +1996,6 @@ export class AppStore {
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
-    void this.applyGithubRepoAccount({ silent: true });
     this.lastWorkingTreeRefreshAt = Date.now();
     void this.refreshIdentity();
     if (!this.selectedSha() && commits[0]) {
@@ -2098,6 +2138,34 @@ export class AppStore {
     return true;
   }
 
+  armRemoteBusy(kind: 'fetch' | 'pull' | 'push'): boolean {
+    if (this.remoteBusy() || this.actionBusy() || this.loading()) return false;
+    this.remoteBusy.set(kind);
+    return true;
+  }
+
+  private async beginRemoteBusy(kind: 'fetch' | 'pull' | 'push'): Promise<boolean> {
+    if (this.actionBusy() || this.loading()) return false;
+    const current = this.remoteBusy();
+    if (current && current !== kind) return false;
+    this.remoteBusy.set(kind);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return this.remoteBusy() === kind;
+  }
+
+  previewBusyOverlay(message = 'Working…', durationMs = 2800): void {
+    if (this.loading() || this.remoteBusy() || this.actionBusy()) return;
+    if (this.busyPreviewTimer !== null) {
+      window.clearTimeout(this.busyPreviewTimer);
+      this.busyPreviewTimer = null;
+    }
+    this.busyPreview.set(message);
+    this.busyPreviewTimer = window.setTimeout(() => {
+      this.busyPreviewTimer = null;
+      this.busyPreview.set(null);
+    }, durationMs);
+  }
+
   private async bindReleaseProgressListener(): Promise<void> {
     if (this.isDummyBackend) return;
     if (this.releaseProgressUnlisten) {
@@ -2199,22 +2267,6 @@ export class AppStore {
       if (!activity?.path || !activity.tag) return;
       this.lastReleaseFingerprint = releaseActivityFingerprint(activity);
       this.releaseActivity.set(activity);
-      if (activity.releaseUrl && !(activity.notes ?? '').trim()) {
-        void this.loadGitHubReleaseNotes();
-      }
-      const resumeDeploy =
-        activity.willPush &&
-        !activity.needsPush &&
-        !activity.needsRefresh &&
-        (activity.phase === 'deploying' ||
-          activity.phase === 'ci' ||
-          activity.phase === 'publishing' ||
-          (activity.phase === 'pushing' && activity.message.includes('background')));
-      if (resumeDeploy && activity.phase !== 'done' && activity.phase !== 'error') {
-        this.releaseBusy.set(true);
-        this.setView('release');
-        void this.watchReleaseDeploy(activity.path, activity.tag);
-      }
     } catch {
       localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
     }
@@ -2410,11 +2462,12 @@ export class AppStore {
     }
   }
 
+  private pauseBackgroundReleaseWork(): void {
+    this.stopReleaseDeployPoll();
+  }
+
   openReleaseTab(): void {
-    if (this.currentRepo()) {
-      this.setView('release');
-      void this.attachLatestRelease();
-    }
+    if (this.currentRepo()) this.setView('release');
   }
 
   private notifyReleaseOutcome(
@@ -2473,10 +2526,17 @@ export class AppStore {
   }
 
   async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
-    if (this.releaseAttachInFlight) return this.releaseAttachInFlight;
+    if (this.view() !== 'release' && options?.force !== true) return false;
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    if (this.releaseAttachInFlight && this.releaseAttachPath === path) {
+      return this.releaseAttachInFlight;
+    }
     this.releaseAttaching.set(true);
+    this.releaseAttachPath = path;
     this.releaseAttachInFlight = this.runAttachLatestRelease(options).finally(() => {
       this.releaseAttachInFlight = null;
+      this.releaseAttachPath = null;
       this.releaseAttaching.set(false);
     });
     return this.releaseAttachInFlight;
@@ -2490,6 +2550,7 @@ export class AppStore {
     if (this.releaseBusy() && !force) return false;
     try {
       const status = await this.tauri.getReleaseStatus(path);
+      if (!force && this.view() !== 'release') return false;
       const version = status.currentVersion?.trim();
       const cfg = status.config;
       if (!status.available || !version || !cfg) {
@@ -2505,11 +2566,21 @@ export class AppStore {
         !force &&
         !current.needsRefresh
       ) {
+        if (
+          this.view() === 'release' &&
+          current.willPush &&
+          !current.needsPush &&
+          current.phase !== 'done' &&
+          current.phase !== 'error'
+        ) {
+          void this.watchReleaseDeploy(path, tag);
+        }
         return true;
       }
       if (!force && this.readDismissedReleaseTag() === tag) return false;
 
       const result = await this.tauri.pollReleaseDeploy(path, tag);
+      if (!force && this.view() !== 'release') return false;
       this.seedAttachedReleaseActivity({
         path,
         productName: cfg.productName,
@@ -2526,6 +2597,7 @@ export class AppStore {
         this.releaseBusy.set(false);
         return true;
       }
+      if (this.view() !== 'release' && !force) return true;
       this.releaseBusy.set(true);
       void this.watchReleaseDeploy(path, tag);
       return true;
@@ -3971,8 +4043,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path || !branch.trim()) return false;
     const remote = this.pushRemoteName();
-    if (this.remoteBusy()) return false;
-    this.remoteBusy.set('push');
+    if (!(await this.beginRemoteBusy('push'))) return false;
     try {
       const result = await this.tauri.push(path, {
         setUpstream: true,
@@ -4059,9 +4130,11 @@ export class AppStore {
 
   async fetchRemote(remote?: string): Promise<void> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
-    if (this.remoteBusy()) return;
-    this.remoteBusy.set('fetch');
+    if (!path) {
+      if (this.remoteBusy() === 'fetch') this.remoteBusy.set(null);
+      return;
+    }
+    if (!(await this.beginRemoteBusy('fetch'))) return;
     try {
       const result = await this.runRemoteWithAccountRetry(() =>
         this.withRepoMutation(() =>
@@ -4085,8 +4158,7 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     const remote = name.trim();
     if (!path || !remote) return;
-    if (this.remoteBusy()) return;
-    this.remoteBusy.set('fetch');
+    if (!(await this.beginRemoteBusy('fetch'))) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.pruneRemote(path, remote));
       await this.refreshRepo();
@@ -4110,8 +4182,7 @@ export class AppStore {
       this.showWarning('No remotes configured');
       return;
     }
-    if (this.remoteBusy()) return;
-    this.remoteBusy.set('fetch');
+    if (!(await this.beginRemoteBusy('fetch'))) return;
     try {
       let lastMessage = '';
       for (const remote of remotes) {
@@ -4133,9 +4204,11 @@ export class AppStore {
 
   async pullRemote(rebase = false): Promise<void> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
-    if (this.remoteBusy()) return;
-    this.remoteBusy.set('pull');
+    if (!path) {
+      if (this.remoteBusy() === 'pull') this.remoteBusy.set(null);
+      return;
+    }
+    if (!(await this.beginRemoteBusy('pull'))) return;
     try {
       const remote = this.pushRemoteName();
       const result = await this.runRemoteWithAccountRetry(() =>
@@ -4205,9 +4278,7 @@ export class AppStore {
 
     const pushOpts = await this.preparePushOptions(status);
     if (!pushOpts) return false;
-    if (this.remoteBusy()) return false;
-
-    this.remoteBusy.set('push');
+    if (!(await this.beginRemoteBusy('push'))) return false;
     try {
       if (opts?.runChecks !== false && !opts?.skipHooks) {
         const ok = await this.runRepoChecks(['pre-push'], { silent: true });
@@ -4471,9 +4542,17 @@ export class AppStore {
     this.remoteTroubleshootError.set('');
   }
 
-  async refreshGithubGitStatus(): Promise<void> {
+  async refreshGithubGitStatus(opts?: { force?: boolean }): Promise<void> {
+    if (
+      !opts?.force &&
+      this.githubGitStatus() &&
+      Date.now() - this.githubGitStatusAt < AppStore.GITHUB_GIT_STATUS_TTL_MS
+    ) {
+      return;
+    }
     try {
       this.githubGitStatus.set(await this.tauri.githubGitStatus());
+      this.githubGitStatusAt = Date.now();
     } catch {
       this.githubGitStatus.set(null);
     }
@@ -4508,7 +4587,7 @@ export class AppStore {
     this.githubGitBusy.set(true);
     try {
       const result = await this.tauri.switchGithubCliUser(login);
-      await this.refreshGithubGitStatus();
+      await this.refreshGithubGitStatus({ force: true });
       if (result.ok) {
         this.rememberGithubRepoAccount({ login });
         if (!opts?.silent) this.showSuccess(result.message);
@@ -5507,8 +5586,7 @@ export class AppStore {
 
     const pushOpts = await this.preparePushOptions(this.status(), branch);
     if (!pushOpts) return false;
-    if (this.remoteBusy()) return false;
-    this.remoteBusy.set('push');
+    if (!(await this.beginRemoteBusy('push'))) return false;
     try {
       const result = await this.tauri.push(path, {
         ...pushOpts,
@@ -6649,11 +6727,16 @@ export class AppStore {
 
   private async watchReleaseDeploy(path: string, tag: string): Promise<void> {
     this.stopReleaseDeployPoll();
+    if (this.view() !== 'release') return;
     const activity = this.releaseActivity();
     if (!activity) return;
     let attempts = 0;
     let errors = 0;
     const poll = async (): Promise<void> => {
+      if (this.view() !== 'release') {
+        this.stopReleaseDeployPoll();
+        return;
+      }
       attempts += 1;
       const current = this.releaseActivity();
       if (!current || !sameRepoPath(current.path, path) || current.tag !== tag) {
@@ -6662,6 +6745,10 @@ export class AppStore {
       }
       try {
         const result = await this.tauri.pollReleaseDeploy(path, tag);
+        if (this.view() !== 'release') {
+          this.stopReleaseDeployPoll();
+          return;
+        }
         errors = 0;
         const phase = normalizeReleasePhase(result.phase);
         const deployExtras = {
@@ -6767,6 +6854,10 @@ export class AppStore {
           return;
         }
       }
+      if (this.view() !== 'release') {
+        this.stopReleaseDeployPoll();
+        return;
+      }
       if (attempts >= 720) {
         this.pauseReleaseTracking(
           path,
@@ -6776,14 +6867,7 @@ export class AppStore {
         );
         return;
       }
-      const delay =
-        this.view() === 'release'
-          ? attempts < 24
-            ? 5000
-            : 8000
-          : attempts < 24
-            ? 12000
-            : 20000;
+      const delay = attempts < 24 ? 5000 : 8000;
       this.releaseDeployPollTimer = window.setTimeout(() => {
         void poll();
       }, delay);

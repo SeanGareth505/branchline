@@ -63,9 +63,8 @@ export class ProjectSwitcher {
 
   constructor() {
     effect(() => {
-      for (const repo of this.store.repos()) {
-        void this.store.ensureRepoWebUrl(repo.path);
-      }
+      if (!this.menuOpen()) return;
+      this.store.prefetchRepoWebUrls(this.store.repos().map((repo) => repo.path));
     });
   }
 
