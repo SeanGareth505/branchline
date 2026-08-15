@@ -122,6 +122,8 @@ pub struct AppSettings {
     pub notify_pr_activity: bool,
     #[serde(default = "default_true")]
     pub notify_pr_ci: bool,
+    #[serde(default = "default_true")]
+    pub notify_release: bool,
     #[serde(default)]
     pub hide_untracked: bool,
     #[serde(default = "default_density")]
@@ -381,6 +383,7 @@ impl Default for AppSettings {
             notify_app_updates: true,
             notify_pr_activity: true,
             notify_pr_ci: true,
+            notify_release: true,
             hide_untracked: false,
             ui_density: default_density(),
             pr_templates: Vec::new(),

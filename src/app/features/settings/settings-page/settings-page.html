@@ -716,6 +716,22 @@
                 </label>
               </div>
             </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Releases</strong>
+                <span>Toasts and desktop alerts when a release succeeds, fails, or pauses</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyRelease"
+                    (ngModelChange)="store.saveSettings({ notifyRelease: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
           </article>
         }
 

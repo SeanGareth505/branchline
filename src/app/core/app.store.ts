@@ -368,6 +368,7 @@ export class AppStore {
   private releaseDeployPollTimer: number | null = null;
   private persistReleaseTimer: number | null = null;
   private lastReleaseFingerprint = '';
+  private lastReleaseNoticeKey = '';
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -2194,6 +2195,7 @@ export class AppStore {
       this.persistReleaseTimer = null;
     }
     this.lastReleaseFingerprint = '';
+    this.lastReleaseNoticeKey = '';
     this.releaseActivity.set(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
@@ -2219,6 +2221,61 @@ export class AppStore {
       this.setView('release');
       void this.attachLatestRelease();
     }
+  }
+
+  private notifyReleaseOutcome(
+    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed',
+    input?: { productName?: string; version?: string; tag?: string; message?: string },
+  ): void {
+    const activity = this.releaseActivity();
+    const product = (input?.productName ?? activity?.productName ?? 'Release').trim();
+    const version = (input?.version ?? activity?.nextVersion ?? '').trim();
+    const tag = (input?.tag ?? activity?.tag ?? '').trim();
+    const label = version ? `${product} ${version}` : tag || product;
+    const message =
+      input?.message?.trim() ||
+      (kind === 'success'
+        ? `${label} is live`
+        : kind === 'tagged'
+          ? `${label} tagged locally`
+          : kind === 'started'
+            ? `${label} is deploying`
+            : kind === 'paused'
+              ? `Tracking paused for ${label}`
+              : kind === 'job-failed'
+                ? `${label} has a failed job`
+                : `${label} failed`);
+    const key = `${tag}:${kind}`;
+    if (this.lastReleaseNoticeKey === key) return;
+    this.lastReleaseNoticeKey = key;
+    const title =
+      kind === 'success'
+        ? `${label} is live`
+        : kind === 'tagged'
+          ? `${label} tagged`
+          : kind === 'started'
+            ? `${label} is deploying`
+            : kind === 'paused'
+              ? `Tracking paused for ${label}`
+              : kind === 'job-failed'
+                ? `${label} job failed`
+                : `${label} failed`;
+    const toastKind: ToastKind =
+      kind === 'success' || kind === 'tagged'
+        ? 'success'
+        : kind === 'started'
+          ? 'info'
+          : kind === 'paused'
+            ? 'warning'
+            : 'error';
+    this.showToast(message, {
+      kind: toastKind,
+      category: 'release',
+      durationMs: toastKind === 'error' ? 14000 : 9000,
+      undo: () => this.setView('release'),
+      actionLabel: 'View',
+    });
+    void this.sendDesktopIfEnabled('release', title, message);
   }
 
   async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
@@ -2366,6 +2423,7 @@ export class AppStore {
       needsRefresh: false,
     });
     this.releaseBusy.set(true);
+    this.lastReleaseNoticeKey = '';
     this.openReleaseTab();
   }
 
