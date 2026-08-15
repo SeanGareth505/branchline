@@ -151,10 +151,10 @@ export class ReleasePanel {
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
   readonly jobFilter = signal<JobFilter>('in_progress');
-  readonly timelineView = signal<'steps' | 'actions'>('steps');
+  readonly stepsOpen = signal(true);
   private readonly jobOpen = signal<Record<string, boolean>>({});
-  private readonly nestedActionsOverride = signal<boolean | null>(null);
   private lastActivityStart = 0;
+  private stepsCollapsedForStart = 0;
 
   readonly jobCounts = computed(() => {
     let inProgress = 0;
@@ -279,26 +279,15 @@ export class ReleasePanel {
     return false;
   });
 
-  readonly actionsHostStep = computed(() => {
+  readonly stepsSummary = computed(() => {
     const steps = this.activity()?.steps ?? [];
-    const gha = steps.filter((step) => isActionsPhase(step.phase));
-    if (!gha.length) return null;
-    return (
-      gha.find((step) => step.status === 'active' || step.status === 'error') ??
-      [...gha].reverse().find((step) => step.status === 'done') ??
-      gha[0]
-    );
-  });
-
-  readonly nestedActionsOpen = computed(() => {
-    if (this.nestedActionsOverride() !== null) return this.nestedActionsOverride()!;
-    const host = this.actionsHostStep();
-    if (!host) return false;
-    return (
-      host.status === 'active' ||
-      host.status === 'error' ||
-      this.deployJobs().length > 0
-    );
+    if (!steps.length) return '';
+    const done = steps.filter((step) => step.status === 'done').length;
+    const error = steps.filter((step) => step.status === 'error').length;
+    if (error) return `${done}/${steps.length} · ${error} failed`;
+    if (done === steps.length) return `${done}/${steps.length} done`;
+    const active = steps.find((step) => step.status === 'active');
+    return active ? `${done}/${steps.length} · ${active.label}` : `${done}/${steps.length}`;
   });
 
   readonly jobSummary = computed(() => {
@@ -416,10 +405,21 @@ export class ReleasePanel {
       void this.updates.checkForUpdates({ silent: true });
     });
     effect(() => {
-      const started = this.activity()?.startedAt ?? 0;
+      const activity = this.activity();
+      const started = activity?.startedAt ?? 0;
       if (started === this.lastActivityStart) return;
       this.lastActivityStart = started;
-      this.jobFilter.set('in_progress');
+      this.jobFilter.set(activityBucket(activity));
+      this.stepsOpen.set(true);
+    });
+    effect(() => {
+      const activity = this.activity();
+      if (!activity) return;
+      const finished =
+        activity.phase === 'error' || (activity.phase === 'done' && !activity.needsRefresh);
+      if (!finished || this.stepsCollapsedForStart === activity.startedAt) return;
+      this.stepsCollapsedForStart = activity.startedAt;
+      this.stepsOpen.set(false);
     });
   }
 
@@ -471,17 +471,8 @@ export class ReleasePanel {
     return step.id;
   }
 
-  setTimelineView(view: 'steps' | 'actions'): void {
-    this.timelineView.set(view);
-  }
-
-  nestsActions(step: ReleaseActivityStep): boolean {
-    return this.actionsHostStep()?.id === step.id;
-  }
-
-  toggleNestedActions(event?: Event): void {
-    event?.stopPropagation();
-    this.nestedActionsOverride.set(!this.nestedActionsOpen());
+  toggleSteps(): void {
+    this.stepsOpen.update((open) => !open);
   }
 
   setJobFilter(filter: JobFilter): void {
@@ -559,10 +550,6 @@ function toStepView(step: ReleaseDeployJobStep, index: number, now: number): Job
     duration: durationOf(step, now),
     active: chip === 'pending',
   };
-}
-
-function isActionsPhase(phase: ReleasePhase): boolean {
-  return phase === 'deploying' || phase === 'ci' || phase === 'publishing';
 }
 
 function phaseLabel(phase: ReleasePhase): string {

@@ -66,6 +66,7 @@
     </div>
 
     @if (showReleaseDetails()) {
+      <div class="details">
       <div class="summary">
         <p class="headline">{{ headline() }}</p>
         @if (finalStatus(); as statusLine) {
@@ -104,82 +105,64 @@
         }
       </div>
 
-      <section class="steps-section">
-        <div class="steps-head">
-          <div class="steps-tabs" role="tablist" aria-label="Release progress">
-            <button
-              type="button"
-              role="tab"
-              [class.on]="timelineView() === 'steps'"
-              [attr.aria-selected]="timelineView() === 'steps'"
-              (click)="setTimelineView('steps')"
-            >
-              Local steps
-            </button>
-            @if (showDeploySection()) {
-              <button
-                type="button"
-                role="tab"
-                [class.on]="timelineView() === 'actions'"
-                [attr.aria-selected]="timelineView() === 'actions'"
-                (click)="setTimelineView('actions')"
-              >
-                GitHub Actions
-              </button>
+      <div class="progress-stack">
+        <section
+          class="steps-section"
+          [class.open]="stepsOpen()"
+          [class.has-jobs]="showDeploySection()"
+        >
+          <button
+            type="button"
+            class="steps-toggle"
+            (click)="toggleSteps()"
+            [attr.aria-expanded]="stepsOpen()"
+          >
+            <ng-icon
+              class="deploy-chev"
+              [name]="stepsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
+              size="13"
+            />
+            <span>Local steps</span>
+            @if (stepsSummary(); as summary) {
+              <span class="job-summary">{{ summary }}</span>
             }
-          </div>
-          @if (jobSummary(); as summary) {
-            <span class="job-summary">{{ summary }}</span>
+          </button>
+          @if (stepsOpen()) {
+            <ol class="steps">
+              @for (step of activity.steps; track trackStep($index, step)) {
+                <li [class]="step.status">
+                  <div class="step-main">
+                    <span class="marker" aria-hidden="true">
+                      @if (step.status === 'done') {
+                        <ng-icon name="lucideCheck" size="10" />
+                      } @else if (step.status === 'error') {
+                        <ng-icon name="lucideX" size="10" />
+                      }
+                    </span>
+                    <div class="step-body">
+                      <span class="step-label">{{ step.label }}</span>
+                      <span class="step-message">{{ step.message }}</span>
+                    </div>
+                  </div>
+                </li>
+              }
+            </ol>
           }
-          @if (showDeploySection()) {
-            <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
-          }
-        </div>
+        </section>
 
-        @if (timelineView() === 'actions' && showDeploySection()) {
+        @if (showDeploySection()) {
           <div class="deploy-section nested">
+            <div class="deploy-head">
+              <span class="deploy-title">GitHub Actions</span>
+              @if (jobSummary(); as summary) {
+                <span class="job-summary">{{ summary }}</span>
+              }
+              <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
+            </div>
             <ng-container *ngTemplateOutlet="actionsJobs" />
           </div>
-        } @else {
-          <ol class="steps">
-            @for (step of activity.steps; track trackStep($index, step)) {
-              <li [class]="step.status" [class.nests]="nestsActions(step) && nestedActionsOpen()">
-                <button
-                  type="button"
-                  class="step-main"
-                  [class.clickable]="nestsActions(step)"
-                  [attr.aria-expanded]="nestsActions(step) ? nestedActionsOpen() : null"
-                  (click)="nestsActions(step) && toggleNestedActions($event)"
-                >
-                  <span class="marker" aria-hidden="true">
-                    @if (step.status === 'done') {
-                      <ng-icon name="lucideCheck" size="10" />
-                    } @else if (step.status === 'error') {
-                      <ng-icon name="lucideX" size="10" />
-                    }
-                  </span>
-                  <div class="step-body">
-                    <span class="step-label">{{ step.label }}</span>
-                    <span class="step-message">{{ step.message }}</span>
-                  </div>
-                  @if (nestsActions(step)) {
-                    <ng-icon
-                      class="deploy-chev"
-                      [name]="nestedActionsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
-                      size="13"
-                    />
-                  }
-                </button>
-                @if (nestsActions(step) && nestedActionsOpen()) {
-                  <div class="nested-actions">
-                    <ng-container *ngTemplateOutlet="actionsJobs" />
-                  </div>
-                }
-              </li>
-            }
-          </ol>
         }
-      </section>
+      </div>
 
       <div class="actions">
         @if (showPushFallback()) {
@@ -215,6 +198,7 @@
             </button>
           }
         }
+      </div>
       </div>
     } @else if (jobViews().length) {
       <div class="deploy-section nested">
