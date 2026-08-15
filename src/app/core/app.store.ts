@@ -7535,7 +7535,7 @@ function normalizeRevisionGridColumns(raw: unknown): RevisionGridColumns {
     return n > 0 ? n : undefined;
   };
   return {
-    graph: optional(o['graph'], 48, 800),
+    graph: optional(o['graph'], 28, 800),
     message: optional(o['message'], 120, 2000),
     author: clamp(o['author'], 120, 56, 600),
     date: clamp(o['date'], 128, 64, 400),

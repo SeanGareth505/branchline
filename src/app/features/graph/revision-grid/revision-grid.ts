@@ -67,7 +67,7 @@ type GridColId = 'graph' | 'message' | 'author' | 'date' | 'sha';
 const GRID_COL_IDS: GridColId[] = ['graph', 'message', 'author', 'date', 'sha'];
 
 const COL_MIN: Record<GridColId, number> = {
-  graph: 48,
+  graph: 28,
   message: 120,
   author: 56,
   date: 64,
@@ -82,9 +82,9 @@ const COL_MAX: Record<GridColId, number> = {
   sha: 280,
 };
 
-function clampColWidth(col: GridColId, width: number, graphMin: number): number {
-  const min = col === 'graph' ? Math.max(COL_MIN.graph, graphMin) : COL_MIN[col];
-  const max = Math.max(min, COL_MAX[col]);
+function clampColWidth(col: GridColId, width: number, graphFit: number): number {
+  const min = COL_MIN[col];
+  const max = col === 'graph' ? Math.max(COL_MAX.graph, graphFit) : COL_MAX[col];
   if (!Number.isFinite(width)) return min;
   return Math.round(Math.min(max, Math.max(min, width)));
 }
@@ -209,7 +209,7 @@ export class RevisionGrid {
 
   readonly columns = computed(() => {
     const w = this.store.revisionGridColumns();
-    const graph = this.graphWidth();
+    const graph = this.displayGraphWidth();
     if (w.message != null) {
       return `${graph}px ${w.message}px ${w.author}px ${w.date}px ${w.sha}px minmax(0, 1fr)`;
     }
@@ -218,8 +218,13 @@ export class RevisionGrid {
 
   readonly gridMinWidth = computed(() => {
     const w = this.store.revisionGridColumns();
-    const graph = this.graphWidth();
-    return graph + (w.message ?? 200) + w.author + w.date + w.sha;
+    return this.displayGraphWidth() + (w.message ?? 200) + w.author + w.date + w.sha;
+  });
+
+  readonly displayGraphWidth = computed(() => {
+    const stored = this.store.revisionGridColumns().graph;
+    if (stored == null) return this.graphWidth();
+    return clampColWidth('graph', stored, this.graphWidth());
   });
 
   readonly staticRows = computed((): StaticRowView[] => {
@@ -349,6 +354,11 @@ export class RevisionGrid {
 
   onResizeStart(col: GridColId, event: PointerEvent): void {
     if (event.button !== 0) return;
+    if (event.detail > 1) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     const header = this.headerRef()?.nativeElement;
@@ -380,6 +390,15 @@ export class RevisionGrid {
 
   onResizeEnd(): void {
     this.endResize(true);
+  }
+
+  onFitColumn(col: GridColId, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.endResize(false);
+    if (col !== 'graph') return;
+    const current = this.store.revisionGridColumns();
+    this.store.setRevisionGridColumns({ ...current, graph: undefined });
   }
 
   private endResize(persist = false): void {

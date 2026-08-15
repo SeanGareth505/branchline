@@ -71,7 +71,11 @@
     [class.is-resizing]="!!resizingCol()"
   >
     @for (col of headerCols; track col.id) {
-      <div [class]="col.className" [class.is-resizing]="resizingCol() === col.id">
+      <div
+        [class]="col.className"
+        [class.is-resizing]="resizingCol() === col.id"
+        (dblclick)="col.id === 'graph' ? onFitColumn(col.id, $event) : null"
+      >
         {{ col.label }}
         <span
           class="col-resizer"
@@ -79,11 +83,17 @@
           role="separator"
           aria-orientation="vertical"
           [attr.aria-label]="'Resize ' + (col.label || 'graph') + ' column'"
+          [title]="
+            col.id === 'graph'
+              ? 'Drag to resize. Double-click to fit the graph.'
+              : 'Resize ' + col.label + ' column'
+          "
           (pointerdown)="onResizeStart(col.id, $event)"
           (pointermove)="onResizeMove($event)"
           (pointerup)="onResizeEnd()"
           (pointercancel)="onResizeEnd()"
           (lostpointercapture)="onResizeEnd()"
+          (dblclick)="onFitColumn(col.id, $event)"
         ></span>
       </div>
     }
