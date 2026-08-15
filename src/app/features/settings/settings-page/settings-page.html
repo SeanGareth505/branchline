@@ -1,16 +1,22 @@
 <section class="page" [class.repos-mode]="section() === 'repos'">
-  <header class="hero">
-    <h1>Settings</h1>
-    <p>{{ sectionMeta().hint }}</p>
-  </header>
+  @if (section() !== 'repos') {
+    <header class="hero">
+      <h1>{{ sectionMeta().label }}</h1>
+      <p>{{ sectionMeta().hint }}</p>
+    </header>
+  }
 
   <div class="layout" [class.repos-layout]="section() === 'repos'">
     <nav class="nav bl-panel" aria-label="Settings sections">
       @for (item of sections; track item.id) {
+        @if (item.id === 'appearance' || item.id === 'about') {
+          <div class="nav-gap" aria-hidden="true"></div>
+        }
         <button
           type="button"
           class="nav-item"
           [class.active]="section() === item.id"
+          [class.tail]="item.id === 'about'"
           (click)="setSection(item.id)"
         >
           {{ item.label }}
@@ -89,23 +95,6 @@
 
             <div class="setting">
               <div class="setting-label">
-                <strong>My branches only</strong>
-                <span>Default filter in the branches panel</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().myBranchesOnly"
-                    (ngModelChange)="store.setMyBranchesOnly($event)"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-
-            <div class="setting">
-              <div class="setting-label">
                 <strong>Density</strong>
                 <span>Compact packs more into each panel</span>
               </div>
@@ -128,23 +117,6 @@
                     Compact
                   </button>
                 </div>
-              </div>
-            </div>
-
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Hide untracked files</strong>
-                <span>Faster status on huge repos</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().hideUntracked"
-                    (ngModelChange)="onHideUntracked($event)"
-                  />
-                  <span></span>
-                </label>
               </div>
             </div>
           </article>
@@ -282,171 +254,126 @@
                 </label>
               </div>
             </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>My branches only</strong>
+                <span>Default filter in the branches panel</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().myBranchesOnly"
+                    (ngModelChange)="store.setMyBranchesOnly($event)"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Hide untracked files</strong>
+                <span>Faster status on huge repos</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().hideUntracked"
+                    (ngModelChange)="onHideUntracked($event)"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Branches &amp; pull requests</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Prefix new branches</strong>
+                <span>Prepend a folder like <code>feature/</code> in the create-branch dialog</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().branchPrefixEnabled"
+                    (ngModelChange)="store.saveSettings({ branchPrefixEnabled: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Default prefix</strong>
+              </div>
+              <div class="setting-control">
+                <div class="seg wrap">
+                  @for (prefix of store.settings().branchPrefixes; track prefix) {
+                    <button
+                      type="button"
+                      class="seg-btn"
+                      [class.on]="store.settings().branchPrefix === prefix"
+                      (click)="store.saveSettings({ branchPrefix: prefix })"
+                    >
+                      {{ prefix }}
+                    </button>
+                  }
+                </div>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Create pull request</strong>
+                <span>Default when opening New PR</span>
+              </div>
+              <div class="setting-control">
+                <div class="seg">
+                  <button
+                    type="button"
+                    class="seg-btn"
+                    [class.on]="store.settings().prCreateMethod === 'browser'"
+                    (click)="store.saveSettings({ prCreateMethod: 'browser' })"
+                  >
+                    Browser
+                  </button>
+                  <button
+                    type="button"
+                    class="seg-btn"
+                    [class.on]="store.settings().prCreateMethod === 'cli'"
+                    (click)="store.saveSettings({ prCreateMethod: 'cli' })"
+                  >
+                    GitHub CLI
+                  </button>
+                </div>
+              </div>
+            </div>
           </article>
 
           <article class="bl-panel block">
             <h2 class="block-title">Confirmations</h2>
             <p class="block-hint">Ask before risky Git actions. Turn off only what you do often.</p>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Force push</strong>
-                <span>Safety dialog for force-with-lease / force</span>
+            @for (item of confirmations; track item.key) {
+              <div class="setting tight">
+                <div class="setting-label">
+                  <strong>{{ item.label }}</strong>
+                  <span>{{ item.hint }}</span>
+                </div>
+                <div class="setting-control">
+                  <label class="switch">
+                    <input
+                      type="checkbox"
+                      [ngModel]="store.settings()[item.key]"
+                      (ngModelChange)="setConfirmation(item.key, $event)"
+                    />
+                    <span></span>
+                  </label>
+                </div>
               </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmForcePush"
-                    (ngModelChange)="store.saveSettings({ confirmForcePush: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Discard changes</strong>
-                <span>Ask before discarding working-tree changes</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmDiscard"
-                    (ngModelChange)="store.saveSettings({ confirmDiscard: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Push a new branch</strong>
-                <span>Warn when the remote branch does not exist yet</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmPushNewBranch"
-                    (ngModelChange)="store.saveSettings({ confirmPushNewBranch: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Add tracking reference</strong>
-                <span>Ask whether to set upstream on first push</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmAddTrackingRef"
-                    (ngModelChange)="store.saveSettings({ confirmAddTrackingRef: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Amend last commit</strong>
-                <span>Warn that amending rewrites branch history</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmAmend"
-                    (ngModelChange)="store.saveSettings({ confirmAmend: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Undo last action</strong>
-                <span>Confirm before undoing from the journal</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmUndoLastCommit"
-                    (ngModelChange)="store.saveSettings({ confirmUndoLastCommit: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Drop stash</strong>
-                <span>Confirm before permanently deleting a stash</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmStashDrop"
-                    (ngModelChange)="store.saveSettings({ confirmStashDrop: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Abort merge / rebase</strong>
-                <span>Warn before aborting an in-progress operation</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmAbortOperation"
-                    (ngModelChange)="store.saveSettings({ confirmAbortOperation: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Second abort confirmation</strong>
-                <span>Ask again before aborting (Git Extensions–style)</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmAbortSecond"
-                    (ngModelChange)="store.saveSettings({ confirmAbortSecond: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Remove remote</strong>
-                <span>Confirm before deleting a remote entry</span>
-              </div>
-              <div class="setting-control">
-                <label class="switch">
-                  <input
-                    type="checkbox"
-                    [ngModel]="store.settings().confirmRemoveRemote"
-                    (ngModelChange)="store.saveSettings({ confirmRemoveRemote: $event })"
-                  />
-                  <span></span>
-                </label>
-              </div>
-            </div>
+            }
           </article>
 
           <article class="bl-panel block">
@@ -523,6 +450,81 @@
           </article>
 
           <app-ticket-from-branch />
+
+          <article class="bl-panel block">
+            <h2 class="block-title">External tools</h2>
+            <p class="block-hint">Stored in Branchline; optionally written to global Git config.</p>
+            <div class="fields compact">
+              <label>
+                Preferred editor
+                <select
+                  [ngModel]="store.settings().preferredEditor"
+                  (ngModelChange)="store.saveSettings({ preferredEditor: $event })"
+                >
+                  <option value="auto">Auto (detect Cursor / VS Code)</option>
+                  <option value="cursor">Cursor</option>
+                  <option value="vscode">VS Code</option>
+                  <option value="system">System default</option>
+                  <option value="command">Custom command below</option>
+                </select>
+              </label>
+              <label>
+                Editor command
+                <input
+                  [ngModel]="store.settings().editorCommand"
+                  (ngModelChange)="store.saveSettings({ editorCommand: $event })"
+                  placeholder="code --wait"
+                  [disabled]="store.settings().preferredEditor !== 'command'"
+                />
+              </label>
+              <label>
+                Diff tool
+                <input
+                  [ngModel]="store.settings().diffTool"
+                  (ngModelChange)="store.saveSettings({ diffTool: $event })"
+                  placeholder="vscode"
+                />
+                <span class="field-hint">Used by Diff → Diff tool (git difftool)</span>
+              </label>
+              <label>
+                Merge tool
+                <input
+                  [ngModel]="store.settings().mergeTool"
+                  (ngModelChange)="store.saveSettings({ mergeTool: $event })"
+                  placeholder="cursor or vscode"
+                />
+                <span class="field-hint">Used by Mergetool actions. Prefer Cursor or VS Code presets below.</span>
+              </label>
+            </div>
+            <div class="row tight">
+              <button type="button" class="bl-btn" (click)="useIdeMergePreset('cursor')">
+                Use Cursor as mergetool
+              </button>
+              <button type="button" class="bl-btn" (click)="useIdeMergePreset('vscode')">
+                Use VS Code as mergetool
+              </button>
+              <button type="button" class="bl-btn bl-btn-primary" (click)="applyToolSettings()">
+                Apply to Git config
+              </button>
+              <button type="button" class="bl-btn" (click)="refreshEnv()">Reload from Git</button>
+            </div>
+            @if (gitEnv(); as env) {
+              <dl class="snapshot">
+                <div>
+                  <dt>core.editor</dt>
+                  <dd class="mono">{{ env.coreEditor || '—' }}</dd>
+                </div>
+                <div>
+                  <dt>diff.tool</dt>
+                  <dd class="mono">{{ env.diffTool || '—' }}</dd>
+                </div>
+                <div>
+                  <dt>merge.tool</dt>
+                  <dd class="mono">{{ env.mergeTool || '—' }}</dd>
+                </div>
+              </dl>
+            }
+          </article>
         }
 
         @case ('notifications') {
@@ -890,10 +892,10 @@
               </div>
             }
           </article>
-        }
 
-        @case ('ssh') {
-          <article class="bl-panel block">
+          <article id="settings-ssh" class="bl-panel block">
+            <h2 class="block-title">SSH &amp; credentials</h2>
+            <p class="block-hint">How Branchline talks to Git remotes over SSH and HTTPS.</p>
             <div class="setting">
               <div class="setting-label">
                 <strong>SSH client</strong>
@@ -955,83 +957,6 @@
                 </div>
               </div>
             </div>
-          </article>
-        }
-
-        @case ('tools') {
-          <article class="bl-panel block">
-            <h2 class="block-title">External tools</h2>
-            <p class="block-hint">Stored in Branchline; optionally written to global Git config.</p>
-            <div class="fields compact">
-              <label>
-                Preferred editor
-                <select
-                  [ngModel]="store.settings().preferredEditor"
-                  (ngModelChange)="store.saveSettings({ preferredEditor: $event })"
-                >
-                  <option value="auto">Auto (detect Cursor / VS Code)</option>
-                  <option value="cursor">Cursor</option>
-                  <option value="vscode">VS Code</option>
-                  <option value="system">System default</option>
-                  <option value="command">Custom command below</option>
-                </select>
-              </label>
-              <label>
-                Editor command
-                <input
-                  [ngModel]="store.settings().editorCommand"
-                  (ngModelChange)="store.saveSettings({ editorCommand: $event })"
-                  placeholder="code --wait"
-                  [disabled]="store.settings().preferredEditor !== 'command'"
-                />
-              </label>
-              <label>
-                Diff tool
-                <input
-                  [ngModel]="store.settings().diffTool"
-                  (ngModelChange)="store.saveSettings({ diffTool: $event })"
-                  placeholder="vscode"
-                />
-                <span class="field-hint">Used by Diff → Diff tool (git difftool)</span>
-              </label>
-              <label>
-                Merge tool
-                <input
-                  [ngModel]="store.settings().mergeTool"
-                  (ngModelChange)="store.saveSettings({ mergeTool: $event })"
-                  placeholder="cursor or vscode"
-                />
-                <span class="field-hint">Used by Mergetool actions. Prefer Cursor or VS Code presets below.</span>
-              </label>
-            </div>
-            <div class="row tight">
-              <button type="button" class="bl-btn" (click)="useIdeMergePreset('cursor')">
-                Use Cursor as mergetool
-              </button>
-              <button type="button" class="bl-btn" (click)="useIdeMergePreset('vscode')">
-                Use VS Code as mergetool
-              </button>
-              <button type="button" class="bl-btn bl-btn-primary" (click)="applyToolSettings()">
-                Apply to Git config
-              </button>
-              <button type="button" class="bl-btn" (click)="refreshEnv()">Reload from Git</button>
-            </div>
-            @if (gitEnv(); as env) {
-              <dl class="snapshot">
-                <div>
-                  <dt>core.editor</dt>
-                  <dd class="mono">{{ env.coreEditor || '—' }}</dd>
-                </div>
-                <div>
-                  <dt>diff.tool</dt>
-                  <dd class="mono">{{ env.diffTool || '—' }}</dd>
-                </div>
-                <div>
-                  <dt>merge.tool</dt>
-                  <dd class="mono">{{ env.mergeTool || '—' }}</dd>
-                </div>
-              </dl>
-            }
           </article>
         }
 
@@ -1101,38 +1026,6 @@
                 </button>
               </div>
             }
-          </article>
-
-          <article class="bl-panel block">
-            <h2 class="block-title">Ship a release</h2>
-            <p class="block-hint">
-              Bump versions from this repo’s
-              <span class="mono">release.config.json</span>, commit, tag, and optionally push.
-              Any app can use the same config file — customize product name, files, messages, and
-              branch there.
-            </p>
-            <div class="setting">
-              <div class="setting-label">
-                <strong>Release</strong>
-                <span>
-                  @if (store.currentRepo(); as repo) {
-                    For {{ repo.name }}
-                  } @else {
-                    Open a repository first
-                  }
-                </span>
-              </div>
-              <div class="setting-control">
-                <button
-                  type="button"
-                  class="bl-btn bl-btn-primary"
-                  [disabled]="!store.currentRepo() || releasing()"
-                  (click)="startRelease()"
-                >
-                  {{ releasing() ? 'Working…' : 'Release…' }}
-                </button>
-              </div>
-            </div>
           </article>
 
           <article class="bl-panel block">

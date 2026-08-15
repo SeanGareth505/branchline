@@ -81,6 +81,16 @@
   color: var(--text-primary);
 }
 
+.nav-gap {
+  height: 0;
+  margin: 0.35rem 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent);
+}
+
+.nav-item.tail {
+  margin-top: 0.2rem;
+}
+
 .nav-item.active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--text-primary);
@@ -149,13 +159,8 @@
   margin-bottom: 0;
 }
 
-.setting {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.65rem 0;
-  border-top: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
+.setting.tight {
+  padding: 0.42rem 0;
 }
 
 .block > .setting:first-child,

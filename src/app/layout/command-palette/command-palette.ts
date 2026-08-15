@@ -103,8 +103,20 @@ export class CommandPalette {
         },
       },
       {
+        id: 'git-settings',
+        label: 'Open Git settings',
+        group: 'Navigate',
+        run: () => store.openSettings('git'),
+      },
+      {
         id: 'connections',
         label: 'Open Connections',
+        group: 'Navigate',
+        run: () => store.openSettings('connections'),
+      },
+      {
+        id: 'ssh-settings',
+        label: 'Open SSH settings',
         group: 'Navigate',
         run: () => store.openSettings('connections'),
       },

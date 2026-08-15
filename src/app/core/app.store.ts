@@ -111,9 +111,26 @@ export type SettingsSection =
   | 'git'
   | 'notifications'
   | 'connections'
-  | 'ssh'
-  | 'tools'
   | 'about';
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+  'repos',
+  'appearance',
+  'git',
+  'notifications',
+  'connections',
+  'about',
+];
+
+export function normalizeSettingsSection(raw: unknown): SettingsSection {
+  if (raw === 'ssh') return 'connections';
+  if (raw === 'tools') return 'git';
+  if (typeof raw === 'string' && SETTINGS_SECTIONS.includes(raw as SettingsSection)) {
+    return raw as SettingsSection;
+  }
+  return 'repos';
+}
+
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
 export type AutomationSection = 'workflows' | 'checks';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
@@ -532,7 +549,7 @@ export class AppStore {
   }
 
   openSettings(section: SettingsSection = 'repos', connectionId?: string): void {
-    this.settingsSection.set(section);
+    this.settingsSection.set(normalizeSettingsSection(section));
     this.settingsFocusConnectionId.set(connectionId ?? null);
     this.view.set('settings');
     if (!this.restoringSession) {
@@ -545,7 +562,7 @@ export class AppStore {
   }
 
   setSettingsSection(section: SettingsSection): void {
-    this.settingsSection.set(section);
+    this.settingsSection.set(normalizeSettingsSection(section));
   }
 
   clearSettingsFocusConnection(): void {

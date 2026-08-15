@@ -208,7 +208,7 @@ export class RemoteTroubleshootDialog {
 
   openSshSettings(): void {
     this.store.closeRemoteTroubleshoot();
-    this.store.openSettings('ssh');
+    this.store.openSettings('connections', 'ssh');
   }
 
   showRemotes(): void {

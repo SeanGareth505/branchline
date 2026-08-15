@@ -102,7 +102,8 @@ export class Shell {
 
   nav(view: AppView): void {
     if (view === 'settings') {
-      this.store.openSettings(this.store.settingsSection());
+      const section = this.store.settingsSection();
+      this.store.openSettings(section === 'repos' ? 'appearance' : section);
       return;
     }
     this.store.setView(view);

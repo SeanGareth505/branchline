@@ -1,10 +1,11 @@
 import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
-import { AppStore, type SettingsSection } from '../../../core/app.store';
+import { AppStore, normalizeSettingsSection, type SettingsSection } from '../../../core/app.store';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypeId } from '../../../core/commit-types';
 import { TauriService } from '../../../core/tauri.service';
 import type {
+  AppSettings,
   CommitTypeOption,
   ConnectionConfig,
   DefaultPullAction,
@@ -18,6 +19,18 @@ import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
 import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
 import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
+
+type ConfirmationKey =
+  | 'confirmForcePush'
+  | 'confirmDiscard'
+  | 'confirmPushNewBranch'
+  | 'confirmAddTrackingRef'
+  | 'confirmAmend'
+  | 'confirmUndoLastCommit'
+  | 'confirmStashDrop'
+  | 'confirmAbortOperation'
+  | 'confirmAbortSecond'
+  | 'confirmRemoveRemote';
 
 @Component({
   selector: 'app-settings-page',
@@ -47,21 +60,31 @@ export class SettingsPage implements OnInit {
   readonly testingSsh = signal(false);
   readonly connectionTests = signal<Record<string, TestConnectionOutput>>({});
   readonly sshTest = signal<TestConnectionOutput | null>(null);
-  readonly releasing = signal(false);
+
+  readonly confirmations: { key: ConfirmationKey; label: string; hint: string }[] = [
+    { key: 'confirmForcePush', label: 'Force push', hint: 'Safety dialog for force-with-lease / force' },
+    { key: 'confirmDiscard', label: 'Discard changes', hint: 'Ask before discarding working-tree changes' },
+    { key: 'confirmPushNewBranch', label: 'Push a new branch', hint: 'Warn when the remote branch does not exist yet' },
+    { key: 'confirmAddTrackingRef', label: 'Add tracking reference', hint: 'Ask whether to set upstream on first push' },
+    { key: 'confirmAmend', label: 'Amend last commit', hint: 'Warn that amending rewrites branch history' },
+    { key: 'confirmUndoLastCommit', label: 'Undo last action', hint: 'Confirm before undoing from the journal' },
+    { key: 'confirmStashDrop', label: 'Drop stash', hint: 'Confirm before permanently deleting a stash' },
+    { key: 'confirmAbortOperation', label: 'Abort merge / rebase', hint: 'Warn before aborting an in-progress operation' },
+    { key: 'confirmAbortSecond', label: 'Second abort confirmation', hint: 'Ask again before aborting (Git Extensions–style)' },
+    { key: 'confirmRemoveRemote', label: 'Remove remote', hint: 'Confirm before deleting a remote entry' },
+  ];
 
   readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
     { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
     { id: 'appearance', label: 'Appearance', hint: 'Theme, accent, and UI modes' },
-    { id: 'git', label: 'Git', hint: 'Identity, pull/push, commit types, and ticket from branch' },
+    { id: 'git', label: 'Git', hint: 'Identity, pull/push, commits, and external tools' },
     {
       id: 'notifications',
       label: 'Notifications',
       hint: 'Toasts, desktop alerts, Git and pull request events',
     },
-    { id: 'connections', label: 'Connections', hint: 'Link GitHub, GitLab, Azure DevOps, and Jira' },
-    { id: 'ssh', label: 'SSH', hint: 'Keys and credential helper' },
-    { id: 'tools', label: 'Tools', hint: 'Editor, diff, and merge tools' },
-    { id: 'about', label: 'About', hint: 'Version, updates, releases, and crash diagnostics' },
+    { id: 'connections', label: 'Connections', hint: 'Git hosts, Jira, SSH keys, and credentials' },
+    { id: 'about', label: 'About', hint: 'Version, updates, and crash diagnostics' },
   ];
 
   readonly sectionMeta = computed(
@@ -74,15 +97,20 @@ export class SettingsPage implements OnInit {
 
   constructor() {
     effect(() => {
-      const next = this.store.settingsSection();
-      this.section.set(next);
+      this.section.set(normalizeSettingsSection(this.store.settingsSection()));
     });
     effect(() => {
       const focus = this.store.settingsFocusConnectionId();
       if (!focus) return;
       this.section.set('connections');
-      this.editingConnectionId.set(focus);
       this.store.clearSettingsFocusConnection();
+      if (focus === 'ssh') {
+        queueMicrotask(() =>
+          document.getElementById('settings-ssh')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+        );
+        return;
+      }
+      this.editingConnectionId.set(focus);
     });
   }
 
@@ -97,11 +125,19 @@ export class SettingsPage implements OnInit {
   }
 
   setSection(section: SettingsSection): void {
-    this.section.set(section);
-    this.store.setSettingsSection(section);
-    if (section === 'about') {
+    const next = normalizeSettingsSection(section);
+    this.section.set(next);
+    this.store.setSettingsSection(next);
+    if (next === 'about') {
       void this.refreshDiagnostics();
     }
+    if (next === 'git' || next === 'connections') {
+      void this.refreshEnv();
+    }
+  }
+
+  setConfirmation(key: ConfirmationKey, value: boolean): void {
+    void this.store.saveSettings({ [key]: value } as Partial<AppSettings>);
   }
 
   async refreshDiagnostics(): Promise<void> {
@@ -532,16 +568,6 @@ export class SettingsPage implements OnInit {
       return;
     }
     this.store.showSuccess('You are on the latest version', undefined, 'updates');
-  }
-
-  async startRelease(): Promise<void> {
-    if (this.releasing()) return;
-    this.releasing.set(true);
-    try {
-      await this.store.startReleaseFlow();
-    } finally {
-      this.releasing.set(false);
-    }
   }
 
   async setCredentialHelper(value: string): Promise<void> {
