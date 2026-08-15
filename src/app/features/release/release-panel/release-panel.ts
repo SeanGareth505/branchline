@@ -213,6 +213,10 @@ export class ReleasePanel {
     void this.store.startReleaseFlow();
   }
 
+  trackLatest(): void {
+    void this.store.attachLatestRelease({ force: true });
+  }
+
   pushRelease(): void {
     void this.store.pushReleaseTags();
   }

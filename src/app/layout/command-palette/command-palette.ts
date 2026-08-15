@@ -324,6 +324,12 @@ export class CommandPalette {
         run: () => store.openReleaseTab(),
       },
       {
+        id: 'release-track',
+        label: 'Track latest deploy',
+        group: 'Git',
+        run: () => void store.attachLatestRelease({ force: true }),
+      },
+      {
         id: 'release-refresh',
         label: 'Refresh release status',
         group: 'Git',

@@ -175,10 +175,11 @@
     <div class="state">
       <p class="state-title">No release activity yet</p>
       <p class="state-hint">
-        Start a release from here, the toolbar rocket, or the command palette. Branchline bumps
-        version files, commits, tags, pushes, and tracks GitHub Actions until the release is live.
+        This screen tracks GitHub Actions for the current version, including releases started
+        here, from the CLI, or from a pushed tag. Start a new release, or attach the latest deploy.
       </p>
       <div class="state-actions">
+        <button type="button" class="bl-btn" (click)="trackLatest()">Track latest deploy</button>
         <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>
       </div>
     </div>

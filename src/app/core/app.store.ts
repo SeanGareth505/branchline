@@ -33,6 +33,7 @@ import type {
   ReleaseActivity,
   ReleaseActivityStep,
   ReleasePhase,
+  PollReleaseDeployOutput,
   ReleaseProgressEvent,
   ReleaseSetupFileHint,
   TagInfo,
@@ -128,6 +129,7 @@ export interface ToastOptions {
 }
 
 const RELEASE_ACTIVITY_STORAGE_KEY = 'branchline.releaseActivity';
+const RELEASE_DISMISSED_TAG_KEY = 'branchline.releaseDismissedTag';
 const REPO_CACHE_KEY = 'branchline.repoCache.v1';
 
 interface RepoCacheEntry {
@@ -1227,6 +1229,7 @@ export class AppStore {
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistRepoCache(normalized);
       this.persistOpenRepos();
+      void this.attachLatestRelease();
       if (restoreView) {
         this.setView('browse');
       } else {
@@ -2027,10 +2030,18 @@ export class AppStore {
 
   clearReleaseActivity(): void {
     if (this.releaseBusy()) return;
+    const tag = this.releaseActivity()?.tag;
     this.stopReleaseDeployPoll();
     this.releaseActivity.set(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
+      if (tag) {
+        try {
+          localStorage.setItem(RELEASE_DISMISSED_TAG_KEY, tag);
+        } catch {
+          /* ignore quota errors */
+        }
+      }
     }
   }
 
@@ -2044,6 +2055,111 @@ export class AppStore {
   openReleaseTab(): void {
     if (this.currentRepo()) {
       this.setView('release');
+      void this.attachLatestRelease();
+    }
+  }
+
+  async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
+    if (this.isDummyBackend) return false;
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    const force = options?.force === true;
+    if (this.releaseBusy() && !force) return false;
+    try {
+      const status = await this.tauri.getReleaseStatus(path);
+      const version = status.currentVersion?.trim();
+      const cfg = status.config;
+      if (!status.available || !version || !cfg) return false;
+      const tag = `${cfg.tagPrefix}${version}`;
+      const current = this.releaseActivity();
+      if (
+        current &&
+        sameRepoPath(current.path, path) &&
+        current.tag === tag &&
+        !force &&
+        !current.needsRefresh
+      ) {
+        return true;
+      }
+      if (!force && this.readDismissedReleaseTag() === tag) return false;
+
+      const result = await this.tauri.pollReleaseDeploy(path, tag);
+      this.seedAttachedReleaseActivity({
+        path,
+        productName: cfg.productName,
+        version,
+        tag,
+        result,
+      });
+      this.clearDismissedReleaseTag(tag);
+      if (result.status === 'success' || result.status === 'failure') {
+        this.releaseBusy.set(false);
+        return true;
+      }
+      if (result.status === 'unavailable') {
+        this.releaseBusy.set(false);
+        return true;
+      }
+      this.releaseBusy.set(true);
+      void this.watchReleaseDeploy(path, tag);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private seedAttachedReleaseActivity(input: {
+    path: string;
+    productName: string;
+    version: string;
+    tag: string;
+    result: PollReleaseDeployOutput;
+  }): void {
+    const phase = normalizeReleasePhase(input.result.phase);
+    const trackingPhase = phase === 'idle' ? 'deploying' : phase;
+    const finished = trackingPhase === 'done' || trackingPhase === 'error';
+    this.releaseActivity.set({
+      path: input.path,
+      productName: input.productName,
+      currentVersion: input.version,
+      nextVersion: input.version,
+      tag: input.tag,
+      willPush: true,
+      needsPush: false,
+      deployRunUrl: input.result.runUrl ?? null,
+      releaseUrl: input.result.releaseUrl ?? null,
+      websiteUrl: input.result.websiteUrl ?? null,
+      actionsPageUrl: input.result.actionsPageUrl ?? null,
+      repoUrl: input.result.repoUrl ?? null,
+      deployJobs: input.result.jobs ?? [],
+      phase: trackingPhase,
+      message: input.result.message,
+      steps: advanceReleaseSteps(buildReleaseSteps(true), trackingPhase, input.result.message),
+      startedAt: Date.now(),
+      finishedAt: finished ? Date.now() : null,
+      ok: trackingPhase === 'done' ? true : trackingPhase === 'error' ? false : null,
+      needsRefresh: input.result.status === 'unavailable',
+    });
+    this.persistReleaseActivity();
+  }
+
+  private readDismissedReleaseTag(): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      return localStorage.getItem(RELEASE_DISMISSED_TAG_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private clearDismissedReleaseTag(tag: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      if (localStorage.getItem(RELEASE_DISMISSED_TAG_KEY) === tag) {
+        localStorage.removeItem(RELEASE_DISMISSED_TAG_KEY);
+      }
+    } catch {
+      /* ignore */
     }
   }
 

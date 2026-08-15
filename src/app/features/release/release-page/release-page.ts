@@ -131,6 +131,7 @@ export class ReleasePage {
         this.selectedFiles.set(selected);
       } else {
         this.setupHints.set(null);
+        void this.store.attachLatestRelease();
       }
     } catch {
       this.status.set(null);
