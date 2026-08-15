@@ -1,7 +1,27 @@
 const OWNER = 'SeanGareth505';
 const REPO = 'branchline';
 const RELEASES_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases?per_page=10`;
-const LATEST = `https://github.com/${OWNER}/${REPO}/releases/latest`;
+const FILE = (tag, name) =>
+  `https://github.com/${OWNER}/${REPO}/releases/download/${tag}/${name}`;
+
+const FALLBACK_TAG = 'v0.7.24';
+const FALLBACK = {
+  macArm: FILE(FALLBACK_TAG, 'Branchline-mac-arm64.dmg'),
+  macIntel: FILE(FALLBACK_TAG, 'Branchline-mac-x64.dmg'),
+  windows: FILE(FALLBACK_TAG, 'Branchline-windows-setup.exe'),
+  linux: FILE(FALLBACK_TAG, 'Branchline-linux.AppImage'),
+  linuxDeb: FILE(FALLBACK_TAG, 'Branchline-linux.deb'),
+  linuxRpm: FILE(FALLBACK_TAG, 'Branchline-0.7.24-1.x86_64.rpm'),
+};
+
+const BUTTONS = [
+  { id: 'mac-arm-btn', key: 'macArm', label: 'Apple Silicon' },
+  { id: 'mac-intel-btn', key: 'macIntel', label: 'Intel' },
+  { id: 'win-btn', key: 'windows', label: 'Download Windows' },
+  { id: 'linux-btn', key: 'linux', label: 'AppImage' },
+  { id: 'linux-deb-btn', key: 'linuxDeb', label: 'Deb' },
+  { id: 'linux-rpm-btn', key: 'linuxRpm', label: 'RPM' },
+];
 
 const MATCHERS = {
   macArm: [
@@ -16,10 +36,10 @@ const MATCHERS = {
   windows: [
     (n) => n === 'branchline-windows-setup.exe',
     (n) => n.endsWith('-setup.exe'),
-    (n) => n.endsWith('.msi'),
   ],
   linux: [(n) => n === 'branchline-linux.appimage', (n) => n.endsWith('.appimage')],
-  linuxDeb: [(n) => n === 'branchline-linux.deb', (n) => n.endsWith('.deb')],
+  linuxDeb: [(n) => n === 'branchline-linux.deb', (n) => n.endsWith('.deb') && !n.endsWith('.sig')],
+  linuxRpm: [(n) => n === 'branchline-linux.rpm', (n) => n.endsWith('.rpm') && !n.endsWith('.sig')],
 };
 
 function pickAsset(assets, tests) {
@@ -34,7 +54,7 @@ function findAsset(releases, tests) {
   for (const release of releases) {
     if (release.draft || release.prerelease) continue;
     const asset = pickAsset(release.assets || [], tests);
-    if (asset) return { release, asset };
+    if (asset?.browser_download_url) return { release, asset };
   }
   return null;
 }
@@ -74,17 +94,43 @@ function setLink(el, href, label) {
   if (label) el.textContent = label;
 }
 
+function applyFallbacks(platform) {
+  for (const btn of BUTTONS) {
+    setLink(document.getElementById(btn.id), FALLBACK[btn.key], btn.label);
+  }
+  const primary = document.getElementById('primary-btn');
+  const meta = document.getElementById('primary-meta');
+  if (platform.id === 'windows') {
+    setLink(primary, FALLBACK.windows, 'Download for Windows');
+  } else if (platform.id === 'linux') {
+    setLink(primary, FALLBACK.linux, 'Download for Linux');
+  } else if (platform.arch === 'intel') {
+    setLink(primary, FALLBACK.macIntel, 'Download for Mac (Intel)');
+  } else {
+    setLink(primary, FALLBACK.macArm, 'Download for Mac (Apple Silicon)');
+  }
+  if (meta) meta.textContent = `${FALLBACK_TAG} · installer`;
+}
+
 function primaryChoice(platform, files) {
   if (platform.id === 'windows') {
-    return { hit: files.windows, label: 'Download for Windows' };
+    return { hit: files.windows, label: 'Download for Windows', fallback: FALLBACK.windows };
   }
   if (platform.id === 'linux') {
-    return { hit: files.linux, label: 'Download for Linux' };
+    return { hit: files.linux, label: 'Download for Linux', fallback: FALLBACK.linux };
   }
   if (platform.arch === 'intel') {
-    return { hit: files.macIntel || files.macArm, label: 'Download for Mac (Intel)' };
+    return {
+      hit: files.macIntel || files.macArm,
+      label: 'Download for Mac (Intel)',
+      fallback: FALLBACK.macIntel,
+    };
   }
-  return { hit: files.macArm || files.macIntel, label: 'Download for Mac (Apple Silicon)' };
+  return {
+    hit: files.macArm || files.macIntel,
+    label: 'Download for Mac (Apple Silicon)',
+    fallback: FALLBACK.macArm,
+  };
 }
 
 function copyText(text) {
@@ -154,9 +200,9 @@ function renderHowto(platform) {
     },
     linux: {
       steps: [
-        'Download the AppImage or <code>.deb</code> for your distro.',
+        'Download the AppImage, <code>.deb</code>, or <code>.rpm</code> for your distro.',
         'For AppImage: <code>chmod +x Branchline*.AppImage && ./Branchline*.AppImage</code>',
-        'For deb: install with your package manager.',
+        'For deb/rpm: install with your package manager.',
       ],
       actions: [],
     },
@@ -193,14 +239,10 @@ function renderHowto(platform) {
   }
 }
 
-function wireHit(id, hit, label) {
+function wireHit(id, hit, fallbackHref, label) {
   const el = document.getElementById(id);
   if (!el) return;
-  if (hit?.asset?.browser_download_url) {
-    setLink(el, hit.asset.browser_download_url, label);
-    return;
-  }
-  setLink(el, LATEST, label);
+  setLink(el, hit?.asset?.browser_download_url || fallbackHref, label);
 }
 
 async function loadLatest() {
@@ -211,10 +253,12 @@ async function loadLatest() {
   document.querySelectorAll('.card').forEach((card) => {
     card.classList.toggle('recommended', card.dataset.platform === platform.id);
   });
+  applyFallbacks(platform);
   renderHowto(platform);
 
   if (platform.id === 'mac') {
     platform.arch = await detectMacArch();
+    applyFallbacks(platform);
   }
 
   try {
@@ -232,42 +276,36 @@ async function loadLatest() {
       windows: findAsset(published, MATCHERS.windows),
       linux: findAsset(published, MATCHERS.linux),
       linuxDeb: findAsset(published, MATCHERS.linuxDeb),
+      linuxRpm: findAsset(published, MATCHERS.linuxRpm),
     };
 
-    wireHit('mac-arm-btn', files.macArm, 'Apple Silicon');
-    wireHit('mac-intel-btn', files.macIntel, 'Intel');
-    wireHit('win-btn', files.windows, 'Download Windows');
-    wireHit('linux-btn', files.linux, 'AppImage');
-    wireHit('linux-deb-btn', files.linuxDeb, 'Deb');
+    for (const btn of BUTTONS) {
+      wireHit(btn.id, files[btn.key], FALLBACK[btn.key], btn.label);
+    }
 
     const choice = primaryChoice(platform, files);
     const versionBadge = document.getElementById('version-badge');
-    const readyTag = choice.hit?.release?.tag_name;
+    const readyTag = choice.hit?.release?.tag_name || FALLBACK_TAG;
     const latestTag = latest?.tag_name;
     const building = latestTag && readyTag && latestTag !== readyTag;
 
     if (versionBadge) {
-      versionBadge.textContent = building ? `${latestTag} building` : readyTag || latestTag || '';
+      versionBadge.textContent = building ? `${latestTag} building` : readyTag;
     }
 
-    if (choice.hit?.asset?.browser_download_url) {
-      setLink(primaryBtn, choice.hit.asset.browser_download_url, choice.label);
-      if (primaryMeta) {
-        primaryMeta.textContent = building
-          ? `${latestTag} is still building — downloading ${readyTag}`
-          : `${readyTag} · ${choice.hit.asset.name}`;
-      }
-    } else {
-      setLink(primaryBtn, LATEST, 'Open latest release');
-      if (primaryMeta) {
-        primaryMeta.textContent = latestTag
-          ? `${latestTag} is still building installers`
-          : 'Open GitHub Releases';
-      }
+    setLink(
+      primaryBtn,
+      choice.hit?.asset?.browser_download_url || choice.fallback,
+      choice.label,
+    );
+    if (primaryMeta) {
+      const name = choice.hit?.asset?.name || 'installer';
+      primaryMeta.textContent = building
+        ? `${latestTag} is still building — downloading ${readyTag}`
+        : `${readyTag} · ${name}`;
     }
   } catch (err) {
-    setLink(primaryBtn, LATEST, 'Open latest release');
-    if (primaryMeta) primaryMeta.textContent = 'Open GitHub Releases for installers.';
+    applyFallbacks(platform);
     console.error(err);
   }
 }

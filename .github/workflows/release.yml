@@ -223,6 +223,7 @@ jobs:
           copy_stable '*-setup.exe' 'Branchline-windows-setup.exe'
           copy_stable '*.AppImage' 'Branchline-linux.AppImage'
           copy_stable '*.deb' 'Branchline-linux.deb'
+          copy_stable '*.rpm' 'Branchline-linux.rpm'
 
           REQUIRED=(
             Branchline-mac-arm64.dmg
