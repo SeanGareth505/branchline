@@ -118,7 +118,16 @@ export class CommandPalette {
         id: 'ssh-settings',
         label: 'Open SSH settings',
         group: 'Navigate',
-        run: () => store.openSettings('connections'),
+        run: () => store.openSettings('connections', 'ssh'),
+      },
+      {
+        id: 'github-accounts',
+        label: 'Switch GitHub account',
+        group: 'Git',
+        run: () => {
+          if (store.currentRepo()) store.revealRefsGroup('remotes');
+          else store.openSettings('connections', 'github-git');
+        },
       },
       {
         id: 'connect-github',

@@ -42,6 +42,54 @@ fn ssh_agent_present() -> bool {
     std::env::var_os("SSH_AUTH_SOCK").is_some_and(|v| !v.is_empty())
 }
 
+fn expand_ssh_path(raw: &str, home: &std::path::Path) -> std::path::PathBuf {
+    let trimmed = raw.trim().trim_matches('"').trim_matches('\'');
+    if trimmed == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    std::path::PathBuf::from(trimmed)
+}
+
+fn identity_file_values(text: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let key = parts.next().unwrap_or("");
+        if !key.eq_ignore_ascii_case("identityfile") {
+            continue;
+        }
+        let Some(value) = parts.next() else {
+            continue;
+        };
+        let cleaned = value.trim_matches('"').trim_matches('\'').to_string();
+        if !cleaned.is_empty() && !values.contains(&cleaned) {
+            values.push(cleaned);
+        }
+    }
+    values
+}
+
+fn identity_files_from_config(text: &str, home: &std::path::Path) -> Vec<String> {
+    let mut paths = Vec::new();
+    for value in identity_file_values(text) {
+        let path = expand_ssh_path(&value, home);
+        if path.is_file() {
+            let value = path.to_string_lossy().to_string();
+            if !paths.contains(&value) {
+                paths.push(value);
+            }
+        }
+    }
+    paths
+}
+
 fn ssh_key_paths() -> Vec<String> {
     let mut paths = Vec::new();
     let Some(home) = dirs::home_dir() else {
@@ -54,6 +102,13 @@ fn ssh_key_paths() -> Vec<String> {
             paths.push(path.to_string_lossy().to_string());
         }
     }
+    if let Ok(text) = std::fs::read_to_string(ssh.join("config")) {
+        for path in identity_files_from_config(&text, &home) {
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+    }
     if let Ok(entries) = std::fs::read_dir(&ssh) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -61,7 +116,11 @@ fn ssh_key_paths() -> Vec<String> {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.starts_with("id_") || name.ends_with(".pub") {
+            if name.ends_with(".pub") || name == "config" || name.starts_with("known_hosts") {
+                continue;
+            }
+            let pub_path = ssh.join(format!("{name}.pub"));
+            if !pub_path.is_file() {
                 continue;
             }
             let value = path.to_string_lossy().to_string();
@@ -127,4 +186,42 @@ pub fn set_git_config(input: SetGitConfigInput) -> AppResult<GitEnvSnapshot> {
         git_cli::config_set(key, value)?;
     }
     get_git_env()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn expand_tilde_identity_paths() {
+        let home = Path::new("/Users/sean");
+        assert_eq!(
+            expand_ssh_path("~/.ssh/SeanNortjeBigly-GitHub", home),
+            home.join(".ssh/SeanNortjeBigly-GitHub")
+        );
+        assert_eq!(
+            expand_ssh_path("/Users/sean/.ssh/id_ed25519", home),
+            Path::new("/Users/sean/.ssh/id_ed25519")
+        );
+    }
+
+    #[test]
+    fn reads_sourcetree_identityfile_entries() {
+        let config = r#"
+Host github.com
+	HostName github.com
+	User SeanNortjeBigly
+	IdentityFile /Users/sean/.ssh/SeanNortjeBigly-GitHub
+Host bitbucket.org
+	IdentityFile ~/.ssh/seannortje1-Bitbucket
+"#;
+        assert_eq!(
+            identity_file_values(config),
+            vec![
+                "/Users/sean/.ssh/SeanNortjeBigly-GitHub".to_string(),
+                "~/.ssh/seannortje1-Bitbucket".to_string(),
+            ]
+        );
+    }
 }

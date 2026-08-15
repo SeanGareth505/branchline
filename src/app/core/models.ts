@@ -548,6 +548,19 @@ export interface ProbeRemoteOutput {
   message: string;
 }
 
+export interface GithubCliAccount {
+  login: string;
+  active: boolean;
+  ok: boolean;
+}
+
+export interface GithubGitStatus {
+  sshLogin: string;
+  usesGhHelper: boolean;
+  accounts: GithubCliAccount[];
+  activeLogin: string;
+}
+
 export interface TestConnectionInput {
   kind: 'github' | 'gitlab' | 'azureDevOps' | 'jira' | 'gitRemote' | 'ssh';
   connectionId?: string;

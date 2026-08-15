@@ -1,3 +1,5 @@
+import { remoteProtocol } from './repo-links';
+
 export function rawErrorMessage(err: unknown): string {
   if (typeof err === 'string') return err.trim();
   if (err instanceof Error) return err.message.trim();
@@ -42,6 +44,22 @@ export function isRemoteAccessError(message: string): boolean {
   );
 }
 
+function inferredProtocol(message: string): 'ssh' | 'https' | 'other' {
+  const url = extractRemoteUrlFromGitError(message);
+  if (url) return remoteProtocol(url);
+  if (
+    /permission denied \(publickey\)/i.test(message) ||
+    /could not read from remote repository/i.test(message) ||
+    /^ERROR:\s*repository not found/im.test(message)
+  ) {
+    return 'ssh';
+  }
+  if (/unable to access ['"]https?:\/\//i.test(message) || /https:\/\/github\.com/i.test(message)) {
+    return 'https';
+  }
+  return 'other';
+}
+
 export function humanizeGitError(message: string): string {
   const m = message.trim();
   if (!m) return 'Something went wrong';
@@ -49,26 +67,64 @@ export function humanizeGitError(message: string): string {
   if (/failed to fetch|networkerror|net::err_|econnrefused|enotfound|timed out|timeout/i.test(m)) {
     return 'Network unavailable — Branchline will keep working with local Git. Try again when you are online.';
   }
-  if (/403|401|unauthorized|bad credentials/i.test(m) && !isRemoteAccessError(m)) {
+
+  if (/ssl certificate problem|certificate verify failed/i.test(m)) {
+    return 'HTTPS rejected the server certificate. Check the remote URL, or switch this repo to SSH.';
+  }
+
+  if (/host key verification failed/i.test(m)) {
+    return 'SSH does not trust this host yet. Connect once in Terminal, or switch this repo to HTTPS.';
+  }
+
+  if (/index\.lock|unable to create '.*\.lock'/i.test(m)) {
+    return 'Git is locked by another process. Wait for it to finish, then try again.';
+  }
+
+  if (/your local changes to the following files would be overwritten/i.test(m)) {
+    return 'Local changes would be overwritten. Commit or stash them, then retry.';
+  }
+
+  if (/please commit your changes or stash them/i.test(m)) {
+    return 'Uncommitted changes are blocking this. Commit or stash, then retry.';
+  }
+
+  if (/\bCONFLICT\b|fix conflicts and then|unmerged paths/i.test(m)) {
+    return 'This stopped on merge conflicts. Resolve them in Changes, then continue.';
+  }
+
+  if (/failed to push some refs|non-fast-forward|fetch first|updates were rejected/i.test(m)) {
+    return 'Push was rejected because the remote has commits you do not. Pull first, or force-push with lease if you meant to overwrite.';
+  }
+
+  if (/403|401|unauthorized|bad credentials|invalid username or token/i.test(m) && !isRemoteAccessError(m)) {
     return `${m} — check your GitHub or host connection in Settings.`;
   }
 
   if (/repository not found/i.test(m)) {
-    const url = extractRemoteUrlFromGitError(m);
-    const target = url ? ` ${url}` : ' the remote';
-    return `Git said${target} was not found. If you can open that repo in a browser, this is usually an SSH key, Git credentials, or org SSO — GitHub hides private repos as “not found”.`;
+    const protocol = inferredProtocol(m);
+    if (protocol === 'https') {
+      return 'GitHub hid this private HTTPS repo as “not found”. Git used a saved login (often GitHub CLI) and did not ask for a password. Switch the HTTPS account in Remotes to the user that can open this repo in the browser.';
+    }
+    if (protocol === 'ssh') {
+      return 'SSH reached GitHub, but this repo was hidden. This org may block SSH. Switch this repo to HTTPS in Remotes, then pick the GitHub CLI account that can open it in the browser.';
+    }
+    return 'GitHub hid this private repo as “not found”. In Remotes, pick the GitHub account that can open it in the browser, and switch the repo to HTTPS if SSH keeps failing.';
   }
 
   if (/permission denied \(publickey\)/i.test(m)) {
-    return 'SSH rejected this key. Add your public key on the host, or switch the remote to HTTPS.';
+    return 'SSH rejected this key. Switch this repo to HTTPS in Remotes, or add the matching public key on GitHub.';
+  }
+
+  if (/authentication failed|invalid username or token|bad credentials|the requested url returned error:\s*40[13]/i.test(m)) {
+    return 'Git rejected this login. Switch the HTTPS account in Remotes, or update the saved GitHub CLI token.';
   }
 
   if (/could not read from remote repository/i.test(m)) {
-    return 'Could not read the remote. Check the URL, SSH keys, and that your account can access this repository.';
+    return 'Could not read the remote. In Remotes, confirm the URL, then switch GitHub account or HTTPS/SSH.';
   }
 
-  if (/authentication failed/i.test(m)) {
-    return 'Git authentication failed. Update credentials in the helper, or switch the remote to SSH.';
+  if (/fatal: unable to access/i.test(m)) {
+    return 'Git could not reach that URL. Check the remote, then switch this repo to HTTPS or SSH in Remotes.';
   }
 
   return m;

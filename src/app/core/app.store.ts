@@ -47,6 +47,7 @@ import type {
   RepoChecksOutput,
   CheckRunState,
   ProbeRemoteOutput,
+  GithubGitStatus,
   TestConnectionInput,
   TestConnectionOutput,
 } from './models';
@@ -73,6 +74,7 @@ import {
   isRemoteAccessError,
   rawErrorMessage,
 } from '../shared/git/git-error';
+import { summarizeGitToastMessage } from '../shared/git/git-toast';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
@@ -375,6 +377,8 @@ export class AppStore {
   readonly githubDeviceLoginOpen = signal(false);
   readonly remoteTroubleshootOpen = signal(false);
   readonly remoteTroubleshootError = signal('');
+  readonly githubGitStatus = signal<GithubGitStatus | null>(null);
+  readonly githubGitBusy = signal(false);
   readonly pendingRefsReveal = signal<string | null>(null);
   readonly createBranchStartPoint = signal<string | null>(null);
   readonly createBranchSuggestedName = signal('');
@@ -1901,6 +1905,7 @@ export class AppStore {
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
+    void this.refreshGithubGitStatus();
     this.lastWorkingTreeRefreshAt = Date.now();
     void this.refreshIdentity();
     if (!this.selectedSha() && commits[0]) {
@@ -2567,9 +2572,10 @@ export class AppStore {
         : (undoOrOptions ?? {});
     const kind = options.kind ?? (options.undo ? 'success' : 'info');
     const category = options.category ?? 'general';
+    const toastMessage = summarizeGitToastMessage(message);
     if (!options.force && !this.shouldShowToast(category, kind)) {
       if (options.desktop) {
-        void this.sendDesktopIfEnabled(category, 'Branchline', message);
+        void this.sendDesktopIfEnabled(category, 'Branchline', toastMessage);
       }
       return;
     }
@@ -2581,7 +2587,7 @@ export class AppStore {
     const id = ++this.toastSeq;
     this.toast.set({
       id,
-      message,
+      message: toastMessage,
       kind,
       undo: options.undo,
       actionLabel: options.actionLabel,
@@ -2595,7 +2601,7 @@ export class AppStore {
       }, durationMs);
     }
     if (options.desktop) {
-      void this.sendDesktopIfEnabled(category, 'Branchline', message);
+      void this.sendDesktopIfEnabled(category, 'Branchline', toastMessage);
     }
   }
 
@@ -3926,12 +3932,12 @@ export class AppStore {
       }
       return true;
     } catch (err) {
-      const message = this.formatError(err);
-      if (/non-fast-forward|rejected|fetch first/i.test(message)) {
+      const raw = rawErrorMessage(err);
+      if (/non-fast-forward|rejected|fetch first/i.test(raw)) {
         await this.openForcePushSafety(status?.branch);
         return false;
       }
-      this.showError(message);
+      this.showError(err);
       return false;
     } finally {
       this.remoteBusy.set(null);
@@ -4154,11 +4160,54 @@ export class AppStore {
     this.remoteTroubleshootError.set(raw);
     this.remoteTroubleshootOpen.set(true);
     this.dismissToast();
+    void this.refreshGithubGitStatus();
   }
 
   closeRemoteTroubleshoot(): void {
     this.remoteTroubleshootOpen.set(false);
     this.remoteTroubleshootError.set('');
+  }
+
+  async refreshGithubGitStatus(): Promise<void> {
+    try {
+      this.githubGitStatus.set(await this.tauri.githubGitStatus());
+    } catch {
+      this.githubGitStatus.set(null);
+    }
+  }
+
+  async setRepoRemoteProtocol(protocol: 'https' | 'ssh'): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    this.githubGitBusy.set(true);
+    try {
+      const result = await this.tauri.setRepoRemoteProtocol(path, protocol);
+      await this.refreshRepo();
+      if (result.ok) this.showSuccess(result.message);
+      else this.showWarning(result.message);
+      return result.ok;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      this.githubGitBusy.set(false);
+    }
+  }
+
+  async switchGithubCliUser(login: string): Promise<boolean> {
+    this.githubGitBusy.set(true);
+    try {
+      const result = await this.tauri.switchGithubCliUser(login);
+      await this.refreshGithubGitStatus();
+      if (result.ok) this.showSuccess(result.message);
+      else this.showWarning(result.message);
+      return result.ok;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      this.githubGitBusy.set(false);
+    }
   }
 
   revealRefsGroup(group: string): void {
@@ -5052,12 +5101,12 @@ export class AppStore {
       });
       return true;
     } catch (err) {
-      const message = this.formatError(err);
-      if (/non-fast-forward|rejected|fetch first/i.test(message)) {
+      const raw = rawErrorMessage(err);
+      if (/non-fast-forward|rejected|fetch first/i.test(raw)) {
         await this.openForcePushSafety(branch);
         return false;
       }
-      this.showError(message);
+      this.showError(err);
       return false;
     } finally {
       this.remoteBusy.set(null);

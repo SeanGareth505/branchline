@@ -10,10 +10,12 @@ import {
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
+import { GitAccountBar } from '../git-account-bar/git-account-bar';
+import { remoteProtocol } from '../../../shared/git/repo-links';
 
 @Component({
   selector: 'app-remotes-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, GitAccountBar],
   templateUrl: './remotes-panel.html',
   styleUrl: './remotes-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,6 +53,12 @@ export class RemotesPanel {
 
   chevron(): string {
     return this.open() ? 'lucideChevronDown' : 'lucideChevronRight';
+  }
+
+  protocolLabel(url: string): string {
+    const protocol = remoteProtocol(url);
+    if (protocol === 'other') return '';
+    return protocol.toUpperCase();
   }
 
   requestHide(event?: Event): void {

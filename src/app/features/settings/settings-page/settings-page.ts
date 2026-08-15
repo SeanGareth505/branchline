@@ -19,6 +19,7 @@ import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
 import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
 import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
+import { GitAccountBar } from '../../remotes/git-account-bar/git-account-bar';
 
 type ConfirmationKey =
   | 'confirmForcePush'
@@ -34,7 +35,7 @@ type ConfirmationKey =
 
 @Component({
   selector: 'app-settings-page',
-  imports: [FormsModule, NgIcon, Dashboard, TicketFromBranch],
+  imports: [FormsModule, NgIcon, Dashboard, TicketFromBranch, GitAccountBar],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
 })
@@ -104,9 +105,10 @@ export class SettingsPage implements OnInit {
       if (!focus) return;
       this.section.set('connections');
       this.store.clearSettingsFocusConnection();
-      if (focus === 'ssh') {
+      if (focus === 'ssh' || focus === 'github-git') {
+        const id = focus === 'ssh' ? 'settings-ssh' : 'settings-github-git';
         queueMicrotask(() =>
-          document.getElementById('settings-ssh')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+          document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
         );
         return;
       }
@@ -116,6 +118,7 @@ export class SettingsPage implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.refreshEnv();
+    void this.store.refreshGithubGitStatus();
     const id = this.store.identity();
     this.identityName.set(id?.name ?? '');
     this.identityEmail.set(id?.email ?? '');
@@ -133,6 +136,7 @@ export class SettingsPage implements OnInit {
     }
     if (next === 'git' || next === 'connections') {
       void this.refreshEnv();
+      void this.store.refreshGithubGitStatus();
     }
   }
 

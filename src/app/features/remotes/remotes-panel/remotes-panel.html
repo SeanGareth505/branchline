@@ -40,6 +40,7 @@
   </div>
 
   @if (open()) {
+    <app-git-account-bar />
     @if (drafting()) {
       <div class="create">
         <input
@@ -67,6 +68,9 @@
             <div class="title-row">
               <ng-icon name="lucideGlobe" size="12" />
               <strong>{{ r.name }}</strong>
+              @if (protocolLabel(r.fetchUrl); as proto) {
+                <span class="proto">{{ proto }}</span>
+              }
             </div>
             <span class="url" [title]="r.fetchUrl">{{ r.fetchUrl }}</span>
           </div>

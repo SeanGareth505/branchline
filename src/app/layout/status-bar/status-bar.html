@@ -78,6 +78,18 @@
           }
         }
       }
+      @if (githubChip(); as chip) {
+        <button
+          type="button"
+          class="sync-btn"
+          data-kind="account"
+          [title]="chip.title"
+          (click)="openGitAccounts()"
+        >
+          <ng-icon name="lucideUser" size="14" />
+          <span class="sync-label">{{ chip.label }}</span>
+        </button>
+      }
       @if (store.changeCount() > 0) {
         <button
           type="button"

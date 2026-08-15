@@ -12,17 +12,18 @@ import { TauriService } from '../../../core/tauri.service';
 import type { GitEnvSnapshot, ProbeRemoteOutput, RemoteInfo } from '../../../core/models';
 import { extractRemoteUrlFromGitError, humanizeGitError } from '../../../shared/git/git-error';
 import {
-  githubSsoUrl,
+  githubOrgFromRemote,
+  githubSshKeysUrl,
   normalizeRemoteUrl,
   parseRemoteWebBase,
   remoteProtocol,
   remoteRepoSlug,
-  toSshRemoteUrl,
 } from '../../../shared/git/repo-links';
+import { GitAccountBar } from '../git-account-bar/git-account-bar';
 
 @Component({
   selector: 'app-remote-troubleshoot-dialog',
-  imports: [NgIcon],
+  imports: [NgIcon, GitAccountBar],
   templateUrl: './remote-troubleshoot-dialog.html',
   styleUrl: './remote-troubleshoot-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,17 +37,16 @@ export class RemoteTroubleshootDialog {
   readonly probe = signal<ProbeRemoteOutput | null>(null);
   readonly gitEnv = signal<GitEnvSnapshot | null>(null);
   readonly envReady = signal(false);
-  readonly showRaw = signal(false);
   private opened = false;
 
   readonly rawError = computed(() => this.store.remoteTroubleshootError());
   readonly summary = computed(() => {
     const raw = this.rawError();
     if (!raw) {
-      return 'Test the remote, confirm the URL, and fix Git credentials or SSH if the host says the repository was not found.';
+      return 'Test the remote. Switch GitHub account or HTTPS/SSH above if Git says the repository was not found.';
     }
     if (/repository not found/i.test(raw) && this.protocol() === 'ssh') {
-      return 'GitHub returned “not found” for this SSH remote. If you can open the repo in a browser, the key is missing, not added on GitHub, or not authorized for this org’s SSO — GitHub hides private repos as not found.';
+      return 'SSH reached GitHub, but this repo was hidden. Switch this repo to HTTPS above, then pick the GitHub CLI account that can open it in the browser.';
     }
     return humanizeGitError(raw);
   });
@@ -65,13 +65,11 @@ export class RemoteTroubleshootDialog {
 
   readonly protocol = computed(() => remoteProtocol(this.currentUrl()));
   readonly repoSlug = computed(() => remoteRepoSlug(this.currentUrl()));
-  readonly sshUrl = computed(() => toSshRemoteUrl(this.currentUrl()));
   readonly webUrl = computed(() => parseRemoteWebBase(this.currentUrl())?.webBase ?? null);
-  readonly ssoUrl = computed(() => githubSsoUrl(this.currentUrl()));
-  readonly canSwitchToSsh = computed(() => {
-    const ssh = this.sshUrl();
-    return this.protocol() === 'https' && !!ssh && ssh !== this.currentUrl();
-  });
+  readonly sshKeysUrl = computed(() => githubSshKeysUrl(this.currentUrl()));
+  readonly orgName = computed(() => githubOrgFromRemote(this.currentUrl()));
+  readonly canSwitchToHttps = computed(() => this.protocol() === 'ssh');
+  readonly canSwitchToSsh = computed(() => this.protocol() === 'https');
 
   readonly missingSshKey = computed(() => {
     if (this.protocol() !== 'ssh' || !this.envReady()) return false;
@@ -79,9 +77,30 @@ export class RemoteTroubleshootDialog {
     return !env?.sshKeysFound && !env?.sshAgent;
   });
 
-  readonly primaryAction = computed((): 'ssh' | 'test' =>
-    this.missingSshKey() ? 'ssh' : 'test',
-  );
+  readonly notFoundError = computed(() => {
+    const text = `${this.rawError()}\n${this.probe()?.message ?? ''}`;
+    return /repository not found|could not read from remote/i.test(text);
+  });
+
+  readonly primaryAction = computed((): 'ssh' | 'open' | 'test' => {
+    if (this.missingSshKey()) return 'ssh';
+    if (this.notFoundError() && this.webUrl()) return 'open';
+    return 'test';
+  });
+
+  readonly statusBox = computed(() => {
+    const probe = this.probe();
+    if (probe) {
+      return {
+        ok: probe.ok,
+        title: probe.ok ? 'Remote responded' : 'Still unreachable',
+        message: humanizeGitError(probe.message) || probe.message,
+      };
+    }
+    const raw = this.rawError();
+    if (!raw) return null;
+    return { ok: false, title: 'Git error', message: humanizeGitError(raw) };
+  });
 
   readonly hints = computed(() => {
     const protocol = this.protocol();
@@ -91,23 +110,25 @@ export class RemoteTroubleshootDialog {
     if (protocol === 'https') {
       items.push({
         id: 'auth',
-        title: 'Git credentials, not the browser',
+        title: 'Use the HTTPS login above',
         detail:
-          'GitHub returns “not found” for private repos when HTTPS Git is unauthenticated. Signing in to github.com in a browser does not update Git.',
+          'GitHub Connected in Branchline is only the API. Fetch and push use GitHub CLI (or the credential helper), not the browser.',
       });
-      items.push({
-        id: 'helper',
-        title: `Credential helper: ${helper}`,
-        detail:
-          helper === 'not set'
-            ? 'No helper is configured, so Git cannot store a token. Set osxkeychain in Settings → SSH, or switch this remote to SSH.'
-            : 'If an old password or token is stored, Git will keep failing until you update or delete it.',
-      });
-      if (this.ssoUrl()) {
+      if (helper.toLowerCase().includes('gh auth')) {
         items.push({
-          id: 'sso',
-          title: 'Organization SSO',
-          detail: 'If this is an org repo, authorize your token or SSH key for SSO, then test again.',
+          id: 'helper',
+          title: 'GitHub CLI is the password',
+          detail:
+            'Git will not prompt for a password. Click the account that can open this repo in the browser, then Test connection.',
+        });
+      } else {
+        items.push({
+          id: 'helper',
+          title: `Credential helper: ${helper}`,
+          detail:
+            helper === 'not set'
+              ? 'No helper is configured, so Git cannot store a token. Set osxkeychain in Settings → SSH, or keep using GitHub CLI.'
+              : 'If an old password or token is stored, Git will keep failing until you update it or switch GitHub CLI account.',
         });
       }
     } else if (protocol === 'ssh' && this.envReady()) {
@@ -115,29 +136,23 @@ export class RemoteTroubleshootDialog {
         items.push({
           id: 'keys',
           title: 'No SSH keys in ~/.ssh',
-          detail: 'Generate a key, add it on GitHub, then test again.',
+          detail: 'Generate a key, add it on GitHub, then test again. Or switch this repo to HTTPS.',
           action: 'ssh',
-        });
-      } else if (env?.sshAgent && !env.sshKeyPaths.length) {
-        items.push({
-          id: 'keys',
-          title: 'SSH agent is running',
-          detail:
-            'Keys may live in 1Password or the agent instead of ~/.ssh. Confirm that key is on GitHub and authorized for this org.',
         });
       } else {
         items.push({
           id: 'keys',
-          title: 'SSH keys found on this machine',
+          title: 'SSH ignores GitHub CLI',
           detail:
-            'Confirm this public key is added on GitHub, and that the org has authorized it for SSO.',
+            'The account chips above only apply after you switch this repo to HTTPS. SSH uses the key in ~/.ssh, which may be a different GitHub user.',
         });
       }
-      if (this.ssoUrl()) {
+      const org = this.orgName();
+      if (org) {
         items.push({
           id: 'sso',
-          title: 'Organization SSO',
-          detail: 'Private org repos look like “not found” until you authorize this SSH key for SSO.',
+          title: `${org} may block SSH`,
+          detail: `If the repo opens in the browser but Git still says not found, switch this repo to HTTPS and pick the ${org} account.`,
         });
       }
     }
@@ -159,7 +174,6 @@ export class RemoteTroubleshootDialog {
       if (this.opened) return;
       this.opened = true;
       this.probe.set(null);
-      this.showRaw.set(false);
       this.busy.set(false);
       this.envReady.set(false);
       this.gitEnv.set(null);
@@ -200,8 +214,8 @@ export class RemoteTroubleshootDialog {
     void this.tauri.openExternalUrl(url);
   }
 
-  openSso(): void {
-    const url = this.ssoUrl();
+  openSshKeys(): void {
+    const url = this.sshKeysUrl();
     if (!url) return;
     void this.tauri.openExternalUrl(url);
   }
@@ -231,16 +245,18 @@ export class RemoteTroubleshootDialog {
     }
   }
 
-  async switchToSsh(): Promise<void> {
-    const remote = this.selected();
-    const ssh = this.sshUrl();
-    if (!remote || !ssh) return;
+  async switchProtocol(protocol: 'https' | 'ssh'): Promise<void> {
     this.busy.set(true);
     try {
-      const ok = await this.store.setRemoteUrl(remote.name, ssh, { silent: true });
+      const ok = await this.store.setRepoRemoteProtocol(protocol);
       if (!ok) return;
-      this.store.showSuccess(`Updated ${remote.name} to SSH`);
-      this.probe.set(await this.store.probeRemote({ url: ssh, remote: remote.name }));
+      const remote = this.selected();
+      this.probe.set(
+        await this.store.probeRemote({
+          url: this.currentUrl() || undefined,
+          remote: remote?.name,
+        }),
+      );
     } finally {
       this.busy.set(false);
     }

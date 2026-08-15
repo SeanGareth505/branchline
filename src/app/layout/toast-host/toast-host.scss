@@ -5,6 +5,7 @@
   z-index: 10050;
   animation: rise 240ms var(--ease-out);
   pointer-events: none;
+  max-width: min(520px, calc(100vw - 2.5rem));
 }
 
 .host > * {

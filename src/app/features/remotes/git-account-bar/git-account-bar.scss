@@ -1,0 +1,146 @@
+:host {
+  display: block;
+}
+
+:host.settings .bar {
+  margin: 0.15rem 0 0;
+}
+
+:host.compact .bar {
+  margin: 0;
+  padding: 0.5rem 0.55rem;
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0.15rem 0.25rem 0.35rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-bg-soft) 88%, transparent);
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.copy strong {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+
+.copy span {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.55rem 0.7rem;
+}
+
+.cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.cluster.extras {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  padding-bottom: 0.12rem;
+}
+
+.seg-label {
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.solo {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.solo.muted {
+  font-weight: 550;
+  color: var(--text-muted);
+  padding-bottom: 0.18rem;
+}
+
+.text-btn {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.text-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.text-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.12rem;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-base) 40%, transparent);
+}
+
+.seg-btn {
+  margin: 0;
+  padding: 0.18rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.seg-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.seg-btn.on {
+  background: var(--glass-bg-strong);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
+.seg-btn.bad:not(.on) {
+  color: var(--danger, #ef4444);
+}
+
+.seg-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

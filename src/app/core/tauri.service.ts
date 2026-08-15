@@ -34,6 +34,7 @@ import type {
   ReflogEntry,
   RemoteInfo,
   ProbeRemoteOutput,
+  GithubGitStatus,
   TestConnectionInput,
   TestConnectionOutput,
   RepoStatus,
@@ -808,6 +809,18 @@ export class TauriService {
     });
   }
 
+  githubGitStatus() {
+    return this.invoke<GithubGitStatus>('github_git_status');
+  }
+
+  setRepoRemoteProtocol(path: string, protocol: 'https' | 'ssh') {
+    return this.invoke<MutationOutput>('set_repo_remote_protocol', { input: { path, protocol } });
+  }
+
+  switchGithubCliUser(login: string) {
+    return this.invoke<MutationOutput>('switch_github_cli_user', { input: { login } });
+  }
+
   testConnection(input: TestConnectionInput) {
     return this.invoke<TestConnectionOutput>('test_connection', { input });
   }
@@ -1469,6 +1482,17 @@ export class TauriService {
         message:
           "remote: Repository not found.\nfatal: repository 'https://github.com/example/navigo.git' not found",
       },
+      github_git_status: {
+        sshLogin: 'SeanNortjeBigly',
+        usesGhHelper: true,
+        activeLogin: 'SeanNortjeBigly',
+        accounts: [
+          { login: 'SeanNortjeBigly', active: true, ok: true },
+          { login: 'SeanGareth505', active: false, ok: true },
+        ],
+      },
+      set_repo_remote_protocol: { ok: true, message: 'Switched 2 remotes to https' },
+      switch_github_cli_user: { ok: true, message: 'GitHub CLI now uses SeanNortjeBigly for HTTPS' },
       remove_remote: { ok: true, message: 'Removed remote' },
       prune_remote: { ok: true, message: 'Pruned stale remote-tracking branches' },
       pull_with_options: { ok: true, message: 'Pulled with rebase' },

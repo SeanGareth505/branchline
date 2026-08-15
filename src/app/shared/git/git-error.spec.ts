@@ -3,7 +3,7 @@ import {
   humanizeGitError,
   isRemoteAccessError,
 } from './git-error';
-import { githubSsoUrl, normalizeRemoteUrl, remoteProtocol, remoteRepoSlug, toSshRemoteUrl } from './repo-links';
+import { githubSshKeysUrl, githubSsoUrl, normalizeRemoteUrl, remoteProtocol, remoteRepoSlug, toHttpsRemoteUrl, toSshRemoteUrl } from './repo-links';
 
 describe('git remote errors', () => {
   const notFound =
@@ -21,16 +21,38 @@ describe('git remote errors', () => {
   });
 
   it('explains GitHub hiding private repos as not found', () => {
-    const text = humanizeGitError(notFound);
-    expect(text).toContain('https://github.com/Dis-Chem/dischem-sap-commerce/');
-    expect(text.toLowerCase()).toContain('credentials');
-    expect(text.toLowerCase()).toContain('sso');
-    expect(text.toLowerCase()).toContain('ssh');
+    const https = humanizeGitError(notFound);
+    expect(https.toLowerCase()).toContain('https');
+    expect(https.toLowerCase()).toContain('github cli');
+    expect(https.toLowerCase()).toContain('remotes');
+    const ssh = humanizeGitError(
+      "ERROR: Repository not found.\nfatal: Could not read from remote repository.\nPlease make sure you have the correct access rights\nand the repository exists.\nfatal: Could not read from remote repository.",
+    );
+    expect(ssh.toLowerCase()).toContain('https');
+    expect(ssh.toLowerCase()).toContain('ssh');
+  });
+
+  it('points SSH key failures at switching to HTTPS', () => {
+    const message = humanizeGitError(
+      'git@github.com: Permission denied (publickey).',
+    );
+    expect(message.toLowerCase()).toContain('https');
+    expect(isRemoteAccessError('git@github.com: Permission denied (publickey).')).toBe(true);
+  });
+
+  it('explains rejected pushes without dropping the cause', () => {
+    const message = humanizeGitError(
+      '! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs',
+    );
+    expect(message.toLowerCase()).toContain('pull');
   });
 
   it('converts HTTPS remotes to SSH', () => {
     expect(toSshRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
       'git@github.com:Dis-Chem/dischem-sap-commerce.git',
+    );
+    expect(toHttpsRemoteUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
+      'https://github.com/Dis-Chem/dischem-web.git',
     );
     expect(remoteProtocol('https://github.com/org/repo.git')).toBe('https');
     expect(remoteProtocol('git@github.com:org/repo.git')).toBe('ssh');
@@ -45,6 +67,9 @@ describe('git remote errors', () => {
   it('builds an org SSO URL', () => {
     expect(githubSsoUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
       'https://github.com/orgs/Dis-Chem/sso',
+    );
+    expect(githubSshKeysUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
+      'https://github.com/settings/keys',
     );
   });
 

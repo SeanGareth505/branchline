@@ -114,6 +114,16 @@
   color: var(--text-muted);
 }
 
+.sync-btn[data-kind='account'] {
+  max-width: min(28vw, 16rem);
+}
+
+.sync-btn[data-kind='account'] .sync-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sync-label {
   letter-spacing: 0.01em;
 }
@@ -186,6 +196,10 @@
 
 @media (max-width: 900px) {
   .upstream {
+    display: none;
+  }
+
+  .sync-btn[data-kind='account'] .sync-label {
     display: none;
   }
 }

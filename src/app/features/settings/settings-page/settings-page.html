@@ -725,8 +725,8 @@
               <div>
                 <h2 class="block-title">Integrations</h2>
                 <p class="block-hint">
-                  Connect Git hosts and Jira. Tokens stay on this machine —
-                  {{ linkedCount() }} linked.
+                  Connect Git hosts and Jira. GitHub CLI accounts for fetch/push are below —
+                  {{ linkedCount() }} API linked.
                 </p>
               </div>
               <div class="block-head-actions">
@@ -891,6 +891,15 @@
                 }
               </div>
             }
+          </article>
+
+          <article id="settings-github-git" class="bl-panel block">
+            <h2 class="block-title">GitHub accounts</h2>
+            <p class="block-hint">
+              Work and personal GitHub logins. HTTPS Git uses GitHub CLI. SSH uses the keys below.
+              GitHub Connected above is only the API — it does not fetch or push.
+            </p>
+            <app-git-account-bar variant="settings" />
           </article>
 
           <article id="settings-ssh" class="bl-panel block">

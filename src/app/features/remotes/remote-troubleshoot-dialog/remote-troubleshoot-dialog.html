@@ -21,6 +21,8 @@
 
       <p class="lead">{{ summary() }}</p>
 
+      <app-git-account-bar [compact]="true" />
+
       <div class="chips">
         @if (repoSlug(); as slug) {
           <span class="chip">{{ slug }}</span>
@@ -33,6 +35,7 @@
         }
       </div>
 
+      <div class="body">
       @if (remotes().length > 1) {
         <div class="remote-pills">
           @for (remote of remotes(); track remote.name) {
@@ -74,7 +77,7 @@
 
       <ul class="hints">
         @for (hint of hints(); track hint.id) {
-          <li [class.warn]="hint.action === 'ssh'">
+          <li [class.warn]="hint.action === 'ssh' || hint.id === 'sso'">
             <strong>{{ hint.title }}</strong>
             <span>{{ hint.detail }}</span>
             @if (hint.action === 'ssh') {
@@ -86,19 +89,13 @@
         }
       </ul>
 
-      @if (probe(); as result) {
-        <div class="probe" [class.ok]="result.ok" [class.bad]="!result.ok">
-          <strong>{{ result.ok ? 'Remote responded' : 'Still unreachable' }}</strong>
-          <pre class="mono">{{ result.message }}</pre>
+      @if (statusBox(); as box) {
+        <div class="probe" [class.ok]="box.ok" [class.bad]="!box.ok">
+          <strong>{{ box.title }}</strong>
+          <pre class="mono">{{ box.message }}</pre>
         </div>
       }
-
-      <button type="button" class="linkish" (click)="showRaw.set(!showRaw())">
-        {{ showRaw() ? 'Hide' : 'Show' }} original Git error
-      </button>
-      @if (showRaw() && rawError()) {
-        <pre class="mono raw">{{ rawError() }}</pre>
-      }
+      </div>
 
       <footer>
         <button type="button" class="bl-btn" (click)="showRemotes()" [disabled]="busy()">
@@ -109,21 +106,32 @@
             SSH settings
           </button>
         }
-        @if (ssoUrl()) {
-          <button type="button" class="bl-btn" (click)="openSso()" [disabled]="busy()">
-            Org SSO
+        @if (sshKeysUrl()) {
+          <button type="button" class="bl-btn" (click)="openSshKeys()" [disabled]="busy()">
+            SSH keys
           </button>
         }
         <span class="spacer"></span>
-        @if (canSwitchToSsh()) {
+        @if (canSwitchToHttps()) {
           <button
             type="button"
-            class="bl-btn bl-btn-primary"
-            (click)="switchToSsh()"
-            [disabled]="busy()"
-            title="Rewrite this remote to SSH and test it"
+            class="bl-btn"
+            (click)="switchProtocol('https')"
+            [disabled]="busy() || store.githubGitBusy()"
+            title="Rewrite GitHub remotes to HTTPS and test"
           >
-            {{ busy() ? 'Working…' : 'Switch to SSH' }}
+            Switch to HTTPS
+          </button>
+        }
+        @if (canSwitchToSsh() && primaryAction() !== 'open') {
+          <button
+            type="button"
+            class="bl-btn"
+            (click)="switchProtocol('ssh')"
+            [disabled]="busy() || store.githubGitBusy()"
+            title="Rewrite GitHub remotes to SSH and test"
+          >
+            Switch to SSH
           </button>
         }
         @if (primaryAction() === 'ssh') {
@@ -136,10 +144,20 @@
             Set up SSH
           </button>
         }
+        @if (primaryAction() === 'open') {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            (click)="openInBrowser()"
+            [disabled]="busy()"
+          >
+            Open repository
+          </button>
+        }
         <button
           type="button"
           class="bl-btn"
-          [class.bl-btn-primary]="primaryAction() === 'test' && !canSwitchToSsh()"
+          [class.bl-btn-primary]="primaryAction() === 'test'"
           (click)="testConnection()"
           [disabled]="busy()"
         >

@@ -180,6 +180,17 @@ input {
   color: var(--text-primary);
 }
 
+.proto {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.32rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+}
+
 .url {
   font-size: 11.5px;
   color: var(--text-muted);

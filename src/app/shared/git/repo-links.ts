@@ -55,6 +55,14 @@ export function remoteProtocol(url: string): 'ssh' | 'https' | 'other' {
   return 'other';
 }
 
+export function toHttpsRemoteUrl(url: string): string | null {
+  const parsed = parseRemoteWebBase(url);
+  if (!parsed) return null;
+  const path = parsed.webBase.replace(/^https:\/\/[^/]+\//i, '');
+  if (!path) return null;
+  return `https://${parsed.host}/${path}.git`;
+}
+
 export function toSshRemoteUrl(url: string): string | null {
   const parsed = parseRemoteWebBase(url);
   if (!parsed) return null;
@@ -74,6 +82,12 @@ export function githubSsoUrl(url: string): string | null {
   const org = githubOrgFromRemote(url);
   if (!org) return null;
   return `https://github.com/orgs/${org}/sso`;
+}
+
+export function githubSshKeysUrl(url: string): string | null {
+  const parsed = parseRemoteWebBase(url);
+  if (!parsed?.host.includes('github.com')) return null;
+  return 'https://github.com/settings/keys';
 }
 
 export function remoteRepoSlug(url: string): string | null {

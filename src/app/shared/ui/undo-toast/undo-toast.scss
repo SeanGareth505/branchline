@@ -4,11 +4,13 @@
 
 .toast {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
   padding: 0.85rem 1.05rem;
   min-width: min(420px, calc(100vw - 2rem));
   max-width: min(520px, calc(100vw - 2rem));
+  max-height: min(28vh, 7.5rem);
+  overflow: hidden;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
   background: color-mix(in srgb, var(--bg-base) 22%, var(--glass-bg-strong));
@@ -107,6 +109,11 @@
   font-size: 0.92rem;
   font-weight: 550;
   color: var(--text-primary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow-wrap: anywhere;
 }
 
 .actions {

@@ -9,6 +9,7 @@ pub mod diff;
 pub mod git_detect;
 pub mod git_env;
 pub mod github_auth;
+pub mod github_git;
 pub mod hooks;
 pub mod hosts;
 pub mod identity;
