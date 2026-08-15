@@ -16,6 +16,7 @@ export interface ReleaseDialogResult {
   push: boolean;
   allowDirty: boolean;
   preid: string | null;
+  message: string | null;
   tagMessage: string | null;
 }
 

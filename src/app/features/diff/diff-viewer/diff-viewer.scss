@@ -183,11 +183,12 @@
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .path-meta {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 8rem;
 }
 
 .selected-path {
@@ -210,8 +211,11 @@
 .actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.35rem;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .empty {

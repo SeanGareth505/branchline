@@ -16,6 +16,7 @@ import { AppStore } from '../../../core/app.store';
 import type { BranchInfo } from '../../../core/models';
 import { describeBranchSync, shortUpstream } from '../../../shared/git/branch-sync';
 import { isMainlineBranch } from '../../../shared/git/mainline-branch';
+import { identityColor } from '../../../shared/ui/identity-color';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { RemotesPanel } from '../../remotes/remotes-panel/remotes-panel';
 import { StashPanel } from '../../stash/stash-panel/stash-panel';
@@ -24,6 +25,11 @@ import { SubmodulesPanel } from '../../submodules/submodules-panel/submodules-pa
 import { LfsPanel } from '../../lfs/lfs-panel/lfs-panel';
 
 export type RefsGroup = 'local' | 'tags' | 'remotes' | 'stash' | 'worktrees' | 'submodules' | 'lfs';
+
+interface RefsSectionOption {
+  id: string;
+  label: string;
+}
 
 type SuggestKind = 'local' | 'remote' | 'tag' | 'folder';
 
@@ -103,14 +109,17 @@ type TagFlatRow =
 export class RefsPanel {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
+  readonly identityColor = identityColor;
   readonly creatingTag = signal(false);
   readonly newTag = signal('');
   readonly query = signal('');
   readonly suggestOpen = signal(false);
   readonly activeSuggest = signal(0);
   readonly branchMenu = signal<{ name: string; x: number; y: number } | null>(null);
+  readonly tagMenu = signal<{ name: string; x: number; y: number } | null>(null);
   readonly collapsedFolders = signal<Set<string>>(new Set());
   readonly expandedRemotes = signal<Set<string>>(new Set());
+  readonly sectionsMenuOpen = signal(false);
   readonly expanded = signal<Record<RefsGroup, boolean>>({
     local: true,
     tags: false,
@@ -123,7 +132,7 @@ export class RefsPanel {
   private suppressMenuCloseUntil = 0;
 
   readonly menuOrigin = computed(() => {
-    const menu = this.branchMenu();
+    const menu = this.branchMenu() ?? this.tagMenu();
     return menu ? { x: menu.x, y: menu.y } : { x: 0, y: 0 };
   });
 
@@ -137,6 +146,24 @@ export class RefsPanel {
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -6 },
   ];
+
+  readonly sectionsMenuPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 6 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -6 },
+  ];
+
+  readonly sectionOptions = computed((): RefsSectionOption[] => [
+    { id: 'local', label: 'Local' },
+    ...this.remoteGroups().map((group) => ({ id: group.path, label: group.name })),
+    { id: 'tags', label: 'Tags' },
+    { id: 'remotes', label: 'Remote URLs' },
+    { id: 'worktrees', label: 'Worktrees' },
+    { id: 'submodules', label: 'Submodules' },
+    { id: 'lfs', label: 'LFS' },
+    { id: 'stash', label: 'Stash' },
+  ]);
+
+  readonly hasHiddenSections = computed(() => this.store.hiddenRefsGroups().length > 0);
 
   readonly suggestions = computed((): RefSuggestion[] => {
     const q = this.query().trim().toLowerCase();
@@ -256,21 +283,30 @@ export class RefsPanel {
     if (!q) return remotes;
 
     const matched = new Map<string, BranchInfo>();
+    const remotesByName = new Map<string, BranchInfo>();
+    const remotesByLocal = new Map<string, BranchInfo[]>();
     for (const branch of remotes) {
+      remotesByName.set(branch.name, branch);
       if (branch.name.toLowerCase().includes(q)) {
         matched.set(branch.name, branch);
+      }
+      const slash = branch.name.indexOf('/');
+      if (slash > 0) {
+        const local = branch.name.slice(slash + 1);
+        const list = remotesByLocal.get(local);
+        if (list) list.push(branch);
+        else remotesByLocal.set(local, [branch]);
       }
     }
 
     for (const local of this.filteredLocal()) {
       if (local.upstream) {
-        const up = remotes.find((r) => r.name === local.upstream);
+        const up = remotesByName.get(local.upstream);
         if (up) matched.set(up.name, up);
       }
-      for (const remote of remotes) {
-        if (this.remoteTracksLocal(remote.name, local.name)) {
-          matched.set(remote.name, remote);
-        }
+      const tracked = remotesByLocal.get(local.name);
+      if (tracked) {
+        for (const remote of tracked) matched.set(remote.name, remote);
       }
     }
 
@@ -289,35 +325,68 @@ export class RefsPanel {
 
   readonly localRows = computed(() => this.flattenBranchTree(this.buildBranchTree(this.filteredLocal()), 'local'));
   readonly remoteGroups = computed((): RemoteGroupView[] => {
-    const tree = this.buildBranchTree(this.filteredRemote());
-    return tree.map((node) => {
-      if (node.kind === 'dir') {
-        const path = `remote:${node.path}`;
-        return {
-          name: node.name,
-          path,
-          count: node.branchCount,
-          rows: this.flattenBranchTree(node.children, path),
-        };
-      }
-      const path = `remote:${node.path}`;
+    const remotes = this.filteredRemote();
+    const expanded = this.expandedRemotes();
+    const searching = !!this.query().trim();
+    const grouped = new Map<string, BranchInfo[]>();
+    for (const branch of remotes) {
+      const slash = branch.name.indexOf('/');
+      const remote = slash > 0 ? branch.name.slice(0, slash) : branch.name;
+      const list = grouped.get(remote);
+      if (list) list.push(branch);
+      else grouped.set(remote, [branch]);
+    }
+    return [...grouped.entries()].map(([name, branches]) => {
+      const path = `remote:${name}`;
       return {
-        name: node.name,
+        name,
         path,
-        count: 1,
-        rows: [
-          {
-            kind: 'branch',
-            path: node.path,
-            name: node.name,
-            depth: 0,
-            branch: node.branch,
-          },
-        ],
+        count: branches.length,
+        rows:
+          searching || expanded.has(path)
+            ? this.flattenBranchTree(this.buildBranchTree(branches).flatMap((node) =>
+                node.kind === 'dir' && node.name === name ? node.children : [node],
+              ), path)
+            : [],
       };
     });
   });
   readonly tagRows = computed(() => this.flattenTagTree(this.buildTagTree(this.filteredTags()), 'tags'));
+
+  isSectionHidden(id: string): boolean {
+    return this.store.hiddenRefsGroups().includes(id);
+  }
+
+  isSectionVisible(id: string): boolean {
+    if (!this.isSectionHidden(id)) return true;
+    return this.sectionHasQueryMatch(id);
+  }
+
+  hideSection(id: string, event?: Event): void {
+    event?.stopPropagation();
+    this.store.setRefsGroupHidden(id, true);
+  }
+
+  toggleSectionHidden(id: string, event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.store.setRefsGroupHidden(id, !this.isSectionHidden(id));
+  }
+
+  showAllSections(event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.store.setHiddenRefsGroups([]);
+  }
+
+  toggleSectionsMenu(event?: Event): void {
+    event?.stopPropagation();
+    this.sectionsMenuOpen.update((open) => !open);
+  }
+
+  closeSectionsMenu(): void {
+    this.sectionsMenuOpen.set(false);
+  }
 
   isOpen(group: RefsGroup): boolean {
     if (this.query().trim()) {
@@ -362,6 +431,37 @@ export class RefsPanel {
     }
   }
 
+  expandAll(event?: Event): void {
+    event?.stopPropagation();
+    this.expanded.set({
+      local: true,
+      tags: true,
+      remotes: true,
+      stash: true,
+      worktrees: true,
+      submodules: true,
+      lfs: true,
+    });
+    this.expandedRemotes.set(new Set(this.remoteGroups().map((group) => group.path)));
+    this.collapsedFolders.set(new Set());
+    void this.store.refreshLfsFiles();
+  }
+
+  collapseAll(event?: Event): void {
+    event?.stopPropagation();
+    this.expanded.set({
+      local: false,
+      tags: false,
+      remotes: false,
+      stash: false,
+      worktrees: false,
+      submodules: false,
+      lfs: false,
+    });
+    this.expandedRemotes.set(new Set());
+    this.collapsedFolders.set(new Set(this.collectFolderPaths()));
+  }
+
   chevron(group: RefsGroup): string {
     return this.isOpen(group) ? 'lucideChevronDown' : 'lucideChevronRight';
   }
@@ -391,6 +491,16 @@ export class RefsPanel {
     await this.store.deleteOtherLocalBranches();
   }
 
+  fetchRemote(name: string, event?: Event): void {
+    event?.stopPropagation();
+    void this.store.fetchRemote(name);
+  }
+
+  pruneRemote(name: string, event?: Event): void {
+    event?.stopPropagation();
+    void this.store.pruneRemote(name);
+  }
+
   revealCurrentBranch(event?: Event): void {
     event?.stopPropagation();
     const branch = this.currentBranch();
@@ -401,6 +511,7 @@ export class RefsPanel {
 
     this.closeSuggest();
     this.query.set('');
+    this.ensureSectionVisible('local');
     if (this.store.myBranchesOnly() && !this.store.isMyBranch(branch)) {
       this.store.setMyBranchesOnly(false);
     }
@@ -425,7 +536,13 @@ export class RefsPanel {
   locateBranch(branch: BranchInfo, event?: Event): void {
     event?.stopPropagation();
     if (!branch.tipSha) return;
-    this.store.selectCommit(branch.tipSha);
+    this.store.revealCommit(branch.tipSha);
+    this.store.setBrowseTab('diff');
+  }
+
+  locateTag(sha: string, event?: Event): void {
+    event?.stopPropagation();
+    this.store.revealCommit(sha);
     this.store.setBrowseTab('diff');
   }
 
@@ -516,6 +633,7 @@ export class RefsPanel {
     this.closeSuggest();
 
     if (item.kind === 'local') {
+      this.ensureSectionVisible('local');
       this.expanded.update((state) => ({ ...state, local: true }));
       this.expandFoldersForBranch('local', item.name);
       this.scrollToBranch(item.name);
@@ -528,12 +646,14 @@ export class RefsPanel {
     }
 
     if (item.kind === 'tag') {
+      this.ensureSectionVisible('tags');
       this.expanded.update((state) => ({ ...state, tags: true }));
       this.expandFoldersForBranch('tags', item.name);
       return;
     }
 
     if (item.kind === 'folder') {
+      this.ensureSectionVisible('local');
       this.expanded.update((state) => ({ ...state, local: true, remotes: true }));
     }
   }
@@ -553,6 +673,31 @@ export class RefsPanel {
     if (parts.some((p) => p.startsWith(q))) return 2;
     if (lower.includes(q)) return 3;
     return -1;
+  }
+
+  private collectFolderPaths(): string[] {
+    const paths: string[] = [];
+    const walkBranch = (nodes: BranchTreeNode[], scope: string) => {
+      for (const node of nodes) {
+        if (node.kind !== 'dir') continue;
+        paths.push(`${scope}:${node.path}`);
+        walkBranch(node.children, scope);
+      }
+    };
+    walkBranch(this.buildBranchTree(this.filteredLocal()), 'local');
+    for (const node of this.buildBranchTree(this.filteredRemote())) {
+      if (node.kind !== 'dir') continue;
+      walkBranch(node.children, `remote:${node.path}`);
+    }
+    const walkTag = (nodes: TagTreeNode[], scope: string) => {
+      for (const node of nodes) {
+        if (node.kind !== 'dir') continue;
+        paths.push(`${scope}:${node.path}`);
+        walkTag(node.children, scope);
+      }
+    };
+    walkTag(this.buildTagTree(this.filteredTags()), 'tags');
+    return paths;
   }
 
   private folderPrefixes(): string[] {
@@ -608,6 +753,7 @@ export class RefsPanel {
     event.preventDefault();
     event.stopPropagation();
     this.suppressMenuCloseUntil = performance.now() + 500;
+    this.tagMenu.set(null);
     this.branchMenu.set({ name, x: event.clientX, y: event.clientY });
   }
 
@@ -615,10 +761,40 @@ export class RefsPanel {
     this.branchMenu.set(null);
   }
 
+  openTagMenu(name: string, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.suppressMenuCloseUntil = performance.now() + 500;
+    this.branchMenu.set(null);
+    this.tagMenu.set({ name, x: event.clientX, y: event.clientY });
+  }
+
+  closeTagMenu(): void {
+    this.tagMenu.set(null);
+  }
+
   onBranchMenuDismiss(event?: Event): void {
     if (performance.now() < this.suppressMenuCloseUntil) return;
     if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
     this.closeBranchMenu();
+    this.closeTagMenu();
+  }
+
+  async copyRefName(name: string): Promise<void> {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    try {
+      await navigator.clipboard.writeText(name);
+      this.store.showSuccess(`Copied ${name}`);
+    } catch {
+      this.store.showError('Could not copy name');
+    }
+  }
+
+  locateTagFromMenu(name: string): void {
+    const tag = this.store.tags().find((t) => t.name === name);
+    this.closeTagMenu();
+    if (tag) this.locateTag(tag.sha);
   }
 
   async mergeBranch(name: string): Promise<void> {
@@ -679,6 +855,7 @@ export class RefsPanel {
 
   startCreateTag(event?: Event): void {
     event?.stopPropagation();
+    this.ensureSectionVisible('tags');
     this.creatingTag.set(true);
     this.newTag.set('');
     this.expanded.update((state) => ({ ...state, tags: true }));
@@ -766,6 +943,7 @@ export class RefsPanel {
     }
 
     this.query.set('');
+    this.ensureSectionVisible('remotes');
     this.expanded.update((state) => ({ ...state, remotes: true }));
     const firstRemote = this.store.remoteBranches()[0]?.name.split('/')[0];
     if (firstRemote) {
@@ -777,6 +955,7 @@ export class RefsPanel {
   revealRemoteBranch(name: string): void {
     this.closeSuggest();
     const remote = name.split('/')[0];
+    if (remote) this.ensureSectionVisible(`remote:${remote}`);
     this.expandedRemotes.update((set) => {
       const next = new Set(set);
       if (remote) next.add(`remote:${remote}`);
@@ -790,6 +969,54 @@ export class RefsPanel {
     }
 
     this.scrollToBranch(name);
+  }
+
+  private ensureSectionVisible(id: string): void {
+    this.store.setRefsGroupHidden(id, false);
+  }
+
+  private sectionHasQueryMatch(id: string): boolean {
+    const q = this.query().trim().toLowerCase();
+    if (!q) return false;
+    if (id === 'local') return this.filteredLocal().length > 0;
+    if (id === 'tags') return this.filteredTags().length > 0;
+    if (id === 'remotes') {
+      return this.store
+        .remotes()
+        .some((r) => r.name.toLowerCase().includes(q) || r.fetchUrl.toLowerCase().includes(q));
+    }
+    if (id === 'stash') {
+      return this.store
+        .stashes()
+        .some((s) => s.id.toLowerCase().includes(q) || s.message.toLowerCase().includes(q));
+    }
+    if (id === 'worktrees') {
+      return this.store
+        .worktrees()
+        .some(
+          (w) =>
+            w.path.toLowerCase().includes(q) ||
+            (w.branch ?? '').toLowerCase().includes(q) ||
+            w.shortHead.toLowerCase().includes(q),
+        );
+    }
+    if (id === 'submodules') {
+      return this.store
+        .submodules()
+        .some(
+          (s) =>
+            s.path.toLowerCase().includes(q) ||
+            s.name.toLowerCase().includes(q) ||
+            s.url.toLowerCase().includes(q),
+        );
+    }
+    if (id === 'lfs') {
+      return this.store.lfsFiles().some((f) => f.path.toLowerCase().includes(q));
+    }
+    if (id.startsWith('remote:')) {
+      return (this.remoteGroups().find((group) => group.path === id)?.count ?? 0) > 0;
+    }
+    return false;
   }
 
   private remoteTracksLocal(remoteName: string, localName: string): boolean {

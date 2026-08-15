@@ -10,6 +10,16 @@
       <span class="kind" title="Temporarily shelved uncommitted changes">Stash</span>
       <span class="count">{{ filtered().length }}</span>
     </button>
+    @if (store.stashes().length > 0) {
+      <button
+        type="button"
+        class="group-action danger"
+        title="Permanently delete every stash"
+        (click)="dropAll($event)"
+      >
+        Drop all
+      </button>
+    }
     <button
       type="button"
       class="icon always"
@@ -18,6 +28,15 @@
       title="Stash working tree changes"
     >
       <ng-icon name="lucidePlus" size="11" />
+    </button>
+    <button
+      type="button"
+      class="icon"
+      (click)="requestHide($event)"
+      aria-label="Hide Stash"
+      title="Hide this section"
+    >
+      <ng-icon name="lucideEyeOff" size="11" />
     </button>
   </div>
 
@@ -30,6 +49,14 @@
           placeholder="Optional message"
           (keydown.enter)="push()"
         />
+        <label class="check" title="Also stash files Git is not tracking yet">
+          <input
+            type="checkbox"
+            [ngModel]="includeUntracked()"
+            (ngModelChange)="includeUntracked.set($event)"
+          />
+          Include untracked
+        </label>
         <div class="row">
           <button type="button" class="bl-btn bl-btn-primary" (click)="push()">Stash</button>
           <button type="button" class="bl-btn" (click)="drafting.set(false)">Cancel</button>
@@ -41,10 +68,16 @@
       @for (s of filtered(); track s.id) {
         <li>
           <div class="meta">
-            <div class="title-row">
+            <button
+              type="button"
+              class="title-row"
+              [disabled]="!s.sha"
+              [title]="s.sha ? 'Show this stash commit' : s.id"
+              (click)="showStash(s)"
+            >
               <ng-icon name="lucideArchive" size="12" />
               <span class="mono">{{ s.id }}</span>
-            </div>
+            </button>
             <span class="msg" [title]="s.message">{{ s.message }}</span>
           </div>
           <div class="actions">
@@ -63,6 +96,14 @@
               title="Apply stash and remove it from the list"
             >
               Pop
+            </button>
+            <button
+              type="button"
+              class="link"
+              (click)="store.stashBranch(s.index)"
+              title="Create a branch from this stash, apply it, and drop it"
+            >
+              Branch
             </button>
             <button
               type="button"

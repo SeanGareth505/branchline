@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { AngularSplitModule } from 'angular-split';
 import { AppStore, type BrowseTab } from '../../core/app.store';
 import { RefsPanel } from '../../features/branches/refs-panel/refs-panel';
@@ -29,6 +29,7 @@ import { FileTreePanel } from '../../features/files/file-tree-panel/file-tree-pa
   ],
   templateUrl: './browse-shell.html',
   styleUrl: './browse-shell.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BrowseShell {
   readonly store = inject(AppStore);

@@ -7,61 +7,35 @@
           <span class="dummy-badge">DUMMY DATA</span>
         }
       </div>
-      <p>
-        @if (connectionLabel(); as label) {
-          {{ label }}
-        } @else {
-          Filter by team, people, and status — then copy links for the whole result set.
-        }
-      </p>
+      <p>{{ connectionLabel() }}</p>
     </div>
-    <div class="bulk">
+    <div class="hero-actions">
       @if (showingDummy()) {
         <button type="button" class="bl-btn bl-btn-primary" (click)="connectHosts()">
           <ng-icon name="lucideLink" size="14" />
           Connect host
         </button>
+      } @else {
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="reload()"
+          [disabled]="busy()"
+          title="Reload pull requests"
+        >
+          <ng-icon name="lucideRefreshCw" size="14" />
+          Refresh
+        </button>
+        <button type="button" class="bl-btn" (click)="createPr()">New PR</button>
       }
       <button
         type="button"
         class="bl-btn"
         (click)="copyLinks()"
-        title="Copy all matching PR links"
+        title="Copy matching PR links"
       >
         <ng-icon name="lucideLink" size="14" />
         Copy links
-      </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="copyMarkdown()"
-        title="Copy results as markdown"
-      >
-        Copy markdown
-      </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="copyTitles()"
-        title="Copy PR titles"
-      >
-        Copy titles
-      </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="copyCsv()"
-        title="Copy results as CSV"
-      >
-        Copy CSV
-      </button>
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="copyCheckoutCommands()"
-        title="Copy git checkout commands for matching PRs"
-      >
-        Copy checkout cmds
       </button>
     </div>
   </header>
@@ -95,13 +69,6 @@
       <option value="closed">Closed</option>
     </select>
 
-    <select [ngModel]="team()" (ngModelChange)="team.set($event)">
-      <option value="all">All teams</option>
-      @for (t of teams(); track t) {
-        <option [value]="t">{{ t }}</option>
-      }
-    </select>
-
     <select [ngModel]="author()" (ngModelChange)="author.set($event)">
       <option value="all">All authors</option>
       @for (a of authors(); track a) {
@@ -109,26 +76,41 @@
       }
     </select>
 
-    <select [ngModel]="reviewer()" (ngModelChange)="reviewer.set($event)">
-      <option value="all">All reviewers</option>
-      @for (r of reviewers(); track r) {
-        <option [value]="r">{{ r }}</option>
-      }
-    </select>
+    @if (teams().length) {
+      <select [ngModel]="team()" (ngModelChange)="team.set($event)">
+        <option value="all">All teams</option>
+        @for (t of teams(); track t) {
+          <option [value]="t">{{ t }}</option>
+        }
+      </select>
+    }
 
-    <select [ngModel]="repo()" (ngModelChange)="repo.set($event)">
-      <option value="all">All repos</option>
-      @for (r of repos(); track r) {
-        <option [value]="r">{{ r }}</option>
-      }
-    </select>
+    @if (reviewers().length) {
+      <select [ngModel]="reviewer()" (ngModelChange)="reviewer.set($event)">
+        <option value="all">All reviewers</option>
+        @for (r of reviewers(); track r) {
+          <option [value]="r">{{ r }}</option>
+        }
+      </select>
+    }
 
-    <select [ngModel]="label()" (ngModelChange)="label.set($event)">
-      <option value="all">All labels</option>
-      @for (l of labels(); track l) {
-        <option [value]="l">{{ l }}</option>
-      }
-    </select>
+    @if (repos().length > 1) {
+      <select [ngModel]="repo()" (ngModelChange)="repo.set($event)">
+        <option value="all">All repos</option>
+        @for (r of repos(); track r) {
+          <option [value]="r">{{ r }}</option>
+        }
+      </select>
+    }
+
+    @if (labels().length) {
+      <select [ngModel]="label()" (ngModelChange)="label.set($event)">
+        <option value="all">All labels</option>
+        @for (l of labels(); track l) {
+          <option [value]="l">{{ l }}</option>
+        }
+      </select>
+    }
 
     @if (!liveMode()) {
       <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
@@ -151,7 +133,9 @@
       <option value="updated">Sort: updated</option>
       <option value="number">Sort: number</option>
       <option value="title">Sort: title</option>
-      <option value="additions">Sort: size</option>
+      @if (!liveMode()) {
+        <option value="additions">Sort: size</option>
+      }
     </select>
 
     <label class="check">
@@ -185,14 +169,11 @@
         (change)="toggleSelectAllFiltered()"
         [disabled]="loading()"
       />
-      Select all filtered ({{ filtered().length }})
+      Select all ({{ filtered().length }})
     </label>
-    <span class="muted">
-      Bulk actions use selection when checked, otherwise the full filtered list.
-    </span>
   </div>
 
-  @if (loading()) {
+  @if (loading() && prs().length === 0) {
     <app-page-skeleton [cards]="4" />
   } @else {
   <div class="list">
@@ -223,15 +204,28 @@
             }
           </div>
           <div class="meta">
-            <span>{{ pr.repo }}</span>
-            <span>{{ pr.team }}</span>
-            <span>{{ pr.author }} → {{ pr.assignees.join(', ') || 'unassigned' }}</span>
-            <span class="mono">{{ pr.sourceBranch }} → {{ pr.targetBranch }}</span>
-            <span class="diffstat">
-              <span class="bl-status-added">+{{ pr.additions }}</span>
-              <span class="bl-status-deleted">−{{ pr.deletions }}</span>
+            @if (repos().length > 1) {
+              <span>{{ pr.repo }}</span>
+            }
+            @if (pr.team) {
+              <span>{{ pr.team }}</span>
+            }
+            <span>
+              {{ pr.author }}
+              @if (pr.assignees.length) {
+                → {{ pr.assignees.join(', ') }}
+              }
             </span>
-            <span>{{ pr.commentCount }} comments</span>
+            <span class="mono">{{ pr.sourceBranch }} → {{ pr.targetBranch }}</span>
+            @if (pr.additions || pr.deletions) {
+              <span class="diffstat">
+                <span class="bl-status-added">+{{ pr.additions }}</span>
+                <span class="bl-status-deleted">−{{ pr.deletions }}</span>
+              </span>
+            }
+            @if (pr.commentCount) {
+              <span>{{ pr.commentCount }} comments</span>
+            }
             <span>{{ time(pr.updatedAt) }}</span>
           </div>
           <div class="labels">
@@ -243,49 +237,43 @@
             }
           </div>
 
-          @if (pr.status === 'open') {
+          @if (showingDummy() && pr.status === 'open') {
             <div class="review-bar">
-              @if (showingDummy()) {
-                @if (pr.draft) {
-                  <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
-                    Mark ready
-                  </button>
-                } @else {
-                  <button
-                    type="button"
-                    class="bl-btn"
-                    [class.done]="pr.reviewState === 'approved'"
-                    [disabled]="pr.reviewState === 'approved'"
-                    (click)="approve(pr)"
-                  >
-                    <ng-icon name="lucideCheck" size="13" />
-                    Approve
-                  </button>
-                  <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
-                    Request changes
-                  </button>
-                  <button type="button" class="bl-btn" (click)="startComment(pr)">
-                    <ng-icon name="lucideMessageSquare" size="13" />
-                    Comment
-                  </button>
-                  <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
-                    <ng-icon name="lucideGitMerge" size="13" />
-                    Merge
-                  </button>
-                }
-                <span class="sep" aria-hidden="true"></span>
-                <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
-                @if (!pr.draft) {
-                  <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
-                    Request my review
-                  </button>
-                }
-                <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
+              @if (pr.draft) {
+                <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
+                  Mark ready
+                </button>
               } @else {
-                <button type="button" class="bl-btn bl-btn-primary" (click)="openBrowser(pr)">
-                  Manage on GitHub
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [class.done]="pr.reviewState === 'approved'"
+                  [disabled]="pr.reviewState === 'approved'"
+                  (click)="approve(pr)"
+                >
+                  <ng-icon name="lucideCheck" size="13" />
+                  Approve
+                </button>
+                <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
+                  Request changes
+                </button>
+                <button type="button" class="bl-btn" (click)="startComment(pr)">
+                  <ng-icon name="lucideMessageSquare" size="13" />
+                  Comment
+                </button>
+                <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
+                  <ng-icon name="lucideGitMerge" size="13" />
+                  Merge
                 </button>
               }
+              <span class="sep" aria-hidden="true"></span>
+              <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
+              @if (!pr.draft) {
+                <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
+                  Request my review
+                </button>
+              }
+              <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
             </div>
           }
 

@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AppSettings,
@@ -14,6 +14,7 @@ import type {
   IgnoreFileOutput,
   IgnoreKind,
   JiraIssue,
+  MockPullRequest,
   MutationOutput,
   PreferredEditor,
   RecentRepo,
@@ -36,6 +37,8 @@ import type {
   ReleaseSetupFileHint,
   TagInfo,
   TemplateInfo,
+  SavedPrTemplate,
+  PrCreateMethod,
   UiSession,
   WorktreeInfo,
 } from './models';
@@ -138,6 +141,27 @@ interface RepoCacheEntry {
   remotes?: RemoteInfo[];
 }
 
+interface RepoWorkingSnapshot {
+  savedAt: number;
+  status: RepoStatus | null;
+  commits: CommitInfo[];
+  artificial: ArtificialCommit[];
+  branches: BranchInfo[];
+  stashes: StashEntry[];
+  tags: TagInfo[];
+  remotes: RemoteInfo[];
+  worktrees: WorktreeInfo[];
+  submodules: SubmoduleInfo[];
+  lfsFiles: LfsFileInfo[];
+  selectedSha: string | null;
+  selectedShas: string[];
+  compareSha: string | null;
+  diffSource: 'commit' | 'workingDirectory' | 'staged';
+  selectedDiffPath: string | null;
+  fileHistoryPath: string | null;
+  identity: GitIdentity | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AppStore {
   private readonly tauri = inject(TauriService);
@@ -176,6 +200,7 @@ export class AppStore {
   readonly selectedSha = signal<string | null>(null);
   readonly selectedShas = signal<string[]>([]);
   readonly compareSha = signal<string | null>(null);
+  readonly graphReveal = signal<{ sha: string; nonce: number } | null>(null);
   readonly diffSource = signal<'commit' | 'workingDirectory' | 'staged'>('commit');
   readonly browseTab = signal<BrowseTab>('diff');
   readonly historyFilter = signal<HistoryFilter>({
@@ -245,6 +270,13 @@ export class AppStore {
     notifyPrCi: true,
     hideUntracked: false,
     uiDensity: 'comfortable',
+    prTemplates: [],
+    prCreateMethod: 'browser',
+  });
+  readonly hiddenRefsGroups = computed((): string[] => {
+    const raw = this.settings().layout?.['hiddenRefsGroups'];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((id): id is string => typeof id === 'string' && id.length > 0);
   });
   readonly detectedEditors = signal<DetectedEditors | null>(null);
   readonly loading = signal(false);
@@ -259,6 +291,18 @@ export class AppStore {
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly releaseBusy = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
+  readonly releasingLocally = computed(() => {
+    if (!this.releaseBusy()) return false;
+    const phase = this.releaseActivity()?.phase;
+    return (
+      phase === 'preparing' ||
+      phase === 'bumping' ||
+      phase === 'staging' ||
+      phase === 'committing' ||
+      phase === 'tagging' ||
+      phase === 'pushing'
+    );
+  });
   private releaseProgressUnlisten: UnlistenFn | null = null;
   private releaseDeployPollTimer: number | null = null;
   readonly paletteOpen = signal(false);
@@ -282,6 +326,7 @@ export class AppStore {
   private hostReposFetchedAt = 0;
   private static readonly HOST_REPOS_TTL_MS = 5 * 60 * 1000;
   readonly createBranchDialogOpen = signal(false);
+  readonly createPrDialogOpen = signal(false);
   readonly publishGithubDialogOpen = signal(false);
   readonly githubDeviceLoginOpen = signal(false);
   readonly createBranchStartPoint = signal<string | null>(null);
@@ -290,13 +335,29 @@ export class AppStore {
   readonly jiraIssues = signal<JiraIssue[]>([]);
   readonly jiraIssuesLoading = signal(false);
   readonly jiraIssuesError = signal<string | null>(null);
+  readonly pullRequests = signal<MockPullRequest[]>([]);
+  readonly pullRequestsLoading = signal(false);
+  readonly pullRequestsRefreshing = signal(false);
+  readonly pullRequestsError = signal<string | null>(null);
+  private pullRequestsKey = '';
+  private pullRequestsGen = 0;
+  private pullRequestsInflight: Promise<void> | null = null;
+  private pullRequestsInflightKey = '';
+  private readonly pullRequestCache = new Map<string, { list: MockPullRequest[]; at: number }>();
+  private static readonly PRS_TTL_MS = 90_000;
   readonly selectedDiffPath = signal<string | null>(null);
   readonly fileHistoryPath = signal<string | null>(null);
   readonly automationFilter = signal<AutomationFilter>('all');
   readonly splitMain = signal<number[]>([16, 84]);
   readonly splitNested = signal<number[]>([62, 38]);
   private sessionSaveTimer: number | null = null;
+  private sessionOverlay: UiSession = {};
   private restoringSession = false;
+  private repoCacheTimer: number | null = null;
+  private lastRepoCacheFp = '';
+  private repoLoadGen = 0;
+  private readonly repoSnapshots = new Map<string, RepoWorkingSnapshot>();
+  private static readonly SNAPSHOT_MAX = 12;
   private repoFsUnlisten: UnlistenFn | null = null;
   private repoFsRefreshTimer: number | null = null;
   private mutationDepth = 0;
@@ -309,9 +370,19 @@ export class AppStore {
   private worktreeFocusBound = false;
   private conflictDraftDirty = false;
 
+  readonly commitBySha = computed(() => {
+    const map = new Map<string, CommitInfo>();
+    for (const c of this.commits()) {
+      map.set(c.sha, c);
+      map.set(c.shortSha, c);
+    }
+    return map;
+  });
+
   readonly selectedCommit = computed(() => {
     const sha = this.selectedSha();
-    return this.commits().find((c) => c.sha === sha || c.shortSha === sha) ?? null;
+    if (!sha) return null;
+    return this.commitBySha().get(sha) ?? null;
   });
 
   readonly changeCount = computed(() => {
@@ -345,15 +416,6 @@ export class AppStore {
     const list = this.remoteBranches();
     if (!this.myBranchesOnly()) return list;
     return list.filter((b) => this.isMyBranch(b));
-  });
-
-  private readonly commitBySha = computed(() => {
-    const map = new Map<string, CommitInfo>();
-    for (const c of this.commits()) {
-      map.set(c.sha, c);
-      map.set(c.shortSha, c);
-    }
-    return map;
   });
 
   readonly currentBranchLocked = computed(() => {
@@ -426,6 +488,7 @@ export class AppStore {
       this.openSettings('repos');
       return;
     }
+    if (this.view() === view) return;
     this.view.set(view);
     if (view !== 'onboarding' && !this.restoringSession) {
       this.patchSession({ view });
@@ -474,6 +537,7 @@ export class AppStore {
       if (target && ['github', 'gitlab', 'azureDevOps'].includes(target.provider)) {
         this.hostRepos.set([]);
         this.hostReposFetchedAt = 0;
+        this.clearPullRequestCache();
       }
       this.showSuccess('Disconnected');
     } catch (err) {
@@ -482,6 +546,7 @@ export class AppStore {
   }
 
   setBrowseTab(tab: BrowseTab): void {
+    if (this.browseTab() === tab) return;
     this.browseTab.set(tab);
     if (!this.restoringSession) {
       this.patchSession({ browseTab: tab });
@@ -507,42 +572,46 @@ export class AppStore {
   readSession(): UiSession {
     const layout = this.settings().layout ?? {};
     const raw = layout['session'];
-    if (!raw || typeof raw !== 'object') return {};
-    return raw as UiSession;
+    const base = raw && typeof raw === 'object' ? (raw as UiSession) : {};
+    return { ...base, ...this.sessionOverlay };
   }
 
   patchSession(partial: Partial<UiSession>, opts?: { flush?: boolean }): void {
-    untracked(() => {
-      const session = { ...this.readSession(), ...partial };
-      const layout = { ...(this.settings().layout ?? {}), session };
-      this.settings.update((s) => ({ ...s, layout }));
-    });
+    this.sessionOverlay = { ...this.readSession(), ...partial };
     if (this.sessionSaveTimer !== null) {
       window.clearTimeout(this.sessionSaveTimer);
       this.sessionSaveTimer = null;
     }
     if (opts?.flush) {
-      void this.tauri.saveSettings(this.settings()).catch(() => {
-        /* ignore background session save failures */
-      });
+      this.persistSessionToDisk();
       return;
     }
     this.sessionSaveTimer = window.setTimeout(() => {
       this.sessionSaveTimer = null;
-      void this.tauri.saveSettings(this.settings()).catch(() => {
-        /* ignore background session save failures */
-      });
+      this.persistSessionToDisk();
     }, 400);
+  }
+
+  private settingsWithSession(): AppSettings {
+    const current = this.settings();
+    return {
+      ...current,
+      layout: { ...(current.layout ?? {}), session: this.readSession() },
+    };
+  }
+
+  private persistSessionToDisk(): void {
+    void this.tauri.saveSettings(this.settingsWithSession()).catch(() => {
+      /* ignore background session save failures */
+    });
   }
 
   private flushSession(): void {
     if (this.sessionSaveTimer !== null) {
       window.clearTimeout(this.sessionSaveTimer);
       this.sessionSaveTimer = null;
-      void this.tauri.saveSettings(this.settings()).catch(() => {
-        /* ignore */
-      });
     }
+    this.persistSessionToDisk();
   }
 
   private applySession(session: UiSession): void {
@@ -659,12 +728,15 @@ export class AppStore {
         null;
       this.restoringSession = true;
       try {
-        for (const path of pathsToOpen) {
-          await this.openRepo(path, {
-            restoreView: false,
-            activate:
-              path === activePath || (!activePath && path === pathsToOpen[pathsToOpen.length - 1]),
-          });
+        this.openRepos.set(pathsToOpen.map((path) => this.repoTabStub(path)));
+        const toActivate =
+          (activePath && pathsToOpen.some((p) => sameRepoPath(p, activePath))
+            ? activePath
+            : null) ||
+          pathsToOpen[pathsToOpen.length - 1] ||
+          null;
+        if (toActivate) {
+          await this.openRepo(toActivate, { restoreView: false });
         }
         hasRepo = !!this.currentRepo() || this.openRepos().length > 0;
         if (!this.currentRepo() && this.openRepos().length) {
@@ -673,6 +745,7 @@ export class AppStore {
           });
           hasRepo = !!this.currentRepo();
         }
+        void this.refreshInactiveRepoSummaries();
       } finally {
         this.restoringSession = false;
       }
@@ -697,6 +770,129 @@ export class AppStore {
     return this.settings().connections.some(
       (c) => c.provider === 'jira' && c.enabled && (c.hasToken || c.token.trim()),
     );
+  }
+
+  hasGithubConnection(): boolean {
+    return this.settings().connections.some(
+      (c) => c.provider === 'github' && c.enabled && (c.hasToken || c.token.trim()),
+    );
+  }
+
+  async refreshPullRequests(
+    state: 'open' | 'closed' | 'all' = 'open',
+    opts?: { force?: boolean },
+  ): Promise<void> {
+    const path = this.currentRepo()?.path ?? '';
+    const dummy = !this.hasLinkedPrHost();
+    const github = this.hasGithubConnection();
+    const key = dummy ? `dummy|${state}` : github ? `${path}|${state}` : `none|${path}|${state}`;
+    const cached = this.pullRequestCache.get(key);
+    const now = Date.now();
+    const fresh = !!cached && !opts?.force && now - cached.at < AppStore.PRS_TTL_MS;
+
+    if (cached) {
+      this.pullRequests.set(cached.list);
+      this.pullRequestsError.set(null);
+      this.pullRequestsKey = key;
+    } else if (this.pullRequestsKey !== key) {
+      this.pullRequests.set([]);
+      this.pullRequestsError.set(null);
+    }
+
+    if (fresh) return;
+
+    if (
+      !opts?.force &&
+      this.pullRequestsInflight &&
+      this.pullRequestsInflightKey === key
+    ) {
+      if (!cached) this.pullRequestsLoading.set(true);
+      await this.pullRequestsInflight;
+      return;
+    }
+
+    if (!dummy && !github) {
+      this.pullRequests.set([]);
+      this.pullRequestCache.set(key, { list: [], at: now });
+      this.pullRequestsKey = key;
+      this.pullRequestsLoading.set(false);
+      this.pullRequestsRefreshing.set(false);
+      return;
+    }
+
+    const gen = ++this.pullRequestsGen;
+    const showExisting =
+      (cached?.list.length ?? 0) > 0 ||
+      (this.pullRequestsKey === key && this.pullRequests().length > 0);
+    if (showExisting) this.pullRequestsRefreshing.set(true);
+    else this.pullRequestsLoading.set(true);
+
+    const run = (async () => {
+      try {
+        let list: MockPullRequest[];
+        if (dummy) {
+          list = await this.tauri.listMockPullRequests();
+        } else {
+          if (!path) {
+            throw new Error('Open a repository with a GitHub remote to load pull requests.');
+          }
+          list = await this.tauri.listPullRequests(path, state);
+        }
+        if (gen !== this.pullRequestsGen) return;
+        this.pullRequestCache.set(key, { list, at: Date.now() });
+        this.pullRequests.set(list);
+        this.pullRequestsKey = key;
+        this.pullRequestsError.set(null);
+      } catch (err) {
+        if (gen !== this.pullRequestsGen) return;
+        if (!cached) {
+          this.pullRequests.set([]);
+          this.pullRequestsKey = key;
+        }
+        this.pullRequestsError.set(this.formatError(err));
+      } finally {
+        if (gen === this.pullRequestsGen) {
+          this.pullRequestsLoading.set(false);
+          this.pullRequestsRefreshing.set(false);
+        }
+      }
+    })();
+
+    this.pullRequestsInflight = run;
+    this.pullRequestsInflightKey = key;
+    try {
+      await run;
+    } finally {
+      if (this.pullRequestsInflightKey === key) {
+        this.pullRequestsInflight = null;
+        this.pullRequestsInflightKey = '';
+      }
+    }
+  }
+
+  patchPullRequest(id: string, partial: Partial<MockPullRequest>): void {
+    this.pullRequests.update((list) =>
+      list.map((p) => (p.id === id ? { ...p, ...partial } : p)),
+    );
+    const cached = this.pullRequestCache.get(this.pullRequestsKey);
+    if (cached) {
+      this.pullRequestCache.set(this.pullRequestsKey, {
+        list: this.pullRequests(),
+        at: cached.at,
+      });
+    }
+  }
+
+  private clearPullRequestCache(): void {
+    this.pullRequestCache.clear();
+    this.pullRequests.set([]);
+    this.pullRequestsKey = '';
+    this.pullRequestsError.set(null);
+    this.pullRequestsLoading.set(false);
+    this.pullRequestsRefreshing.set(false);
+    this.pullRequestsGen += 1;
+    this.pullRequestsInflight = null;
+    this.pullRequestsInflightKey = '';
   }
 
   isDummyRepoPath(path: string | null | undefined): boolean {
@@ -769,11 +965,18 @@ export class AppStore {
       this.stashes.set(entry.stashes ?? []);
       this.tags.set(entry.tags ?? []);
       this.remotes.set(entry.remotes ?? []);
+      this.worktrees.set([]);
+      this.submodules.set([]);
+      this.lfsFiles.set([]);
+      this.identity.set(null);
       this.updateNextAction(entry.status);
-      if (!this.selectedSha() && entry.commits?.[0]) {
-        this.selectedSha.set(entry.commits[0].sha);
-        this.selectedShas.set([entry.commits[0].sha]);
-      }
+      const head = entry.commits?.[0]?.sha ?? null;
+      this.selectedSha.set(head);
+      this.selectedShas.set(head ? [head] : []);
+      this.compareSha.set(null);
+      this.diffSource.set('commit');
+      this.selectedDiffPath.set(null);
+      this.fileHistoryPath.set(null);
       return true;
     } catch {
       return false;
@@ -781,19 +984,42 @@ export class AppStore {
   }
 
   private persistRepoCache(path: string): void {
+    if (this.repoCacheTimer !== null) window.clearTimeout(this.repoCacheTimer);
+    this.repoCacheTimer = window.setTimeout(() => {
+      this.repoCacheTimer = null;
+      this.writeRepoCache(path);
+    }, 1800);
+  }
+
+  private writeRepoCache(path: string): void {
     try {
+      const current = this.currentRepo()?.path;
+      if (!current || !sameRepoPath(current, path)) return;
       const status = this.status();
       if (!status) return;
+      const commits = this.commits();
+      const branches = this.branches();
+      const fp = `${normalizeCachePath(path)}:${commitsFingerprint(commits)}:${branchesFingerprint(branches)}:${statusFingerprint(status)}`;
+      if (fp === this.lastRepoCacheFp) return;
+      this.lastRepoCacheFp = fp;
       const raw = localStorage.getItem(REPO_CACHE_KEY);
       const all = (raw ? JSON.parse(raw) : {}) as Record<string, RepoCacheEntry>;
+      const locals = branches.filter((b) => !b.isRemote);
+      const remotes = branches.filter((b) => b.isRemote).slice(0, 80);
       all[normalizeCachePath(path)] = {
         savedAt: Date.now(),
-        status,
-        commits: this.commits().slice(0, 200),
-        branches: this.branches(),
+        status: {
+          ...status,
+          staged: status.staged.slice(0, 400),
+          unstaged: status.unstaged.slice(0, 400),
+          untracked: status.untracked.slice(0, 200),
+          conflicted: status.conflicted.slice(0, 200),
+        },
+        commits: commits.slice(0, 200),
+        branches: [...locals, ...remotes],
         artificial: this.artificial(),
-        stashes: this.stashes(),
-        tags: this.tags(),
+        stashes: this.stashes().slice(0, 30),
+        tags: this.tags().slice(0, 80),
         remotes: this.remotes(),
       };
       const keys = Object.keys(all);
@@ -809,6 +1035,129 @@ export class AppStore {
     }
   }
 
+  private repoLoadStale(gen: number, path?: string): boolean {
+    if (gen !== this.repoLoadGen) return true;
+    if (!path) return false;
+    const current = this.currentRepo()?.path;
+    return !current || !sameRepoPath(current, path);
+  }
+
+  private repoTabStub(path: string): RepoSummary {
+    const existing = this.openRepos().find((r) => sameRepoPath(r.path, path));
+    if (existing) return existing;
+    const recent = this.repos().find((r) => sameRepoPath(r.path, path));
+    const name =
+      recent?.name ||
+      path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
+      path;
+    return {
+      path,
+      name,
+      branch: '',
+      ahead: 0,
+      behind: 0,
+      hasChanges: false,
+    };
+  }
+
+  private mergeFocusedSummary(summary: RepoSummary): RepoSummary {
+    const existing = this.openRepos().find((r) => sameRepoPath(r.path, summary.path));
+    if (!existing) return summary;
+    return {
+      ...summary,
+      ahead: existing.ahead,
+      behind: existing.behind,
+      hasChanges: existing.hasChanges,
+      branch: summary.branch || existing.branch,
+    };
+  }
+
+  private snapshotCurrentRepo(): void {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    if (!this.status() && this.commits().length === 0) return;
+    this.repoSnapshots.set(normalizeCachePath(path), {
+      savedAt: Date.now(),
+      status: this.status(),
+      commits: this.commits().slice(),
+      artificial: this.artificial().slice(),
+      branches: this.branches().slice(),
+      stashes: this.stashes().slice(),
+      tags: this.tags().slice(),
+      remotes: this.remotes().slice(),
+      worktrees: this.worktrees().slice(),
+      submodules: this.submodules().slice(),
+      lfsFiles: this.lfsFiles().slice(),
+      selectedSha: this.selectedSha(),
+      selectedShas: this.selectedShas().slice(),
+      compareSha: this.compareSha(),
+      diffSource: this.diffSource(),
+      selectedDiffPath: this.selectedDiffPath(),
+      fileHistoryPath: this.fileHistoryPath(),
+      identity: this.identity(),
+    });
+    this.pruneRepoSnapshots();
+  }
+
+  private restoreRepoSnapshot(path: string): boolean {
+    const snap = this.repoSnapshots.get(normalizeCachePath(path));
+    if (!snap) return false;
+    this.status.set(snap.status);
+    this.commits.set(snap.commits);
+    this.artificial.set(snap.artificial);
+    this.branches.set(snap.branches);
+    this.stashes.set(snap.stashes);
+    this.tags.set(snap.tags);
+    this.remotes.set(snap.remotes);
+    this.worktrees.set(snap.worktrees);
+    this.submodules.set(snap.submodules);
+    this.lfsFiles.set(snap.lfsFiles);
+    this.selectedSha.set(snap.selectedSha);
+    this.selectedShas.set(snap.selectedShas);
+    this.compareSha.set(snap.compareSha);
+    this.diffSource.set(snap.diffSource);
+    this.selectedDiffPath.set(snap.selectedDiffPath);
+    this.fileHistoryPath.set(snap.fileHistoryPath);
+    this.identity.set(snap.identity);
+    if (snap.status) this.updateNextAction(snap.status);
+    return true;
+  }
+
+  private dropRepoSnapshot(path: string): void {
+    this.repoSnapshots.delete(normalizeCachePath(path));
+  }
+
+  private pruneRepoSnapshots(): void {
+    const open = new Set(this.openRepos().map((r) => normalizeCachePath(r.path)));
+    const current = this.currentRepo()?.path;
+    if (current) open.add(normalizeCachePath(current));
+    for (const key of [...this.repoSnapshots.keys()]) {
+      if (!open.has(key)) this.repoSnapshots.delete(key);
+    }
+    if (this.repoSnapshots.size <= AppStore.SNAPSHOT_MAX) return;
+    const oldest = [...this.repoSnapshots.entries()]
+      .sort((a, b) => a[1].savedAt - b[1].savedAt)
+      .slice(0, this.repoSnapshots.size - AppStore.SNAPSHOT_MAX);
+    for (const [key] of oldest) this.repoSnapshots.delete(key);
+  }
+
+  private async refreshInactiveRepoSummaries(): Promise<void> {
+    const current = this.currentRepo()?.path;
+    const inactive = this.openRepos().filter(
+      (r) => !current || !sameRepoPath(r.path, current),
+    );
+    if (!inactive.length) return;
+    const results = await Promise.allSettled(
+      inactive.map((r) => this.tauri.peekRepository(r.path)),
+    );
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      if (!this.openRepos().some((r) => sameRepoPath(r.path, result.value.path))) continue;
+      this.upsertOpenRepo(result.value);
+    }
+    this.persistOpenRepos();
+  }
+
   async openRepo(
     path: string,
     opts?: { restoreView?: boolean; activate?: boolean },
@@ -820,35 +1169,62 @@ export class AppStore {
 
     if (!activate) {
       try {
-        const summary = await this.tauri.openRepository(normalized);
-        this.upsertOpenRepo(summary);
+        this.upsertOpenRepo(this.repoTabStub(normalized));
         this.persistOpenRepos();
+        const summary = await this.tauri.peekRepository(normalized);
+        if (this.openRepos().some((r) => sameRepoPath(r.path, normalized))) {
+          this.upsertOpenRepo(summary);
+          this.persistOpenRepos();
+        }
       } catch (err) {
         this.showError(err);
       }
       return;
     }
 
-    if (this.currentRepo()?.path === normalized) {
+    if (this.currentRepo() && sameRepoPath(this.currentRepo()!.path, normalized)) {
       if (restoreView) this.setView('browse');
       else this.view.set('browse');
       return;
     }
 
-    const hadCache = this.hydrateRepoCache(normalized);
-    if (!hadCache) {
+    const alreadyOpen = this.openRepos().some((r) => sameRepoPath(r.path, normalized));
+    const switching =
+      alreadyOpen && !!this.currentRepo() && !sameRepoPath(this.currentRepo()!.path, normalized);
+    const gen = ++this.repoLoadGen;
+
+    this.snapshotCurrentRepo();
+    this.graphReveal.set(null);
+    const hadLive = this.restoreRepoSnapshot(normalized) || this.hydrateRepoCache(normalized);
+    if (!hadLive) {
       this.clearWorkingState();
       this.loadingLabel.set('Opening repository…');
       this.loading.set(true);
     } else {
       this.syncingRepo.set(true);
     }
+
+    const stub = this.mergeFocusedSummary(this.repoTabStub(normalized));
+    this.currentRepo.set(stub);
+    this.upsertOpenRepo(stub);
+
     try {
-      const summary = await this.tauri.openRepository(normalized);
+      const summary = switching
+        ? this.mergeFocusedSummary(await this.tauri.focusRepository(normalized))
+        : await this.tauri.openRepository(normalized);
+      if (this.repoLoadStale(gen, normalized)) return;
       this.currentRepo.set(summary);
       this.upsertOpenRepo(summary);
-      this.repos.set(await this.tauri.listRecentRepos());
-      await this.refreshRepo();
+      if (!switching) {
+        this.repos.set(await this.tauri.listRecentRepos());
+        if (this.repoLoadStale(gen, normalized)) return;
+      }
+      if (hadLive) {
+        void this.refreshRepo();
+      } else {
+        await this.refreshRepo();
+      }
+      if (this.repoLoadStale(gen, normalized)) return;
       this.persistRepoCache(normalized);
       this.persistOpenRepos();
       if (restoreView) {
@@ -856,23 +1232,31 @@ export class AppStore {
       } else {
         this.view.set('browse');
       }
-      if (this.isDummyBackend || this.isDummyRepoPath(normalized)) {
+      if (!switching && (this.isDummyBackend || this.isDummyRepoPath(normalized))) {
         this.showWarning(
           'DUMMY DATA — browser preview. Open a real repo in the desktop app for live Git.',
         );
       }
-      if (this.settings().autoFetchOnOpen && !this.isDummyBackend) {
-        void this.tauri.fetch(normalized).then(
-          () => this.refreshRepo(),
+      if (!switching && this.settings().autoFetchOnOpen && !this.isDummyBackend) {
+        void this.tauri.fetch(normalized, this.pushRemoteName()).then(
+          () => {
+            if (this.repoLoadStale(gen, normalized)) return;
+            void this.refreshRepo();
+          },
           (err) => this.showError(err),
         );
+      }
+      if (!switching && this.hasGithubConnection()) {
+        void this.refreshPullRequests('open');
       }
     } catch (err) {
       this.showError(err);
       if (!this.openRepos().length) this.goHome();
     } finally {
-      this.loading.set(false);
-      this.syncingRepo.set(false);
+      if (gen === this.repoLoadGen) {
+        this.loading.set(false);
+        if (!hadLive) this.syncingRepo.set(false);
+      }
     }
   }
 
@@ -881,10 +1265,12 @@ export class AppStore {
   }
 
   async closeOpenRepo(path: string, showToast = true): Promise<void> {
-    const tabs = this.openRepos().filter((r) => r.path !== path);
-    const closingCurrent = this.currentRepo()?.path === path;
-    const name = this.openRepos().find((r) => r.path === path)?.name;
+    const tabs = this.openRepos().filter((r) => !sameRepoPath(r.path, path));
+    const closingCurrent = !!this.currentRepo() && sameRepoPath(this.currentRepo()!.path, path);
+    const name = this.openRepos().find((r) => sameRepoPath(r.path, path))?.name;
+    this.dropRepoSnapshot(path);
     this.openRepos.set(tabs);
+    this.pruneRepoSnapshots();
     this.persistOpenRepos();
 
     if (!closingCurrent) {
@@ -898,6 +1284,7 @@ export class AppStore {
       return;
     }
 
+    this.repoSnapshots.clear();
     this.clearWorkingState();
     this.currentRepo.set(null);
     this.goHome();
@@ -911,6 +1298,7 @@ export class AppStore {
       void this.closeOpenRepo(path, showToast);
       return;
     }
+    this.repoSnapshots.clear();
     this.clearWorkingState();
     this.currentRepo.set(null);
     this.openRepos.set([]);
@@ -921,12 +1309,22 @@ export class AppStore {
 
   private upsertOpenRepo(summary: RepoSummary): void {
     this.openRepos.update((tabs) => {
-      const idx = tabs.findIndex((t) => t.path === summary.path);
+      const idx = tabs.findIndex((t) => sameRepoPath(t.path, summary.path));
       if (idx < 0) return [...tabs, summary];
       const next = tabs.slice();
       next[idx] = summary;
       return next;
     });
+  }
+
+  private setCommitsIfChanged(commits: CommitInfo[]): void {
+    if (commitsFingerprint(this.commits()) === commitsFingerprint(commits)) return;
+    this.commits.set(commits);
+  }
+
+  private setBranchesIfChanged(branches: BranchInfo[]): void {
+    if (branchesFingerprint(this.branches()) === branchesFingerprint(branches)) return;
+    this.branches.set(branches);
   }
 
   private persistOpenRepos(): void {
@@ -1331,6 +1729,7 @@ export class AppStore {
   private async runRefreshWorkingTree(path: string): Promise<void> {
     const prev = this.status();
     const status = await this.tauri.getRepoStatus(path, this.statusFetchOpts());
+    if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
     this.lastWorkingTreeRefreshAt = Date.now();
     if (prev && statusFingerprint(prev) === statusFingerprint(status)) {
       return;
@@ -1340,6 +1739,7 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
+    this.snapshotCurrentRepo();
   }
 
   async refreshRepo(opts?: { notify?: boolean }): Promise<void> {
@@ -1378,16 +1778,17 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, 200),
+      this.tauri.getCommitLog(path, 1000),
       this.tauri.listBranches(path),
       this.tauri.listStashes(path),
       this.tauri.listTags(path),
       this.tauri.listRemotes(path),
     ]);
+    if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
     this.status.set(status);
-    this.commits.set(commits);
+    this.setCommitsIfChanged(commits);
     this.artificial.set(artificialFromStatus(status));
-    this.branches.set(branches);
+    this.setBranchesIfChanged(branches);
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
@@ -1401,6 +1802,7 @@ export class AppStore {
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
     this.persistRepoCache(path);
+    this.snapshotCurrentRepo();
     if (opts?.notify) {
       void this.refreshHeavyLists(path, { includeLfs: true });
       const changed =
@@ -1435,7 +1837,8 @@ export class AppStore {
         this.syncingRepo.set(false);
         if (this.refreshQueued && this.mutationDepth === 0) {
           this.refreshQueued = false;
-          void this.refreshRepoMeta(path);
+          const current = this.currentRepo()?.path;
+          if (current) void this.refreshRepoMeta(current);
         }
       });
     await this.refreshInFlight;
@@ -1445,14 +1848,21 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, 200),
+      this.tauri.getCommitLog(path, 1000),
       this.tauri.listBranches(path),
     ]);
-    if (this.currentRepo()?.path !== path) return;
+    if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
+    if (prev && statusFingerprint(prev) === statusFingerprint(status)) {
+      this.setCommitsIfChanged(commits);
+      this.setBranchesIfChanged(branches);
+      this.lastWorkingTreeRefreshAt = Date.now();
+      this.snapshotCurrentRepo();
+      return;
+    }
     this.status.set(status);
-    this.commits.set(commits);
+    this.setCommitsIfChanged(commits);
     this.artificial.set(artificialFromStatus(status));
-    this.branches.set(branches);
+    this.setBranchesIfChanged(branches);
     this.lastWorkingTreeRefreshAt = Date.now();
     if (!this.selectedSha() && commits[0]) {
       this.selectedSha.set(commits[0].sha);
@@ -1461,7 +1871,7 @@ export class AppStore {
     this.updateNextAction(status);
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
-    this.persistRepoCache(path);
+    this.snapshotCurrentRepo();
   }
 
   async refreshLfsFiles(): Promise<void> {
@@ -1469,7 +1879,7 @@ export class AppStore {
     if (!path) return;
     try {
       const lfsFiles = await this.tauri.listLfsFiles(path);
-      if (this.currentRepo()?.path !== path) return;
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
       this.lfsFiles.set(lfsFiles);
     } catch {
       /* optional */
@@ -1489,10 +1899,11 @@ export class AppStore {
           ? this.tauri.listLfsFiles(path).catch(() => [] as LfsFileInfo[])
           : Promise.resolve(this.lfsFiles()),
       ]);
-      if (this.currentRepo()?.path !== path) return;
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
       this.worktrees.set(worktrees);
       this.submodules.set(submodules);
       if (includeLfs) this.lfsFiles.set(lfsFiles);
+      this.snapshotCurrentRepo();
     } catch {
       /* heavy lists are best-effort */
     }
@@ -1547,6 +1958,7 @@ export class AppStore {
         | 'actionsPageUrl'
         | 'repoUrl'
         | 'deployJobs'
+        | 'needsRefresh'
       >
     >,
   ): void {
@@ -1592,12 +2004,13 @@ export class AppStore {
     try {
       const raw = localStorage.getItem(RELEASE_ACTIVITY_STORAGE_KEY);
       if (!raw) return;
-      const activity = JSON.parse(raw) as ReleaseActivity;
+      const activity = hydrateReleaseActivity(JSON.parse(raw) as ReleaseActivity);
       if (!activity?.path || !activity.tag) return;
       this.releaseActivity.set(activity);
       const resumeDeploy =
         activity.willPush &&
         !activity.needsPush &&
+        !activity.needsRefresh &&
         (activity.phase === 'deploying' ||
           activity.phase === 'ci' ||
           activity.phase === 'publishing' ||
@@ -1656,6 +2069,7 @@ export class AppStore {
       startedAt: Date.now(),
       finishedAt: null,
       ok: null,
+      needsRefresh: false,
     });
     this.releaseBusy.set(true);
     this.openReleaseTab();
@@ -1798,7 +2212,7 @@ export class AppStore {
   }
 
   selectCommit(sha: string, multi = false): void {
-    this.diffSource.set('commit');
+    if (this.diffSource() !== 'commit') this.diffSource.set('commit');
     if (multi) {
       const cur = this.selectedShas();
       if (cur.includes(sha)) {
@@ -1806,12 +2220,40 @@ export class AppStore {
       } else {
         this.selectedShas.set([...cur, sha]);
       }
-      this.selectedSha.set(sha);
+      if (this.selectedSha() !== sha) this.selectedSha.set(sha);
+      return;
+    }
+    const current = this.selectedShas();
+    if (
+      this.selectedSha() === sha &&
+      current.length === 1 &&
+      current[0] === sha &&
+      this.compareSha() === null
+    ) {
       return;
     }
     this.selectedSha.set(sha);
     this.selectedShas.set([sha]);
-    this.compareSha.set(null);
+    if (this.compareSha() !== null) this.compareSha.set(null);
+  }
+
+  revealCommit(sha: string): void {
+    const resolved = this.resolveLoadedCommitSha(sha);
+    this.selectCommit(resolved ?? sha);
+    if (!resolved) {
+      this.showWarning('That commit is not in the loaded graph');
+      return;
+    }
+    if (!this.filteredCommits().some((c) => c.sha === resolved)) {
+      this.clearHistoryFilter();
+    }
+    this.graphReveal.update((cur) => ({ sha: resolved, nonce: (cur?.nonce ?? 0) + 1 }));
+  }
+
+  private resolveLoadedCommitSha(sha: string): string | null {
+    const map = this.commitBySha();
+    const hit = map.get(sha) ?? (sha.length >= 7 ? map.get(sha.slice(0, 7)) : undefined);
+    return hit?.sha ?? null;
   }
 
   selectWorkingDirectory(kind: 'workingDirectory' | 'staged' = 'workingDirectory'): void {
@@ -2010,13 +2452,16 @@ export class AppStore {
   }
 
   async saveSettings(partial: Partial<AppSettings>): Promise<void> {
+    const current = this.settingsWithSession();
     const next = normalizeSettings({
-      ...this.settings(),
+      ...current,
       ...partial,
-      connections: partial.connections ?? this.settings().connections,
+      connections: partial.connections ?? current.connections,
+      layout: partial.layout ?? current.layout,
     });
     const saved = await this.tauri.saveSettings(next);
     this.settings.set(normalizeSettings(saved));
+    this.sessionOverlay = {};
     this.myBranchesOnly.set(saved.myBranchesOnly);
     this.applyTheme(saved);
   }
@@ -2031,6 +2476,19 @@ export class AppStore {
       return;
     }
     await this.saveSettings({ pushAfterCommit: true });
+  }
+
+  setHiddenRefsGroups(ids: string[]): void {
+    const layout = { ...(this.settings().layout ?? {}), hiddenRefsGroups: [...new Set(ids)] };
+    this.settings.update((s) => ({ ...s, layout }));
+    void this.saveSettings({ layout });
+  }
+
+  setRefsGroupHidden(id: string, hidden: boolean): void {
+    const current = this.hiddenRefsGroups();
+    const already = current.includes(id);
+    if (hidden === already) return;
+    this.setHiddenRefsGroups(hidden ? [...current, id] : current.filter((x) => x !== id));
   }
 
   setMyBranchesOnly(value: boolean): void {
@@ -2789,15 +3247,67 @@ export class AppStore {
     }
   }
 
-  async fetchRemote(): Promise<void> {
+  async fetchRemote(remote?: string): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
     if (this.remoteBusy()) return;
     this.remoteBusy.set('fetch');
     try {
-      const result = await this.withRepoMutation(() => this.tauri.fetch(path));
+      const result = await this.withRepoMutation(() =>
+        this.tauri.fetch(path, remote?.trim() || this.pushRemoteName()),
+      );
       await this.refreshRepo();
       this.showToast(result.message || 'Fetched from remote', {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'fetch',
+      });
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
+    }
+  }
+
+  async pruneRemote(name: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const remote = name.trim();
+    if (!path || !remote) return;
+    if (this.remoteBusy()) return;
+    this.remoteBusy.set('fetch');
+    try {
+      const result = await this.withRepoMutation(() => this.tauri.pruneRemote(path, remote));
+      await this.refreshRepo();
+      this.showToast(result.message || `Pruned ${remote}`, {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'fetch',
+      });
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
+    }
+  }
+
+  async pruneAllRemotes(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    const remotes = this.remotes();
+    if (remotes.length === 0) {
+      this.showWarning('No remotes configured');
+      return;
+    }
+    if (this.remoteBusy()) return;
+    this.remoteBusy.set('fetch');
+    try {
+      let lastMessage = '';
+      for (const remote of remotes) {
+        const result = await this.withRepoMutation(() => this.tauri.pruneRemote(path, remote.name));
+        lastMessage = result.message || `Pruned ${remote.name}`;
+      }
+      await this.refreshRepo();
+      this.showToast(lastMessage || 'Pruned remotes', {
         kind: 'success',
         durationMs: 3200,
         category: 'fetch',
@@ -2815,10 +3325,11 @@ export class AppStore {
     if (this.remoteBusy()) return;
     this.remoteBusy.set('pull');
     try {
+      const remote = this.pushRemoteName();
       const result = await this.withRepoMutation(() =>
         rebase
-          ? this.tauri.pullWithOptions(path, { rebase: true })
-          : this.tauri.pull(path),
+          ? this.tauri.pullWithOptions(path, { rebase: true, remote })
+          : this.tauri.pull(path, remote),
       );
       if (!result.ok) {
         await this.handleConflictResult(result);
@@ -2880,7 +3391,10 @@ export class AppStore {
 
     this.remoteBusy.set('push');
     try {
-      const result = await this.tauri.push(path, pushOpts);
+      const result = await this.tauri.push(path, {
+        ...pushOpts,
+        remote: this.pushRemoteName(),
+      });
       await this.refreshRepo();
       if (opts?.toast !== false) {
         this.showToast(result.message || 'Pushed to remote', {
@@ -2998,9 +3512,7 @@ export class AppStore {
   private pushRemoteName(): string | undefined {
     const upstream = this.status()?.upstream?.trim();
     if (!upstream) return undefined;
-    const slash = upstream.indexOf('/');
-    if (slash <= 0) return undefined;
-    return upstream.slice(0, slash);
+    return parseRemoteRef(upstream)?.remote;
   }
 
   private isForceWithLeaseRejected(err: unknown): boolean {
@@ -3221,30 +3733,127 @@ export class AppStore {
   }
 
   async openCreatePullRequest(): Promise<void> {
-    const status = this.status();
-    const remotes = this.remotes();
-    if (!status) {
+    if (!this.currentRepo()) {
       this.showWarning('Open a repository first');
       return;
     }
-    const origin =
-      remotes.find((r) => r.name === 'origin') ?? remotes[0] ?? null;
-    if (!origin) {
-      this.showWarning('No remotes configured');
+    if (!this.status()?.branch || this.status()?.isDetached) {
+      this.showWarning('Check out a branch before opening a pull request');
       return;
     }
-    const upstream = status.upstream?.includes('/')
-      ? status.upstream.split('/').slice(1).join('/')
-      : null;
-    const url = buildCompareUrl(origin.fetchUrl || origin.pushUrl, status.branch, upstream);
-    if (!url) {
-      this.showWarning('Could not build a pull request URL from the remote');
-      return;
+    this.createPrDialogOpen.set(true);
+  }
+
+  closeCreatePrDialog(): void {
+    this.createPrDialogOpen.set(false);
+  }
+
+  async savePrTemplate(input: { name: string; title: string; body: string }): Promise<void> {
+    const name = input.name.trim();
+    if (!name) return;
+    const next: SavedPrTemplate = {
+      id: `pr-${Date.now().toString(36)}`,
+      name,
+      title: input.title.trim(),
+      body: input.body,
+    };
+    await this.saveSettings({
+      prTemplates: [...this.settings().prTemplates, next],
+    });
+    this.showSuccess(`Saved template “${name}”`);
+  }
+
+  async deletePrTemplate(id: string): Promise<void> {
+    await this.saveSettings({
+      prTemplates: this.settings().prTemplates.filter((t) => t.id !== id),
+    });
+  }
+
+  async submitCreatePullRequest(opts: {
+    title: string;
+    body: string;
+    head: string;
+    base: string;
+    draft: boolean;
+    method: PrCreateMethod;
+  }): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const remotes = this.remotes();
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return false;
     }
+    const title = opts.title.trim();
+    const head = opts.head.trim();
+    const base = opts.base.trim();
+    if (!title) {
+      this.showWarning('Add a pull request title');
+      return false;
+    }
+    if (!head || !base) {
+      this.showWarning('Choose source and target branches');
+      return false;
+    }
+    if (head === base) {
+      this.showWarning('Source and target branches must be different');
+      return false;
+    }
+    await this.saveSettings({ prCreateMethod: opts.method });
+
+    if (opts.method === 'browser') {
+      const origin = remotes.find((r) => r.name === 'origin') ?? remotes[0] ?? null;
+      if (!origin) {
+        this.showWarning('No remotes configured');
+        return false;
+      }
+      const url = buildCreatePullRequestUrl(
+        origin.fetchUrl || origin.pushUrl,
+        head,
+        base,
+        title,
+        opts.body,
+      );
+      if (!url) {
+        this.showWarning('Could not build a pull request URL from the remote');
+        return false;
+      }
+      try {
+        await this.tauri.openExternalUrl(url);
+        this.closeCreatePrDialog();
+        return true;
+      } catch (err) {
+        this.showError(err);
+        return false;
+      }
+    }
+
     try {
-      await this.tauri.openExternalUrl(url);
+      const result = await this.tauri.createPullRequest({
+        path,
+        title,
+        body: opts.body,
+        head,
+        base,
+        draft: opts.draft,
+      });
+      if (!result.ok) {
+        this.showError(result.message);
+        return false;
+      }
+      this.showSuccess(result.message);
+      if (result.url) {
+        try {
+          await this.tauri.openExternalUrl(result.url);
+        } catch {
+          this.showInfo(result.url);
+        }
+      }
+      this.closeCreatePrDialog();
+      void this.refreshPullRequests('open', { force: true });
+      return true;
     } catch (err) {
       this.showError(err);
+      return false;
     }
   }
 
@@ -3517,12 +4126,16 @@ export class AppStore {
   async cloneRepo(url: string, destination: string): Promise<void> {
     this.loadingLabel.set('Cloning repository…');
     this.loading.set(true);
+    const gen = ++this.repoLoadGen;
+    this.snapshotCurrentRepo();
     try {
       const summary = await this.tauri.cloneRepository(url, destination);
+      if (gen !== this.repoLoadGen) return;
       this.clearWorkingState();
       this.currentRepo.set(summary);
       this.upsertOpenRepo(summary);
       this.repos.set(await this.tauri.listRecentRepos());
+      if (gen !== this.repoLoadGen) return;
       await this.refreshRepo();
       this.persistOpenRepos();
       this.setView('browse');
@@ -3537,12 +4150,16 @@ export class AppStore {
   async initRepo(path: string): Promise<void> {
     this.loadingLabel.set('Initializing repository…');
     this.loading.set(true);
+    const gen = ++this.repoLoadGen;
+    this.snapshotCurrentRepo();
     try {
       const summary = await this.tauri.initRepository(path);
+      if (gen !== this.repoLoadGen) return;
       this.clearWorkingState();
       this.currentRepo.set(summary);
       this.upsertOpenRepo(summary);
       this.repos.set(await this.tauri.listRecentRepos());
+      if (gen !== this.repoLoadGen) return;
       await this.refreshRepo();
       this.persistOpenRepos();
       this.setView('browse');
@@ -3559,6 +4176,7 @@ export class AppStore {
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
       this.tauri.listStashes(path),
     ]);
+    if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
     const prev = this.status();
     this.status.set(status);
     this.artificial.set(artificialFromStatus(status));
@@ -3569,11 +4187,13 @@ export class AppStore {
     void this.syncConflictManager(prev, status);
   }
 
-  async stashPush(message?: string): Promise<void> {
+  async stashPush(message?: string, includeUntracked = false): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
     try {
-      const result = await this.withRepoMutation(() => this.tauri.stashPush(path, message));
+      const result = await this.withRepoMutation(() =>
+        this.tauri.stashPush(path, message, includeUntracked),
+      );
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
@@ -3620,6 +4240,56 @@ export class AppStore {
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashDrop(path, index));
       await this.refreshWorkingTreeAndStashes(path);
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async stashClear(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    const count = this.stashes().length;
+    if (count === 0) {
+      this.showToast('No stashes to drop', { kind: 'info' });
+      return;
+    }
+    const ok = await this.prompts.ask({
+      title: 'Drop all stashes?',
+      message: `Permanently delete ${count} stash${count === 1 ? '' : 'es'}? This cannot be undone from Branchline.`,
+      confirmLabel: 'Drop all',
+      cancelLabel: 'Cancel',
+      confirmOnly: true,
+    });
+    if (ok === null) return;
+    try {
+      const result = await this.withRepoMutation(() => this.tauri.stashClear(path));
+      await this.refreshWorkingTreeAndStashes(path);
+      this.showToast(result.message);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async stashBranch(index: number): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    const entry = this.stashes().find((s) => s.index === index);
+    const suggested = suggestStashBranchName(entry?.message);
+    const name = await this.prompts.ask({
+      title: 'Branch from stash',
+      message: `Create a branch from ${entry?.id ?? `stash@{${index}}`}, apply the stash, and drop it if that succeeds.`,
+      label: 'Branch name',
+      initialValue: suggested,
+      confirmLabel: 'Create branch',
+      mono: true,
+    });
+    if (!name?.trim()) return;
+    try {
+      const result = await this.withRepoMutation(() =>
+        this.tauri.stashBranch(path, index, name.trim()),
+      );
+      await this.refreshRepo();
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
@@ -4312,49 +4982,10 @@ export class AppStore {
       });
       if (!setup) return;
 
-      const baseOpts = {
-        bump: setup.bump,
-        push: setup.push,
-        message: null as string | null,
-        branch: setup.branch,
-        allowDirty: setup.allowDirty,
-        preid: setup.preid,
-        tagMessage: setup.tagMessage,
-      };
-      const draft = await this.tauri.previewRelease(path, baseOpts);
-      const suggested =
-        draft.commitMessage?.trim() ||
-        cfg?.commitMessage ||
-        'Release {{version}}';
-      const tokenHints = [
-        `{{version}} → ${draft.nextVersion || '?'}`,
-        `{{previousVersion}} → ${draft.currentVersion || status.currentVersion || '?'}`,
-        `{{tag}} → ${draft.tag || '?'}`,
-        `{{productName}} → ${draft.productName || cfg?.productName || '?'}`,
-      ];
-
-      const message = await this.prompts.ask({
-        title: 'Release notes / commit message',
-        message: [
-          draft.nextVersion
-            ? `Suggested for ${draft.currentVersion} → ${draft.nextVersion} (${draft.tag}).`
-            : 'Edit the release commit message.',
-          'Tokens still work if you prefer a template:',
-          tokenHints.join(' · '),
-        ].join(' '),
-        label: 'Message',
-        placeholder: cfg?.commitMessage || 'Release {{version}}',
-        initialValue: suggested,
-        confirmLabel: 'Preview',
-        required: false,
-        multiline: true,
-      });
-      if (message === null) return;
-
       const opts = {
         bump: setup.bump,
         push: setup.push,
-        message: message.trim() || null,
+        message: setup.message,
         branch: setup.branch,
         allowDirty: setup.allowDirty,
         preid: setup.preid,
@@ -4362,14 +4993,13 @@ export class AppStore {
       };
       const preview = await this.tauri.previewRelease(path, opts);
       if (!preview.ok) {
-        const blocked = await this.prompts.ask({
+        await this.prompts.ask({
           title: 'Cannot release yet',
           message: preview.message,
           confirmLabel: 'OK',
           cancelLabel: 'Close',
           confirmOnly: true,
         });
-        void blocked;
         return;
       }
 
@@ -4384,9 +5014,9 @@ export class AppStore {
           preview.willPush
             ? devRelease
               ? 'Will bump package.json, commit, tag, then finish Tauri/Cargo sync and push in the background (tauri:dev may restart once).'
-              : 'Will bump, commit, tag, push, and track GitHub Actions until the release is live.'
+              : 'Will bump, commit, tag, push, and track GitHub Actions until every platform build is published.'
             : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
-          `Files now: ${preview.files.join(', ')}`,
+          `Files: ${preview.files.join(', ')}`,
           devRelease && preview.willPush
             ? `Background sync: ${devSkipped.join(', ')}`
             : devRelease
@@ -4625,11 +5255,75 @@ export class AppStore {
     }
   }
 
+  async refreshReleaseDeploy(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const activity = this.releaseActivity();
+    if (!path || !activity || !sameRepoPath(activity.path, path) || !activity.tag) return;
+    if (!activity.willPush || activity.needsPush) return;
+    const phase =
+      activity.phase === 'done' || activity.phase === 'error' || activity.phase === 'idle'
+        ? 'deploying'
+        : activity.phase;
+    this.applyReleaseProgress(
+      {
+        path,
+        phase,
+        message: 'Checking GitHub Actions…',
+        version: activity.nextVersion,
+        tag: activity.tag,
+      },
+      { needsRefresh: false },
+    );
+    this.releaseBusy.set(true);
+    this.openReleaseTab();
+    void this.watchReleaseDeploy(path, activity.tag);
+  }
+
+  private pauseReleaseTracking(
+    path: string,
+    tag: string,
+    version: string,
+    message: string,
+    extras?: Partial<
+      Pick<
+        ReleaseActivity,
+        | 'deployRunUrl'
+        | 'releaseUrl'
+        | 'websiteUrl'
+        | 'actionsPageUrl'
+        | 'repoUrl'
+        | 'deployJobs'
+      >
+    >,
+  ): void {
+    const current = this.releaseActivity();
+    const phase =
+      current &&
+      current.phase !== 'done' &&
+      current.phase !== 'error' &&
+      current.phase !== 'idle'
+        ? current.phase
+        : 'deploying';
+    this.releaseBusy.set(false);
+    this.applyReleaseProgress(
+      {
+        path,
+        phase,
+        message,
+        version,
+        tag,
+      },
+      { ...extras, needsRefresh: true },
+    );
+    this.stopReleaseDeployPoll();
+  }
+
   private async watchReleaseDeploy(path: string, tag: string): Promise<void> {
     this.stopReleaseDeployPoll();
     const activity = this.releaseActivity();
     if (!activity) return;
     let attempts = 0;
+    let errors = 0;
     const poll = async (): Promise<void> => {
       attempts += 1;
       const current = this.releaseActivity();
@@ -4639,6 +5333,7 @@ export class AppStore {
       }
       try {
         const result = await this.tauri.pollReleaseDeploy(path, tag);
+        errors = 0;
         const phase = normalizeReleasePhase(result.phase);
         const deployExtras = {
           deployRunUrl: result.runUrl ?? current.deployRunUrl ?? null,
@@ -4648,6 +5343,7 @@ export class AppStore {
           repoUrl: result.repoUrl ?? current.repoUrl ?? null,
           deployJobs: result.jobs?.length ? result.jobs : current.deployJobs ?? [],
           needsPush: false,
+          needsRefresh: false,
         };
         this.applyReleaseProgress(
           {
@@ -4695,53 +5391,38 @@ export class AppStore {
           return;
         }
         if (result.status === 'unavailable') {
-          this.releaseBusy.set(false);
-          this.applyReleaseProgress(
-            {
-              path,
-              phase: 'done',
-              message: result.message,
-              version: current.nextVersion,
-              tag,
-            },
-            deployExtras,
-          );
-          this.stopReleaseDeployPoll();
+          this.pauseReleaseTracking(path, tag, current.nextVersion, result.message, deployExtras);
           return;
         }
       } catch {
-        if (attempts >= 3) {
-          this.releaseBusy.set(false);
-          this.applyReleaseProgress({
+        errors += 1;
+        if (errors >= 8) {
+          this.pauseReleaseTracking(
             path,
-            phase: 'done',
-            message: 'Tag pushed. Check GitHub Actions for build progress.',
-            version: current.nextVersion,
             tag,
-          });
-          this.stopReleaseDeployPoll();
+            current.nextVersion,
+            'Lost contact with GitHub. Refresh to keep tracking this release.',
+          );
           return;
         }
       }
-      if (attempts >= 120) {
-        this.releaseBusy.set(false);
-        this.applyReleaseProgress({
+      if (attempts >= 720) {
+        this.pauseReleaseTracking(
           path,
-          phase: 'done',
-          message: 'Deploy is taking longer than expected — check GitHub Actions.',
-          version: current.nextVersion,
           tag,
-        });
-        this.stopReleaseDeployPoll();
+          current.nextVersion,
+          'Still building after an hour — refresh to keep watching, or open GitHub Actions.',
+        );
         return;
       }
+      const delay = attempts < 24 ? 5000 : 8000;
       this.releaseDeployPollTimer = window.setTimeout(() => {
         void poll();
-      }, 5000);
+      }, delay);
     };
     this.releaseDeployPollTimer = window.setTimeout(() => {
       void poll();
-    }, 3000);
+    }, 2000);
   }
 
   async deleteTag(name: string): Promise<void> {
@@ -4835,6 +5516,7 @@ export class AppStore {
       return;
     }
 
+    const goneCount = targets.filter((b) => b.upstreamGone).length;
     const mode = await this.selects.ask({
       title: 'Clean up local branches',
       message: `Delete ${targets.length} local branch${targets.length === 1 ? '' : 'es'}? Keeps your current branch${current ? ` (${current})` : ''}, locked branches, and branches checked out in other worktrees. Remotes are not deleted.`,
@@ -4845,21 +5527,36 @@ export class AppStore {
           label: 'Merged only',
           hint: 'Safer — skips branches with commits not in HEAD',
         },
+        ...(goneCount > 0
+          ? [
+              {
+                value: 'gone',
+                label: 'Upstream gone',
+                hint: `Deletes ${goneCount} local branch${goneCount === 1 ? '' : 'es'} whose remote-tracking branch was deleted`,
+              },
+            ]
+          : []),
         {
           value: 'all',
           label: 'All except current',
           hint: 'Also deletes unmerged branches (harder to recover)',
         },
       ],
-      initialValue: 'merged',
+      initialValue: goneCount > 0 ? 'gone' : 'merged',
       confirmLabel: 'Continue',
     });
-    if (mode !== 'merged' && mode !== 'all') return;
+    if (mode !== 'merged' && mode !== 'all' && mode !== 'gone') return;
+
+    const selected = mode === 'gone' ? targets.filter((b) => b.upstreamGone) : targets;
+    if (selected.length === 0) {
+      this.showToast('No matching local branches to delete', { kind: 'info' });
+      return;
+    }
 
     if (mode === 'all') {
       const ok = await this.prompts.ask({
         title: 'Delete unmerged branches too?',
-        message: `Force-delete ${targets.length} local branch${targets.length === 1 ? '' : 'es'}. Commits that only exist on those branches may be hard to recover.`,
+        message: `Force-delete ${selected.length} local branch${selected.length === 1 ? '' : 'es'}. Commits that only exist on those branches may be hard to recover.`,
         confirmLabel: 'Delete all',
         cancelLabel: 'Cancel',
         confirmOnly: true,
@@ -4871,7 +5568,7 @@ export class AppStore {
     const force = mode === 'all';
     let deleted = 0;
     const skipped: string[] = [];
-    for (const branch of targets) {
+    for (const branch of selected) {
       try {
         await this.tauri.deleteBranch(path, branch.name, force);
         deleted += 1;
@@ -4883,7 +5580,7 @@ export class AppStore {
     await this.refreshRepo();
     if (deleted === 0 && skipped.length > 0) {
       this.showWarning(
-        mode === 'merged'
+        mode === 'merged' || mode === 'gone'
           ? 'Nothing deleted — remaining branches are unmerged. Choose “All except current” to force-delete them.'
           : `Could not delete ${skipped.length} branch${skipped.length === 1 ? '' : 'es'}.`,
       );
@@ -4893,7 +5590,7 @@ export class AppStore {
     const parts = [`Deleted ${deleted} local branch${deleted === 1 ? '' : 'es'}`];
     if (skipped.length > 0) {
       parts.push(
-        mode === 'merged'
+        mode === 'merged' || mode === 'gone'
           ? `skipped ${skipped.length} unmerged`
           : `failed ${skipped.length}`,
       );
@@ -4930,12 +5627,33 @@ export class AppStore {
   }
 
   async refreshIdentity(): Promise<void> {
+    const path = this.currentRepo()?.path ?? null;
     try {
-      this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
+      const identity = await this.tauri.getGitIdentity(path);
+      if ((this.currentRepo()?.path ?? null) !== path) return;
+      this.identity.set(identity);
     } catch {
+      if ((this.currentRepo()?.path ?? null) !== path) return;
       this.identity.set(null);
     }
   }
+}
+
+function hydrateReleaseActivity(activity: ReleaseActivity): ReleaseActivity {
+  const looksIncomplete =
+    activity.willPush &&
+    !activity.needsPush &&
+    !activity.releaseUrl &&
+    activity.phase === 'done' &&
+    /taking longer|Check GitHub Actions|Link GitHub/i.test(activity.message ?? '');
+  if (!looksIncomplete) return activity;
+  return {
+    ...activity,
+    phase: 'deploying',
+    needsRefresh: true,
+    ok: null,
+    finishedAt: null,
+  };
 }
 
 function normalizeEmail(email: string): string {
@@ -5120,27 +5838,56 @@ function normalizePushAction(value: unknown): AppSettings['defaultPushAction'] {
   return 'upstream';
 }
 
-function buildCompareUrl(
+function buildCreatePullRequestUrl(
   remoteUrl: string,
-  branch: string,
-  upstreamBranch: string | null,
+  headBranch: string,
+  baseBranch: string,
+  title: string,
+  body: string,
 ): string | null {
   const parsed = parseRemoteWebBase(remoteUrl);
-  if (!parsed || !branch.trim()) return null;
-  const head = encodeURIComponent(branch.trim());
+  if (!parsed || !headBranch.trim()) return null;
+  const head = headBranch.trim();
+  const base = (baseBranch || 'main').trim();
   if (parsed.host.includes('gitlab')) {
     const params = new URLSearchParams();
-    params.set('merge_request[source_branch]', branch.trim());
-    if (upstreamBranch) {
-      params.set('merge_request[target_branch]', upstreamBranch);
-    }
+    params.set('merge_request[source_branch]', head);
+    params.set('merge_request[target_branch]', base);
+    if (title.trim()) params.set('merge_request[title]', title.trim());
+    if (body.trim()) params.set('merge_request[description]', body);
     return `${parsed.webBase}/-/merge_requests/new?${params.toString()}`;
   }
   if (parsed.host.includes('dev.azure.com') || parsed.host.includes('visualstudio.com')) {
-    return `${parsed.webBase}/pullrequestcreate?sourceRef=${head}`;
+    const params = new URLSearchParams();
+    params.set('sourceRef', head);
+    params.set('targetRef', base);
+    if (title.trim()) params.set('title', title.trim());
+    return `${parsed.webBase}/pullrequestcreate?${params.toString()}`;
   }
-  const base = encodeURIComponent(upstreamBranch || 'main');
-  return `${parsed.webBase}/compare/${base}...${head}?expand=1`;
+  const params = new URLSearchParams();
+  params.set('expand', '1');
+  if (title.trim()) params.set('title', title.trim());
+  if (body.trim()) params.set('body', body);
+  return `${parsed.webBase}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?${params.toString()}`;
+}
+
+function normalizePrTemplates(raw: unknown): SavedPrTemplate[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const t = item as Partial<SavedPrTemplate>;
+      const id = typeof t.id === 'string' ? t.id.trim() : '';
+      const name = typeof t.name === 'string' ? t.name.trim() : '';
+      if (!id || !name) return null;
+      return {
+        id,
+        name,
+        title: typeof t.title === 'string' ? t.title : '',
+        body: typeof t.body === 'string' ? t.body : '',
+      };
+    })
+    .filter((t): t is SavedPrTemplate => !!t);
 }
 
 function defaultConnections(): AppSettings['connections'] {
@@ -5277,6 +6024,8 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     notifyPrCi: raw.notifyPrCi ?? true,
     hideUntracked: raw.hideUntracked ?? false,
     uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
+    prTemplates: normalizePrTemplates(raw.prTemplates),
+    prCreateMethod: raw.prCreateMethod === 'cli' ? 'cli' : 'browser',
   };
 }
 
@@ -5310,6 +6059,22 @@ function normalizeCachePath(path: string): string {
     .replace(/\\/g, '/')
     .replace(/\/+$/, '')
     .toLowerCase();
+}
+
+function commitsFingerprint(commits: CommitInfo[]): string {
+  let out = String(commits.length);
+  for (const c of commits) {
+    out += `\n${c.sha}\t${c.refs.join(',')}`;
+  }
+  return out;
+}
+
+function branchesFingerprint(branches: BranchInfo[]): string {
+  let out = String(branches.length);
+  for (const b of branches) {
+    out += `\n${b.name}\t${b.tipSha ?? ''}\t${b.isCurrent ? 1 : 0}\t${b.locked ? 1 : 0}`;
+  }
+  return out;
 }
 
 function statusFingerprint(status: RepoStatus): string {
@@ -5364,4 +6129,16 @@ function artificialFromStatus(status: RepoStatus): ArtificialCommit[] {
       deleted: s.deleted,
     },
   ];
+}
+
+function suggestStashBranchName(message?: string | null): string {
+  const raw = (message ?? '').trim();
+  if (!raw) return '';
+  const afterColon = raw.includes(':') ? raw.slice(raw.indexOf(':') + 1).trim() : raw;
+  const slug = afterColon
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug ? `stash/${slug}` : '';
 }

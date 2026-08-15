@@ -5,8 +5,10 @@
         <h1>Release</h1>
         @if (busy()) {
           <span class="live-badge">In progress</span>
-        } @else if (activity()?.phase === 'done') {
+        } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
           <span class="done-badge">Complete</span>
+        } @else if (activity()?.needsRefresh) {
+          <span class="live-badge">Tracking paused</span>
         } @else if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
         }
@@ -15,6 +17,12 @@
     </div>
     <div class="hero-actions">
       @if (hasRepo() && configured()) {
+        @if (activity()?.needsRefresh) {
+          <button type="button" class="bl-btn" (click)="refreshDeploy()">
+            <ng-icon name="lucideRefreshCw" size="14" />
+            Refresh status
+          </button>
+        }
         <button
           type="button"
           class="bl-btn bl-btn-primary"

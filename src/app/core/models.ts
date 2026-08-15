@@ -308,6 +308,8 @@ export interface AppSettings {
   notifyPrCi: boolean;
   hideUntracked: boolean;
   uiDensity: 'comfortable' | 'compact';
+  prTemplates: SavedPrTemplate[];
+  prCreateMethod: PrCreateMethod;
 }
 
 export interface GitEnvSnapshot {
@@ -468,6 +470,7 @@ export interface StashEntry {
   id: string;
   message: string;
   branch?: string | null;
+  sha?: string | null;
 }
 
 export interface TagInfo {
@@ -721,6 +724,7 @@ export interface ReleaseActivity {
   actionsPageUrl?: string | null;
   repoUrl?: string | null;
   deployJobs?: ReleaseDeployJob[];
+  needsRefresh?: boolean;
   phase: ReleasePhase;
   message: string;
   steps: ReleaseActivityStep[];
@@ -734,6 +738,22 @@ export interface CreatePullRequestOutput {
   message: string;
   url?: string | null;
   number?: number | null;
+}
+
+export type PrCreateMethod = 'cli' | 'browser';
+
+export interface SavedPrTemplate {
+  id: string;
+  name: string;
+  title: string;
+  body: string;
+}
+
+export interface RepoPrTemplate {
+  id: string;
+  name: string;
+  relativePath: string;
+  body: string;
 }
 
 export type IgnoreKind = 'gitignore' | 'exclude';

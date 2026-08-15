@@ -1,7 +1,25 @@
-<footer class="bar">
+<footer class="bar" [style.--identity]="repoColor()">
   <div class="left">
     @if (store.isDummyBackend) {
       <span class="dummy-pill" title="Browser preview — fake Git data only">DUMMY DATA</span>
+    }
+    @if (store.releaseActivity(); as activity) {
+      @if (
+        store.releaseBusy() ||
+        (activity.phase !== 'done' && activity.phase !== 'error') ||
+        activity.needsRefresh
+      ) {
+        <button
+          type="button"
+          class="sync-btn"
+          data-kind="publish"
+          [title]="activity.message || 'Open release progress'"
+          (click)="store.openReleaseTab()"
+        >
+          <ng-icon name="lucideRocket" size="14" />
+          <span class="sync-label">{{ activity.tag }}</span>
+        </button>
+      }
     }
     @if (store.status(); as status) {
       <span class="pill" [title]="branchTitle()">

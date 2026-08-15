@@ -645,17 +645,30 @@ pub fn artificial_commits(path: &Path) -> AppResult<Vec<ArtificialCommit>> {
 
 pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
     git_cli::ensure_repo(path)?;
-    let out = git_cli::run_git(
+    let local = git_cli::run_git(
         path,
         &[
             "for-each-ref",
             "--format=%(refname)%09%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)%09%(objectname:short)%09%(objectname)%09%(contents:subject)%09%(authorname)%09%(authoremail)",
             "refs/heads",
+        ],
+    )?;
+    let remote = git_cli::run_git(
+        path,
+        &[
+            "for-each-ref",
+            "--format=%(refname)%09%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)%09%(objectname:short)%09%(objectname)",
             "refs/remotes",
         ],
     )?;
 
     let mut branches = Vec::new();
+    parse_branch_lines(&local, &mut branches);
+    parse_branch_lines(&remote, &mut branches);
+    Ok(branches)
+}
+
+fn parse_branch_lines(out: &str, branches: &mut Vec<BranchInfo>) {
     for line in out.lines() {
         if line.trim().is_empty() {
             continue;
@@ -711,7 +724,6 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
             lock_reason: None,
         });
     }
-    Ok(branches)
 }
 
 pub fn current_branch(path: &Path) -> AppResult<String> {
@@ -807,6 +819,11 @@ pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
     branch_upstream_name(path, branch).is_some()
 }
 
+pub fn configured_remote(path: &Path, branch: &str) -> Option<String> {
+    let upstream = branch_upstream_name(path, branch)?;
+    parse_remote_tracking_name(&upstream).map(|(remote, _)| remote)
+}
+
 pub fn ahead_behind(path: &Path) -> (i32, i32) {
     match repo_status(path) {
         Ok(s) => (s.ahead, s.behind),
@@ -830,6 +847,10 @@ mod tests {
         );
         assert_eq!(parse_remote_tracking_name("origin"), None);
         assert_eq!(parse_remote_tracking_name("origin/HEAD"), None);
+        assert_eq!(
+            parse_remote_tracking_name("dischem-sap-commerce/develop"),
+            Some(("dischem-sap-commerce".into(), "develop".into()))
+        );
     }
 
     #[test]

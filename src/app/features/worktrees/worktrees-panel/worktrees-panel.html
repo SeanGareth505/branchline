@@ -12,12 +12,29 @@
     </button>
     <button
       type="button"
+      class="group-action"
+      title="Remove worktree registrations that no longer exist on disk"
+      (click)="prune($event)"
+    >
+      Prune
+    </button>
+    <button
+      type="button"
       class="icon always"
       (click)="startAdd($event)"
       aria-label="Add worktree"
       title="Add worktree"
     >
       <ng-icon name="lucidePlus" size="11" />
+    </button>
+    <button
+      type="button"
+      class="icon"
+      (click)="requestHide($event)"
+      aria-label="Hide Worktrees"
+      title="Hide this section"
+    >
+      <ng-icon name="lucideEyeOff" size="11" />
     </button>
   </div>
 

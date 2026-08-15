@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 
@@ -7,6 +7,7 @@ import { AppStore } from '../../../core/app.store';
   imports: [],
   templateUrl: './commit-panel.html',
   styleUrl: './commit-panel.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommitPanel {
   readonly store = inject(AppStore);
@@ -73,7 +74,7 @@ export class CommitPanel {
     if (this.store.remoteBranches().some((b) => b.name === ref || b.name.endsWith('/' + ref))) {
       return 'bl-chip bl-chip-remote';
     }
-    return 'bl-chip';
+    return 'bl-chip bl-chip-local';
   }
 
   private resolveCommit(raw: string) {

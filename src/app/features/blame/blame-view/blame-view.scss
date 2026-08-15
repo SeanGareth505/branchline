@@ -100,6 +100,13 @@ header {
   flex-shrink: 0;
 }
 
+.rows-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .rows {
   overflow: auto;
   flex: 1;

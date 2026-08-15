@@ -3,9 +3,26 @@
     <span class="title">Release</span>
     @if (activity(); as activity) {
       <span class="meta mono">{{ activity.currentVersion }} → {{ activity.nextVersion }}</span>
-      <span class="tag mono">{{ activity.tag }}</span>
+      <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
+        {{ activity.tag }}
+        <ng-icon name="lucideCopy" size="11" />
+      </button>
+      @if (elapsed(); as time) {
+        <span class="elapsed">{{ time }}</span>
+      }
     } @else {
       <span class="meta">Bump, commit, tag, push, and track deploy</span>
+    }
+    @if (canRefresh()) {
+      <button
+        type="button"
+        class="bl-btn quiet refresh-btn"
+        (click)="refreshDeploy()"
+        title="Refresh GitHub Actions status"
+      >
+        <ng-icon name="lucideRefreshCw" size="13" />
+        Refresh
+      </button>
     }
   </header>
 
@@ -14,21 +31,31 @@
       <span class="busy-track" aria-hidden="true"></span>
       <span class="busy-label">{{ statusLabel() }}</span>
     </div>
+  } @else if (trackingPaused()) {
+    <div class="busy-strip paused" role="status">
+      <span class="busy-label">{{ statusLabel() }}</span>
+    </div>
   }
 
   @if (activity(); as activity) {
     <div class="summary">
       <p class="headline">{{ headline() }}</p>
       @if (finalStatus(); as statusLine) {
-        <p class="final-status" role="status">{{ statusLine }}</p>
+        <p class="final-status" [class.warn]="trackingPaused() || activity.phase === 'error'" role="status">
+          {{ statusLine }}
+        </p>
       }
-      <p class="message">{{ activity.message }}</p>
+      @if (activity.message && activity.message !== finalStatus()) {
+        <p class="message">{{ activity.message }}</p>
+      }
       @if (shippedLive()) {
         <p class="hint">Update banner appears when users open or check for updates in a built app.</p>
       } @else if (activity.willPush && busy()) {
-        <p class="hint">Push and GitHub Actions deploy are included in this release.</p>
+        <p class="hint">Tracking GitHub Actions until every platform build is published.</p>
       } @else if (activity.needsPush) {
         <p class="hint">Tagged locally — push to origin to trigger deploy and the update banner.</p>
+      } @else if (trackingPaused() && !githubLinked()) {
+        <p class="hint">Link GitHub in Settings to track jobs here, or open Actions to watch the workflow.</p>
       }
 
       @if (linkCards().length) {
@@ -85,6 +112,8 @@
           </ul>
         } @else if (busy()) {
           <p class="deploy-wait">Waiting for workflow jobs to appear…</p>
+        } @else if (trackingPaused()) {
+          <p class="deploy-wait">No jobs loaded yet. Refresh or open Actions.</p>
         }
       </section>
     }
@@ -113,9 +142,33 @@
           Push release
         </button>
       }
-      @if (!busy() && (activity.phase === 'done' || activity.phase === 'error')) {
+      @if (trackingPaused()) {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="refreshDeploy()">
+          Refresh status
+        </button>
+        @if (!githubLinked()) {
+          <button type="button" class="bl-btn" (click)="openGithubSettings()">
+            Link GitHub
+          </button>
+        }
+      }
+      @if (shippedLive()) {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="checkForUpdates()">
+          Check for updates
+        </button>
+      }
+      @if (!busy() && (activity.phase === 'done' || activity.phase === 'error' || trackingPaused())) {
         <button type="button" class="bl-btn" (click)="clear()">Clear</button>
-        <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Release again</button>
+        @if (activity.phase === 'done' || activity.phase === 'error') {
+          <button
+            type="button"
+            class="bl-btn"
+            [class.bl-btn-primary]="!shippedLive() && activity.phase !== 'error'"
+            (click)="startRelease()"
+          >
+            Release again
+          </button>
+        }
       }
     </div>
   } @else {

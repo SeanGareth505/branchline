@@ -19,26 +19,39 @@
 }
 
 .tab {
+  --identity: var(--accent);
+  position: relative;
   display: inline-flex;
   align-items: stretch;
   max-width: 11rem;
   min-width: 0;
   height: 1.85rem;
   border-radius: 7px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--identity) 18%, transparent);
+  background: color-mix(in srgb, var(--identity) 8%, transparent);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
+.tab::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--identity);
+}
+
 .tab:hover {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  background: color-mix(in srgb, var(--identity) 14%, var(--bg-hover));
   color: var(--text-primary);
 }
 
 .tab.active {
-  background: color-mix(in srgb, var(--accent-muted) 70%, var(--bg-active));
-  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--identity) 18%, var(--bg-active));
+  border-color: color-mix(in srgb, var(--identity) 38%, transparent);
   color: var(--text-primary);
   box-shadow: 0 1px 0 var(--glass-highlight) inset;
 }
@@ -52,7 +65,7 @@
   border: 0;
   background: transparent;
   color: inherit;
-  padding: 0 0.2rem 0 0.45rem;
+  padding: 0 0.2rem 0 0.7rem;
   font: inherit;
   font-size: 12.5px;
   font-weight: 600;
@@ -62,11 +75,7 @@
 
 .tab-main ng-icon {
   flex-shrink: 0;
-  color: var(--text-muted);
-}
-
-.tab.active .tab-main ng-icon {
-  color: var(--accent);
+  color: var(--identity);
 }
 
 .name {

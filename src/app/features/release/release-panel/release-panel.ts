@@ -1,8 +1,8 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
-import { UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
+import { UpdateService, UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
 import type { ReleaseActivityStep, ReleaseDeployJob, ReleasePhase } from '../../../core/models';
 
 interface ReleaseLinkCard {
@@ -21,6 +21,8 @@ interface ReleaseLinkCard {
 })
 export class ReleasePanel {
   readonly store = inject(AppStore);
+  private readonly updates = inject(UpdateService);
+  private readonly now = signal(Date.now());
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
@@ -29,6 +31,25 @@ export class ReleasePanel {
     const activity = this.activity();
     return activity?.websiteUrl?.trim() || UPDATE_DOWNLOAD_PAGE;
   });
+
+  readonly elapsed = computed(() => {
+    const activity = this.activity();
+    if (!activity) return '';
+    const end = activity.finishedAt ?? this.now();
+    return formatElapsed(Math.max(0, end - activity.startedAt));
+  });
+
+  readonly trackingPaused = computed(() => {
+    const activity = this.activity();
+    return !!activity?.needsRefresh && !this.busy();
+  });
+
+  readonly canRefresh = computed(() => {
+    const activity = this.activity();
+    return !!activity?.willPush && !activity.needsPush && !this.busy();
+  });
+
+  readonly githubLinked = computed(() => this.store.hasGithubConnection());
 
   readonly linkCards = computed((): ReleaseLinkCard[] => {
     const activity = this.activity();
@@ -87,14 +108,21 @@ export class ReleasePanel {
   readonly showDeploySection = computed(() => {
     const activity = this.activity();
     if (!activity?.willPush && !activity?.deployRunUrl && !activity?.actionsPageUrl) return false;
-    return this.deployJobs().length > 0 || this.busy() || !!activity?.deployRunUrl;
+    return (
+      this.deployJobs().length > 0 ||
+      this.busy() ||
+      !!activity?.deployRunUrl ||
+      !!activity?.needsRefresh ||
+      !!activity?.actionsPageUrl
+    );
   });
 
   readonly workflowStatus = computed(() => {
     const activity = this.activity();
     if (!activity) return 'idle';
     if (activity.phase === 'error') return 'failure';
-    if (activity.phase === 'done') return 'success';
+    if (activity.phase === 'done' && !activity.needsRefresh) return 'success';
+    if (activity.needsRefresh) return 'paused';
     if (activity.phase === 'ci' || activity.phase === 'deploying' || activity.phase === 'publishing') {
       return 'running';
     }
@@ -104,11 +132,14 @@ export class ReleasePanel {
   readonly headline = computed(() => {
     const activity = this.activity();
     if (!activity) return 'No release in progress';
-    if (activity.phase === 'done') {
+    if (activity.phase === 'done' && !activity.needsRefresh) {
       return `Released ${activity.productName} ${activity.nextVersion}`;
     }
     if (activity.phase === 'error') {
       return `Release failed`;
+    }
+    if (activity.needsRefresh) {
+      return `Tracking paused for ${activity.productName} ${activity.nextVersion}`;
     }
     if (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') {
       return `Deploying ${activity.productName} ${activity.nextVersion}`;
@@ -119,8 +150,9 @@ export class ReleasePanel {
   readonly statusLabel = computed(() => {
     const activity = this.activity();
     if (!activity) return '';
-    if (activity.phase === 'done') return 'Complete';
+    if (activity.phase === 'done' && !activity.needsRefresh) return 'Complete';
     if (activity.phase === 'error') return 'Failed';
+    if (activity.needsRefresh) return 'Paused — refresh to continue';
     return phaseLabel(activity.phase);
   });
 
@@ -136,6 +168,7 @@ export class ReleasePanel {
       activity.phase === 'done' &&
       activity.ok !== false &&
       !activity.needsPush &&
+      !activity.needsRefresh &&
       (activity.willPush || !!activity.releaseUrl)
     );
   });
@@ -146,6 +179,9 @@ export class ReleasePanel {
     if (this.shippedLive()) {
       return 'Waiting for users to get the update banner (next app launch/check)';
     }
+    if (activity.needsRefresh) {
+      return activity.message || 'Refresh to keep tracking GitHub Actions.';
+    }
     if (activity.phase === 'done' && activity.needsPush) {
       return 'Tagged locally — push to origin to publish and notify users';
     }
@@ -154,6 +190,20 @@ export class ReleasePanel {
     }
     return '';
   });
+
+  constructor() {
+    effect((onCleanup) => {
+      const activity = this.activity();
+      const live =
+        !!activity &&
+        activity.phase !== 'done' &&
+        activity.phase !== 'error' &&
+        !activity.needsRefresh;
+      if (!live) return;
+      const id = window.setInterval(() => this.now.set(Date.now()), 1000);
+      onCleanup(() => window.clearInterval(id));
+    });
+  }
 
   clear(): void {
     this.store.clearReleaseActivity();
@@ -165,6 +215,29 @@ export class ReleasePanel {
 
   pushRelease(): void {
     void this.store.pushReleaseTags();
+  }
+
+  refreshDeploy(): void {
+    void this.store.refreshReleaseDeploy();
+  }
+
+  openGithubSettings(): void {
+    this.store.openSettings('connections');
+  }
+
+  checkForUpdates(): void {
+    void this.updates.checkForUpdates({ silent: false });
+  }
+
+  async copyTag(): Promise<void> {
+    const tag = this.activity()?.tag;
+    if (!tag) return;
+    try {
+      await navigator.clipboard.writeText(tag);
+      this.store.showSuccess(`Copied ${tag}`);
+    } catch {
+      this.store.showError('Could not copy tag');
+    }
   }
 
   openLink(url: string | null | undefined): void {
@@ -234,4 +307,14 @@ function phaseLabel(phase: ReleasePhase): string {
     default:
       return 'Idle';
   }
+}
+
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }

@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import Fuse from 'fuse.js';
@@ -18,12 +18,14 @@ interface PaletteItem {
   imports: [FormsModule, NgIcon],
   templateUrl: './command-palette.html',
   styleUrl: './command-palette.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommandPalette {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
   private readonly updates = inject(UpdateService);
   readonly query = signal('');
+  readonly activeIndex = signal(0);
 
   constructor() {
     effect(() => {
@@ -165,6 +167,20 @@ export class CommandPalette {
       },
       { id: 'push', label: 'Push commits', group: 'Git', run: () => void store.pushRemote() },
       {
+        id: 'refresh',
+        label: 'Refresh repository',
+        group: 'Git',
+        run: () => void store.refreshRepo({ notify: true }),
+      },
+      {
+        id: 'create-branch',
+        label: 'Create branch…',
+        group: 'Git',
+        run: () => {
+          if (store.currentRepo()) store.openCreateBranchDialog();
+        },
+      },
+      {
         id: 'force-push',
         label: 'Force push with lease…',
         group: 'Git',
@@ -178,10 +194,28 @@ export class CommandPalette {
         run: () => void store.stashPush(),
       },
       {
+        id: 'stash-untracked',
+        label: 'Stash including untracked',
+        group: 'Git',
+        run: () => void store.stashPush(undefined, true),
+      },
+      {
+        id: 'stash-apply',
+        label: 'Apply latest stash',
+        group: 'Git',
+        run: () => void store.stashApply(0),
+      },
+      {
         id: 'stash-pop',
         label: 'Pop latest stash',
         group: 'Git',
         run: () => void store.stashPop(0),
+      },
+      {
+        id: 'stash-drop-all',
+        label: 'Drop all stashes…',
+        group: 'Git',
+        run: () => void store.stashClear(),
       },
       {
         id: 'reflog',
@@ -260,18 +294,6 @@ export class CommandPalette {
         group: 'View',
         run: () => void store.saveSettings({ uiDensity: 'comfortable' }),
       },
-      ...store
-        .commits()
-        .slice(0, 40)
-        .map((c) => ({
-          id: `commit:${c.sha}`,
-          label: `${c.shortSha} ${c.subject}`,
-          group: 'Commits',
-          run: () => {
-            store.setView('browse');
-            store.selectCommit(c.sha);
-          },
-        })),
       ...[
         ...store.status()?.staged ?? [],
         ...store.status()?.unstaged ?? [],
@@ -302,14 +324,20 @@ export class CommandPalette {
         run: () => store.openReleaseTab(),
       },
       {
+        id: 'release-refresh',
+        label: 'Refresh release status',
+        group: 'Git',
+        run: () => void store.refreshReleaseDeploy(),
+      },
+      {
         id: 'continue',
-        label: 'Continue merge / rebase / cherry-pick',
+        label: 'Continue merge / rebase / cherry-pick / revert',
         group: 'Git',
         run: () => void store.continueOperation(),
       },
       {
         id: 'abort',
-        label: 'Abort merge / rebase / cherry-pick',
+        label: 'Abort merge / rebase / cherry-pick / revert',
         group: 'Git',
         run: () => void store.abortOperation(),
       },
@@ -321,7 +349,7 @@ export class CommandPalette {
       },
       {
         id: 'create-pr',
-        label: 'Create pull request in browser…',
+        label: 'Create pull request…',
         group: 'Git',
         run: () => void store.openCreatePullRequest(),
       },
@@ -336,6 +364,18 @@ export class CommandPalette {
         label: 'Shortcut · ⌘K / Ctrl+K — Command palette',
         group: 'Shortcuts',
         run: () => undefined,
+      },
+      {
+        id: 'shortcut-refresh',
+        label: 'Shortcut · F5 — Refresh repository',
+        group: 'Shortcuts',
+        run: () => void store.refreshRepo({ notify: true }),
+      },
+      {
+        id: 'shortcut-fetch',
+        label: 'Shortcut · ⌘⇧F / Ctrl+Shift+F — Fetch',
+        group: 'Shortcuts',
+        run: () => void store.fetchRemote(),
       },
       {
         id: 'shortcut-help',
@@ -417,6 +457,12 @@ export class CommandPalette {
         label: 'Prune stale worktrees',
         group: 'Git',
         run: () => void store.pruneWorktrees(),
+      },
+      {
+        id: 'prune-remotes',
+        label: 'Prune stale remote-tracking branches',
+        group: 'Git',
+        run: () => void store.pruneAllRemotes(),
       },
       {
         id: 'undo-commit',
@@ -534,12 +580,23 @@ export class CommandPalette {
     return items;
   });
 
+  private readonly fuse = computed(
+    () => new Fuse(this.actions(), { keys: ['label', 'group'], threshold: 0.35 }),
+  );
+
   readonly results = computed(() => {
     const q = this.query().trim();
     const items = this.actions();
     if (!q) return items.slice(0, 12);
-    const fuse = new Fuse(items, { keys: ['label', 'group'], threshold: 0.35 });
-    return fuse.search(q).map((r) => r.item).slice(0, 16);
+    return this.fuse()
+      .search(q)
+      .map((r) => r.item)
+      .slice(0, 16);
+  });
+
+  private readonly resetActive = effect(() => {
+    this.results();
+    this.activeIndex.set(0);
   });
 
   run(item: PaletteItem): void {
@@ -555,5 +612,36 @@ export class CommandPalette {
 
   setView(view: AppView): void {
     this.store.setView(view);
+  }
+
+  onQueryKeydown(event: KeyboardEvent): void {
+    const items = this.results();
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!items.length) return;
+      this.activeIndex.update((i) => Math.min(items.length - 1, i + 1));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!items.length) return;
+      this.activeIndex.update((i) => Math.max(0, i - 1));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const item = items[this.activeIndex()];
+      if (item) this.run(item);
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKey(event: KeyboardEvent): void {
+    if (!this.store.paletteOpen()) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT') return;
+      this.onQueryKeydown(event);
+    }
   }
 }

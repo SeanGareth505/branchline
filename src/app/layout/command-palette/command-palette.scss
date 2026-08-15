@@ -76,7 +76,8 @@ button {
     border-color var(--duration-fast) var(--ease-out);
 }
 
-button:hover {
+button:hover,
+button.active {
   background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
   border-color: var(--glass-border);
 }

@@ -59,9 +59,13 @@ export class ReleasePage {
       activity?.phase === 'done' &&
       activity.ok !== false &&
       !activity.needsPush &&
+      !activity.needsRefresh &&
       (activity.willPush || !!activity.releaseUrl)
     ) {
       return 'Waiting for users to get the update banner (next app launch/check)';
+    }
+    if (activity?.needsRefresh) {
+      return activity.message || 'Refresh to keep tracking GitHub Actions.';
     }
     const status = this.status();
     if (!this.hasRepo()) return 'Open a repository to ship a version.';
@@ -97,6 +101,14 @@ export class ReleasePage {
         this.setupHints.set(null);
         return;
       }
+      void this.load(path);
+    });
+
+    effect(() => {
+      const activity = this.activity();
+      const path = this.store.currentRepo()?.path;
+      if (!path || this.store.view() !== 'release') return;
+      if (activity?.phase !== 'done' && activity?.phase !== 'error') return;
       void this.load(path);
     });
   }
@@ -157,5 +169,9 @@ export class ReleasePage {
 
   startRelease(): void {
     void this.store.startReleaseFlow();
+  }
+
+  refreshDeploy(): void {
+    void this.store.refreshReleaseDeploy();
   }
 }

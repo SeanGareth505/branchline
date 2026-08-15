@@ -26,7 +26,7 @@
   >
     <div class="panel bl-glass-dialog" role="menu">
       @if (store.currentRepo(); as repo) {
-        <div class="current">
+        <div class="current" [style.--identity]="identityColor(repoIdentityKey(repo.name, repo.path))">
           <button type="button" class="current-main" (click)="goBrowse()" title="Open in Browse">
             <span class="eyebrow">Connected</span>
             <strong>{{ repo.name }}</strong>
@@ -150,7 +150,7 @@
                   @if (!isGroupCollapsed('local', group.key)) {
                     <ul>
                       @for (repo of group.repos; track repo.path) {
-                        <li [class.active]="isActiveLocal(repo.path)">
+                        <li [class.active]="isActiveLocal(repo.path)" [style.--identity]="identityColor(repoIdentityKey(repo.name, repo.path))">
                           <button
                             type="button"
                             role="menuitem"
@@ -228,7 +228,7 @@
                   @if (!isGroupCollapsed('host', group.key)) {
                     <ul>
                       @for (repo of group.repos; track repo.id) {
-                        <li [class.active]="isActiveHost(repo.id)">
+                        <li [class.active]="isActiveHost(repo.id)" [style.--identity]="identityColor(repo.fullName || repo.name)">
                           <button
                             type="button"
                             role="menuitem"
@@ -290,7 +290,7 @@
                 @if (!isGroupCollapsed('local', group.key)) {
                   <ul>
                     @for (repo of group.repos; track repo.path) {
-                      <li [class.active]="isActiveLocal(repo.path)">
+                      <li [class.active]="isActiveLocal(repo.path)" [style.--identity]="identityColor(repoIdentityKey(repo.name, repo.path))">
                         <button
                           type="button"
                           role="menuitem"
@@ -405,7 +405,7 @@
                 @if (!isGroupCollapsed('host', group.key)) {
                   <ul>
                     @for (repo of group.repos; track repo.id) {
-                      <li [class.active]="isActiveHost(repo.id)">
+                      <li [class.active]="isActiveHost(repo.id)" [style.--identity]="identityColor(repo.fullName || repo.name)">
                         <button
                           type="button"
                           role="menuitem"

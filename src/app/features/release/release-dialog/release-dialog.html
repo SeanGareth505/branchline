@@ -15,10 +15,10 @@
             @if (prompt.dirty && !allowDirty()) {
               Working tree has uncommitted changes.
             } @else {
-              Choose a bump.
+              Choose a bump, then confirm.
             }
           </p>
-          <div class="details">
+          <div class="details" [class.warn]="dirtyBlocked()">
             <span class="details-label">Release settings</span>
             <ul>
               @for (item of summaryDetails(); track item) {
@@ -36,13 +36,24 @@
             title="Release settings"
             aria-label="Release settings"
           >
-            <ng-icon name="lucideSettings2" size="16" />
+            <ng-icon name="lucideSettings" size="16" />
           </button>
           <button type="button" class="bl-btn icon" (click)="cancel()" aria-label="Close" title="Close">
             <ng-icon name="lucideX" size="16" />
           </button>
         </div>
       </header>
+
+      @if (prompt.dirty) {
+        <label class="check dirty-check">
+          <input
+            type="checkbox"
+            [ngModel]="allowDirty()"
+            (ngModelChange)="allowDirty.set($event)"
+          />
+          <span>Allow dirty working tree</span>
+        </label>
+      }
 
       @if (settingsOpen()) {
         <section class="settings">
@@ -82,17 +93,6 @@
             </div>
           </div>
 
-          @if (prompt.dirty || prompt.config.requireClean) {
-            <label class="check">
-              <input
-                type="checkbox"
-                [ngModel]="allowDirty()"
-                (ngModelChange)="allowDirty.set($event)"
-              />
-              <span>Allow dirty working tree</span>
-            </label>
-          }
-
           <label class="field">
             <span>Pre-release id</span>
             <input
@@ -103,19 +103,6 @@
               spellcheck="false"
             />
           </label>
-
-          @if (bump() === 'custom') {
-            <label class="field">
-              <span>Custom version</span>
-              <input
-                type="text"
-                placeholder="1.2.3"
-                [ngModel]="customVersion()"
-                (ngModelChange)="customVersion.set($event)"
-                spellcheck="false"
-              />
-            </label>
-          }
 
           <label class="field">
             <span>Tag message</span>
@@ -131,79 +118,50 @@
 
       <p class="field-label">Bump</p>
       <ul class="options" role="listbox" aria-label="Version bump">
-        <li>
-          <button
-            type="button"
-            class="option"
-            role="option"
-            [class.active]="bump() === 'patch'"
-            [attr.aria-selected]="bump() === 'patch'"
-            (click)="pickBump('patch')"
-          >
-            <span class="option-main">
-              <span class="option-label">Patch</span>
-              <span class="option-hint">Bug fixes — 0.1.0 → 0.1.1</span>
-            </span>
-            @if (bump() === 'patch') {
-              <ng-icon name="lucideCheck" size="16" />
-            }
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            class="option"
-            role="option"
-            [class.active]="bump() === 'minor'"
-            [attr.aria-selected]="bump() === 'minor'"
-            (click)="pickBump('minor')"
-          >
-            <span class="option-main">
-              <span class="option-label">Minor</span>
-              <span class="option-hint">New features — 0.1.0 → 0.2.0</span>
-            </span>
-            @if (bump() === 'minor') {
-              <ng-icon name="lucideCheck" size="16" />
-            }
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            class="option"
-            role="option"
-            [class.active]="bump() === 'major'"
-            [attr.aria-selected]="bump() === 'major'"
-            (click)="pickBump('major')"
-          >
-            <span class="option-main">
-              <span class="option-label">Major</span>
-              <span class="option-hint">Breaking changes — 0.1.0 → 1.0.0</span>
-            </span>
-            @if (bump() === 'major') {
-              <ng-icon name="lucideCheck" size="16" />
-            }
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            class="option"
-            role="option"
-            [class.active]="bump() === 'custom'"
-            [attr.aria-selected]="bump() === 'custom'"
-            (click)="pickBump('custom')"
-          >
-            <span class="option-main">
-              <span class="option-label">Custom</span>
-              <span class="option-hint">Set an explicit x.y.z version in settings</span>
-            </span>
-            @if (bump() === 'custom') {
-              <ng-icon name="lucideCheck" size="16" />
-            }
-          </button>
-        </li>
+        @for (option of bumpOptions(); track option.kind) {
+          <li>
+            <button
+              type="button"
+              class="option"
+              role="option"
+              [class.active]="bump() === option.kind"
+              [attr.aria-selected]="bump() === option.kind"
+              (click)="pickBump(option.kind)"
+            >
+              <span class="option-main">
+                <span class="option-label">{{ option.label }}</span>
+                <span class="option-hint">{{ option.hint }}</span>
+              </span>
+              @if (bump() === option.kind) {
+                <ng-icon name="lucideCheck" size="16" />
+              }
+            </button>
+          </li>
+        }
       </ul>
+
+      @if (bump() === 'custom') {
+        <label class="field">
+          <span>Custom version</span>
+          <input
+            type="text"
+            placeholder="1.2.3"
+            [ngModel]="customVersion()"
+            (ngModelChange)="customVersion.set($event)"
+            spellcheck="false"
+          />
+        </label>
+      }
+
+      <label class="field">
+        <span>Release notes / commit message</span>
+        <textarea
+          rows="3"
+          [placeholder]="prompt.config.commitMessage"
+          [ngModel]="notes()"
+          (ngModelChange)="notes.set($event)"
+        ></textarea>
+      </label>
 
       <footer>
         <button type="button" class="bl-btn" (click)="cancel()">Cancel</button>
@@ -211,9 +169,10 @@
           type="button"
           class="bl-btn bl-btn-primary"
           [disabled]="!canSubmit()"
+          [title]="dirtyBlocked() ? 'Commit or stash changes, or allow a dirty working tree' : ''"
           (click)="submit()"
         >
-          Preview
+          {{ submitLabel() }}
           <span class="kbd">↵</span>
         </button>
       </footer>

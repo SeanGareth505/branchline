@@ -75,20 +75,22 @@
   <cdk-virtual-scroll-viewport
     class="grid-body"
     [itemSize]="rowHeight"
+    [minBufferPx]="80"
+    [maxBufferPx]="240"
     (scroll)="onScroll()"
   >
     <div
-      *cdkVirtualFor="let row of rows(); trackBy: trackRow"
+      *cdkVirtualFor="let row of staticRows(); trackBy: trackRow"
       class="row"
       [attr.data-sha]="row.commit?.sha ?? null"
       [class.alt]="row.alt"
       [class.artificial]="row.artificial"
-      [class.selected]="row.selected"
-      [class.compare]="row.compare"
+      [class.selected]="isRowSelected(row)"
+      [class.compare]="isRowCompare(row)"
       [class.head]="row.head"
-      [class.dim]="row.dim"
-      [class.parent-of]="row.parentOf"
-      [class.child-of]="row.childOf"
+      [class.dim]="isRowDim(row)"
+      [class.parent-of]="isRowParent(row)"
+      [class.child-of]="isRowChild(row)"
       [class.drop-target]="!!row.commit && dropTargetSha() === row.commit.sha"
       [style.height.px]="rowHeight"
       [attr.draggable]="row.commit ? true : null"
@@ -108,20 +110,20 @@
             [attr.height]="rowHeight"
             [class.dashed]="row.artificial"
           >
-            @for (link of row.topLinks; track link.key) {
+            @for (link of row.baseTopLinks; track link.key) {
               <path
                 class="edge"
                 [class.merge-parent]="link.mergeParent"
-                [class.lineage]="link.lineage"
+                [class.lineage]="isLineageLink(row, link)"
                 [attr.d]="link.d"
                 [attr.stroke]="link.stroke"
               />
             }
-            @for (link of row.bottomLinks; track link.key) {
+            @for (link of row.baseBottomLinks; track link.key) {
               <path
                 class="edge"
                 [class.merge-parent]="link.mergeParent"
-                [class.lineage]="link.lineage"
+                [class.lineage]="isLineageLink(row, link)"
                 [attr.d]="link.d"
                 [attr.stroke]="link.stroke"
               />
@@ -130,13 +132,13 @@
               class="node"
               [class.merge]="row.node.isMerge"
               [class.root]="row.node.isRoot"
-              [class.sel]="row.selected"
-              [class.lineage]="row.lineageNode"
+              [class.sel]="isRowSelected(row)"
+              [class.lineage]="isRowLineageNode(row)"
               [attr.cx]="row.cx"
               [attr.cy]="rowHeight / 2"
-              [attr.r]="row.nodeRadius"
+              [attr.r]="isRowSelected(row) ? nodeRSel : nodeR"
               [attr.fill]="row.nodeFill"
-              [attr.stroke]="row.nodeStroke"
+              [attr.stroke]="isRowSelected(row) ? 'var(--text-primary)' : row.nodeFill"
             />
             @if (row.node.isMerge) {
               <circle
@@ -202,7 +204,7 @@
         }
     </div>
 
-    @if (!rows().length) {
+    @if (!staticRows().length) {
       <div class="empty">
         <p>No commits yet</p>
         <span>Open a repository to browse history</span>

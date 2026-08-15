@@ -46,6 +46,26 @@
   --lane-6: #10b981;
   --lane-7: #f97316;
   --lane-8: #64748b;
+  --swatch-1: #0284c7;
+  --swatch-2: #4f46e5;
+  --swatch-3: #d97706;
+  --swatch-4: #e11d48;
+  --swatch-5: #0d9488;
+  --swatch-6: #059669;
+  --swatch-7: #ea580c;
+  --swatch-8: #7c3aed;
+  --swatch-9: #c026d3;
+  --swatch-10: #0891b2;
+  --swatch-11: #db2777;
+  --swatch-12: #65a30d;
+  --section-local: var(--swatch-6);
+  --section-remote: var(--swatch-2);
+  --section-tags: var(--swatch-3);
+  --section-urls: var(--swatch-1);
+  --section-worktrees: var(--swatch-5);
+  --section-submodules: var(--swatch-7);
+  --section-lfs: var(--swatch-4);
+  --section-stash: var(--swatch-8);
   --glass-bg: rgba(255, 255, 255, 0.48);
   --glass-bg-strong: rgba(255, 255, 255, 0.68);
   --glass-bg-soft: rgba(255, 255, 255, 0.36);
@@ -121,6 +141,18 @@
   --lane-6: #34d399;
   --lane-7: #fb923c;
   --lane-8: #94a3b8;
+  --swatch-1: #38bdf8;
+  --swatch-2: #818cf8;
+  --swatch-3: #fbbf24;
+  --swatch-4: #fb7185;
+  --swatch-5: #2dd4bf;
+  --swatch-6: #34d399;
+  --swatch-7: #fb923c;
+  --swatch-8: #a78bfa;
+  --swatch-9: #e879f9;
+  --swatch-10: #22d3ee;
+  --swatch-11: #f472b6;
+  --swatch-12: #a3e635;
   --glass-bg: rgba(36, 48, 68, 0.52);
   --glass-bg-strong: rgba(30, 41, 59, 0.68);
   --glass-bg-soft: rgba(45, 58, 80, 0.38);
@@ -521,16 +553,22 @@ code,
   border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.bl-chip-local {
+  background: color-mix(in srgb, var(--swatch-6) 16%, transparent);
+  color: var(--swatch-6);
+  border-color: color-mix(in srgb, var(--swatch-6) 28%, transparent);
+}
+
 .bl-chip-remote {
-  background: color-mix(in srgb, var(--git-renamed) 18%, transparent);
-  color: var(--git-renamed);
-  border-color: color-mix(in srgb, var(--git-renamed) 28%, transparent);
+  background: color-mix(in srgb, var(--swatch-2) 16%, transparent);
+  color: var(--swatch-2);
+  border-color: color-mix(in srgb, var(--swatch-2) 28%, transparent);
 }
 
 .bl-chip-tag {
-  background: color-mix(in srgb, var(--git-modified) 18%, transparent);
-  color: var(--git-modified);
-  border-color: color-mix(in srgb, var(--git-modified) 28%, transparent);
+  background: color-mix(in srgb, var(--swatch-3) 16%, transparent);
+  color: var(--swatch-3);
+  border-color: color-mix(in srgb, var(--swatch-3) 32%, transparent);
 }
 
 .bl-chip-head {
@@ -538,6 +576,50 @@ code,
   color: var(--accent-hover);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.kind-local {
+  --section: var(--section-local);
+}
+
+.kind-remote {
+  --section: var(--section-remote);
+}
+
+.kind-tags {
+  --section: var(--section-tags);
+}
+
+.kind-remotes {
+  --section: var(--section-urls);
+}
+
+.kind-worktrees {
+  --section: var(--section-worktrees);
+}
+
+.kind-submodules {
+  --section: var(--section-submodules);
+}
+
+.kind-lfs {
+  --section: var(--section-lfs);
+}
+
+.kind-stash {
+  --section: var(--section-stash);
+}
+
+.group .kind::before {
+  content: '';
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.38rem;
+  border-radius: 3px;
+  background: var(--section, var(--text-muted));
+  vertical-align: 0.08em;
+  flex-shrink: 0;
 }
 
 .bl-status-added {

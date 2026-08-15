@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
+import type { RepoSummary } from '../../core/models';
+import { assignIdentityColors, repoIdentityKey } from '../../shared/ui/identity-color';
 
 @Component({
   selector: 'app-repo-tabs',
@@ -11,6 +13,15 @@ import { AppStore } from '../../core/app.store';
 })
 export class RepoTabs {
   readonly store = inject(AppStore);
+
+  private readonly tabColors = computed(() =>
+    assignIdentityColors(this.store.openRepos().map((repo) => repoIdentityKey(repo.name, repo.path))),
+  );
+
+  colorFor(repo: RepoSummary): string {
+    const key = repoIdentityKey(repo.name, repo.path);
+    return this.tabColors().get(key) ?? `var(--swatch-1)`;
+  }
 
   select(path: string): void {
     void this.store.switchOpenRepo(path);

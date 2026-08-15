@@ -10,6 +10,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
+import type { StashEntry } from '../../../core/models';
 
 @Component({
   selector: 'app-stash-panel',
@@ -23,8 +24,10 @@ export class StashPanel {
   readonly filter = input('');
   readonly expanded = input(false);
   readonly expandedChange = output<boolean>();
+  readonly hide = output<void>();
   readonly message = signal('');
   readonly drafting = signal(false);
+  readonly includeUntracked = signal(false);
 
   readonly filtered = computed(() => {
     const q = this.filter().trim().toLowerCase();
@@ -50,16 +53,35 @@ export class StashPanel {
     return this.open() ? 'lucideChevronDown' : 'lucideChevronRight';
   }
 
+  requestHide(event?: Event): void {
+    event?.stopPropagation();
+    this.hide.emit();
+  }
+
   startStash(event?: Event): void {
     event?.stopPropagation();
     this.drafting.set(true);
     this.message.set('');
+    this.includeUntracked.set(false);
     if (!this.expanded()) this.expandedChange.emit(true);
   }
 
   async push(): Promise<void> {
-    await this.store.stashPush(this.message().trim() || undefined);
+    await this.store.stashPush(this.message().trim() || undefined, this.includeUntracked());
     this.drafting.set(false);
     this.message.set('');
+    this.includeUntracked.set(false);
+  }
+
+  dropAll(event?: Event): void {
+    event?.stopPropagation();
+    void this.store.stashClear();
+  }
+
+  showStash(entry: StashEntry): void {
+    const sha = entry.sha?.trim();
+    if (!sha) return;
+    this.store.selectCommit(sha);
+    this.store.setBrowseTab('diff');
   }
 }

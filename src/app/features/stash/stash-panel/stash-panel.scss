@@ -46,7 +46,7 @@
   font-size: 12.5px;
   font-weight: 650;
   letter-spacing: -0.01em;
-  color: var(--text-secondary);
+  color: var(--section, var(--text-secondary));
 }
 
 .count {
@@ -89,6 +89,43 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.group-action {
+  flex-shrink: 0;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.group-head-row:hover .group-action,
+.group-head-row:focus-within .group-action {
+  opacity: 1;
+}
+
+.group-action:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.group-action.danger:hover {
+  color: var(--git-deleted);
+  border-color: color-mix(in srgb, var(--git-deleted) 28%, transparent);
+  background: color-mix(in srgb, var(--git-deleted) 10%, transparent);
+}
+
 .create {
   padding: 0.4rem;
   margin: 0.15rem 0.25rem 0.25rem;
@@ -107,6 +144,14 @@ input {
   padding: 0.35rem 0.5rem;
   font-size: 13px;
   color: var(--text-primary);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 12.5px;
+  color: var(--text-secondary);
 }
 
 .row {
@@ -148,6 +193,22 @@ input {
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.title-row:disabled {
+  cursor: default;
+}
+
+.title-row:not(:disabled):hover .mono {
+  text-decoration: underline;
 }
 
 .title-row ng-icon {

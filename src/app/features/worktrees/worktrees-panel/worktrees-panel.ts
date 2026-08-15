@@ -25,6 +25,7 @@ export class WorktreesPanel {
   readonly filter = input('');
   readonly expanded = input(false);
   readonly expandedChange = output<boolean>();
+  readonly hide = output<void>();
   readonly drafting = signal(false);
   readonly worktreePath = signal('');
   readonly branchName = signal('');
@@ -55,6 +56,16 @@ export class WorktreesPanel {
 
   chevron(): string {
     return this.open() ? 'lucideChevronDown' : 'lucideChevronRight';
+  }
+
+  requestHide(event?: Event): void {
+    event?.stopPropagation();
+    this.hide.emit();
+  }
+
+  prune(event?: Event): void {
+    event?.stopPropagation();
+    void this.store.pruneWorktrees();
   }
 
   startAdd(event?: Event): void {

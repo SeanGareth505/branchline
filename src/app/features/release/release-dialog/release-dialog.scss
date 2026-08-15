@@ -16,7 +16,8 @@
 
 .dialog {
   width: min(560px, 100%);
-  max-height: min(720px, calc(100vh - 2.5rem));
+  max-height: min(820px, calc(100vh - 2.5rem));
+  overflow: auto;
   padding: 1rem 1.1rem 0.95rem;
   display: flex;
   flex-direction: column;
@@ -74,10 +75,15 @@ h2 {
   margin: 0.55rem 0 0;
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--git-modified) 28%, var(--glass-border));
-  background: color-mix(in srgb, var(--git-modified) 8%, transparent);
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
   max-height: 8rem;
   overflow: auto;
+}
+
+.details.warn {
+  border-color: color-mix(in srgb, var(--git-modified) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--git-modified) 8%, transparent);
 }
 
 .details-label {
@@ -87,6 +93,10 @@ h2 {
   font-weight: 650;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.details.warn .details-label {
   color: var(--git-modified);
 }
 
@@ -140,8 +150,10 @@ h2 {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-control, 8px);
   background: var(--bg-elevated);
@@ -152,8 +164,14 @@ h2 {
   font-weight: 500;
 }
 
+.field textarea {
+  resize: vertical;
+  min-height: 4.2rem;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--accent) 55%, var(--glass-border));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
@@ -194,6 +212,14 @@ h2 {
 
 .check input {
   accent-color: var(--accent);
+}
+
+.dirty-check {
+  margin: -0.15rem 0 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--git-modified) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--git-modified) 8%, transparent);
 }
 
 .field-label {

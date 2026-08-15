@@ -48,12 +48,14 @@
       <p class="state-hint">Turn off Mine to see the full file.</p>
     </div>
   } @else {
-    <div class="rows mono">
+    <div class="rows-wrap">
       <div class="hint-bar">Click a line to open that commit in Diff</div>
-      @for (line of visibleLines(); track line.lineNumber) {
+      <cdk-virtual-scroll-viewport class="rows mono" [itemSize]="rowHeight">
         <button
+          *cdkVirtualFor="let line of visibleLines(); trackBy: trackLine"
           type="button"
           class="row"
+          [style.height.px]="rowHeight"
           [class.mine]="store.isMine(line.author, line.email)"
           [title]="'Open commit ' + line.sha.slice(0, 7)"
           (click)="openCommit(line.sha)"
@@ -63,7 +65,7 @@
           <span class="num">{{ line.lineNumber }}</span>
           <span class="content">{{ line.content }}</span>
         </button>
-      }
+      </cdk-virtual-scroll-viewport>
     </div>
   }
 </div>

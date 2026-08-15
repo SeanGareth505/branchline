@@ -7,6 +7,8 @@ import {
   lucideCheck,
   lucideChevronDown,
   lucideChevronRight,
+  lucideChevronsDown,
+  lucideChevronsUp,
   lucideChevronsUpDown,
   lucideCircleAlert,
   lucideCloud,
@@ -14,6 +16,7 @@ import {
   lucideColumns2,
   lucideCommand,
   lucideDownload,
+  lucideEyeOff,
   lucideExternalLink,
   lucideFileText,
   lucideFocus,
@@ -69,7 +72,7 @@ import { routes } from './app.routes';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideZoneChangeDetection({ eventCoalescing: true, runCoalescing: true }),
     provideRouter(routes),
     provideIcons({
       lucideArchive,
@@ -77,6 +80,8 @@ export const appConfig: ApplicationConfig = {
       lucideCheck,
       lucideChevronDown,
       lucideChevronRight,
+      lucideChevronsDown,
+      lucideChevronsUp,
       lucideChevronsUpDown,
       lucideCircleAlert,
       lucideCloud,
@@ -84,6 +89,7 @@ export const appConfig: ApplicationConfig = {
       lucideColumns2,
       lucideCommand,
       lucideDownload,
+      lucideEyeOff,
       lucideExternalLink,
       lucideFileText,
       lucideFocus,

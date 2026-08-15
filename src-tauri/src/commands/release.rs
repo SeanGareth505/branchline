@@ -1307,6 +1307,93 @@ fn tag_matches_run(tag: &str, head_branch: Option<&str>, display_title: Option<&
     head_branch.is_some_and(|b| b.strip_prefix('v').unwrap_or(b) == version)
 }
 
+struct WorkflowSnapshot {
+    status: String,
+    conclusion: String,
+    run_url: Option<String>,
+    jobs: Vec<ReleaseDeployJob>,
+}
+
+fn workflow_is_running(status: &str) -> bool {
+    matches!(status, "queued" | "in_progress" | "waiting" | "requested")
+}
+
+fn evaluate_deploy(
+    urls: &DeployUrls,
+    tag: &str,
+    release_url: Option<String>,
+    run: Option<WorkflowSnapshot>,
+) -> PollReleaseDeployOutput {
+    let Some(run) = run else {
+        return urls.output(
+            "pending",
+            "deploying",
+            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
+            None,
+            release_url,
+            Vec::new(),
+        );
+    };
+    if workflow_is_running(&run.status) {
+        let message = if release_url.is_some() {
+            "GitHub Actions is still building remaining platform artifacts…"
+        } else {
+            "GitHub Actions is building release artifacts…"
+        };
+        return urls.output(
+            "running",
+            "ci",
+            message,
+            run.run_url,
+            release_url,
+            run.jobs,
+        );
+    }
+    if run.conclusion == "success" {
+        if let Some(url) = release_url {
+            return urls.output(
+                "success",
+                "done",
+                &format!(
+                    "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+                ),
+                run.run_url,
+                Some(url),
+                run.jobs,
+            );
+        }
+        return urls.output(
+            "running",
+            "publishing",
+            "Build finished — publishing GitHub release…",
+            run.run_url,
+            None,
+            run.jobs,
+        );
+    }
+    if matches!(
+        run.conclusion.as_str(),
+        "failure" | "cancelled" | "timed_out"
+    ) {
+        return urls.output(
+            "failure",
+            "error",
+            &format!("GitHub Actions {} for {tag}", run.conclusion),
+            run.run_url,
+            release_url,
+            run.jobs,
+        );
+    }
+    urls.output(
+        "pending",
+        "deploying",
+        "Waiting for GitHub Actions…",
+        run.run_url,
+        release_url,
+        run.jobs,
+    )
+}
+
 fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
     let settings = load_settings_with_tokens(state)?;
     settings
@@ -1338,8 +1425,51 @@ fn gh_command() -> Option<String> {
     None
 }
 
-fn gh_available() -> bool {
-    gh_command().is_some()
+fn parse_gh_runs(output: std::process::Output) -> Option<Vec<GhWorkflowRun>> {
+    if !output.status.success() {
+        return None;
+    }
+    serde_json::from_str(&String::from_utf8(output.stdout).ok()?).ok()
+}
+
+fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
+    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle";
+    let filtered = Command::new(gh)
+        .args([
+            "run",
+            "list",
+            "-R",
+            repo,
+            "--workflow=release-desktop.yml",
+            "--branch",
+            tag,
+            "--limit",
+            "10",
+            "--json",
+            json_fields,
+        ])
+        .output()
+        .ok()
+        .and_then(parse_gh_runs)
+        .unwrap_or_default();
+    if !filtered.is_empty() {
+        return Some(filtered);
+    }
+    Command::new(gh)
+        .args([
+            "run",
+            "list",
+            "-R",
+            repo,
+            "--workflow=release-desktop.yml",
+            "--limit",
+            "20",
+            "--json",
+            json_fields,
+        ])
+        .output()
+        .ok()
+        .and_then(parse_gh_runs)
 }
 
 fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
@@ -1360,36 +1490,7 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
                 r.url
             }
         });
-    if let Some(url) = release_url {
-        return Some(urls.output(
-            "success",
-            "done",
-            &format!(
-                "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
-            ),
-            None,
-            Some(url),
-            Vec::new(),
-        ));
-    }
-    let output = Command::new(&gh)
-        .args([
-            "run",
-            "list",
-            "-R",
-            repo,
-            "--workflow=release-desktop.yml",
-            "--limit",
-            "20",
-            "--json",
-            "databaseId,status,conclusion,url,headBranch,displayTitle",
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let runs: Vec<GhWorkflowRun> = serde_json::from_str(&String::from_utf8(output.stdout).ok()?).ok()?;
+    let runs = gh_list_runs(&gh, repo, tag)?;
     let matched = runs.into_iter().find(|run| {
         tag_matches_run(
             tag,
@@ -1397,60 +1498,87 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             run.display_title.as_deref(),
         )
     });
-    let Some(run) = matched else {
-        return Some(urls.output(
-            "pending",
-            "deploying",
-            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
-            None,
-            None,
-            Vec::new(),
-        ));
-    };
-    let status = run.status.unwrap_or_default();
-    let conclusion = run.conclusion.unwrap_or_default();
-    let run_url = run.url;
-    let jobs = run
-        .database_id
-        .map(|id| fetch_run_jobs_with_gh(&gh, repo, id))
-        .unwrap_or_default();
-    if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
-        return Some(urls.output(
-            "running",
-            "ci",
-            "GitHub Actions is building release artifacts…",
-            run_url,
-            None,
-            jobs,
-        ));
+    let snapshot = matched.map(|run| WorkflowSnapshot {
+        status: run.status.unwrap_or_default(),
+        conclusion: run.conclusion.unwrap_or_default(),
+        run_url: run.url,
+        jobs: run
+            .database_id
+            .map(|id| fetch_run_jobs_with_gh(&gh, repo, id))
+            .unwrap_or_default(),
+    });
+    Some(evaluate_deploy(&urls, tag, release_url, snapshot))
+}
+
+fn fetch_release_url(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    tag: &str,
+) -> Option<String> {
+    let resp = client
+        .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
     }
-    if conclusion == "success" {
-        return Some(urls.output(
-            "running",
-            "publishing",
-            "Build finished — publishing GitHub release…",
-            run_url,
-            None,
-            jobs,
-        ));
+    let value = resp.json::<Value>().ok()?;
+    if value.get("draft").and_then(|v| v.as_bool()) == Some(true) {
+        return None;
     }
-    if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
-        return Some(urls.output(
-            "failure",
-            "error",
-            &format!("GitHub Actions {conclusion} for {tag}"),
-            run_url,
-            None,
-            jobs,
-        ));
+    value
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+fn fetch_workflow_runs(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    tag: &str,
+) -> AppResult<Vec<Value>> {
+    let urls = [
+        format!(
+            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=10&branch={tag}"
+        ),
+        format!("{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=20"),
+    ];
+    let mut last_error = None;
+    for url in urls {
+        let resp = client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Branchline")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .bearer_auth(token)
+            .send()
+            .map_err(|e| crate::AppError::msg(format!("GitHub Actions request failed: {e}")))?;
+        if !resp.status().is_success() {
+            last_error = Some(format!("GitHub Actions returned {}", resp.status()));
+            continue;
+        }
+        let payload: Value = resp
+            .json()
+            .map_err(|e| crate::AppError::msg(format!("Invalid GitHub Actions response: {e}")))?;
+        let runs = payload
+            .get("workflow_runs")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        if !runs.is_empty() || url.contains("per_page=20") {
+            return Ok(runs);
+        }
     }
-    Some(urls.output(
-        "pending",
-        "deploying",
-        "Waiting for GitHub Actions…",
-        run_url,
-        None,
-        jobs,
+    Err(crate::AppError::msg(
+        last_error.unwrap_or_else(|| "GitHub Actions request failed".into()),
     ))
 }
 
@@ -1465,63 +1593,20 @@ fn poll_deploy_with_api(
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
     let client = reqwest::blocking::Client::new();
-    let release_resp = client
-        .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "Branchline")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .bearer_auth(token)
-        .send();
-    if let Ok(resp) = release_resp {
-        if resp.status().is_success() {
-            if let Ok(value) = resp.json::<Value>() {
-                if value.get("draft").and_then(|v| v.as_bool()) != Some(true) {
-                    let url = value
-                        .get("html_url")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string);
-                    return Ok(urls.output(
-                        "success",
-                        "done",
-                        &format!(
-                            "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
-                        ),
-                        None,
-                        url,
-                        Vec::new(),
-                    ));
-                }
-            }
+    let release_url = fetch_release_url(&client, base, token, &full, tag);
+    let runs = match fetch_workflow_runs(&client, base, token, &full, tag) {
+        Ok(runs) => runs,
+        Err(_) => {
+            return Ok(urls.output(
+                "unavailable",
+                "deploying",
+                "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
+                None,
+                release_url,
+                Vec::new(),
+            ));
         }
-    }
-    let runs_resp = client
-        .get(format!(
-            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=20"
-        ))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "Branchline")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .bearer_auth(token)
-        .send()
-        .map_err(|e| crate::AppError::msg(format!("GitHub Actions request failed: {e}")))?;
-    if !runs_resp.status().is_success() {
-        return Ok(urls.output(
-            "unavailable",
-            "done",
-            "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
-            None,
-            None,
-            Vec::new(),
-        ));
-    }
-    let payload: Value = runs_resp
-        .json()
-        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub Actions response: {e}")))?;
-    let runs = payload
-        .get("workflow_runs")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+    };
     let matched = runs.into_iter().find(|run| {
         tag_matches_run(
             tag,
@@ -1529,70 +1614,29 @@ fn poll_deploy_with_api(
             run.get("display_title").and_then(|v| v.as_str()),
         )
     });
-    let Some(run) = matched else {
-        return Ok(urls.output(
-            "pending",
-            "deploying",
-            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
-            None,
-            None,
-            Vec::new(),
-        ));
-    };
-    let status = run
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let conclusion = run
-        .get("conclusion")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let run_url = run
-        .get("html_url")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let run_id = run.get("id").and_then(|v| v.as_u64());
-    let jobs = run_id
-        .map(|id| fetch_run_jobs_with_api(&client, base, token, owner, repo, id))
-        .unwrap_or_default();
-    if status == "queued" || status == "in_progress" || status == "waiting" || status == "requested" {
-        return Ok(urls.output(
-            "running",
-            "ci",
-            "GitHub Actions is building release artifacts…",
-            run_url,
-            None,
-            jobs,
-        ));
-    }
-    if conclusion == "success" {
-        return Ok(urls.output(
-            "running",
-            "publishing",
-            "Build finished — publishing GitHub release…",
-            run_url,
-            None,
-            jobs,
-        ));
-    }
-    if conclusion == "failure" || conclusion == "cancelled" || conclusion == "timed_out" {
-        return Ok(urls.output(
-            "failure",
-            "error",
-            &format!("GitHub Actions {conclusion} for {tag}"),
-            run_url,
-            None,
-            jobs,
-        ));
-    }
-    Ok(urls.output(
-        "pending",
-        "deploying",
-        "Waiting for GitHub Actions…",
-        run_url,
-        None,
-        jobs,
-    ))
+    let snapshot = matched.map(|run| {
+        let run_id = run.get("id").and_then(|v| v.as_u64());
+        WorkflowSnapshot {
+            status: run
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            conclusion: run
+                .get("conclusion")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            run_url: run
+                .get("html_url")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+            jobs: run_id
+                .map(|id| fetch_run_jobs_with_api(&client, base, token, owner, repo, id))
+                .unwrap_or_default(),
+        }
+    });
+    Ok(evaluate_deploy(&urls, tag, release_url, snapshot))
 }
 
 #[command]
@@ -1615,11 +1659,85 @@ pub fn poll_release_deploy(
         Ok(connection) => poll_deploy_with_api(&connection, &owner, &repo, tag),
         Err(_) => Ok(DeployUrls::for_repo(&owner, &repo).output(
             "unavailable",
-            "done",
+            "deploying",
             "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
             None,
             None,
             Vec::new(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn urls() -> DeployUrls {
+        DeployUrls::for_repo("acme", "branchline")
+    }
+
+    fn run(status: &str, conclusion: &str) -> WorkflowSnapshot {
+        WorkflowSnapshot {
+            status: status.into(),
+            conclusion: conclusion.into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![ReleaseDeployJob {
+                name: "publish-tauri".into(),
+                status: status.into(),
+                conclusion: if conclusion.is_empty() {
+                    None
+                } else {
+                    Some(conclusion.into())
+                },
+                url: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn tag_matches_head_branch_and_title() {
+        assert!(tag_matches_run("v0.7.4", Some("v0.7.4"), None));
+        assert!(tag_matches_run("v0.7.4", None, Some("Release Desktop v0.7.4")));
+        assert!(tag_matches_run("v0.7.4", Some("0.7.4"), None));
+        assert!(!tag_matches_run("v0.7.4", Some("main"), Some("chore: docs")));
+    }
+
+    #[test]
+    fn deploy_stays_running_if_release_exists_before_ci_finishes() {
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.7.4",
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.4".into()),
+            Some(run("in_progress", "")),
+        );
+        assert_eq!(result.status, "running");
+        assert_eq!(result.phase, "ci");
+        assert!(result.release_url.is_some());
+    }
+
+    #[test]
+    fn deploy_is_live_only_after_workflow_success_and_release() {
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.7.4",
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.4".into()),
+            Some(run("completed", "success")),
+        );
+        assert_eq!(result.status, "success");
+        assert_eq!(result.phase, "done");
+    }
+
+    #[test]
+    fn deploy_waits_to_publish_when_build_succeeds_without_release() {
+        let result = evaluate_deploy(&urls(), "v0.7.4", None, Some(run("completed", "success")));
+        assert_eq!(result.status, "running");
+        assert_eq!(result.phase, "publishing");
+    }
+
+    #[test]
+    fn deploy_reports_workflow_failure() {
+        let result = evaluate_deploy(&urls(), "v0.7.4", None, Some(run("completed", "failure")));
+        assert_eq!(result.status, "failure");
+        assert_eq!(result.phase, "error");
     }
 }

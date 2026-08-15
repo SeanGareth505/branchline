@@ -102,13 +102,9 @@ pub fn remove_remote(input: RemoveRemoteInput) -> AppResult<MutationOutput> {
 #[command]
 pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let remote = input.remote.as_deref().unwrap_or("origin");
         let rebase = input.rebase.unwrap_or(false);
-        let result = if rebase {
-            git_cli::run_git(path, &["pull", "--rebase", remote])
-        } else {
-            git_cli::run_git(path, &["pull", remote])
-        };
+        let args = git_cli::pull_args(input.remote.as_deref(), rebase);
+        let result = git_cli::run_git_strings(path, &args);
         match result {
             Ok(out) => Ok(MutationOutput {
                 ok: true,
@@ -136,5 +132,27 @@ pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
                 }
             }
         }
+    })
+}
+
+#[command]
+pub fn prune_remote(input: RemoveRemoteInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let name = input.name.trim();
+        if name.is_empty() {
+            return Ok(MutationOutput {
+                ok: false,
+                message: "Remote name is required".into(),
+            });
+        }
+        let out = git_cli::run_git(path, &["remote", "prune", name])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                format!("Pruned stale remote-tracking branches for {name}")
+            } else {
+                out
+            },
+        })
     })
 }

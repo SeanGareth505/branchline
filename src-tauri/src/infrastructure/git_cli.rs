@@ -111,6 +111,34 @@ pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
     }
 }
 
+pub fn run_git_strings(cwd: &Path, args: &[String]) -> AppResult<String> {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_git(cwd, &refs)
+}
+
+fn optional_remote(remote: Option<&str>) -> Option<&str> {
+    remote.map(str::trim).filter(|s| !s.is_empty())
+}
+
+pub fn pull_args(remote: Option<&str>, rebase: bool) -> Vec<String> {
+    let mut args = vec!["pull".to_string()];
+    if rebase {
+        args.push("--rebase".to_string());
+    }
+    if let Some(r) = optional_remote(remote) {
+        args.push(r.to_string());
+    }
+    args
+}
+
+pub fn fetch_args(remote: Option<&str>) -> Vec<String> {
+    let mut args = vec!["fetch".to_string()];
+    if let Some(r) = optional_remote(remote) {
+        args.push(r.to_string());
+    }
+    args
+}
+
 pub fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> AppResult<String> {
     use std::io::Write;
 
@@ -385,4 +413,37 @@ pub fn stash_tip_oid(path: &Path) -> AppResult<String> {
         return Err(AppError::msg("No stash entry created"));
     }
     Ok(oid.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pull_without_remote_lets_git_use_configured_upstream() {
+        assert_eq!(pull_args(None, false), vec!["pull"]);
+        assert_eq!(pull_args(Some(""), false), vec!["pull"]);
+        assert_eq!(pull_args(Some("  "), true), vec!["pull", "--rebase"]);
+    }
+
+    #[test]
+    fn pull_with_named_remote_does_not_assume_origin() {
+        assert_eq!(
+            pull_args(Some("dischem-sap-commerce"), false),
+            vec!["pull", "dischem-sap-commerce"]
+        );
+        assert_eq!(
+            pull_args(Some("origin"), true),
+            vec!["pull", "--rebase", "origin"]
+        );
+    }
+
+    #[test]
+    fn fetch_without_remote_lets_git_use_configured_upstream() {
+        assert_eq!(fetch_args(None), vec!["fetch"]);
+        assert_eq!(
+            fetch_args(Some("dischem-sap-commerce")),
+            vec!["fetch", "dischem-sap-commerce"]
+        );
+    }
 }

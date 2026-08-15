@@ -8,6 +8,7 @@ import { AppStore } from '../../core/app.store';
 import type { RecentRepo } from '../../core/models';
 import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { EmptyState } from '../../shared/ui/empty-state/empty-state';
+import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
 
 type SortMode = 'recent' | 'name';
@@ -28,6 +29,8 @@ interface RepoGroup {
 export class Dashboard {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
+  readonly identityColor = identityColor;
+  readonly repoIdentityKey = repoIdentityKey;
   readonly query = signal('');
   readonly sortMode = signal<SortMode>('recent');
   readonly collapsedGroups = signal<Record<string, boolean>>({});

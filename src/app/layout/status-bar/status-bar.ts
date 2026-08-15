@@ -1,6 +1,7 @@
-import { Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
+import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { describeBranchSync } from '../../shared/git/branch-sync';
 
 @Component({
@@ -8,9 +9,15 @@ import { describeBranchSync } from '../../shared/git/branch-sync';
   imports: [NgIcon],
   templateUrl: './status-bar.html',
   styleUrl: './status-bar.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatusBar {
   readonly store = inject(AppStore);
+
+  readonly repoColor = computed(() => {
+    const repo = this.store.currentRepo();
+    return repo ? identityColor(repoIdentityKey(repo.name, repo.path)) : null;
+  });
 
   readonly syncStatus = computed(() =>
     describeBranchSync(this.store.status(), { hasRemotes: this.store.remotes().length > 0 }),

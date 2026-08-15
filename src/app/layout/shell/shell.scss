@@ -259,17 +259,59 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.85rem;
+  gap: 1rem;
   min-width: min(18rem, 100%);
-  padding: 1.35rem 1.6rem;
+  padding: 1.55rem 1.7rem 1.4rem;
   text-align: center;
+  position: relative;
+}
+
+.boot-card::before {
+  content: '';
+  position: absolute;
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 28%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+  animation: bl-boot-glow 2.2s ease-in-out infinite;
+}
+
+.boot-card app-spinner {
+  position: relative;
+  z-index: 1;
 }
 
 .boot-card p {
   margin: 0;
+  position: relative;
+  z-index: 1;
   color: var(--text-secondary);
   font-size: 0.92rem;
   font-weight: 600;
+}
+
+@keyframes bl-boot-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-card::before {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 
 @media (max-width: 1280px) {

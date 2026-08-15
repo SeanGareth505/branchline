@@ -47,6 +47,20 @@ fn repo_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
+fn light_summary(path: &Path, input_path: &str) -> AppResult<RepoSummary> {
+    git_cli::ensure_repo(path)?;
+    let name = repo_name(path);
+    let branch = git2_repo::current_branch(path).unwrap_or_else(|_| "HEAD".into());
+    Ok(RepoSummary {
+        path: input_path.to_string(),
+        name,
+        branch,
+        ahead: 0,
+        behind: 0,
+        has_changes: false,
+    })
+}
+
 #[command]
 pub fn list_recent_repos(state: State<'_, AppState>) -> AppResult<Vec<RecentRepo>> {
     let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
@@ -137,6 +151,31 @@ pub fn open_repository(
         behind: status.behind,
         has_changes,
     })
+}
+
+#[command]
+pub fn peek_repository(input: PathInput) -> AppResult<RepoSummary> {
+    let path = PathBuf::from(&input.path);
+    light_summary(&path, &input.path)
+}
+
+#[command]
+pub fn focus_repository(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: PathInput,
+) -> AppResult<RepoSummary> {
+    let path = PathBuf::from(&input.path);
+    let summary = light_summary(&path, &input.path)?;
+    let opened_at = Utc::now().to_rfc3339();
+    {
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        sqlite::upsert_recent_repo(&db, &input.path, &summary.name, &opened_at)?;
+        sqlite::set_last_repo(&db, &input.path)?;
+    }
+    state.set_current_repo(Some(path.clone()));
+    state.repo_watcher.watch(app, path);
+    Ok(summary)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

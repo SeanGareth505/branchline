@@ -19,6 +19,15 @@
     >
       <ng-icon name="lucideDownload" size="11" />
     </button>
+    <button
+      type="button"
+      class="icon"
+      (click)="requestHide($event)"
+      aria-label="Hide LFS"
+      title="Hide this section"
+    >
+      <ng-icon name="lucideEyeOff" size="11" />
+    </button>
   </div>
 
   @if (open()) {

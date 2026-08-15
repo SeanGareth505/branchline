@@ -1,5 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { BlameLine } from '../../../core/models';
@@ -7,7 +8,7 @@ import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-blame-view',
-  imports: [FormsModule, LoadingBlock],
+  imports: [FormsModule, LoadingBlock, CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
   templateUrl: './blame-view.html',
   styleUrl: './blame-view.scss',
 })
@@ -18,6 +19,8 @@ export class BlameView {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly mineOnly = signal(false);
+  readonly rowHeight = 24;
+  trackLine = (_: number, line: BlameLine): number => line.lineNumber;
   private ensureToken = 0;
   private loadToken = 0;
 

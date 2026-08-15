@@ -1,4 +1,4 @@
-import { Component, computed, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { preferredEditorLabel } from '../../../shared/git/open-in-editor';
@@ -10,6 +10,7 @@ const PREVIEW_LIMIT = 3;
   imports: [NgIcon],
   templateUrl: './conflict-banner.html',
   styleUrl: './conflict-banner.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConflictBanner {
   readonly store = inject(AppStore);

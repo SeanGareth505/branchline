@@ -20,6 +20,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import Fuse from 'fuse.js';
 import { AppStore } from '../../core/app.store';
 import type { HostRepository, RecentRepo } from '../../core/models';
+import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
 
 type SwitcherTab = 'local' | 'remote' | 'results';
@@ -50,6 +51,8 @@ type FlatItem =
 export class ProjectSwitcher {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
+  readonly identityColor = identityColor;
+  readonly repoIdentityKey = repoIdentityKey;
   readonly menuOpen = signal(false);
   readonly filter = signal('');
   readonly tab = signal<SwitcherTab>('local');

@@ -24,6 +24,7 @@
       type="button"
       role="tab"
       [class.on]="filter() === 'all'"
+      [attr.aria-selected]="filter() === 'all'"
       (click)="setFilter('all')"
       title="Show all changed files"
     >
@@ -34,6 +35,7 @@
       type="button"
       role="tab"
       [class.on]="filter() === 'conflicted'"
+      [attr.aria-selected]="filter() === 'conflicted'"
       [disabled]="!counts().conflicted"
       (click)="setFilter('conflicted')"
       title="Show conflicted files"
@@ -45,6 +47,7 @@
       type="button"
       role="tab"
       [class.on]="filter() === 'staged'"
+      [attr.aria-selected]="filter() === 'staged'"
       [disabled]="!counts().staged"
       (click)="setFilter('staged')"
       title="Show staged files"
@@ -56,6 +59,7 @@
       type="button"
       role="tab"
       [class.on]="filter() === 'unstaged'"
+      [attr.aria-selected]="filter() === 'unstaged'"
       [disabled]="!counts().unstaged"
       (click)="setFilter('unstaged')"
       title="Show unstaged changes"
@@ -67,6 +71,7 @@
       type="button"
       role="tab"
       [class.on]="filter() === 'untracked'"
+      [attr.aria-selected]="filter() === 'untracked'"
       [disabled]="!counts().untracked"
       (click)="setFilter('untracked')"
       title="Show untracked files"
@@ -76,7 +81,13 @@
     </button>
   </div>
 
-  <div class="tree" role="tree">
+  <cdk-virtual-scroll-viewport
+    class="tree"
+    role="tree"
+    [itemSize]="rowHeight"
+    [minBufferPx]="80"
+    [maxBufferPx]="240"
+  >
     @if (rows().length === 0) {
       <div class="empty">
         @if (counts().total === 0) {
@@ -88,12 +99,13 @@
         }
       </div>
     } @else {
-      @for (row of rows(); track row.path + ':' + row.kind) {
+      <ng-container *cdkVirtualFor="let row of rows(); trackBy: trackRow">
         @if (row.kind === 'dir') {
           <button
             type="button"
             class="row dir"
             role="treeitem"
+            [style.height.px]="rowHeight"
             [attr.aria-expanded]="row.open"
             [style.--depth]="row.depth"
             [title]="row.path"
@@ -117,6 +129,7 @@
           <div
             class="row file"
             role="treeitem"
+            [style.height.px]="rowHeight"
             [class.selected]="selectedPath() === row.path"
             [style.--depth]="row.depth"
           >
@@ -137,26 +150,13 @@
               <span class="area">{{ areaLabel(row.file.area) }}</span>
             </button>
             <div class="actions">
-              <button type="button" class="link" title="Open diff" (click)="openDiff(row.path)">
-                Diff
-              </button>
               @if (row.file.area === 'unstaged' || row.file.area === 'untracked') {
-                <button
-                  type="button"
-                  class="link"
-                  title="Stage file"
-                  (click)="stageFile(row.path)"
-                >
+                <button type="button" class="link" title="Stage file" (click)="stageFile(row.path)">
                   Stage
                 </button>
               }
               @if (row.file.area === 'staged') {
-                <button
-                  type="button"
-                  class="link"
-                  title="Unstage file"
-                  (click)="unstageFile(row.path)"
-                >
+                <button type="button" class="link" title="Unstage file" (click)="unstageFile(row.path)">
                   Unstage
                 </button>
               }
@@ -171,74 +171,11 @@
                 </button>
               }
               @if (row.file.area === 'untracked') {
-                <button
-                  type="button"
-                  class="link"
-                  title="Add to .gitignore"
-                  (click)="ignoreFile(row.path)"
-                >
+                <button type="button" class="link" title="Add to .gitignore" (click)="ignoreFile(row.path)">
                   Ignore
                 </button>
               }
-              @if (row.file.area !== 'untracked') {
-                <button
-                  type="button"
-                  class="link"
-                  title="Show file history"
-                  (click)="openHistory(row.path)"
-                >
-                  History
-                </button>
-                <button
-                  type="button"
-                  class="link"
-                  title="Show blame"
-                  (click)="openBlame(row.path)"
-                >
-                  Blame
-                </button>
-              }
               @if (row.file.area === 'conflicted') {
-                <button
-                  type="button"
-                  class="link"
-                  [title]="'Open in ' + store.preferredEditorButtonLabel()"
-                  (click)="openInEditor(row.path)"
-                >
-                  {{ store.preferredEditorButtonLabel() }}
-                </button>
-                <button
-                  type="button"
-                  class="link"
-                  title="Keep ours"
-                  (click)="takeOurs(row.path)"
-                >
-                  Ours
-                </button>
-                <button
-                  type="button"
-                  class="link"
-                  title="Keep theirs"
-                  (click)="takeTheirs(row.path)"
-                >
-                  Theirs
-                </button>
-                <button
-                  type="button"
-                  class="link"
-                  title="Open Cursor/VS Code 3-way merge"
-                  (click)="openIdeMerge(row.path)"
-                >
-                  IDE merge
-                </button>
-                <button
-                  type="button"
-                  class="link"
-                  title="Open merge tool for this file"
-                  (click)="openMergeTool(row.path)"
-                >
-                  Mergetool
-                </button>
                 <button
                   type="button"
                   class="link resolve"
@@ -247,19 +184,49 @@
                 >
                   Resolve
                 </button>
-                <button
-                  type="button"
-                  class="link resolve"
-                  title="Mark conflict resolved (stage)"
-                  (click)="markResolved(row.path)"
-                >
-                  Stage
-                </button>
               }
+              <button
+                type="button"
+                class="link"
+                title="More actions"
+                (click)="openMore(row.path, row.file.area, $event)"
+              >
+                More
+              </button>
             </div>
           </div>
         }
-      }
+      </ng-container>
+    }
+  </cdk-virtual-scroll-viewport>
+</div>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="menuOrigin()"
+  [cdkConnectedOverlayOpen]="moreMenu().open"
+  [cdkConnectedOverlayPositions]="menuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="onMoreDismiss($event)"
+  (overlayOutsideClick)="onMoreDismiss($event)"
+>
+  <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+    <button type="button" (click)="openDiff(moreMenu().path); closeMore()">Diff</button>
+    @if (moreMenu().area !== 'untracked') {
+      <button type="button" (click)="openHistory(moreMenu().path); closeMore()">History</button>
+      <button type="button" (click)="openBlame(moreMenu().path); closeMore()">Blame</button>
+    }
+    @if (moreMenu().area === 'conflicted') {
+      <button type="button" (click)="openInEditor(moreMenu().path); closeMore()">
+        {{ store.preferredEditorButtonLabel() }}
+      </button>
+      <button type="button" (click)="takeOurs(moreMenu().path); closeMore()">Ours</button>
+      <button type="button" (click)="takeTheirs(moreMenu().path); closeMore()">Theirs</button>
+      <button type="button" (click)="openIdeMerge(moreMenu().path); closeMore()">IDE merge</button>
+      <button type="button" (click)="openMergeTool(moreMenu().path); closeMore()">Mergetool</button>
+      <button type="button" (click)="markResolved(moreMenu().path); closeMore()">Stage</button>
     }
   </div>
-</div>
+</ng-template>

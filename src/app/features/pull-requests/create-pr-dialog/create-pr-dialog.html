@@ -1,0 +1,169 @@
+@if (store.createPrDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-pr-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Pull request</span>
+          <h2 id="create-pr-title">Create pull request</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <div class="branches">
+        <label class="field">
+          <span>From</span>
+          <select [ngModel]="head()" (ngModelChange)="head.set($event)">
+            @for (name of branchOptions(); track name) {
+              <option [value]="name">{{ name }}</option>
+            }
+          </select>
+        </label>
+        <span class="arrow" aria-hidden="true">→</span>
+        <label class="field">
+          <span>Into</span>
+          <select [ngModel]="base()" (ngModelChange)="base.set($event)">
+            @for (name of branchOptions(); track name) {
+              <option [value]="name">{{ name }}</option>
+            }
+          </select>
+        </label>
+      </div>
+
+      <section class="templates">
+        <div class="templates-head">
+          <h3>Template</h3>
+          <button type="button" class="bl-btn save" (click)="saveCurrentTemplate()">
+            <ng-icon name="lucidePlus" size="13" />
+            Save current
+          </button>
+        </div>
+        <div class="chips">
+          <button
+            type="button"
+            class="chip"
+            [class.on]="selectedId() === 'blank'"
+            (click)="selectTemplate('blank')"
+          >
+            Blank
+          </button>
+          @for (t of repoTemplates(); track t.id) {
+            <button
+              type="button"
+              class="chip repo"
+              [class.on]="selectedId() === t.id"
+              [title]="t.relativePath"
+              (click)="selectTemplate(t.id)"
+            >
+              <ng-icon name="lucideFileText" size="12" />
+              {{ t.name }}
+            </button>
+          }
+          @for (t of savedTemplates(); track t.id) {
+            <button
+              type="button"
+              class="chip saved"
+              [class.on]="selectedId() === t.id"
+              (click)="selectTemplate(t.id)"
+            >
+              {{ t.name }}
+              <span
+                class="remove"
+                role="button"
+                tabindex="0"
+                title="Delete template"
+                (click)="removeSaved(t, $event)"
+              >
+                <ng-icon name="lucideTrash2" size="11" />
+              </span>
+            </button>
+          }
+        </div>
+        @if (loadingTemplates()) {
+          <p class="hint">Looking for PULL_REQUEST_TEMPLATE.md…</p>
+        } @else if (!repoTemplates().length && !savedTemplates().length) {
+          <p class="hint">No repo template found. Write one below and save it for next time.</p>
+        }
+      </section>
+
+      <label class="field">
+        <span>Title</span>
+        <input
+          type="text"
+          [ngModel]="title()"
+          (ngModelChange)="title.set($event)"
+          placeholder="Short summary of the change"
+        />
+      </label>
+
+      <label class="field body-field">
+        <span>Description</span>
+        <textarea
+          rows="9"
+          [ngModel]="body()"
+          (ngModelChange)="body.set($event)"
+          placeholder="What changed, why, and how to test it"
+        ></textarea>
+      </label>
+
+      @if (method() === 'cli') {
+        <label class="check">
+          <input type="checkbox" [ngModel]="draft()" (ngModelChange)="draft.set($event)" />
+          <span>Create as draft</span>
+        </label>
+      }
+
+      <section class="methods">
+        <h3>How to create</h3>
+        <div class="method-grid">
+          <button
+            type="button"
+            class="method"
+            [class.on]="method() === 'cli'"
+            (click)="setMethod('cli')"
+          >
+            <ng-icon name="lucideTerminal" size="16" />
+            <strong>Command line</strong>
+            <span>{{
+              githubReady()
+                ? 'Create from Branchline with GitHub'
+                : 'Uses gh if installed, or linked GitHub'
+            }}</span>
+          </button>
+          <button
+            type="button"
+            class="method"
+            [class.on]="method() === 'browser'"
+            (click)="setMethod('browser')"
+          >
+            <ng-icon name="lucideGlobe" size="16" />
+            <strong>Browser</strong>
+            <span>Open the host’s new PR page with this title and body</span>
+          </button>
+        </div>
+      </section>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          @if (busy()) {
+            <app-spinner size="sm" [label]="submitLabel()" />
+          }
+          {{ submitLabel() }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

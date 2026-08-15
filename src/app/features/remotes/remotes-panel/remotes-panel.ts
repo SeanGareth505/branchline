@@ -23,6 +23,7 @@ export class RemotesPanel {
   readonly filter = input('');
   readonly expanded = input(false);
   readonly expandedChange = output<boolean>();
+  readonly hide = output<void>();
   readonly drafting = signal(false);
   readonly name = signal('origin');
   readonly url = signal('');
@@ -49,6 +50,11 @@ export class RemotesPanel {
 
   chevron(): string {
     return this.open() ? 'lucideChevronDown' : 'lucideChevronRight';
+  }
+
+  requestHide(event?: Event): void {
+    event?.stopPropagation();
+    this.hide.emit();
   }
 
   startAdd(event?: Event): void {

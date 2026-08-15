@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore, type AppView } from '../../core/app.store';
 import { WorkflowsPage } from '../../features/automation/workflows-page/workflows-page';
@@ -22,6 +22,7 @@ import { InteractiveRebaseDialog } from '../../features/rebase/interactive-rebas
 import { ConflictResolverDialog } from '../../features/conflicts/conflict-resolver-dialog/conflict-resolver-dialog';
 import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/ignore-editor-dialog';
 import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
+import { CreatePrDialog } from '../../features/pull-requests/create-pr-dialog/create-pr-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
 import { ReleaseDialog } from '../../features/release/release-dialog/release-dialog';
 import { ReleasePage } from '../../features/release/release-page/release-page';
@@ -68,12 +69,14 @@ import { UpdateService } from '../../core/update.service';
     ConflictResolverDialog,
     IgnoreEditorDialog,
     PublishGithubDialog,
+    CreatePrDialog,
     GithubDeviceLoginDialog,
     ReleaseDialog,
     UpdateBanner,
   ],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Shell {
   readonly store = inject(AppStore);

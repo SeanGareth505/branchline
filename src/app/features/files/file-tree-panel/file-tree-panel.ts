@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { AppStore } from '../../../core/app.store';
 import type { FileStatusEntry, FileStatusKind } from '../../../core/models';
 
@@ -38,7 +40,14 @@ type FlatRow =
 
 @Component({
   selector: 'app-file-tree-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [
+    FormsModule,
+    NgIcon,
+    CdkVirtualScrollViewport,
+    CdkFixedSizeVirtualScroll,
+    CdkVirtualForOf,
+    CdkConnectedOverlay,
+  ],
   templateUrl: './file-tree-panel.html',
   styleUrl: './file-tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,6 +57,22 @@ export class FileTreePanel {
   readonly query = signal('');
   readonly filter = signal<FilterChip>('all');
   readonly collapsed = signal<Set<string>>(new Set());
+  readonly rowHeight = 32;
+  trackRow = (_: number, row: FlatRow): string => row.path + ':' + row.kind;
+  readonly moreMenu = signal<{ open: boolean; x: number; y: number; path: string; area: FileArea }>({
+    open: false,
+    x: 0,
+    y: 0,
+    path: '',
+    area: 'unstaged',
+  });
+  private suppressMenuCloseUntil = 0;
+  readonly menuOrigin = computed(() => ({ x: this.moreMenu().x, y: this.moreMenu().y }));
+  readonly menuPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'top' },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'top' },
+  ];
 
   readonly counts = computed(() => {
     const s = this.store.status();
@@ -217,6 +242,23 @@ export class FileTreePanel {
 
   ignoreFile(path: string): void {
     void this.store.ignorePath(path);
+  }
+
+  openMore(path: string, area: FileArea, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.suppressMenuCloseUntil = performance.now() + 500;
+    this.moreMenu.set({ open: true, x: event.clientX, y: event.clientY, path, area });
+  }
+
+  closeMore(): void {
+    if (this.moreMenu().open) this.moreMenu.update((m) => ({ ...m, open: false }));
+  }
+
+  onMoreDismiss(event?: Event): void {
+    if (performance.now() < this.suppressMenuCloseUntil) return;
+    if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
+    this.closeMore();
   }
 
   statusGlyph(status: FileStatusKind, area: FileArea): string {

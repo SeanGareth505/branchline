@@ -31,6 +31,13 @@ export class App implements OnInit {
 
   @HostListener('document:contextmenu', ['$event'])
   onContextMenu(event: MouseEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest('input, textarea, select, [contenteditable="true"]') ||
+      !!window.getSelection()?.toString()
+    ) {
+      return;
+    }
     event.preventDefault();
   }
 
@@ -48,6 +55,16 @@ export class App implements OnInit {
     if (meta && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       this.store.paletteOpen.update((v) => !v);
+      return;
+    }
+    if (!typing && event.key === 'F5') {
+      event.preventDefault();
+      void this.store.refreshRepo({ notify: true });
+      return;
+    }
+    if (meta && event.shiftKey && event.key.toLowerCase() === 'f' && !typing && this.store.currentRepo()) {
+      event.preventDefault();
+      void this.store.fetchRemote();
       return;
     }
     if (
@@ -91,6 +108,8 @@ export class App implements OnInit {
         this.store.closeChangelogModal();
       } else if (this.store.createBranchDialogOpen()) {
         this.store.closeCreateBranchDialog();
+      } else if (this.store.createPrDialogOpen()) {
+        this.store.closeCreatePrDialog();
       } else if (this.store.publishGithubDialogOpen()) {
         this.store.closePublishGithubDialog();
       } else if (this.store.githubDeviceLoginOpen()) {
@@ -99,6 +118,12 @@ export class App implements OnInit {
         this.store.closeSafety();
       } else if (this.store.cherryPreviewOpen()) {
         this.store.closeCherryPick();
+      } else if (this.store.conflictResolverOpen()) {
+        this.store.closeConflictResolver();
+      } else if (this.store.interactiveRebaseOpen()) {
+        this.store.closeInteractiveRebase();
+      } else if (this.store.ignoreEditorOpen()) {
+        this.store.closeIgnoreEditor();
       }
     }
   }

@@ -51,6 +51,7 @@ import type {
   LfsFileInfo,
   ConflictSidesOutput,
   CreatePullRequestOutput,
+  RepoPrTemplate,
   ReleaseStatusOutput,
   ReleasePreviewOutput,
   ReleaseRunOptions,
@@ -226,6 +227,14 @@ export class TauriService {
     return this.invoke<RepoSummary>('open_repository', { input: { path } });
   }
 
+  peekRepository(path: string) {
+    return this.invoke<RepoSummary>('peek_repository', { input: { path } });
+  }
+
+  focusRepository(path: string) {
+    return this.invoke<RepoSummary>('focus_repository', { input: { path } });
+  }
+
   cloneRepository(url: string, destination: string) {
     return this.invoke<RepoSummary>('clone_repository', { input: { url, destination } });
   }
@@ -329,6 +338,14 @@ export class TauriService {
 
   stashDrop(path: string, index: number) {
     return this.invoke<MutationOutput>('stash_drop', { input: { path, index } });
+  }
+
+  stashClear(path: string) {
+    return this.invoke<MutationOutput>('stash_clear', { input: { path } });
+  }
+
+  stashBranch(path: string, index: number, name: string) {
+    return this.invoke<MutationOutput>('stash_branch', { input: { path, index, name } });
   }
 
   mergeBranch(path: string, branch: string, noFf = false) {
@@ -476,6 +493,10 @@ export class TauriService {
     return this.invoke<MockPullRequest[]>('list_pull_requests', {
       input: { path, state },
     });
+  }
+
+  listPrTemplates(path: string) {
+    return this.invoke<RepoPrTemplate[]>('list_pr_templates', { input: { path } });
   }
 
   createPullRequest(input: {
@@ -655,8 +676,10 @@ export class TauriService {
     return this.invoke<MutationOutput>('unlock_branch', { input: { path, name } });
   }
 
-  fetch(path: string) {
-    return this.invoke<MutationOutput>('fetch', { input: { path } });
+  fetch(path: string, remote?: string) {
+    return this.invoke<MutationOutput>('fetch', {
+      input: { path, remote: remote ?? null },
+    });
   }
 
   pull(path: string, remote?: string) {
@@ -707,6 +730,10 @@ export class TauriService {
 
   removeRemote(path: string, name: string) {
     return this.invoke<MutationOutput>('remove_remote', { input: { path, name } });
+  }
+
+  pruneRemote(path: string, name: string) {
+    return this.invoke<MutationOutput>('prune_remote', { input: { path, name } });
   }
 
   listReflog(path: string, limit = 80) {
@@ -1095,14 +1122,9 @@ export class TauriService {
           isLast: false,
         },
       ],
-      open_repository: {
-        path: (args?.['input'] as { path?: string })?.path ?? '/Users/demo/projects/navigo',
-        name: `[DUMMY] ${(((args?.['input'] as { path?: string })?.path ?? '/navigo').replace(/\\/g, '/').split('/').filter(Boolean).pop()) || 'repo'}`,
-        branch: 'main',
-        ahead: 0,
-        behind: 1,
-        hasChanges: true,
-      },
+      open_repository: dummyRepoSummary(args),
+      peek_repository: dummyRepoSummary(args),
+      focus_repository: dummyRepoSummary(args),
       clone_repository: {
         path: (args?.['input'] as { destination?: string })?.destination ?? '/Users/demo/projects/cloned',
         name: '[DUMMY] cloned',
@@ -1125,12 +1147,15 @@ export class TauriService {
           id: 'stash@{0}',
           message: 'WIP on main: polish dashboard',
           branch: 'main',
+          sha: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
         },
       ],
       stash_push: { ok: true, message: 'Saved working directory and index state' },
       stash_pop: { ok: true, message: 'Dropped stash@{0}' },
       stash_apply: { ok: true, message: 'Applied stash@{0}' },
       stash_drop: { ok: true, message: 'Dropped stash@{0}' },
+      stash_clear: { ok: true, message: 'Dropped all stashes' },
+      stash_branch: { ok: true, message: 'Created branch from stash' },
       merge_branch: { ok: true, message: 'Merge made by the recursive strategy' },
       rebase_onto: { ok: true, message: 'Successfully rebased' },
       preview_interactive_rebase: {
@@ -1286,6 +1311,7 @@ export class TauriService {
       ],
       add_remote: { ok: true, message: 'Added remote' },
       remove_remote: { ok: true, message: 'Removed remote' },
+      prune_remote: { ok: true, message: 'Pruned stale remote-tracking branches' },
       pull_with_options: { ok: true, message: 'Pulled with rebase' },
       list_reflog: [
         {
@@ -2134,6 +2160,17 @@ export class TauriService {
       return mocks['list_mock_pull_requests'] as T;
     }
 
+    if (cmd === 'list_pr_templates') {
+      return [
+        {
+          id: 'repo:.github/PULL_REQUEST_TEMPLATE.md',
+          name: 'Repo default',
+          relativePath: '.github/PULL_REQUEST_TEMPLATE.md',
+          body: '## Summary\n\n-\n\n## Test plan\n\n- [ ]\n',
+        },
+      ] as T;
+    }
+
     if (cmd === 'create_pull_request') {
       return {
         ok: true,
@@ -2768,6 +2805,8 @@ export class TauriService {
       notifyPrCi: true,
       hideUntracked: false,
       uiDensity: 'comfortable' as const,
+      prTemplates: [],
+      prCreateMethod: 'browser' as const,
     };
 
     try {
@@ -2797,6 +2836,21 @@ export class TauriService {
       /* ignore */
     }
   }
+}
+
+function dummyRepoSummary(args?: Record<string, unknown>): RepoSummary {
+  const path =
+    (args?.['input'] as { path?: string })?.path ?? '/Users/demo/projects/navigo';
+  const name =
+    path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'repo';
+  return {
+    path,
+    name: `[DUMMY] ${name}`,
+    branch: 'main',
+    ahead: 0,
+    behind: 1,
+    hasChanges: true,
+  };
 }
 
 function isMissingTauriCommand(err: unknown, command: string): boolean {

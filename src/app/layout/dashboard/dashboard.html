@@ -104,7 +104,7 @@
 
   @if (continueRepo(); as last) {
     <div class="resume-row">
-      <button type="button" class="resume" (click)="store.openRepo(last.path)">
+      <button type="button" class="resume" [style.--identity]="identityColor(repoIdentityKey(last.name, last.path))" (click)="store.openRepo(last.path)">
         <span class="resume-label">
           @if (store.currentRepo()?.path === last.path) {
             Connected
@@ -156,7 +156,7 @@
         </div>
         <ul class="repo-list">
           @for (repo of pinned(); track repo.path; let i = $index) {
-            <li [style.--i]="i">
+            <li [style.--i]="i" [style.--identity]="identityColor(repoIdentityKey(repo.name, repo.path))">
               <button type="button" class="repo" (click)="store.openRepo(repo.path)">
                 <span class="repo-glyph" aria-hidden="true">
                   <ng-icon name="lucidePin" size="14" />
@@ -215,6 +215,7 @@
           [attr.aria-expanded]="!isGroupCollapsed(group.key)"
           (click)="toggleGroup(group.key)"
           [title]="group.key"
+          [style.--identity]="identityColor(group.key)"
         >
           <ng-icon
             [name]="isGroupCollapsed(group.key) ? 'lucideChevronRight' : 'lucideChevronDown'"
@@ -230,7 +231,7 @@
         @if (!isGroupCollapsed(group.key)) {
           <ul class="repo-list">
             @for (repo of group.repos; track repo.path; let i = $index) {
-              <li [style.--i]="i">
+              <li [style.--i]="i" [style.--identity]="identityColor(repoIdentityKey(repo.name, repo.path))">
                 <button type="button" class="repo" (click)="store.openRepo(repo.path)">
                   <span class="repo-glyph" aria-hidden="true">
                     <ng-icon name="lucideFolderGit2" size="14" />

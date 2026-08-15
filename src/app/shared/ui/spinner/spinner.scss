@@ -2,37 +2,160 @@
   display: inline-grid;
   place-items: center;
   line-height: 0;
+  color: var(--accent);
+}
+
+:host-context(.bl-btn-primary),
+:host-context(.tool.primary) {
+  color: var(--btn-primary-fg, #ffffff);
 }
 
 .spinner {
   display: block;
-  border-radius: 50%;
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-  border-top-color: var(--accent);
-  animation: bl-spin 0.7s linear infinite;
+  position: relative;
+}
+
+.spinner svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
 .spinner[data-size='sm'] {
-  width: 0.85rem;
-  height: 0.85rem;
-  border-width: 2px;
+  width: 1rem;
+  height: 1rem;
+}
+
+.spinner[data-size='sm'] .halo,
+.spinner[data-size='sm'] .comet {
+  display: none;
 }
 
 .spinner[data-size='md'] {
-  width: 1.15rem;
-  height: 1.15rem;
-  border-width: 2.5px;
+  width: 1.85rem;
+  height: 1.85rem;
 }
 
 .spinner[data-size='lg'] {
-  width: 1.65rem;
-  height: 1.65rem;
-  border-width: 3px;
+  width: 3.1rem;
+  height: 3.1rem;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, currentColor 42%, transparent));
 }
 
-@keyframes bl-spin {
+.halo {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-dasharray: 4.2 6.4;
+  stroke-linecap: round;
+  opacity: 0.28;
+  transform-origin: 16px 16px;
+  transform-box: view-box;
+  animation: bl-halo 6.4s linear infinite;
+}
+
+.track {
+  stroke: currentColor;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.22;
+}
+
+.flow {
+  stroke: currentColor;
+  stroke-width: 2.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.flow-a {
+  stroke-dasharray: 7 20;
+  animation: bl-flow-a 1.45s linear infinite;
+}
+
+.flow-b {
+  stroke-dasharray: 4.5 14;
+  animation: bl-flow-b 1.45s linear infinite;
+}
+
+.node {
+  fill: color-mix(in srgb, currentColor 42%, white);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bl-node 1.35s ease-in-out infinite;
+}
+
+.n2 {
+  animation-delay: 0.18s;
+}
+
+.n3 {
+  animation-delay: 0.36s;
+}
+
+.comet {
+  fill: color-mix(in srgb, currentColor 28%, white);
+}
+
+.comet-b {
+  opacity: 0.85;
+}
+
+@keyframes bl-halo {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes bl-flow-a {
+  to {
+    stroke-dashoffset: -27;
+  }
+}
+
+@keyframes bl-flow-b {
+  to {
+    stroke-dashoffset: -18.5;
+  }
+}
+
+@keyframes bl-node {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.84);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .halo,
+  .flow,
+  .node {
+    animation: none;
+  }
+
+  .halo {
+    opacity: 0.2;
+    stroke-dasharray: none;
+  }
+
+  .flow {
+    stroke-dasharray: none;
+    opacity: 0.85;
+  }
+
+  .node {
+    opacity: 1;
+    transform: none;
+  }
+
+  .comet {
+    display: none;
   }
 }

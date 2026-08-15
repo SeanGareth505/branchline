@@ -6,6 +6,7 @@
         role="tab"
         [class.active]="store.currentRepo()?.path === repo.path"
         [attr.aria-selected]="store.currentRepo()?.path === repo.path"
+        [style.--identity]="colorFor(repo)"
         [title]="tooltip(repo.path, repo.branch)"
       >
         <button type="button" class="tab-main" (click)="select(repo.path)">

@@ -19,7 +19,7 @@
     ),
     linear-gradient(
       90deg,
-      color-mix(in srgb, var(--accent) 6%, transparent),
+      color-mix(in srgb, var(--identity, var(--accent)) 8%, transparent),
       transparent 30%,
       transparent 70%,
       color-mix(in srgb, var(--lane-2) 5%, transparent)
@@ -45,7 +45,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--accent) 26%, transparent) 40%,
+    color-mix(in srgb, var(--identity, var(--accent)) 26%, transparent) 40%,
     color-mix(in srgb, var(--lane-2) 20%, transparent) 60%,
     transparent
   );
@@ -66,9 +66,9 @@
   font-weight: 600;
   padding: 0.2rem 0.55rem;
   border-radius: 6px;
-  background: var(--current-bg);
-  border: 1px solid var(--selection-border);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--identity, var(--accent)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--identity, var(--accent)) 32%, transparent);
+  color: var(--identity, var(--accent));
   max-width: min(42vw, 28rem);
   min-width: 0;
 }
@@ -83,7 +83,7 @@
   flex-shrink: 0;
   font-weight: 550;
   font-size: 11px;
-  color: color-mix(in srgb, var(--accent) 72%, var(--text-muted));
+  color: color-mix(in srgb, var(--identity, var(--accent)) 72%, var(--text-muted));
   opacity: 0.9;
 }
 

@@ -3,8 +3,10 @@ import {
   Component,
   ElementRef,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
@@ -33,6 +35,8 @@ interface LinkView {
   stroke: string;
   mergeParent: boolean;
   lineage: boolean;
+  from: number;
+  to: number;
 }
 
 interface RefChipView {
@@ -52,30 +56,6 @@ interface StaticRowView {
   nodeFill: string;
   baseTopLinks: LinkView[];
   baseBottomLinks: LinkView[];
-  art?: ArtificialCommit;
-  commit?: CommitInfo;
-  timeLabel: string;
-  refs: RefChipView[];
-}
-
-interface RowView {
-  id: string;
-  node: GraphNode;
-  alt: boolean;
-  artificial: boolean;
-  selected: boolean;
-  compare: boolean;
-  head: boolean;
-  dim: boolean;
-  parentOf: boolean;
-  childOf: boolean;
-  cx: number;
-  nodeStroke: string;
-  nodeFill: string;
-  nodeRadius: number;
-  lineageNode: boolean;
-  topLinks: LinkView[];
-  bottomLinks: LinkView[];
   art?: ArtificialCommit;
   commit?: CommitInfo;
   timeLabel: string;
@@ -132,6 +112,15 @@ export class RevisionGrid {
   readonly dropTargetSha = signal<string | null>(null);
   private dragSha: string | null = null;
 
+  constructor() {
+    effect(() => {
+      const reveal = this.store.graphReveal();
+      if (!reveal) return;
+      const sha = reveal.sha;
+      untracked(() => this.scheduleScrollToSha(sha));
+    });
+  }
+
   readonly layout = computed(() => {
     const commits = this.filterActive()
       ? this.store.filteredCommits()
@@ -142,25 +131,25 @@ export class RevisionGrid {
 
   readonly lineageShas = computed(() => {
     const selected = this.store.selectedCommit();
-    if (!selected) return new Set<string>();
+    if (!selected) return EMPTY_SHA_SET;
     const set = new Set<string>([selected.sha]);
-    const commits = this.store.commits();
-    const bySha = new Map<string, CommitInfo>();
-    for (const c of commits) bySha.set(c.sha, c);
+    const bySha = this.store.commitBySha();
     for (const parent of selected.parents) {
-      const resolved = resolveSha(parent, bySha);
-      if (resolved) set.add(resolved);
+      const resolved = bySha.get(parent) ?? bySha.get(parent.slice(0, 7));
+      if (resolved) set.add(resolved.sha);
     }
-    for (const commit of commits) {
-      for (const p of commit.parents) {
-        if (matchesSha(p, selected.sha)) {
-          set.add(commit.sha);
-          break;
-        }
-      }
-    }
+    for (const sha of this.childrenOf(selected.sha)) set.add(sha);
     return set;
   });
+
+  readonly selectedSet = computed(() => {
+    const set = new Set(this.store.selectedShas());
+    const sha = this.store.selectedSha();
+    if (sha) set.add(sha);
+    return set;
+  });
+
+  readonly focusMode = computed(() => this.store.settings().focusMode);
 
   readonly remoteRefNames = computed(() => {
     const names = new Set<string>();
@@ -196,8 +185,8 @@ export class RevisionGrid {
         head: !!commit?.refs.includes('HEAD'),
         cx: laneX(node.lane),
         nodeFill: fill,
-        baseTopLinks: mapLinks(node, node.topLinks, 'top', false, false),
-        baseBottomLinks: mapLinks(node, node.bottomLinks, 'bottom', false, false),
+        baseTopLinks: mapLinks(node.topLinks, 'top'),
+        baseBottomLinks: mapLinks(node.bottomLinks, 'bottom'),
         art: node.artificial,
         commit,
         timeLabel: commit ? formatTime(commit.timestamp) : '',
@@ -211,80 +200,64 @@ export class RevisionGrid {
     });
   });
 
-  readonly rows = computed((): RowView[] => {
-    const staticRows = this.staticRows();
-    const selectedSha = this.store.selectedSha();
-    const selectedShas = this.store.selectedShas();
-    const compareSha = this.store.compareSha();
-    const diffSource = this.store.diffSource();
+  trackRow = (_: number, row: StaticRowView): string => row.id;
+
+  isRowSelected(row: StaticRowView): boolean {
+    if (row.artificial && row.art) {
+      const source = this.store.diffSource();
+      return (
+        (source === 'staged' && row.art.kind === 'staged') ||
+        (source === 'workingDirectory' &&
+          (row.art.kind === 'workingDirectory' || row.art.kind === 'working'))
+      );
+    }
+    const sha = row.commit?.sha;
+    return !!sha && this.selectedSet().has(sha);
+  }
+
+  isRowCompare(row: StaticRowView): boolean {
+    const sha = row.commit?.sha;
+    return !!sha && this.store.compareSha() === sha;
+  }
+
+  isRowDim(row: StaticRowView): boolean {
+    if (!this.focusMode() || row.artificial) return false;
+    const sha = row.commit?.sha;
+    if (sha && this.lineageShas().has(sha)) return false;
+    return !row.commit?.isRelativeToHead;
+  }
+
+  isRowParent(row: StaticRowView): boolean {
     const selected = this.store.selectedCommit();
-    const focusMode = this.store.settings().focusMode;
-    const lineage = this.lineageShas();
-    const selectedSet = new Set(selectedShas);
-    if (selectedSha) selectedSet.add(selectedSha);
+    const commit = row.commit;
+    if (!selected || !commit || commit.sha === selected.sha) return false;
+    return selected.parents.some((p) => matchesSha(p, commit.sha));
+  }
 
-    return staticRows.map((row) => {
-      const commit = row.commit;
-      const sha = commit?.sha;
-      const node = row.node;
-      const artSelected =
-        node.kind === 'artificial' &&
-        !!node.artificial &&
-        ((diffSource === 'staged' && node.artificial.kind === 'staged') ||
-          (diffSource === 'workingDirectory' &&
-            (node.artificial.kind === 'workingDirectory' || node.artificial.kind === 'working')));
-      const selectedRow = artSelected || (!!sha && selectedSet.has(sha));
-      const compare = !!sha && compareSha === sha;
-      const inLineage = !!sha && lineage.has(sha);
-      const dim =
-        focusMode &&
-        node.kind !== 'artificial' &&
-        !inLineage &&
-        !commit?.isRelativeToHead;
-      const parentOf =
-        !!selected &&
-        !!commit &&
-        commit.sha !== selected.sha &&
-        selected.parents.some((p) => matchesSha(p, commit.sha));
-      const childOf =
-        !!selected &&
-        !!commit &&
-        commit.sha !== selected.sha &&
-        commit.parents.some((p) => matchesSha(p, selected.sha));
-      const lineageNode = inLineage && !selectedRow;
-      const fill = row.nodeFill;
+  isRowChild(row: StaticRowView): boolean {
+    const selected = this.store.selectedCommit();
+    const commit = row.commit;
+    if (!selected || !commit || commit.sha === selected.sha) return false;
+    return commit.parents.some((p) => matchesSha(p, selected.sha));
+  }
 
-      return {
-        id: row.id,
-        node,
-        alt: row.alt,
-        artificial: row.artificial,
-        selected: selectedRow,
-        compare,
-        head: row.head,
-        dim,
-        parentOf,
-        childOf,
-        cx: row.cx,
-        nodeFill: fill,
-        nodeStroke: selectedRow ? 'var(--text-primary)' : fill,
-        nodeRadius: selectedRow ? NODE_RADIUS_SELECTED : NODE_RADIUS,
-        lineageNode,
-        topLinks: inLineage
-          ? mapLinks(node, node.topLinks, 'top', true, selectedRow)
-          : row.baseTopLinks,
-        bottomLinks: inLineage
-          ? mapLinks(node, node.bottomLinks, 'bottom', true, selectedRow)
-          : row.baseBottomLinks,
-        art: row.art,
-        commit,
-        timeLabel: row.timeLabel,
-        refs: row.refs,
-      };
-    });
-  });
+  isRowLineageNode(row: StaticRowView): boolean {
+    const sha = row.commit?.sha;
+    return !!sha && this.lineageShas().has(sha) && !this.isRowSelected(row);
+  }
 
-  trackRow = (_: number, row: RowView): string => row.id;
+  isLineageLink(row: StaticRowView, link: LinkView): boolean {
+    if (!this.lineageShas().has(row.commit?.sha ?? '')) return false;
+    return this.isRowSelected(row) || link.from === row.node.lane || link.to === row.node.lane;
+  }
+
+  private childrenOf(sha: string): string[] {
+    const out: string[] = [];
+    for (const commit of this.store.commits()) {
+      if (commit.parents.some((p) => matchesSha(p, sha))) out.push(commit.sha);
+    }
+    return out;
+  }
 
   onQueryInput(value: string): void {
     this.queryDraft.set(value);
@@ -321,7 +294,7 @@ export class RevisionGrid {
     if (body && header) header.scrollLeft = body.scrollLeft;
   }
 
-  onDragStart(row: RowView, event: DragEvent): void {
+  onDragStart(row: StaticRowView, event: DragEvent): void {
     if (!row.commit) {
       event.preventDefault();
       return;
@@ -336,20 +309,20 @@ export class RevisionGrid {
     this.dropTargetSha.set(null);
   }
 
-  onDragOver(row: RowView, event: DragEvent): void {
+  onDragOver(row: StaticRowView, event: DragEvent): void {
     if (!row.commit || !this.dragSha || this.dragSha === row.commit.sha) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
     this.dropTargetSha.set(row.commit.sha);
   }
 
-  onDragLeave(row: RowView): void {
+  onDragLeave(row: StaticRowView): void {
     if (row.commit && this.dropTargetSha() === row.commit.sha) {
       this.dropTargetSha.set(null);
     }
   }
 
-  onDrop(row: RowView, event: DragEvent): void {
+  onDrop(row: StaticRowView, event: DragEvent): void {
     event.preventDefault();
     const source = this.dragSha || event.dataTransfer?.getData('text/plain') || null;
     const target = row.commit?.sha ?? null;
@@ -359,7 +332,7 @@ export class RevisionGrid {
     void this.store.handleGraphDrop(source, target);
   }
 
-  onRowClick(row: RowView, event: MouseEvent): void {
+  onRowClick(row: StaticRowView, event: MouseEvent): void {
     this.closeMenu();
     if (row.artificial && row.art) {
       const kind = row.art.kind === 'staged' ? 'staged' : 'workingDirectory';
@@ -375,7 +348,7 @@ export class RevisionGrid {
     this.store.selectCommit(row.commit.sha, event.metaKey || event.ctrlKey);
   }
 
-  onRowDblClick(row: RowView, event: MouseEvent): void {
+  onRowDblClick(row: StaticRowView, event: MouseEvent): void {
     event.preventDefault();
     this.closeMenu();
     if (row.artificial && row.art) {
@@ -384,7 +357,7 @@ export class RevisionGrid {
     }
   }
 
-  onContext(row: RowView, event: MouseEvent): void {
+  onContext(row: StaticRowView, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (!row.commit) return;
@@ -544,21 +517,47 @@ export class RevisionGrid {
     this.scrollToSha(sha);
   }
 
-  private scrollToSha(sha: string): void {
+  private scheduleScrollToSha(sha: string): void {
+    if (this.filterTimer !== null) {
+      window.clearTimeout(this.filterTimer);
+      this.filterTimer = null;
+    }
+    const filter = this.store.historyFilter();
+    this.queryDraft.set(filter.query);
+    this.authorDraft.set(filter.author);
+    const run = () => this.scrollToSha(sha, true);
+    queueMicrotask(run);
+    window.setTimeout(run, 50);
+  }
+
+  private indexOfSha(sha: string): number {
+    return this.staticRows().findIndex((row) => {
+      const rowSha = row.commit?.sha;
+      return !!rowSha && matchesSha(sha, rowSha);
+    });
+  }
+
+  private scrollToSha(sha: string, center = false): void {
     const viewport = this.viewport();
     if (!viewport) return;
-    const index = this.rows().findIndex((row) => row.commit?.sha === sha);
+    const index = this.indexOfSha(sha);
     if (index < 0) return;
+    viewport.checkViewportSize();
 
-    const range = viewport.getRenderedRange();
-    if (index < range.start || index >= range.end) {
-      const offset = Math.max(0, index - 2);
-      viewport.scrollToIndex(offset);
+    if (center) {
+      viewport.scrollToIndex(Math.max(0, index - 4));
       return;
     }
 
+    const range = viewport.getRenderedRange();
+    if (index < range.start || index >= range.end) {
+      viewport.scrollToIndex(Math.max(0, index - 2));
+      return;
+    }
+
+    const rowSha = this.staticRows()[index]?.commit?.sha ?? sha;
     const el = viewport.elementRef.nativeElement.querySelector(
-      `[data-sha="${cssEscape(sha)}"]`,
+      `[data-sha="${cssEscape(rowSha)}"]`,
     ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
   }
@@ -584,42 +583,23 @@ function chipClass(ref: string, remotes: Set<string>): string {
   if (ref.startsWith('tag:') || ref.startsWith('tags/')) return 'bl-chip bl-chip-tag';
   if (ref === 'HEAD') return 'bl-chip bl-chip-head';
   if (remotes.has(ref)) return 'bl-chip bl-chip-remote';
-  return 'bl-chip';
+  return 'bl-chip bl-chip-local';
 }
 
-function mapLinks(
-  node: GraphNode,
-  links: GraphLink[],
-  half: 'top' | 'bottom',
-  inLineage: boolean,
-  selectedRow: boolean,
-): LinkView[] {
-  if (!inLineage) {
-    return links.map((link) => ({
-      key: `${half}-${link.from}-${link.to}-${link.colorIndex}-${link.mergeParent ? 1 : 0}`,
-      d: linkPath(link.from, link.to, half, ROW_HEIGHT),
-      stroke: laneColor(link.colorIndex),
-      mergeParent: !!link.mergeParent,
-      lineage: false,
-    }));
-  }
+function mapLinks(links: GraphLink[], half: 'top' | 'bottom'): LinkView[] {
   return links.map((link) => ({
     key: `${half}-${link.from}-${link.to}-${link.colorIndex}-${link.mergeParent ? 1 : 0}`,
     d: linkPath(link.from, link.to, half, ROW_HEIGHT),
     stroke: laneColor(link.colorIndex),
     mergeParent: !!link.mergeParent,
-    lineage: selectedRow || link.from === node.lane || link.to === node.lane,
+    lineage: false,
+    from: link.from,
+    to: link.to,
   }));
-}
-
-function resolveSha(raw: string, bySha: Map<string, CommitInfo>): string | null {
-  if (bySha.has(raw)) return raw;
-  for (const sha of bySha.keys()) {
-    if (sha.startsWith(raw) || raw.startsWith(sha.slice(0, raw.length))) return sha;
-  }
-  return null;
 }
 
 function matchesSha(raw: string, full: string): boolean {
   return raw === full || full.startsWith(raw) || raw.startsWith(full.slice(0, raw.length));
 }
+
+const EMPTY_SHA_SET = new Set<string>();

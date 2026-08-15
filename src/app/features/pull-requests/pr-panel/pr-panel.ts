@@ -28,8 +28,9 @@ export class PrPanel {
   private readonly tauri = inject(TauriService);
   private readonly store = inject(AppStore);
 
-  readonly prs = signal<MockPullRequest[]>([]);
-  readonly loading = signal(true);
+  readonly prs = this.store.pullRequests;
+  readonly loading = this.store.pullRequestsLoading;
+  readonly liveError = this.store.pullRequestsError;
   readonly query = signal('');
   readonly status = signal<'all' | 'open' | 'draft' | 'merged' | 'closed'>('open');
   readonly team = signal('all');
@@ -48,24 +49,11 @@ export class PrPanel {
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
 
-  readonly liveError = signal<string | null>(null);
-  private reloadToken = 0;
-
   readonly showingDummy = computed(() => !this.store.hasLinkedPrHost());
-
-  readonly hasGithub = computed(() =>
-    this.store
-      .settings()
-      .connections.some(
-        (c) => c.provider === 'github' && c.enabled && (c.hasToken || c.token.trim()),
-      ),
-  );
+  readonly hasGithub = computed(() => this.store.hasGithubConnection());
 
   readonly liveMode = computed(() => !this.showingDummy() && this.hasGithub());
-
-  connectHosts(): void {
-    this.store.openSettings('connections', 'github');
-  }
+  readonly busy = computed(() => this.loading() || this.store.pullRequestsRefreshing());
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
@@ -73,7 +61,8 @@ export class PrPanel {
     }
     if (this.hasGithub()) {
       const n = this.prs().length;
-      return `Live GitHub PRs for this repo${n ? ` · ${n} loaded` : ''}.`;
+      const updating = this.store.pullRequestsRefreshing() ? ' · updating…' : '';
+      return `Live GitHub PRs for this repo${n ? ` · ${n} loaded` : ''}${updating}.`;
     }
     return 'GitHub is not linked. Live PR sync currently supports GitHub; GitLab/Azure listing still uses the browser.';
   });
@@ -180,10 +169,11 @@ export class PrPanel {
     }
 
     effect(() => {
-      this.store.settings();
-      this.store.currentRepo();
-      this.status();
-      void this.reloadPrs();
+      this.store.currentRepo()?.path;
+      this.store.hasLinkedPrHost();
+      this.hasGithub();
+      const state = this.listState();
+      void this.store.refreshPullRequests(state);
     });
 
     effect(() => {
@@ -204,49 +194,23 @@ export class PrPanel {
     });
   }
 
-  private async reloadPrs(): Promise<void> {
-    const token = ++this.reloadToken;
-    this.loading.set(true);
-    this.liveError.set(null);
-    try {
-      if (!this.store.hasLinkedPrHost()) {
-        const list = await this.tauri.listMockPullRequests();
-        if (token !== this.reloadToken) return;
-        this.prs.set(list);
-        this.selected.set(new Set());
-        return;
-      }
-      if (!this.hasGithub()) {
-        if (token !== this.reloadToken) return;
-        this.prs.set([]);
-        this.selected.set(new Set());
-        return;
-      }
-      const path = this.store.currentRepo()?.path;
-      if (!path) {
-        if (token !== this.reloadToken) return;
-        this.prs.set([]);
-        this.liveError.set('Open a repository with a GitHub remote to load pull requests.');
-        return;
-      }
-      const status = this.status();
-      const state =
-        status === 'closed' || status === 'merged'
-          ? 'closed'
-          : status === 'all'
-            ? 'all'
-            : 'open';
-      const list = await this.tauri.listPullRequests(path, state);
-      if (token !== this.reloadToken) return;
-      this.prs.set(list);
-      this.selected.set(new Set());
-    } catch (err) {
-      if (token !== this.reloadToken) return;
-      this.prs.set([]);
-      this.liveError.set(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (token === this.reloadToken) this.loading.set(false);
-    }
+  connectHosts(): void {
+    this.store.openSettings('connections', 'github');
+  }
+
+  reload(): void {
+    void this.store.refreshPullRequests(this.listState(), { force: true });
+  }
+
+  createPr(): void {
+    void this.store.openCreatePullRequest();
+  }
+
+  private listState(): 'open' | 'closed' | 'all' {
+    const status = this.status();
+    if (status === 'closed' || status === 'merged') return 'closed';
+    if (status === 'all') return 'all';
+    return 'open';
   }
 
   private allowDummyMutation(pr: MockPullRequest, action: string): boolean {
@@ -299,48 +263,6 @@ export class PrPanel {
       .map((p) => p.url)
       .join('\n');
     await this.copy(text, `Copied ${text.split('\n').filter(Boolean).length} PR link(s)`);
-  }
-
-  async copyMarkdown(): Promise<void> {
-    const text = this.selectedOrFiltered()
-      .map((p) => `- [#${p.number}](${p.url}) ${p.title}`)
-      .join('\n');
-    await this.copy(text, 'Copied markdown list');
-  }
-
-  async copyTitles(): Promise<void> {
-    const text = this.selectedOrFiltered()
-      .map((p) => `#${p.number} ${p.title} — ${p.url}`)
-      .join('\n');
-    await this.copy(text, 'Copied titles + links');
-  }
-
-  async copyCsv(): Promise<void> {
-    const rows = [
-      ['number', 'title', 'author', 'team', 'status', 'pipeline', 'url'].join(','),
-      ...this.selectedOrFiltered().map((p) =>
-        [
-          p.number,
-          csv(p.title),
-          p.author,
-          csv(p.team),
-          p.draft ? 'draft' : p.status,
-          p.pipelineStatus,
-          p.url,
-        ].join(','),
-      ),
-    ];
-    await this.copy(rows.join('\n'), 'Copied CSV');
-  }
-
-  async copyCheckoutCommands(): Promise<void> {
-    const text = this.selectedOrFiltered()
-      .map(
-        (p) =>
-          `git fetch origin pull/${p.number}/head:pr/${p.number} && git checkout pr/${p.number}`,
-      )
-      .join('\n');
-    await this.copy(text, 'Copied checkout commands');
   }
 
   async copyOneLink(pr: MockPullRequest): Promise<void> {
@@ -530,7 +452,7 @@ export class PrPanel {
   }
 
   private patchPr(id: string, partial: Partial<MockPullRequest>): void {
-    this.prs.update((list) => list.map((p) => (p.id === id ? { ...p, ...partial } : p)));
+    this.store.patchPullRequest(id, partial);
   }
 
   private async checkoutPrBranch(pr: MockPullRequest): Promise<void> {
@@ -591,11 +513,6 @@ export class PrPanel {
       this.store.showError('Could not copy to clipboard');
     }
   }
-}
-
-function csv(value: string): string {
-  if (/[",\n]/.test(value)) return `"${value.replaceAll('"', '""')}"`;
-  return value;
 }
 
 function ensureYou(reviewers: string[]): string[] {

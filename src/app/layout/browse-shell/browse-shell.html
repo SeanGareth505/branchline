@@ -1,11 +1,11 @@
 <div class="browse">
-  @if (store.syncingRepo() || store.remoteBusy() || store.releaseBusy()) {
+  @if (store.syncingRepo() || store.remoteBusy() || store.releasingLocally()) {
     <div
       class="sync-bar"
       role="status"
       aria-live="polite"
       [attr.aria-label]="
-        store.releaseBusy()
+        store.releasingLocally()
           ? 'Releasing version'
           : store.remoteBusy() === 'fetch'
             ? 'Fetching from remote'
@@ -18,7 +18,7 @@
     >
       <span class="sync-track" aria-hidden="true"></span>
       <span class="sync-label">
-        @if (store.releaseBusy()) {
+        @if (store.releasingLocally()) {
           Releasing…
         } @else if (store.remoteBusy() === 'fetch') {
           Fetching…
@@ -132,27 +132,27 @@
                   <app-diff-viewer />
                 }
                 @case ('files') {
-                  @defer (on immediate) {
+                  @defer (on idle) {
                     <app-file-tree-panel />
                   }
                 }
                 @case ('blame') {
-                  @defer (on immediate) {
+                  @defer (on idle) {
                     <app-blame-view />
                   }
                 }
                 @case ('history') {
-                  @defer (on immediate) {
+                  @defer (on idle) {
                     <app-file-history-panel />
                   }
                 }
                 @case ('reflog') {
-                  @defer (on immediate) {
+                  @defer (on idle) {
                     <app-reflog-panel />
                   }
                 }
                 @case ('console') {
-                  @defer (on immediate) {
+                  @defer (on idle) {
                     <app-git-console />
                   }
                 }

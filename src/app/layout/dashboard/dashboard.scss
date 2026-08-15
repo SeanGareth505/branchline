@@ -377,9 +377,8 @@ h1 {
   width: 100%;
   margin-bottom: 1.85rem;
   padding: 1rem 1.1rem 1rem 1.2rem;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-panel);
-  background: var(--glass-bg-strong);
+  border: 1px solid color-mix(in srgb, var(--identity, var(--accent)) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--identity, var(--accent)) 8%, var(--glass-bg-strong));
   backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
   text-align: left;
@@ -419,7 +418,7 @@ h1 {
   font-weight: 650;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--identity, var(--accent));
 }
 
 .resume-name {
@@ -496,7 +495,7 @@ h1 {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--identity, var(--text-muted));
   text-align: left;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out);
@@ -540,11 +539,24 @@ h1 {
 }
 
 .repo-list li {
+  --identity: var(--accent);
+  position: relative;
   display: flex;
   gap: 0.15rem;
   border-bottom: 1px solid var(--glass-border);
   animation: row-in 360ms var(--ease-out) both;
   animation-delay: calc(min(var(--i, 0), 12) * 20ms);
+}
+
+.repo-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--identity);
 }
 
 @keyframes row-in {
@@ -564,7 +576,7 @@ h1 {
   align-items: center;
   gap: 0.6rem;
   min-width: 0;
-  padding: 0.48rem 0.3rem 0.48rem 0.1rem;
+  padding: 0.48rem 0.3rem 0.48rem 0.55rem;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -577,8 +589,8 @@ h1 {
 }
 
 .repo:hover .repo-glyph {
-  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
-  color: var(--accent-hover);
+  border-color: color-mix(in srgb, var(--identity, var(--accent)) 40%, transparent);
+  color: var(--identity, var(--accent-hover));
 }
 
 .repo-glyph {
@@ -588,9 +600,9 @@ h1 {
   height: 1.55rem;
   flex-shrink: 0;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
-  color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--identity, var(--accent)) 14%, var(--bg-surface));
+  color: var(--identity, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--identity, var(--accent)) 28%, transparent);
   transition:
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);

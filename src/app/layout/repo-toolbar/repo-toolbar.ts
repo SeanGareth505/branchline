@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
 import {
   CdkConnectedOverlay,
   CdkOverlayOrigin,
@@ -16,6 +16,7 @@ type ToolMenu = 'pull' | 'push' | 'stash' | null;
   imports: [NgIcon, CdkConnectedOverlay, CdkOverlayOrigin, Spinner],
   templateUrl: './repo-toolbar.html',
   styleUrl: './repo-toolbar.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RepoToolbar {
   readonly store = inject(AppStore);
@@ -98,9 +99,24 @@ export class RepoToolbar {
     void this.store.stashPush();
   }
 
+  runStashUntracked(): void {
+    this.menu.set(null);
+    void this.store.stashPush(undefined, true);
+  }
+
+  runStashApply(): void {
+    this.menu.set(null);
+    void this.store.stashApply(0);
+  }
+
   runStashPop(): void {
     this.menu.set(null);
     void this.store.stashPop(0);
+  }
+
+  runStashClear(): void {
+    this.menu.set(null);
+    void this.store.stashClear();
   }
 
   createPullRequest(): void {

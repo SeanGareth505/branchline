@@ -232,8 +232,8 @@ pub fn rename_branch(
 #[command]
 pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let remote = input.remote.as_deref().unwrap_or("origin");
-        let out = git_cli::run_git(path, &["fetch", remote])?;
+        let args = git_cli::fetch_args(input.remote.as_deref());
+        let out = git_cli::run_git_strings(path, &args)?;
         Ok(MutationOutput {
             ok: true,
             message: if out.is_empty() {
@@ -248,8 +248,8 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
 #[command]
 pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let remote = input.remote.as_deref().unwrap_or("origin");
-        match git_cli::run_git(path, &["pull", remote]) {
+        let args = git_cli::pull_args(input.remote.as_deref(), false);
+        match git_cli::run_git_strings(path, &args) {
             Ok(out) => Ok(MutationOutput {
                 ok: true,
                 message: if out.is_empty() { "Pulled".into() } else { out },
@@ -283,7 +283,14 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
         .map(|s| s.to_string())
         .unwrap_or(git2_repo::current_branch(&path)?);
     ensure_not_locked(&state, &input.path, &branch)?;
-    let remote = input.remote.as_deref().unwrap_or("origin");
+    let remote = input
+        .remote
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| git2_repo::configured_remote(&path, &branch))
+        .unwrap_or_else(|| "origin".to_string());
     let needs_upstream = !git2_repo::branch_has_upstream(&path, &branch);
     let set_upstream = needs_upstream && input.set_upstream.unwrap_or(true);
 
@@ -295,7 +302,7 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
     if set_upstream {
         args.push("-u");
     }
-    args.push(remote);
+    args.push(remote.as_str());
     args.push(branch.as_str());
 
     let out = git_cli::run_git(&path, &args)?;

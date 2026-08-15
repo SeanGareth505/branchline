@@ -30,17 +30,56 @@ export class ReleaseDialog {
   readonly allowDirty = signal(false);
   readonly preid = signal('');
   readonly tagMessage = signal('');
+  readonly notes = signal('');
   readonly settingsOpen = signal(false);
+
+  readonly nextVersion = computed(() => {
+    const req = this.dialog.request();
+    if (!req) return '';
+    return previewBump(req.currentVersion, this.bump(), this.customVersion(), this.preid());
+  });
+
+  readonly bumpOptions = computed(() => {
+    const req = this.dialog.request();
+    const current = req?.currentVersion || '0.0.0';
+    const preid = this.preid();
+    return [
+      {
+        kind: 'patch' as const,
+        label: 'Patch',
+        hint: `Bug fixes — ${current} → ${previewBump(current, 'patch', '', preid)}`,
+      },
+      {
+        kind: 'minor' as const,
+        label: 'Minor',
+        hint: `New features — ${current} → ${previewBump(current, 'minor', '', preid)}`,
+      },
+      {
+        kind: 'major' as const,
+        label: 'Major',
+        hint: `Breaking changes — ${current} → ${previewBump(current, 'major', '', preid)}`,
+      },
+      {
+        kind: 'custom' as const,
+        label: 'Custom',
+        hint: 'Set an explicit x.y.z version',
+      },
+    ];
+  });
 
   readonly summaryDetails = computed(() => {
     const req = this.dialog.request();
     if (!req) return [] as string[];
     const cfg = req.config;
+    const next = this.nextVersion();
     const lines = [
       `Branch: ${this.branch().trim() || cfg.branch}`,
-      `Tag prefix: ${cfg.tagPrefix}`,
+      next ? `Next: ${req.currentVersion} → ${next}` : `Current: ${req.currentVersion}`,
+      `Tag: ${cfg.tagPrefix}${next || 'x.y.z'}`,
       `Files: ${cfg.files.join(', ')}`,
-      this.push() ? 'Will push & deploy via GitHub Actions' : 'Local tag only — push later from Release screen',
+      this.push()
+        ? 'Will push & deploy via GitHub Actions'
+        : 'Local tag only — push later from Release screen',
     ];
     if (this.allowDirty()) {
       lines.push('Allows dirty working tree');
@@ -54,11 +93,24 @@ export class ReleaseDialog {
     return lines;
   });
 
+  readonly dirtyBlocked = computed(() => {
+    const req = this.dialog.request();
+    if (!req) return false;
+    return req.dirty && req.config.requireClean && !this.allowDirty();
+  });
+
   readonly canSubmit = computed(() => {
+    if (this.dirtyBlocked()) return false;
     if (this.bump() === 'custom') {
       return !!this.customVersion().trim();
     }
     return !!this.bump();
+  });
+
+  readonly submitLabel = computed(() => {
+    const next = this.nextVersion();
+    const verb = this.push() ? 'Release & deploy' : 'Create release';
+    return next ? `${verb} ${next}` : verb;
   });
 
   constructor() {
@@ -72,6 +124,7 @@ export class ReleaseDialog {
       this.allowDirty.set(false);
       this.preid.set('');
       this.tagMessage.set('');
+      this.notes.set(req.config.commitMessage || '');
       this.settingsOpen.set(false);
     });
   }
@@ -82,28 +135,27 @@ export class ReleaseDialog {
 
   pickBump(kind: BumpKind): void {
     this.bump.set(kind);
-    if (kind === 'custom') {
-      this.settingsOpen.set(true);
-    }
   }
 
   submit(): void {
     if (!this.canSubmit()) return;
     const req = this.dialog.request();
     if (!req) return;
-    const bump =
-      this.bump() === 'custom' ? this.customVersion().trim() : this.bump();
+    const bump = this.bump() === 'custom' ? this.customVersion().trim() : this.bump();
     const branch = this.branch().trim();
+    const notes = this.notes().trim();
+    const defaultNotes = req.config.commitMessage.trim();
     this.dialog.submit({
       bump,
       branch: (() => {
-      const picked = branch.trim();
-      if (!picked || picked === req.config.branch) return null;
-      return picked;
-    })(),
+        const picked = branch.trim();
+        if (!picked || picked === req.config.branch) return null;
+        return picked;
+      })(),
       push: this.push(),
       allowDirty: this.allowDirty(),
       preid: this.preid().trim() || null,
+      message: !notes || notes === defaultNotes ? null : notes,
       tagMessage: this.tagMessage().trim() || null,
     });
   }
@@ -132,4 +184,39 @@ export class ReleaseDialog {
       this.submit();
     }
   }
+}
+
+function previewBump(current: string, bump: BumpKind, custom: string, preid: string): string {
+  if (bump === 'custom') return custom.trim();
+  const trimmed = current.trim();
+  const [coreRaw, preRaw] = trimmed.split('-');
+  const core = (coreRaw ?? trimmed).split('+')[0] ?? trimmed;
+  const parts = core.split('.').map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return '';
+  let [major, minor, patch] = parts;
+  const id = preid.trim();
+  if (id) {
+    const pre = (preRaw ?? '').split('+')[0] ?? '';
+    const segs = pre.split('.').filter(Boolean);
+    const samePre = segs[0] === id && segs.length >= 2 && /^\d+$/.test(segs[1] ?? '');
+    if (samePre) {
+      const n = Number.parseInt(segs[1] ?? '0', 10) + 1;
+      return `${major}.${minor}.${patch}-${id}.${n}`;
+    }
+    if (bump === 'major') {
+      major += 1;
+      minor = 0;
+      patch = 0;
+    } else if (bump === 'minor') {
+      minor += 1;
+      patch = 0;
+    } else {
+      patch += 1;
+    }
+    return `${major}.${minor}.${patch}-${id}.0`;
+  }
+  if (preRaw) return `${major}.${minor}.${patch}`;
+  if (bump === 'major') return `${major + 1}.0.0`;
+  if (bump === 'minor') return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
 }

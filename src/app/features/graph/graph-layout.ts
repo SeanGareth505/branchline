@@ -42,9 +42,6 @@ function resolveParentSha(
   if (shortToFull.has(raw)) return shortToFull.get(raw)!;
   const short = raw.slice(0, 7);
   if (shortToFull.has(short)) return shortToFull.get(short)!;
-  for (const sha of shaSet) {
-    if (sha.startsWith(raw) || raw.startsWith(sha.slice(0, raw.length))) return sha;
-  }
   return null;
 }
 

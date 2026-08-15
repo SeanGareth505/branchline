@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -13,6 +13,7 @@ pub struct StashEntry {
     pub id: String,
     pub message: String,
     pub branch: Option<String>,
+    pub sha: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +34,14 @@ pub struct StashIndexInput {
     pub index: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashBranchInput {
+    pub path: String,
+    pub index: i32,
+    pub name: String,
+}
+
 #[command]
 pub fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
     let path = PathBuf::from(&input.path);
@@ -49,6 +58,7 @@ pub fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
             continue;
         }
         let id = parts[0].trim().to_string();
+        let sha = parts[1].trim().to_string();
         let message = parts[2].trim().to_string();
         let branch = message
             .strip_prefix("WIP on ")
@@ -60,6 +70,7 @@ pub fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
             id,
             message,
             branch,
+            sha,
         });
     }
     Ok(entries)
@@ -160,6 +171,37 @@ pub fn stash_drop(input: StashIndexInput) -> AppResult<MutationOutput> {
             ok: true,
             message: if out.is_empty() {
                 "Dropped stash".into()
+            } else {
+                out
+            },
+        })
+    })
+}
+
+#[command]
+pub fn stash_clear(input: RepoPathInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        git_cli::run_git(path, &["stash", "clear"])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: "Dropped all stashes".into(),
+        })
+    })
+}
+
+#[command]
+pub fn stash_branch(input: StashBranchInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let name = input.name.trim();
+        if name.is_empty() {
+            return Err(AppError::msg("Branch name is required"));
+        }
+        let refname = format!("stash@{{{}}}", input.index);
+        let out = git_cli::run_git(path, &["stash", "branch", name, &refname])?;
+        Ok(MutationOutput {
+            ok: true,
+            message: if out.is_empty() {
+                format!("Created branch {name} from stash")
             } else {
                 out
             },

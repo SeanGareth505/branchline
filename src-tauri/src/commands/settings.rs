@@ -122,10 +122,29 @@ pub struct AppSettings {
     pub hide_untracked: bool,
     #[serde(default = "default_density")]
     pub ui_density: String,
+    #[serde(default)]
+    pub pr_templates: Vec<SavedPrTemplate>,
+    #[serde(default = "default_pr_create_method")]
+    pub pr_create_method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedPrTemplate {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
 }
 
 fn default_density() -> String {
     "comfortable".into()
+}
+
+fn default_pr_create_method() -> String {
+    "browser".into()
 }
 
 fn default_pull_action() -> String {
@@ -319,6 +338,8 @@ impl Default for AppSettings {
             notify_pr_ci: true,
             hide_untracked: false,
             ui_density: default_density(),
+            pr_templates: Vec::new(),
+            pr_create_method: default_pr_create_method(),
         }
     }
 }
@@ -335,6 +356,9 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
     }
     if settings.ui_density != "compact" && settings.ui_density != "comfortable" {
         settings.ui_density = default_density();
+    }
+    if settings.pr_create_method != "cli" && settings.pr_create_method != "browser" {
+        settings.pr_create_method = default_pr_create_method();
     }
     if settings.branch_prefix.trim().is_empty() {
         settings.branch_prefix = default_branch_prefix();

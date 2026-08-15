@@ -1,6 +1,12 @@
 @if (store.paletteOpen()) {
   <div class="backdrop" (click)="close()">
-    <div class="palette bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog">
+    <div
+      class="palette bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+    >
       <div class="search-row">
         <ng-icon name="lucideSearch" size="16" />
         <input
@@ -8,13 +14,25 @@
           placeholder="Search actions, repos, commits…"
           [ngModel]="query()"
           (ngModelChange)="query.set($event)"
+          (keydown)="onQueryKeydown($event)"
+          [attr.aria-activedescendant]="results()[activeIndex()] ? 'palette-opt-' + activeIndex() : null"
+          aria-autocomplete="list"
+          aria-controls="palette-results"
           autofocus
         />
       </div>
-      <ul>
-        @for (item of results(); track item.id) {
+      <ul id="palette-results" role="listbox">
+        @for (item of results(); track item.id; let i = $index) {
           <li>
-            <button type="button" (click)="run(item)">
+            <button
+              type="button"
+              [id]="'palette-opt-' + i"
+              role="option"
+              [class.active]="activeIndex() === i"
+              [attr.aria-selected]="activeIndex() === i"
+              (mouseenter)="activeIndex.set(i)"
+              (click)="run(item)"
+            >
               <span class="group">{{ item.group }}</span>
               <span>{{ item.label }}</span>
             </button>

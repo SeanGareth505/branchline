@@ -21,6 +21,7 @@ export class SubmodulesPanel {
   readonly filter = input('');
   readonly expanded = input(false);
   readonly expandedChange = output<boolean>();
+  readonly hide = output<void>();
 
   readonly filtered = computed(() => {
     const q = this.filter().trim().toLowerCase();
@@ -47,5 +48,10 @@ export class SubmodulesPanel {
 
   chevron(): string {
     return this.open() ? 'lucideChevronDown' : 'lucideChevronRight';
+  }
+
+  requestHide(event?: Event): void {
+    event?.stopPropagation();
+    this.hide.emit();
   }
 }

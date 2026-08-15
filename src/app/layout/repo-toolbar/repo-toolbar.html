@@ -233,10 +233,34 @@
           <button
             type="button"
             role="menuitem"
+            title="Also stash files Git is not tracking yet"
+            (click)="runStashUntracked()"
+          >
+            Stash including untracked
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Restore the latest stash without removing it"
+            (click)="runStashApply()"
+          >
+            Apply latest stash
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             title="Restore the latest stash and remove it from the stash list"
             (click)="runStashPop()"
           >
             Pop latest stash
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Permanently delete every stash"
+            (click)="runStashClear()"
+          >
+            Drop all stashes
           </button>
         </div>
       </ng-template>
@@ -266,7 +290,7 @@
     <button
       type="button"
       class="tool icon-only"
-      title="Create a pull request on the host in your browser"
+      title="Create a pull request"
       aria-label="Create pull request"
       (click)="createPullRequest()"
     >

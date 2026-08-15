@@ -71,13 +71,14 @@
 }
 
 .current {
+  --identity: var(--accent);
   display: flex;
   align-items: stretch;
   gap: 0.25rem;
   padding: 0.15rem;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--glass-border));
-  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--identity) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--identity) 10%, var(--glass-bg-soft));
 }
 
 .current-main {
@@ -115,7 +116,7 @@
   font-weight: 650;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--identity, var(--accent));
 }
 
 .current-main strong,
@@ -449,7 +450,7 @@ li {
 
 li.active,
 li.active:hover {
-  background: color-mix(in srgb, var(--accent) 12%, var(--bg-hover));
+  background: color-mix(in srgb, var(--identity, var(--accent)) 14%, var(--bg-hover));
 }
 
 li > button[role='menuitem'] {
@@ -472,7 +473,7 @@ li:hover > button[role='menuitem'] {
 }
 
 li > button[role='menuitem'] ng-icon {
-  color: var(--accent);
+  color: var(--identity, var(--accent));
   flex-shrink: 0;
 }
 
