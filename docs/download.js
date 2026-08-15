@@ -7,7 +7,16 @@ const STABLE = {
   macIntel: `${LATEST}/download/Branchline-mac-x64.dmg`,
   windows: `${LATEST}/download/Branchline-windows-setup.exe`,
   linux: `${LATEST}/download/Branchline-linux.AppImage`,
+  linuxDeb: `${LATEST}/download/Branchline-linux.deb`,
 };
+
+const BUTTONS = [
+  { id: 'mac-arm-btn', href: STABLE.macArm, label: 'Apple Silicon' },
+  { id: 'mac-intel-btn', href: STABLE.macIntel, label: 'Intel' },
+  { id: 'win-btn', href: STABLE.windows, label: 'Download Windows' },
+  { id: 'linux-btn', href: STABLE.linux, label: 'AppImage' },
+  { id: 'linux-deb-btn', href: STABLE.linuxDeb, label: 'Deb' },
+];
 
 function pickAsset(assets, tests) {
   for (const test of tests) {
@@ -39,39 +48,96 @@ function detectPlatform() {
   return { id: 'mac', label: 'macOS', arch: 'arm' };
 }
 
+function primaryFor(platform) {
+  if (platform.id === 'windows') {
+    return { href: STABLE.windows, label: 'Download for Windows' };
+  }
+  if (platform.id === 'linux') {
+    return { href: STABLE.linux, label: 'Download for Linux' };
+  }
+  if (platform.arch === 'intel') {
+    return { href: STABLE.macIntel, label: 'Download for Mac (Intel)' };
+  }
+  return { href: STABLE.macArm, label: 'Download for Mac (Apple Silicon)' };
+}
+
+function setLink(el, href, label) {
+  if (!el || !href) return;
+  el.href = href;
+  el.removeAttribute('aria-disabled');
+  el.classList.remove('missing');
+  if (label) el.textContent = label;
+}
+
+function applyStableLinks(platform) {
+  for (const btn of BUTTONS) {
+    setLink(document.getElementById(btn.id), btn.href);
+  }
+  const primary = primaryFor(platform);
+  setLink(document.getElementById('primary-btn'), primary.href, primary.label);
+  const meta = document.getElementById('primary-meta');
+  if (meta) meta.textContent = 'Latest release · direct installer';
+}
+
 function wire(el, asset, fallbackHref, fallbackLabel) {
   if (!el) return;
-  if (!asset) {
-    el.href = fallbackHref || LATEST;
-    if (fallbackLabel) el.textContent = fallbackLabel;
+  if (asset?.browser_download_url) {
+    setLink(el, asset.browser_download_url, fallbackLabel);
     return;
   }
-  el.href = asset.browser_download_url;
-  el.classList.remove('missing');
+  setLink(el, fallbackHref || LATEST, fallbackLabel);
 }
 
 function copyText(text) {
-  return navigator.clipboard.writeText(text);
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.left = '-9999px';
+    document.body.appendChild(field);
+    field.select();
+    try {
+      if (!document.execCommand('copy')) reject(new Error('copy failed'));
+      else resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      field.remove();
+    }
+  });
+}
+
+function helperUrl() {
+  try {
+    return new URL('install-mac.command', document.currentScript?.src || window.location.href).href;
+  } catch {
+    return 'install-mac.command';
+  }
 }
 
 function renderHowto(platform) {
   const stepsEl = document.getElementById('steps');
   const actionsEl = document.getElementById('howto-actions');
   const pill = document.getElementById('platform-pill');
-  pill.textContent = platform.label;
+  if (pill) pill.textContent = platform.label;
+  if (!stepsEl || !actionsEl) return;
 
   const guides = {
     mac: {
       steps: [
         'Click <strong>Download for Mac</strong> above and open the <code>.dmg</code>.',
-        'Drag <strong>Branchline</strong> into <strong>Applications</strong>.',
+        'Drag <strong>Branchline</strong> into <strong>Applications</strong>. If macOS says it is in the Bin, empty Trash first and replace the copy in Applications.',
         'Open it from Applications. This is a public beta — Gatekeeper may ask you to confirm the first launch.',
       ],
       actions: [
         {
           label: 'Fix & Open helper',
-          href: 'install-mac.command',
-          download: true,
+          href: helperUrl(),
+          download: 'install-mac.command',
         },
         {
           label: 'Copy fix command',
@@ -89,9 +155,9 @@ function renderHowto(platform) {
     },
     linux: {
       steps: [
-        'Download the AppImage, <code>.deb</code>, or <code>.rpm</code> for your distro.',
+        'Download the AppImage or <code>.deb</code> for your distro.',
         'For AppImage: <code>chmod +x Branchline*.AppImage && ./Branchline*.AppImage</code>',
-        'For deb/rpm: install with your package manager.',
+        'For deb: install with your package manager.',
       ],
       actions: [],
     },
@@ -122,10 +188,27 @@ function renderHowto(platform) {
       a.className = 'btn solid';
       a.href = action.href;
       a.textContent = action.label;
-      if (action.download) a.setAttribute('download', '');
+      if (action.download) a.setAttribute('download', action.download);
       actionsEl.appendChild(a);
     }
   }
+}
+
+function guardHashClicks() {
+  document.addEventListener(
+    'click',
+    (event) => {
+      const link = event.target.closest?.('a');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (href !== '#' && href !== '') return;
+      const fallback = BUTTONS.find((btn) => btn.id === link.id);
+      if (!fallback) return;
+      event.preventDefault();
+      window.location.assign(fallback.href);
+    },
+    true,
+  );
 }
 
 async function loadLatest() {
@@ -136,6 +219,7 @@ async function loadLatest() {
   document.querySelectorAll('.card').forEach((card) => {
     card.classList.toggle('recommended', card.dataset.platform === platform.id);
   });
+  applyStableLinks(platform);
   renderHowto(platform);
 
   try {
@@ -163,16 +247,19 @@ async function loadLatest() {
       (n) => n.endsWith('.exe'),
     ]);
     const linux = pickAsset(assets, [
-      (n) => n === 'branchline-linux.AppImage'.toLowerCase(),
+      (n) => n === 'branchline-linux.appimage',
       (n) => n.endsWith('.appimage'),
+    ]);
+    const linuxDeb = pickAsset(assets, [
+      (n) => n === 'branchline-linux.deb',
       (n) => n.endsWith('.deb'),
-      (n) => n.endsWith('.rpm'),
     ]);
 
     wire(document.getElementById('mac-arm-btn'), macArm, STABLE.macArm, 'Apple Silicon');
     wire(document.getElementById('mac-intel-btn'), macIntel, STABLE.macIntel, 'Intel');
     wire(document.getElementById('win-btn'), win, STABLE.windows, 'Download Windows');
-    wire(document.getElementById('linux-btn'), linux, STABLE.linux, 'Download Linux');
+    wire(document.getElementById('linux-btn'), linux, STABLE.linux, 'AppImage');
+    wire(document.getElementById('linux-deb-btn'), linuxDeb, STABLE.linuxDeb, 'Deb');
 
     let primary = null;
     let primaryLabel = 'Download';
@@ -194,36 +281,19 @@ async function loadLatest() {
       versionBadge.textContent = release.tag_name;
     }
 
-    if (primary) {
-      primaryBtn.href = primary.browser_download_url;
-      primaryBtn.textContent = primaryLabel;
-      primaryMeta.textContent = `Latest ${release.tag_name} · ${primary.name}`;
+    if (primary?.browser_download_url) {
+      setLink(primaryBtn, primary.browser_download_url, primaryLabel);
+      if (primaryMeta) primaryMeta.textContent = `Latest ${release.tag_name} · ${primary.name}`;
     } else {
-      primaryBtn.href = release.html_url;
-      primaryBtn.textContent = `Get ${platform.label} build`;
-      primaryMeta.textContent = `Latest ${release.tag_name} — open release assets`;
+      const fallback = primaryFor(platform);
+      setLink(primaryBtn, fallback.href, fallback.label);
+      if (primaryMeta) primaryMeta.textContent = `Latest ${release.tag_name} · direct installer`;
     }
   } catch (err) {
-    const fallback =
-      platform.id === 'windows'
-        ? STABLE.windows
-        : platform.id === 'linux'
-          ? STABLE.linux
-          : platform.arch === 'intel'
-            ? STABLE.macIntel
-            : STABLE.macArm;
-    primaryBtn.href = fallback;
-    primaryBtn.textContent =
-      platform.id === 'windows'
-        ? 'Download for Windows'
-        : platform.id === 'linux'
-          ? 'Download for Linux'
-          : platform.arch === 'intel'
-            ? 'Download for Mac (Intel)'
-            : 'Download for Mac (Apple Silicon)';
-    primaryMeta.textContent = 'Latest release · direct installer';
+    applyStableLinks(platform);
     console.error(err);
   }
 }
 
+guardHashClicks();
 loadLatest();

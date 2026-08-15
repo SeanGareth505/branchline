@@ -45,6 +45,7 @@ a {
   position: fixed;
   inset: 0;
   z-index: 0;
+  pointer-events: none;
   background:
     radial-gradient(ellipse 90% 55% at 50% -18%, rgba(62, 207, 255, 0.28), transparent 58%),
     radial-gradient(ellipse 45% 40% at 100% 18%, rgba(124, 156, 255, 0.14), transparent 55%),
@@ -249,6 +250,7 @@ h1 {
 .product-glow {
   position: absolute;
   inset: 8% 2% 0;
+  pointer-events: none;
   background: radial-gradient(ellipse at 50% 40%, rgba(62, 207, 255, 0.38), transparent 68%);
   filter: blur(28px);
 }
@@ -719,6 +721,7 @@ h1 {
   content: '';
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background: linear-gradient(
     110deg,
     transparent 28%,
