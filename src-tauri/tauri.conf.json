@@ -2,7 +2,8 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "app": {
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:4200 ws://localhost:4200 http://127.0.0.1:4200 ws://127.0.0.1:4200 https://github.com https://api.github.com https://releases.github.com https://release-assets.githubusercontent.com; worker-src 'self' blob:; media-src 'self'; object-src 'none'"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost http://localhost:4200 ws://localhost:4200 http://127.0.0.1:4200 ws://127.0.0.1:4200 https://github.com https://api.github.com https://releases.github.com https://release-assets.githubusercontent.com; worker-src 'self' blob:; media-src 'self'; object-src 'none'",
+      "dangerousDisableAssetCspModification": ["style-src"]
     },
     "windows": [
       {
@@ -35,7 +36,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "targets": "all"
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"]
   },
   "identifier": "app.branchline.git",
   "plugins": {

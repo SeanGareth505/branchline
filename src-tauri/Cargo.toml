@@ -41,6 +41,6 @@ keyring = "3"
 tauri-plugin-updater = "2"
 
 [profile.release]
-lto = "thin"
-codegen-units = 1
+lto = false
+codegen-units = 16
 strip = true
