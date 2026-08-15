@@ -822,3 +822,17 @@ code,
 [data-density='compact'] .file-row {
   font-size: var(--ui-font-size);
 }
+
+ng-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+ng-icon svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
