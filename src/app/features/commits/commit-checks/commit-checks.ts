@@ -21,6 +21,9 @@ import { CheckScriptDialog } from '../../checks/check-script-dialog/check-script
   templateUrl: './commit-checks.html',
   styleUrl: './commit-checks.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.is-empty]': 'checks().length === 0',
+  },
 })
 export class CommitChecks {
   readonly store = inject(AppStore);

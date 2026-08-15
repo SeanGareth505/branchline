@@ -95,6 +95,8 @@ pub struct AppSettings {
     #[serde(default = "default_ticket_from_branch")]
     pub ticket_from_branch: TicketFromBranchSettings,
     #[serde(default)]
+    pub commit_shortcut_sequence: Vec<String>,
+    #[serde(default)]
     pub github_oauth_client_id: String,
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
@@ -365,6 +367,7 @@ impl Default for AppSettings {
             connections: default_connections(),
             commit_types: default_commit_types(),
             ticket_from_branch: default_ticket_from_branch(),
+            commit_shortcut_sequence: Vec::new(),
             github_oauth_client_id: String::new(),
             notifications_enabled: true,
             notify_toasts: true,

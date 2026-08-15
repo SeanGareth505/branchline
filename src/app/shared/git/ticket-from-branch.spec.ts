@@ -2,6 +2,7 @@ import {
   DEFAULT_TICKET_FROM_BRANCH,
   branchSegments,
   customPatternError,
+  extractBranchTopic,
   extractTicketFromBranch,
   normalizeTicketFromBranch,
 } from './ticket-from-branch';
@@ -86,5 +87,15 @@ describe('ticket from branch', () => {
     expect(normalized.matchTicketKey).toBe(false);
     expect(normalized.segmentIndex).toBe(2);
     expect(normalized.putInScope).toBe(true);
+  });
+
+  it('turns the rest of the branch slug after the ticket into a topic', () => {
+    expect(extractBranchTopic('sotf/feature/sotf-123-test', 'sotf-123')).toBe('Test');
+    expect(extractBranchTopic('feature/SOTF-42-login', 'SOTF-42')).toBe('Login');
+    expect(extractBranchTopic('sotf/feature/sotf-1695-create-the-interface', 'sotf-1695')).toBe(
+      'Create the interface',
+    );
+    expect(extractBranchTopic('sotf/feature/sotf-123', 'sotf-123')).toBeNull();
+    expect(extractBranchTopic('feature/add-login')).toBe('Add login');
   });
 });

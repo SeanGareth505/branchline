@@ -15,8 +15,8 @@
 }
 
 .dialog {
-  width: min(560px, 96vw);
-  max-height: min(88vh, 820px);
+  width: min(760px, 96vw);
+  max-height: min(90vh, 920px);
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -56,9 +56,21 @@ h3 {
 
 .branches {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.55rem;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  gap: 0.65rem;
   align-items: end;
+}
+
+.branches .field {
+  min-width: 0;
+}
+
+.branches select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .arrow {
@@ -232,7 +244,7 @@ footer .bl-btn-primary {
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .branches,
   .method-grid {
     grid-template-columns: 1fr;

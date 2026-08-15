@@ -62,6 +62,7 @@ import {
   DEFAULT_TICKET_FROM_BRANCH,
   normalizeTicketFromBranch,
 } from '../shared/git/ticket-from-branch';
+import { normalizeCommitShortcutSequence } from '../shared/git/commit-shortcuts';
 import {
   openPathsInPreferredEditor,
   preferredEditorLabel,
@@ -296,6 +297,7 @@ export class AppStore {
     connections: defaultConnections(),
     commitTypes: DEFAULT_COMMIT_TYPES.map((t) => ({ ...t })),
     ticketFromBranch: { ...DEFAULT_TICKET_FROM_BRANCH },
+    commitShortcutSequence: [],
     githubOAuthClientId: '',
     notificationsEnabled: true,
     notifyToasts: true,
@@ -6904,6 +6906,7 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     connections,
     commitTypes: normalizeCommitTypes(raw.commitTypes),
     ticketFromBranch: normalizeTicketFromBranch(raw.ticketFromBranch),
+    commitShortcutSequence: normalizeCommitShortcutSequence(raw.commitShortcutSequence),
     githubOAuthClientId: (raw.githubOAuthClientId ?? '').trim(),
     notificationsEnabled: raw.notificationsEnabled ?? true,
     notifyToasts: raw.notifyToasts ?? true,

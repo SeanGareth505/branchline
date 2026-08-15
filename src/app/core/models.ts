@@ -262,6 +262,7 @@ export interface DetectedEditors {
 }
 
 export type TicketCase = 'preserve' | 'upper' | 'lower';
+export type CommitShortcutId = 'type' | 'scope' | 'topic' | 'fixes';
 
 export interface TicketFromBranchSettings {
   enabled: boolean;
@@ -306,6 +307,7 @@ export interface AppSettings {
   connections: ConnectionConfig[];
   commitTypes: CommitTypeOption[];
   ticketFromBranch: TicketFromBranchSettings;
+  commitShortcutSequence: CommitShortcutId[];
   githubOAuthClientId: string;
   notificationsEnabled: boolean;
   notifyToasts: boolean;

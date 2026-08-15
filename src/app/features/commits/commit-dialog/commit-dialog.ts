@@ -11,14 +11,18 @@ import {
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
-import type { FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
+import type { CommitShortcutId, FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
   formatConventionalHead,
   normalizeCommitTypeId,
   parseConventionalSubject,
 } from '../../../core/commit-types';
-import { extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
+import { extractBranchTopic, extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
+import {
+  orderByCommitShortcutSequence,
+  recordCommitShortcut,
+} from '../../../shared/git/commit-shortcuts';
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
@@ -55,6 +59,7 @@ export class CommitDialog {
   readonly scope = signal('');
   readonly breaking = signal(false);
   private readonly scopeManual = signal(false);
+  private readonly sessionSequence = signal<CommitShortcutId[]>([]);
   readonly fileFilter = signal('');
   readonly selectedPath = signal<string | null>(null);
   readonly selectedStaged = signal(false);
@@ -81,6 +86,10 @@ export class CommitDialog {
       this.store.settings().ticketFromBranch,
     );
   });
+
+  readonly suggestedTopic = computed(() =>
+    extractBranchTopic(this.store.status()?.branch ?? '', this.suggestedTicket()),
+  );
 
   readonly jiraKeyHint = computed(() => this.suggestedTicket());
 
@@ -240,6 +249,33 @@ export class CommitDialog {
         this.store.settings().ticketFromBranch,
       ),
   );
+
+  readonly metaActionChips = computed(() => {
+    const chips: { id: CommitShortcutId; label: string; title: string }[] = [];
+    const key = this.suggestedTicket();
+    const topic = this.suggestedTopic();
+    if (key && this.commitType() && this.scope().trim() !== key) {
+      chips.push({ id: 'scope', label: `Use ${key}`, title: `Put ${key} in the scope` });
+    }
+    if (topic) {
+      chips.push({
+        id: 'topic',
+        label: topic,
+        title: `Add “${topic}” to the description`,
+      });
+    }
+    if (key) {
+      chips.push({
+        id: 'fixes',
+        label: `Fixes ${key}`,
+        title: `Add Fixes ${key} to the body`,
+      });
+    }
+    return orderByCommitShortcutSequence(
+      chips,
+      this.store.settings().commitShortcutSequence,
+    );
+  });
 
   constructor() {
     effect(() => {
@@ -708,7 +744,12 @@ export class CommitDialog {
   setType(type: string): void {
     const next = this.commitType() === type ? '' : type;
     this.commitType.set(next);
-    if (next) this.fillScopeFromTicket();
+    if (next) {
+      this.noteShortcut('type');
+      this.fillScopeFromTicket();
+      if (this.scope().trim()) this.noteShortcut('scope');
+      this.applyRememberedFlow();
+    }
   }
 
   toggleBreaking(): void {
@@ -755,13 +796,15 @@ export class CommitDialog {
     const branch = this.store.status()?.branch ?? 'main';
     const types = this.store.settings().commitTypes;
     const jira = this.jiraKeyHint() || 'PROJ-0';
+    const topic = this.suggestedTopic() || 'topic';
     const filled = template.pattern
       .replaceAll('{type}', this.commitType() || types[0]?.id || 'feat')
       .replaceAll('{summary}', this.subject() || 'summary')
       .replaceAll('{scope}', this.scope() || this.jiraKeyHint() || 'scope')
       .replaceAll('{name}', branch)
       .replaceAll('{jira}', jira)
-      .replaceAll('{ticket}', jira);
+      .replaceAll('{ticket}', jira)
+      .replaceAll('{topic}', topic);
     if (filled.includes('\n')) {
       const [first, ...rest] = filled.split('\n');
       this.applySubjectLine(first);
@@ -781,20 +824,22 @@ export class CommitDialog {
     }
     this.scope.set(key);
     this.scopeManual.set(true);
+    this.noteShortcut('scope');
   }
 
   insertFixesFooter(): void {
-    const key = this.suggestedTicket();
-    if (!key) {
-      this.store.showWarning(
-        'No ticket found on this branch. Pick a Jira issue, or configure Ticket from branch in Settings → Git.',
-      );
-      return;
-    }
-    const line = `Fixes ${key}`;
-    const body = this.body().trim();
-    if (body.includes(line)) return;
-    this.body.set(body ? `${body}\n\n${line}` : line);
+    this.insertFixesLine();
+    this.noteShortcut('fixes');
+  }
+
+  insertBranchTopic(): void {
+    if (this.applyBranchTopic()) this.noteShortcut('topic');
+  }
+
+  runMetaShortcut(id: CommitShortcutId): void {
+    if (id === 'scope') this.useSuggestedTicket();
+    else if (id === 'topic') this.insertBranchTopic();
+    else if (id === 'fixes') this.insertFixesFooter();
   }
 
   private fillScopeFromTicket(): void {
@@ -803,6 +848,65 @@ export class CommitDialog {
     if (this.scopeManual()) return;
     const ticket = this.suggestedTicket();
     if (ticket) this.scope.set(ticket);
+  }
+
+  private noteShortcut(id: CommitShortcutId): void {
+    this.sessionSequence.update((sequence) => recordCommitShortcut(sequence, id));
+  }
+
+  private applyRememberedFlow(): void {
+    for (const id of this.store.settings().commitShortcutSequence) {
+      if (id === 'scope') {
+        this.fillScopeFromTicket();
+        if (this.scope().trim()) this.noteShortcut('scope');
+      } else if (id === 'topic') {
+        if (this.applyBranchTopic({ onlyIfEmpty: true })) this.noteShortcut('topic');
+      } else if (id === 'fixes') {
+        if (this.insertFixesLine()) this.noteShortcut('fixes');
+      }
+    }
+  }
+
+  private applyBranchTopic(opts?: { onlyIfEmpty?: boolean }): boolean {
+    const topic = this.suggestedTopic();
+    if (!topic) return false;
+    const body = this.body();
+    const trimmed = body.trim();
+    if (trimmed.includes(topic)) return false;
+    if (opts?.onlyIfEmpty && trimmed && !/\{\s*(details|topic)\s*\}/i.test(trimmed)) {
+      return false;
+    }
+    if (/\{\s*(details|topic)\s*\}/i.test(body)) {
+      this.body.set(
+        body.replace(/\{\s*details\s*\}/gi, topic).replace(/\{\s*topic\s*\}/gi, topic),
+      );
+      return true;
+    }
+    this.body.set(trimmed ? `${trimmed}\n\n${topic}` : topic);
+    return true;
+  }
+
+  private insertFixesLine(): boolean {
+    const key = this.suggestedTicket();
+    if (!key) return false;
+    const line = `Fixes ${key}`;
+    const body = this.body().trim();
+    if (body.includes(line)) return false;
+    this.body.set(body ? `${body}\n\n${line}` : line);
+    return true;
+  }
+
+  private sequenceToPersist(): CommitShortcutId[] {
+    const topic = this.suggestedTopic();
+    const ticket = this.suggestedTicket();
+    const body = this.body();
+    return this.sessionSequence().filter((id) => {
+      if (id === 'type') return !!this.commitType();
+      if (id === 'scope') return !!this.scope().trim();
+      if (id === 'topic') return !!(topic && body.includes(topic));
+      if (id === 'fixes') return !!(ticket && body.includes(`Fixes ${ticket}`));
+      return false;
+    });
   }
 
   toggleAmend(checked: boolean): void {
@@ -873,6 +977,12 @@ export class CommitDialog {
         { toast: !willPush, skipHooks: skipGitHooks },
       );
       if (!commit.ok) return;
+      const remembered = this.sequenceToPersist();
+      if (
+        remembered.join('\0') !== this.store.settings().commitShortcutSequence.join('\0')
+      ) {
+        void this.store.saveSettings({ commitShortcutSequence: remembered });
+      }
       if (willPush) {
         this.commitPhase.set('pushing');
         const pushed = await this.store.pushRemote({
@@ -1014,7 +1124,9 @@ export class CommitDialog {
     this.allowEmpty.set(false);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
+    this.sessionSequence.set([]);
     this.fillScopeFromTicket();
+    if (this.scope().trim()) this.noteShortcut('scope');
     void this.store.loadRepoChecks();
 
     const status = this.store.status();
@@ -1040,6 +1152,7 @@ export class CommitDialog {
       this.applyTemplate(pending);
       this.store.pendingCommitTemplate.set(null);
     }
+    this.applyRememberedFlow();
   }
 
   private async applyPushAfterDefault(current: boolean): Promise<void> {
@@ -1088,6 +1201,7 @@ export class CommitDialog {
     this.scope.set('');
     this.breaking.set(false);
     this.scopeManual.set(false);
+    this.sessionSequence.set([]);
     this.cancelAddType();
     this.selectedFiles.set(new Set());
   }

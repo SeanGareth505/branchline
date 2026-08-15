@@ -763,6 +763,13 @@
   color: var(--text-primary);
 }
 
+.meta-btn.topic {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .meta-tag {
   font-size: 11px;
   color: var(--text-muted);
@@ -814,8 +821,14 @@
 
 app-commit-checks {
   margin-bottom: auto;
+  min-width: 0;
   max-height: min(46%, 22rem);
-  overflow: auto;
+  overflow: hidden;
+}
+
+app-commit-checks.is-empty {
+  max-height: none;
+  overflow: visible;
 }
 
 .options {

@@ -417,17 +417,21 @@
             @if (suggestedTicket(); as key) {
               @if (!commitType()) {
                 <span class="meta-tag">Pick a type for feat({{ key }}):</span>
-              } @else if (scope().trim() !== key) {
-                <button type="button" class="meta-btn" (click)="useSuggestedTicket()" [title]="'Put ' + key + ' in the scope'">
-                  Use {{ key }}
-                </button>
-              } @else if (ticketFromBranch() === key && !store.activeJiraKey()) {
+              } @else if (scope().trim() === key && ticketFromBranch() === key && !store.activeJiraKey()) {
                 <span class="meta-tag">From branch</span>
-              } @else if (store.activeJiraKey()) {
+              } @else if (scope().trim() === key && store.activeJiraKey()) {
                 <span class="meta-tag">From Jira</span>
               }
-              <button type="button" class="meta-btn" (click)="insertFixesFooter()" [title]="'Add Fixes ' + key + ' to the body'">
-                Fixes {{ key }}
+            }
+            @for (chip of metaActionChips(); track chip.id) {
+              <button
+                type="button"
+                class="meta-btn"
+                [class.topic]="chip.id === 'topic'"
+                (click)="runMetaShortcut(chip.id)"
+                [title]="chip.title"
+              >
+                {{ chip.label }}
               </button>
             }
             <span class="hint" [class.warn]="headlineTooLong()">{{ charHint() }}</span>

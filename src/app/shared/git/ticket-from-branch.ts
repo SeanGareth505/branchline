@@ -55,6 +55,42 @@ export function extractTicketFromBranch(
   return applyTicketCase(raw, settings.ticketCase);
 }
 
+export function extractBranchTopic(branch: string, ticket?: string | null): string | null {
+  const segs = branchSegments(branch);
+  if (!segs.length) return null;
+  const last = segs[segs.length - 1];
+  const keyMatch = last.match(TICKET_KEY);
+  let slug = last;
+  if (keyMatch && keyMatch.index != null) {
+    slug = last.slice(keyMatch.index + keyMatch[0].length).replace(/^[-_]+/, '');
+  } else if (ticket?.trim()) {
+    const escaped = ticket.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    slug = last.replace(new RegExp(`^${escaped}[-_]*`, 'i'), '');
+  }
+  slug = slug.replace(/^[-_]+|[-_]+$/g, '');
+  if (!slug) return null;
+  if (ticket && slug.toLowerCase() === ticket.trim().toLowerCase()) return null;
+  const onlyTicket = slug.match(TICKET_KEY);
+  if (onlyTicket && onlyTicket[0].length === slug.length) return null;
+  return humanizeBranchSlug(slug);
+}
+
+function humanizeBranchSlug(slug: string): string | null {
+  const words = slug
+    .split(/[-_]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (!words.length) return null;
+  return words
+    .map((word, index) => {
+      if (/^[A-Z0-9]{2,}$/.test(word)) return word;
+      const lower = word.toLowerCase();
+      if (index === 0) return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+      return lower;
+    })
+    .join(' ');
+}
+
 export function normalizeTicketFromBranch(raw: unknown): TicketFromBranchSettings {
   const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const ticketCase = normalizeTicketCase(record['ticketCase']);
