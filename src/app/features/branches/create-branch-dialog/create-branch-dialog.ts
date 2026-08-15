@@ -15,6 +15,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
+import { sanitizeBranchName } from '../../../core/workflow-placeholders';
 
 @Component({
   selector: 'app-create-branch-dialog',
@@ -99,7 +100,7 @@ export class CreateBranchDialog {
   });
 
   readonly preview = computed(() => {
-    const raw = this.name().trim().replace(/^\/+|\/+$/g, '');
+    const raw = sanitizeBranchName(this.name());
     if (!raw) {
       if (!this.usePrefix()) return '{name}';
       const p = this.normalizedPrefix();
@@ -148,7 +149,7 @@ export class CreateBranchDialog {
       const settings = this.store.settings();
       const suggested = this.store.createBranchSuggestedName().trim();
       if (suggested) {
-        this.name.set(suggested);
+        this.name.set(sanitizeBranchName(suggested));
         this.usePrefix.set(false);
       } else {
         this.name.set('');
@@ -171,6 +172,10 @@ export class CreateBranchDialog {
   close(): void {
     if (this.busy()) return;
     this.store.closeCreateBranchDialog();
+  }
+
+  onNameChange(value: string): void {
+    this.name.set(sanitizeBranchName(value));
   }
 
   onUsePrefixChange(value: boolean): void {
@@ -296,6 +301,6 @@ export class CreateBranchDialog {
   }
 
   private cleanPrefix(value: string): string {
-    return value.trim().replace(/^\/+|\/+$/g, '');
+    return sanitizeBranchName(value);
   }
 }

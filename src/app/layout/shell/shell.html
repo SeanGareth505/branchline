@@ -160,7 +160,7 @@
     </header>
   }
 
-  <main class="main" [attr.aria-busy]="store.loading() || null">
+  <main class="main" [class.busy]="!!store.busyMessage()" [attr.aria-busy]="store.busyMessage() || null">
     @switch (store.view()) {
       @case ('onboarding') {
         <app-onboarding-wizard />
@@ -191,11 +191,11 @@
       }
     }
 
-    @if (store.loading()) {
+    @if (store.busyMessage(); as message) {
       <div class="boot-overlay" role="status" aria-live="polite">
         <div class="boot-card bl-glass-dialog">
-          <app-spinner size="lg" [label]="store.loadingLabel()" />
-          <p>{{ store.loadingLabel() }}</p>
+          <app-spinner size="lg" [label]="message" />
+          <p>{{ message }}</p>
         </div>
       </div>
     }

@@ -123,7 +123,7 @@ header {
 }
 
 .summary {
-  padding: 0.55rem 0.9rem 0.25rem;
+  padding: 0.4rem 0.9rem 0.15rem;
   flex-shrink: 0;
 }
 
@@ -159,142 +159,108 @@ header {
   color: var(--text-muted);
 }
 
-.links {
+.link-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 0.45rem;
+  gap: 0.28rem;
+  padding: 0.1rem 0.65rem 0.35rem;
+  flex-shrink: 0;
 }
 
-.link-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-  gap: 0.3rem;
-  margin-top: 0.4rem;
-}
-
-.link-card {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.32rem 0.45rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--glass-bg) 88%, transparent);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.link-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg));
-}
-
-.link-card:active {
-  transform: translateY(1px);
-}
-
-.link-card-icon {
+.link-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.2rem;
-  height: 1.2rem;
-  flex-shrink: 0;
+  gap: 0.28rem;
+  max-width: 100%;
+  height: 1.55rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--glass-border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-}
-
-.link-card-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.link-card-label {
-  font-size: 12px;
+  background: color-mix(in srgb, var(--glass-bg) 82%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
   font-weight: 650;
+  cursor: pointer;
+}
+
+.link-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg));
   color: var(--text-primary);
 }
 
-.link-card-hint {
-  font-size: 10.5px;
+.link-chip-hint {
   color: var(--text-muted);
-  white-space: nowrap;
+  font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.link-card-arrow {
-  flex-shrink: 0;
-  color: var(--text-muted);
+.fold {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
-.deploy-section {
-  margin: 0 0.75rem 0.35rem;
-  padding: 0.55rem 0.6rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--glass-bg-soft) 90%, transparent);
+.fold.open:not(.deploy-fold) {
+  flex: 0 1 auto;
+  max-height: 9.5rem;
+}
+
+.fold.deploy-fold {
   flex: 1 1 auto;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.deploy-toolbar {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding-bottom: 0.15rem;
-  background: color-mix(in srgb, var(--glass-bg-soft) 92%, transparent);
-}
-
-.deploy-head {
+.fold-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.deploy-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
+  width: 100%;
   margin: 0;
-  padding: 0;
+  padding: 0.32rem 0.75rem;
   border: 0;
+  border-top: 1px solid var(--border-subtle);
   background: transparent;
   color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
   cursor: pointer;
 }
 
-.deploy-chev {
+.deploy-fold > .fold-toggle {
+  border-top: 0;
+}
+
+.fold-toggle:hover {
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+}
+
+.fold-chev {
   color: var(--text-muted);
 }
 
-.job-summary {
+.fold-meta {
   margin-left: auto;
   font-size: 10.5px;
+  font-weight: 550;
   color: var(--text-muted);
 }
 
-.deploy-title {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+.fold-toggle .workflow-badge {
+  margin-left: 0.2rem;
+}
+
+.deploy-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .status-tabs {
@@ -425,8 +391,8 @@ header {
 
 .job-list {
   list-style: none;
-  margin: 0.2rem 0 0;
-  padding: 0;
+  margin: 0;
+  padding: 0 0.45rem 0.35rem;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -616,6 +582,7 @@ header {
 
 .deploy-wait {
   margin: 0;
+  padding: 0.35rem 0.75rem 0.55rem;
   font-size: 11.5px;
   color: var(--text-muted);
 }
@@ -648,47 +615,6 @@ header {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.steps-section {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 auto;
-  min-height: 0;
-}
-
-.steps-section.open:not(.has-jobs) {
-  flex: 1 1 auto;
-}
-
-.steps-section.open.has-jobs {
-  flex: 0 1 auto;
-  max-height: 11rem;
-}
-
-.steps-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  width: 100%;
-  margin: 0;
-  padding: 0.28rem 0.75rem;
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.steps-toggle:hover {
-  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
-}
-
-.steps-toggle .job-summary {
-  margin-left: auto;
 }
 
 .steps {
@@ -732,19 +658,6 @@ header {
   text-align: left;
   color: inherit;
   font: inherit;
-}
-
-.deploy-section.nested {
-  margin: 0 0.75rem 0.35rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--glass-bg-soft) 90%, transparent);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
 .marker {

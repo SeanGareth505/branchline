@@ -196,9 +196,20 @@
     </div>
 
     <div class="split" [class.open]="menu() === 'stash'">
-    <button type="button" class="tool" title="Temporarily shelve uncommitted changes" (click)="runStash()">
-      <ng-icon name="lucideLayers" size="14" />
-      <span>Stash</span>
+    <button
+      type="button"
+      class="tool"
+      title="Temporarily shelve uncommitted changes"
+      [disabled]="!!store.actionBusy() || !!store.remoteBusy()"
+      [attr.aria-busy]="!!store.actionBusy()"
+      (click)="runStash()"
+    >
+      @if (store.actionBusy()) {
+        <app-spinner size="sm" [label]="store.actionBusy() || 'Working'" />
+      } @else {
+        <ng-icon name="lucideLayers" size="14" />
+      }
+      <span>{{ store.actionBusy() ? 'Working…' : 'Stash' }}</span>
     </button>
       <button
         type="button"
@@ -207,6 +218,7 @@
         aria-label="Stash options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'stash'"
+        [disabled]="!!store.actionBusy() || !!store.remoteBusy()"
         cdkOverlayOrigin
         #stashOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('stash', $event)"

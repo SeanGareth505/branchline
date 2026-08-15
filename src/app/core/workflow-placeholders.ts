@@ -56,16 +56,19 @@ export function resolveWorkflowPattern(pattern: string, ctx: WorkflowPatternCont
 
 export function sanitizeBranchName(name: string): string {
   return name
-    .trim()
+    .replace(/^\s+/, '')
     .replace(/\s+/g, '-')
     .replace(/\\/g, '-')
     .replace(/[~^:?*\[\]@{}"'<>|]/g, '-')
+    .replace(/[\u0000-\u001f\u007f]/g, '-')
     .replace(/\.\.+/g, '.')
     .replace(/\/{2,}/g, '/')
     .replace(/^\/+|\/+$/g, '')
     .replace(/-+/g, '-')
     .replace(/-\//g, '/')
-    .replace(/\/-/g, '/');
+    .replace(/\/-/g, '/')
+    .replace(/^\.+/g, '')
+    .replace(/\.+$/g, '');
 }
 
 export function slugifyUser(name: string | null | undefined): string {

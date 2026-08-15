@@ -259,12 +259,8 @@
   min-width: 0;
 }
 
-.main {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+.main.busy {
+  cursor: progress;
 }
 
 .main > *:not(.boot-overlay) {

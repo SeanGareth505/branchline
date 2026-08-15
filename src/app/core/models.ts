@@ -321,6 +321,7 @@ export interface AppSettings {
   notifyAppUpdates: boolean;
   notifyPrActivity: boolean;
   notifyPrCi: boolean;
+  notifyRelease: boolean;
   hideUntracked: boolean;
   uiDensity: 'comfortable' | 'compact';
   prTemplates: SavedPrTemplate[];

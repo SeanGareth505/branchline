@@ -227,7 +227,7 @@
               type="text"
               placeholder="onboarding"
               [ngModel]="name()"
-              (ngModelChange)="name.set($event)"
+              (ngModelChange)="onNameChange($event)"
               (keydown.enter)="submit()"
               autofocus
               spellcheck="false"

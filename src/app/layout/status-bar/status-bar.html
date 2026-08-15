@@ -37,9 +37,15 @@
               class="sync-btn"
               data-kind="behind"
               title="Pull remote commits into this branch"
+              [disabled]="!!store.remoteBusy()"
+              [attr.aria-busy]="store.remoteBusy() === 'pull'"
               (click)="store.pullRemote()"
             >
-              <ng-icon name="lucideArrowDown" size="14" />
+              @if (store.remoteBusy() === 'pull') {
+                <app-spinner size="sm" label="Pulling" />
+              } @else {
+                <ng-icon name="lucideArrowDown" size="14" />
+              }
               <span class="sync-label">↓{{ status.behind }}</span>
             </button>
           }
@@ -48,6 +54,8 @@
               type="button"
               class="sync-btn"
               [attr.data-kind]="sync.kind === 'publish' ? 'publish' : 'ahead'"
+              [disabled]="!!store.remoteBusy()"
+              [attr.aria-busy]="store.remoteBusy() === 'push'"
               [title]="
                 sync.kind === 'publish'
                   ? 'Publish this branch to the remote'
@@ -55,7 +63,11 @@
               "
               (click)="store.pushRemote()"
             >
-              <ng-icon [name]="sync.kind === 'publish' ? 'lucideCloudUpload' : 'lucideArrowUp'" size="14" />
+              @if (store.remoteBusy() === 'push') {
+                <app-spinner size="sm" label="Pushing" />
+              } @else {
+                <ng-icon [name]="sync.kind === 'publish' ? 'lucideCloudUpload' : 'lucideArrowUp'" size="14" />
+              }
               <span class="sync-label">
                 @if (sync.kind === 'publish') {
                   Publish
@@ -71,9 +83,15 @@
               class="sync-btn"
               data-kind="synced"
               [title]="sync.tooltip"
+              [disabled]="!!store.remoteBusy()"
+              [attr.aria-busy]="!!store.remoteBusy()"
               (click)="onSyncAction()"
             >
-              <ng-icon [name]="sync.icon" size="14" />
+              @if (store.remoteBusy()) {
+                <app-spinner size="sm" [label]="store.busyMessage() || 'Working'" />
+              } @else {
+                <ng-icon [name]="sync.icon" size="14" />
+              }
             </button>
           }
         }
@@ -121,6 +139,7 @@
         type="button"
         class="bl-btn bl-btn-primary"
         (click)="store.runNextAction()"
+        [disabled]="!!store.busyMessage()"
         [title]="'Suggested next step: ' + store.nextAction()"
       >
         {{ store.nextAction() }}

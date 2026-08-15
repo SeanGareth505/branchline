@@ -152,9 +152,11 @@ export class ReleasePanel {
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
   readonly jobFilter = signal<JobFilter>('in_progress');
   readonly stepsOpen = signal(true);
+  readonly deployOpen = signal(true);
   private readonly jobOpen = signal<Record<string, boolean>>({});
   private lastActivityStart = 0;
   private stepsCollapsedForStart = 0;
+  private stepsCollapsedForDeploy = 0;
 
   readonly jobCounts = computed(() => {
     let inProgress = 0;
@@ -411,6 +413,20 @@ export class ReleasePanel {
       this.lastActivityStart = started;
       this.jobFilter.set(activityBucket(activity));
       this.stepsOpen.set(true);
+      this.deployOpen.set(true);
+    });
+    effect(() => {
+      const activity = this.activity();
+      if (!activity) return;
+      const deploying =
+        this.deployJobs().length > 0 ||
+        activity.phase === 'ci' ||
+        activity.phase === 'deploying' ||
+        activity.phase === 'publishing';
+      if (!deploying || this.stepsCollapsedForDeploy === activity.startedAt) return;
+      this.stepsCollapsedForDeploy = activity.startedAt;
+      this.stepsOpen.set(false);
+      this.deployOpen.set(true);
     });
     effect(() => {
       const activity = this.activity();
@@ -473,6 +489,10 @@ export class ReleasePanel {
 
   toggleSteps(): void {
     this.stepsOpen.update((open) => !open);
+  }
+
+  toggleDeploy(): void {
+    this.deployOpen.update((open) => !open);
   }
 
   setJobFilter(filter: JobFilter): void {

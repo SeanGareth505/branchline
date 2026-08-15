@@ -4,10 +4,11 @@ import { AppStore } from '../../core/app.store';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { describeBranchSync } from '../../shared/git/branch-sync';
 import { remoteProtocol } from '../../shared/git/repo-links';
+import { Spinner } from '../../shared/ui/spinner/spinner';
 
 @Component({
   selector: 'app-status-bar',
-  imports: [NgIcon],
+  imports: [NgIcon, Spinner],
   templateUrl: './status-bar.html',
   styleUrl: './status-bar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

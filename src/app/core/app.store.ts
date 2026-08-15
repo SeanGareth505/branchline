@@ -147,7 +147,8 @@ export type NotificationCategory =
   | 'behind'
   | 'updates'
   | 'prActivity'
-  | 'prCi';
+  | 'prCi'
+  | 'release';
 export interface ToastState {
   id: number;
   message: string;
@@ -311,6 +312,7 @@ export class AppStore {
     notifyAppUpdates: true,
     notifyPrActivity: true,
     notifyPrCi: true,
+    notifyRelease: true,
     hideUntracked: false,
     uiDensity: 'comfortable',
     prTemplates: [],
@@ -332,6 +334,20 @@ export class AppStore {
   readonly refreshingRepo = signal(false);
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
+  readonly actionBusy = signal<string | null>(null);
+  readonly busyMessage = computed(() => {
+    if (this.loading()) return this.loadingLabel();
+    switch (this.remoteBusy()) {
+      case 'fetch':
+        return 'Fetching from remote…';
+      case 'pull':
+        return 'Pulling from remote…';
+      case 'push':
+        return 'Pushing to remote…';
+      default:
+        return this.actionBusy();
+    }
+  });
   readonly releaseBusy = signal(false);
   readonly releaseAttaching = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
@@ -2044,6 +2060,12 @@ export class AppStore {
     }
   }
 
+  private beginGitAction(label: string): boolean {
+    if (this.remoteBusy() || this.actionBusy() || this.loading()) return false;
+    this.actionBusy.set(label);
+    return true;
+  }
+
   private async bindReleaseProgressListener(): Promise<void> {
     if (this.isDummyBackend) return;
     if (this.releaseProgressUnlisten) {
@@ -2689,6 +2711,8 @@ export class AppStore {
         return s.notifyPrActivity;
       case 'prCi':
         return s.notifyPrCi;
+      case 'release':
+        return s.notifyRelease;
       case 'general':
       default:
         return true;
@@ -3634,7 +3658,8 @@ export class AppStore {
   ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path || !name.trim()) return false;
-    const trimmed = name.trim();
+    const trimmed = sanitizeBranchName(name);
+    if (!trimmed) return false;
     try {
       const result = await this.tauri.createBranch(path, trimmed, checkout, startPoint);
       await this.refreshRepo();
@@ -4929,6 +4954,9 @@ export class AppStore {
   async stashPush(message?: string, includeUntracked = false): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!this.beginGitAction(includeUntracked ? 'Stashing including untracked…' : 'Stashing…')) {
+      return;
+    }
     try {
       const result = await this.withRepoMutation(() =>
         this.tauri.stashPush(path, message, includeUntracked),
@@ -4937,30 +4965,38 @@ export class AppStore {
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.actionBusy.set(null);
     }
   }
 
   async stashPop(index: number): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!this.beginGitAction('Restoring stash…')) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashPop(path, index));
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.actionBusy.set(null);
     }
   }
 
   async stashApply(index: number): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!this.beginGitAction('Applying stash…')) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashApply(path, index));
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.actionBusy.set(null);
     }
   }
 
@@ -4976,12 +5012,15 @@ export class AppStore {
     }))) {
       return;
     }
+    if (!this.beginGitAction('Dropping stash…')) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashDrop(path, index));
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.actionBusy.set(null);
     }
   }
 
@@ -5001,12 +5040,15 @@ export class AppStore {
       confirmOnly: true,
     });
     if (ok === null) return;
+    if (!this.beginGitAction('Dropping stashes…')) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashClear(path));
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.actionBusy.set(null);
     }
   }
 
@@ -6920,6 +6962,7 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     notifyAppUpdates: raw.notifyAppUpdates ?? true,
     notifyPrActivity: raw.notifyPrActivity ?? true,
     notifyPrCi: raw.notifyPrCi ?? true,
+    notifyRelease: raw.notifyRelease ?? true,
     hideUntracked: raw.hideUntracked ?? false,
     uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
     prTemplates: normalizePrTemplates(raw.prTemplates),
