@@ -151,6 +151,7 @@ jobs:
     needs: publish-tauri
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Publish stable download filenames
         env:
@@ -165,13 +166,17 @@ jobs:
             local pattern="$1"
             local stable="$2"
             local src
-            src=$(find /tmp/rel -maxdepth 1 -type f -iname "$pattern" | head -n 1 || true)
-            if [ -n "$src" ]; then
-              cp "$src" "/tmp/rel/$stable"
-              echo "Stable: $stable <- $(basename "$src")"
-            else
-              echo "Skip missing pattern: $pattern"
+            src=$(find /tmp/rel -maxdepth 1 -type f -iname "$pattern" ! -name "$stable" | head -n 1 || true)
+            if [ -z "$src" ]; then
+              if [ -f "/tmp/rel/$stable" ]; then
+                echo "Stable already: $stable"
+              else
+                echo "Skip missing pattern: $pattern"
+              fi
+              return 0
             fi
+            cp "$src" "/tmp/rel/$stable"
+            echo "Stable: $stable <- $(basename "$src")"
           }
 
           copy_stable '*aarch64*.dmg' 'Branchline-mac-arm64.dmg'

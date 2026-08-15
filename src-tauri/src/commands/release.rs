@@ -1318,6 +1318,20 @@ fn workflow_is_running(status: &str) -> bool {
     matches!(status, "queued" | "in_progress" | "waiting" | "requested")
 }
 
+fn optional_job_name(name: &str) -> bool {
+    name.to_ascii_lowercase().contains("stabilize")
+}
+
+fn publish_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
+    jobs.iter().any(|job| {
+        let name = job.name.to_ascii_lowercase();
+        name.contains("publish")
+            && job.conclusion.as_deref().is_some_and(|c| {
+                matches!(c, "failure" | "cancelled" | "timed_out")
+            })
+    })
+}
+
 fn evaluate_deploy(
     urls: &DeployUrls,
     tag: &str,
@@ -1375,6 +1389,22 @@ fn evaluate_deploy(
         run.conclusion.as_str(),
         "failure" | "cancelled" | "timed_out"
     ) {
+        if let Some(url) = release_url.clone() {
+            if !publish_job_failed(&run.jobs)
+                && run.jobs.iter().any(|job| optional_job_name(&job.name))
+            {
+                return urls.output(
+                    "success",
+                    "done",
+                    &format!(
+                        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+                    ),
+                    run.run_url,
+                    Some(url),
+                    run.jobs,
+                );
+            }
+        }
         return urls.output(
             "failure",
             "error",
@@ -1739,5 +1769,36 @@ mod tests {
         let result = evaluate_deploy(&urls(), "v0.7.4", None, Some(run("completed", "failure")));
         assert_eq!(result.status, "failure");
         assert_eq!(result.phase, "error");
+    }
+
+    #[test]
+    fn deploy_is_live_if_only_stabilize_names_failed() {
+        let snapshot = WorkflowSnapshot {
+            status: "completed".into(),
+            conclusion: "failure".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![
+                ReleaseDeployJob {
+                    name: "publish-tauri (macos-latest, --target aarch64-apple-darwin)".into(),
+                    status: "completed".into(),
+                    conclusion: Some("success".into()),
+                    url: None,
+                },
+                ReleaseDeployJob {
+                    name: "stabilize-names".into(),
+                    status: "completed".into(),
+                    conclusion: Some("failure".into()),
+                    url: None,
+                },
+            ],
+        };
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.7.5",
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.5".into()),
+            Some(snapshot),
+        );
+        assert_eq!(result.status, "success");
+        assert_eq!(result.phase, "done");
     }
 }
