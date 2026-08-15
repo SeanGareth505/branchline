@@ -10,6 +10,7 @@ import type {
   DefaultPullAction,
   DefaultPushAction,
   GitEnvSnapshot,
+  TestConnectionOutput,
 } from '../../../core/models';
 import { Dashboard } from '../../../layout/dashboard/dashboard';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
@@ -41,6 +42,11 @@ export class SettingsPage implements OnInit {
   readonly newTypeDescription = signal('');
   readonly savingTypes = signal(false);
   readonly connectingId = signal<string | null>(null);
+  readonly testingId = signal<string | null>(null);
+  readonly testingAll = signal(false);
+  readonly testingSsh = signal(false);
+  readonly connectionTests = signal<Record<string, TestConnectionOutput>>({});
+  readonly sshTest = signal<TestConnectionOutput | null>(null);
   readonly releasing = signal(false);
 
   readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
@@ -186,7 +192,14 @@ export class SettingsPage implements OnInit {
   }
 
   editConnection(id: string): void {
-    this.editingConnectionId.set(this.editingConnectionId() === id ? null : id);
+    const closing = this.editingConnectionId() === id;
+    this.editingConnectionId.set(closing ? null : id);
+    if (closing) {
+      const conn = this.store.settings().connections.find((c) => c.id === id);
+      if (conn && this.connectionKind(conn.provider) && (conn.hasToken || conn.token.trim())) {
+        void this.testConnection(conn);
+      }
+    }
   }
 
   updateConnection(id: string, patch: Partial<ConnectionConfig>): void {
@@ -235,6 +248,33 @@ export class SettingsPage implements OnInit {
         });
         if (!token?.trim()) return;
         await this.store.signInGitHost(conn.provider, token.trim(), conn.username);
+        return;
+      }
+
+      if (conn.provider === 'azureDevOps') {
+        let org = conn.organization.trim();
+        if (!org) {
+          const asked = await this.prompts.ask({
+            title: 'Azure DevOps organization',
+            message: 'Organization name from dev.azure.com/{org}.',
+            label: 'Organization',
+            placeholder: 'contoso',
+            confirmLabel: 'Next',
+            initialValue: conn.organization,
+          });
+          if (!asked?.trim()) return;
+          org = asked.trim();
+        }
+        const token = await this.prompts.ask({
+          title: 'Connect Azure DevOps',
+          message: this.providerHint(conn.provider),
+          label: 'Personal access token',
+          placeholder: 'PAT',
+          confirmLabel: 'Connect',
+          mono: true,
+        });
+        if (!token?.trim()) return;
+        await this.store.signInAzureDevOps(token.trim(), org, conn.project);
         return;
       }
 
@@ -287,6 +327,67 @@ export class SettingsPage implements OnInit {
     if (this.editingConnectionId() === conn.id) {
       this.editingConnectionId.set(null);
     }
+  }
+
+  async testConnection(conn: ConnectionConfig): Promise<void> {
+    if (this.testingId()) return;
+    const kind = this.connectionKind(conn.provider);
+    if (!kind) return;
+    this.testingId.set(conn.id);
+    try {
+      const result = await this.store.testConnection({ kind, connectionId: conn.id });
+      this.connectionTests.update((current) => ({ ...current, [conn.id]: result }));
+    } finally {
+      this.testingId.set(null);
+    }
+  }
+
+  async testAllConnections(): Promise<void> {
+    if (this.testingAll()) return;
+    this.testingAll.set(true);
+    try {
+      const results = await this.store.testAllConnections();
+      const next: Record<string, TestConnectionOutput> = { ...this.connectionTests() };
+      for (const result of results) {
+        if (result.kind === 'ssh') this.sshTest.set(result);
+        if (result.connectionId && result.kind !== 'ssh' && result.kind !== 'gitRemote') {
+          next[result.connectionId] = result;
+        }
+      }
+      this.connectionTests.set(next);
+    } finally {
+      this.testingAll.set(false);
+    }
+  }
+
+  async testSsh(): Promise<void> {
+    if (this.testingSsh()) return;
+    this.testingSsh.set(true);
+    try {
+      this.sshTest.set(
+        await this.store.testConnection({
+          kind: 'ssh',
+          path: this.store.currentRepo()?.path ?? '',
+          remote: 'origin',
+        }),
+      );
+    } finally {
+      this.testingSsh.set(false);
+    }
+  }
+
+  private connectionKind(
+    provider: string,
+  ): 'github' | 'gitlab' | 'azureDevOps' | 'jira' | null {
+    if (
+      provider === 'github' ||
+      provider === 'gitlab' ||
+      provider === 'azureDevOps' ||
+      provider === 'jira'
+    ) {
+      return provider;
+    }
+    return null;
   }
 
   openFeature(provider: string): void {

@@ -34,6 +34,8 @@ import type {
   ReflogEntry,
   RemoteInfo,
   ProbeRemoteOutput,
+  TestConnectionInput,
+  TestConnectionOutput,
   RepoStatus,
   RepoSummary,
   ResetMode,
@@ -806,6 +808,10 @@ export class TauriService {
     });
   }
 
+  testConnection(input: TestConnectionInput) {
+    return this.invoke<TestConnectionOutput>('test_connection', { input });
+  }
+
   removeRemote(path: string, name: string) {
     return this.invoke<MutationOutput>('remove_remote', { input: { path, name } });
   }
@@ -1197,6 +1203,27 @@ export class TauriService {
             : `Branch '${name}' is locked. Unlock it before pushing, force-pushing, renaming, or deleting.`,
         );
       }
+    }
+
+    if (cmd === 'test_connection') {
+      const input = (args?.['input'] as TestConnectionInput | undefined) ?? { kind: 'github' };
+      const kind = input.kind || 'github';
+      const labels: Record<string, string> = {
+        github: 'Signed in to GitHub (preview)',
+        gitlab: 'Signed in to GitLab (preview)',
+        azureDevOps: 'Reached Azure DevOps (preview)',
+        jira: 'Signed in to Jira (preview)',
+        gitRemote: 'Reached remote (preview)',
+        ssh: 'SSH authenticated (preview)',
+      };
+      return {
+        ok: true,
+        kind,
+        connectionId: input.connectionId ?? input.remote ?? '',
+        account: 'sean',
+        message: labels[kind] ?? 'Connection ok (preview)',
+        detail: 'Dummy backend',
+      } as T;
     }
 
     const mocks: Record<string, unknown> = {
@@ -1678,6 +1705,7 @@ export class TauriService {
         mergeTool: '',
         sshKeysFound: true,
         sshKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+        sshAgent: false,
         commitGpgsign: false,
         gpgFormat: '',
         userSigningKey: '',
@@ -1709,6 +1737,7 @@ export class TauriService {
         mergeTool: '',
         sshKeysFound: true,
         sshKeyPaths: ['/Users/demo/.ssh/id_ed25519'],
+        sshAgent: false,
       },
       get_file_blame: [
         {

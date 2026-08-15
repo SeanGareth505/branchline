@@ -41,11 +41,14 @@ import type {
   SavedPrTemplate,
   PrCreateMethod,
   UiSession,
+  RevisionGridColumns,
   WorktreeInfo,
   RepoCheck,
   RepoChecksOutput,
   CheckRunState,
   ProbeRemoteOutput,
+  TestConnectionInput,
+  TestConnectionOutput,
 } from './models';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
@@ -378,6 +381,11 @@ export class AppStore {
   readonly automationSection = signal<AutomationSection>('workflows');
   readonly splitMain = signal<number[]>([16, 84]);
   readonly splitNested = signal<number[]>([62, 38]);
+  readonly revisionGridColumns = signal<RevisionGridColumns>({
+    author: 120,
+    date: 128,
+    sha: 80,
+  });
   private sessionSaveTimer: number | null = null;
   private sessionOverlay: UiSession = {};
   private restoringSession = false;
@@ -602,6 +610,13 @@ export class AppStore {
     }
   }
 
+  setRevisionGridColumns(cols: RevisionGridColumns, opts?: { persist?: boolean }): void {
+    const next = normalizeRevisionGridColumns(cols);
+    this.revisionGridColumns.set(next);
+    if (opts?.persist === false || this.restoringSession) return;
+    this.patchSession({ revisionGridColumns: next });
+  }
+
   readSession(): UiSession {
     const layout = this.settings().layout ?? {};
     const raw = layout['session'];
@@ -670,6 +685,9 @@ export class AppStore {
       }
       if (Array.isArray(session.splitNested) && session.splitNested.length >= 2) {
         this.splitNested.set(session.splitNested.map(Number));
+      }
+      if (session.revisionGridColumns) {
+        this.revisionGridColumns.set(normalizeRevisionGridColumns(session.revisionGridColumns));
       }
     } finally {
       this.restoringSession = false;
@@ -1540,8 +1558,14 @@ export class AppStore {
     });
     try {
       await this.saveSettings({ connections });
+      const check = await this.verifySavedIntegration(provider);
+      if (!check?.ok) {
+        this.showError(check?.message ?? 'Connection check failed');
+        return false;
+      }
+      await this.applyConnectionAccount(provider, check.account);
       await this.refreshHostRepositories(provider, { force: true });
-      this.showSuccess(`Signed in to ${provider === 'github' ? 'GitHub' : 'GitLab'}`);
+      this.showSuccess(check.message);
       return true;
     } catch (err) {
       this.showError(err);
@@ -1686,8 +1710,51 @@ export class AppStore {
     });
     try {
       await this.saveSettings({ connections });
+      const check = await this.verifySavedIntegration('jira');
+      if (!check?.ok) {
+        this.showError(check?.message ?? 'Connection check failed');
+        return false;
+      }
       await this.refreshJiraIssues();
-      this.showSuccess('Signed in to Jira');
+      this.showSuccess(check.message);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async signInAzureDevOps(token: string, organization: string, project = ''): Promise<boolean> {
+    const cleanedToken = token.trim();
+    const org = organization.trim();
+    if (!cleanedToken) {
+      this.showWarning('Paste a personal access token to sign in.');
+      return false;
+    }
+    if (!org) {
+      this.showWarning('Set the Azure DevOps organization, then connect again.');
+      return false;
+    }
+    const connections = this.settings().connections.map((c) => {
+      if (c.provider !== 'azureDevOps') return c;
+      return {
+        ...c,
+        enabled: true,
+        token: cleanedToken,
+        hasToken: true,
+        organization: org,
+        project: project.trim() || c.project,
+      };
+    });
+    try {
+      await this.saveSettings({ connections });
+      const check = await this.verifySavedIntegration('azureDevOps');
+      if (!check?.ok) {
+        this.showError(check?.message ?? 'Connection check failed');
+        return false;
+      }
+      await this.applyConnectionAccount('azureDevOps', check.account);
+      this.showSuccess(check.message);
       return true;
     } catch (err) {
       this.showError(err);
@@ -4054,7 +4121,12 @@ export class AppStore {
     try {
       const result = await this.tauri.addRemote(path, name, url);
       await this.refreshRepo();
-      this.showToast(result.message);
+      const check = await this.testConnection(
+        { kind: 'gitRemote', remote: name, url },
+        { toast: false },
+      );
+      if (check.ok) this.showSuccess(check.message);
+      else this.showWarning(`${result.message}. ${check.message}`);
     } catch (err) {
       this.showError(err);
     }
@@ -4104,6 +4176,107 @@ export class AppStore {
         message: this.formatError(err),
       };
     }
+  }
+
+  async verifySavedIntegration(
+    provider: string,
+  ): Promise<TestConnectionOutput | null> {
+    if (
+      provider !== 'github' &&
+      provider !== 'gitlab' &&
+      provider !== 'azureDevOps' &&
+      provider !== 'jira'
+    ) {
+      return null;
+    }
+    const conn = this.settings().connections.find((c) => c.provider === provider);
+    return this.testConnection(
+      { kind: provider, connectionId: conn?.id },
+      { toast: false },
+    );
+  }
+
+  private async applyConnectionAccount(provider: string, account: string): Promise<void> {
+    const cleaned = account.trim();
+    if (!cleaned) return;
+    const current = this.settings().connections;
+    if (!current.some((c) => c.provider === provider && c.username !== cleaned)) return;
+    await this.saveSettings({
+      connections: current.map((c) =>
+        c.provider === provider ? { ...c, username: cleaned } : c,
+      ),
+    });
+  }
+
+  async testConnection(
+    input: TestConnectionInput,
+    opts?: { toast?: boolean },
+  ): Promise<TestConnectionOutput> {
+    try {
+      const result = await this.tauri.testConnection({
+        ...input,
+        path: input.path ?? this.currentRepo()?.path ?? '',
+      });
+      if (opts?.toast !== false) {
+        if (result.ok) this.showSuccess(result.message);
+        else this.showError(result.message);
+      }
+      return result;
+    } catch (err) {
+      const message = this.formatError(err);
+      if (opts?.toast !== false) this.showError(err);
+      return {
+        ok: false,
+        kind: input.kind,
+        connectionId: input.connectionId ?? '',
+        account: '',
+        message,
+        detail: message,
+      };
+    }
+  }
+
+  async testAllConnections(): Promise<TestConnectionOutput[]> {
+    const results: TestConnectionOutput[] = [];
+    const linked = this.settings().connections.filter(
+      (c) =>
+        (c.provider === 'github' ||
+          c.provider === 'gitlab' ||
+          c.provider === 'azureDevOps' ||
+          c.provider === 'jira') &&
+        (c.hasToken || c.token.trim()),
+    );
+    for (const conn of linked) {
+      results.push(
+        await this.testConnection(
+          {
+            kind: conn.provider as 'github' | 'gitlab' | 'azureDevOps' | 'jira',
+            connectionId: conn.id,
+          },
+          { toast: false },
+        ),
+      );
+    }
+    results.push(
+      await this.testConnection(
+        {
+          kind: 'ssh',
+          path: this.currentRepo()?.path ?? '',
+          remote: 'origin',
+        },
+        { toast: false },
+      ),
+    );
+    if (this.currentRepo()) {
+      results.push(
+        await this.testConnection({ kind: 'gitRemote', remote: 'origin' }, { toast: false }),
+      );
+    }
+    const passed = results.filter((r) => r.ok).length;
+    const total = results.length;
+    if (passed === total) this.showSuccess(`All ${total} connections responded`);
+    else this.showWarning(`${passed}/${total} connections succeeded`);
+    return results;
   }
 
   async removeRemote(name: string): Promise<void> {
@@ -6682,6 +6855,27 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
     prTemplates: normalizePrTemplates(raw.prTemplates),
     prCreateMethod: raw.prCreateMethod === 'cli' ? 'cli' : 'browser',
+  };
+}
+
+function normalizeRevisionGridColumns(raw: unknown): RevisionGridColumns {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const clamp = (value: unknown, fallback: number, min: number, max: number): number => {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.round(Math.min(max, Math.max(min, n)));
+  };
+  const optional = (value: unknown, min: number, max: number): number | undefined => {
+    if (value == null || value === 0) return undefined;
+    const n = clamp(value, 0, min, max);
+    return n > 0 ? n : undefined;
+  };
+  return {
+    graph: optional(o['graph'], 48, 800),
+    message: optional(o['message'], 120, 2000),
+    author: clamp(o['author'], 120, 56, 600),
+    date: clamp(o['date'], 128, 64, 400),
+    sha: clamp(o['sha'], 80, 52, 280),
   };
 }
 

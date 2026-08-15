@@ -2,6 +2,15 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      build_android:
+        description: 'Build Android APK (slow; off by default)'
+        type: boolean
+        default: false
+      skip_desktop:
+        description: 'Skip desktop installers (use for an Android-only run)'
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -53,7 +62,7 @@ jobs:
   publish-tauri:
     name: ${{ matrix.name }}
     needs: [create-release]
-    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') }}
+    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && github.event.inputs.skip_desktop != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -186,7 +195,7 @@ jobs:
   build-apk:
     name: Android
     needs: [create-release]
-    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') }}
+    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && github.event.inputs.build_android == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

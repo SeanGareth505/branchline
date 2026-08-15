@@ -727,15 +727,25 @@
                   {{ linkedCount() }} linked.
                 </p>
               </div>
-              <label class="switch labeled">
-                <span>Show tokens</span>
-                <input
-                  type="checkbox"
-                  [ngModel]="showTokens()"
-                  (ngModelChange)="showTokens.set($event)"
-                />
-                <span class="track"></span>
-              </label>
+              <div class="block-head-actions">
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  [disabled]="testingAll()"
+                  (click)="testAllConnections()"
+                >
+                  {{ testingAll() ? 'Testing…' : 'Test all' }}
+                </button>
+                <label class="switch labeled">
+                  <span>Show tokens</span>
+                  <input
+                    type="checkbox"
+                    [ngModel]="showTokens()"
+                    (ngModelChange)="showTokens.set($event)"
+                  />
+                  <span class="track"></span>
+                </label>
+              </div>
             </div>
 
             <div class="conn-intro">
@@ -784,9 +794,22 @@
                       @if (store.isConnectionLinked(conn) && conn.username) {
                         <span class="conn-user">{{ conn.username }}</span>
                       }
+                      @if (connectionTests()[conn.id]; as result) {
+                        <span class="conn-test" [class.ok]="result.ok" [class.bad]="!result.ok">
+                          {{ result.message }}
+                        </span>
+                      }
                     </div>
                   </div>
                   <div class="conn-actions">
+                    <button
+                      type="button"
+                      class="bl-btn quiet"
+                      [disabled]="testingId() === conn.id || testingAll()"
+                      (click)="testConnection(conn)"
+                    >
+                      {{ testingId() === conn.id ? 'Testing…' : 'Test' }}
+                    </button>
                     @if (store.isConnectionLinked(conn)) {
                       <button type="button" class="bl-btn quiet" (click)="openFeature(conn.provider)">
                         Open
@@ -892,8 +915,21 @@
                 } @else {
                   <span class="warn-inline">None in ~/.ssh</span>
                 }
+                @if (sshTest(); as result) {
+                  <span class="conn-test" [class.ok]="result.ok" [class.bad]="!result.ok">
+                    {{ result.message }}
+                  </span>
+                }
               </div>
               <div class="setting-control">
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  [disabled]="testingSsh()"
+                  (click)="testSsh()"
+                >
+                  {{ testingSsh() ? 'Testing…' : 'Test SSH' }}
+                </button>
                 <button type="button" class="bl-btn quiet" (click)="refreshEnv()">Refresh</button>
               </div>
             </div>

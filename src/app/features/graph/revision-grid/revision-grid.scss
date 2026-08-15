@@ -139,6 +139,8 @@
   align-items: center;
   flex-shrink: 0;
   height: 26px;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-surface) 88%, var(--bg-elevated));
@@ -150,7 +152,15 @@
   user-select: none;
 }
 
+.grid-header.is-resizing {
+  cursor: col-resize;
+}
+
 .grid-header > div {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
   padding: 0 0.55rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,8 +172,39 @@
   border-right: 0;
 }
 
+.grid-header > div.is-resizing {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .h-graph {
   padding: 0 !important;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.col-resizer:hover::after,
+.col-resizer.is-active::after {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
 .grid-body {
@@ -175,7 +216,7 @@
 }
 
 .grid-body .cdk-virtual-scroll-content-wrapper {
-  min-width: 100%;
+  min-width: max(100%, var(--grid-min-width, 100%));
 }
 
 .row {
@@ -185,6 +226,7 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
+  min-width: var(--grid-min-width, 100%);
   margin: 0;
   padding: 0;
   border: 0;

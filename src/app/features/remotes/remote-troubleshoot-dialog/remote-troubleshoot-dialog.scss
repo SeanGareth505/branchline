@@ -54,6 +54,29 @@ h2 {
   line-height: 1.45;
 }
 
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.chip.on,
+.chip.proto {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .remote-pills {
   display: flex;
   flex-wrap: wrap;
@@ -135,6 +158,10 @@ h2 {
   gap: 0.15rem;
   padding-left: 0.7rem;
   border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.hints li.warn {
+  border-left-color: color-mix(in srgb, var(--git-deleted) 55%, transparent);
 }
 
 .hints strong {

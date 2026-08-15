@@ -502,6 +502,26 @@ input[type='color'] {
   color: var(--text-muted);
 }
 
+.conn-test {
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.conn-test.ok {
+  color: var(--git-added, #3d9a6a);
+}
+
+.conn-test.bad {
+  color: var(--git-deleted, #c45c5c);
+}
+
+.block-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
 .conn-actions {
   display: flex;
   align-items: center;

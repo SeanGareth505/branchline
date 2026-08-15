@@ -3,6 +3,7 @@ pub mod branch;
 pub mod cherry_pick;
 pub mod commit;
 pub mod conflicts;
+pub mod connections;
 pub mod diagnostics;
 pub mod diff;
 pub mod git_detect;

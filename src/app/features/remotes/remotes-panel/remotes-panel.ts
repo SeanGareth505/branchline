@@ -27,6 +27,7 @@ export class RemotesPanel {
   readonly drafting = signal(false);
   readonly name = signal('origin');
   readonly url = signal('');
+  readonly testingName = signal<string | null>(null);
 
   readonly filtered = computed(() => {
     const q = this.filter().trim().toLowerCase();
@@ -80,5 +81,21 @@ export class RemotesPanel {
 
   async remove(name: string): Promise<void> {
     await this.store.removeRemote(name);
+  }
+
+  async test(name: string, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    if (this.testingName()) return;
+    const remote = this.store.remotes().find((r) => r.name === name);
+    this.testingName.set(name);
+    try {
+      await this.store.testConnection({
+        kind: 'gitRemote',
+        remote: name,
+        url: remote?.fetchUrl,
+      });
+    } finally {
+      this.testingName.set(null);
+    }
   }
 }

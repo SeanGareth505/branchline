@@ -2,6 +2,7 @@
   class="revision-grid"
   tabindex="0"
   [style.--grid-cols]="columns()"
+  [style.--grid-min-width.px]="gridMinWidth()"
   (click)="menu().open && onMenuDismiss()"
   (keydown)="onKeydown($event)"
 >
@@ -64,12 +65,28 @@
     </div>
   </div>
 
-  <div #header class="grid-header">
-    <div class="h-graph" aria-hidden="true"></div>
-    <div>Description</div>
-    <div>Author</div>
-    <div>Date</div>
-    <div>Commit</div>
+  <div
+    #header
+    class="grid-header"
+    [class.is-resizing]="!!resizingCol()"
+  >
+    @for (col of headerCols; track col.id) {
+      <div [class]="col.className" [class.is-resizing]="resizingCol() === col.id">
+        {{ col.label }}
+        <span
+          class="col-resizer"
+          [class.is-active]="resizingCol() === col.id"
+          role="separator"
+          aria-orientation="vertical"
+          [attr.aria-label]="'Resize ' + (col.label || 'graph') + ' column'"
+          (pointerdown)="onResizeStart(col.id, $event)"
+          (pointermove)="onResizeMove($event)"
+          (pointerup)="onResizeEnd()"
+          (pointercancel)="onResizeEnd()"
+          (lostpointercapture)="onResizeEnd()"
+        ></span>
+      </div>
+    }
   </div>
 
   <cdk-virtual-scroll-viewport

@@ -145,6 +145,7 @@ pub fn run() {
             commands::remotes::prune_remote,
             commands::remotes::set_remote_url,
             commands::remotes::probe_remote,
+            commands::connections::test_connection,
             commands::remotes::pull_with_options,
             commands::advanced::list_reflog,
             commands::advanced::squash_commits,

@@ -361,11 +361,27 @@
             <p class="empty error">{{ err }}</p>
             <div class="remote-meta">
               <button type="button" class="text-btn" (click)="refreshRemote()">Retry</button>
+              <button
+                type="button"
+                class="text-btn"
+                [disabled]="testingHosts()"
+                (click)="testLinkedHosts()"
+              >
+                {{ testingHosts() ? 'Testing…' : 'Test' }}
+              </button>
             </div>
           } @else if (!hostGroups().length) {
             <p class="empty">No repositories found</p>
             <div class="remote-meta">
               <button type="button" class="text-btn" (click)="refreshRemote()">Refresh</button>
+              <button
+                type="button"
+                class="text-btn"
+                [disabled]="testingHosts()"
+                (click)="testLinkedHosts()"
+              >
+                {{ testingHosts() ? 'Testing…' : 'Test' }}
+              </button>
             </div>
           } @else {
             <div class="remote-meta">
@@ -378,6 +394,14 @@
                   (click)="refreshRemote()"
                 >
                   {{ store.hostReposLoading() ? 'Refreshing…' : 'Refresh' }}
+                </button>
+                <button
+                  type="button"
+                  class="text-btn"
+                  [disabled]="testingHosts()"
+                  (click)="testLinkedHosts()"
+                >
+                  {{ testingHosts() ? 'Testing…' : 'Test' }}
                 </button>
                 <button type="button" class="text-btn" (click)="goConnections()">Manage</button>
               </div>

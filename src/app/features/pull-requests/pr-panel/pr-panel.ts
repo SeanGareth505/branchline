@@ -48,6 +48,7 @@ export class PrPanel {
   readonly commentText = signal('');
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
+  readonly testing = signal(false);
 
   readonly showingDummy = computed(() => !this.store.hasLinkedPrHost());
   readonly hasGithub = computed(() => this.store.hasGithubConnection());
@@ -200,6 +201,31 @@ export class PrPanel {
 
   reload(): void {
     void this.store.refreshPullRequests(this.listState(), { force: true });
+  }
+
+  async testConnection(): Promise<void> {
+    if (this.testing()) return;
+    const connections = this.store.settings().connections;
+    const conn =
+      connections.find((c) => c.provider === 'github' && this.store.isConnectionLinked(c)) ??
+      connections.find(
+        (c) =>
+          (c.provider === 'gitlab' || c.provider === 'azureDevOps') &&
+          this.store.isConnectionLinked(c),
+      );
+    if (!conn) {
+      this.connectHosts();
+      return;
+    }
+    this.testing.set(true);
+    try {
+      await this.store.testConnection({
+        kind: conn.provider as 'github' | 'gitlab' | 'azureDevOps',
+        connectionId: conn.id,
+      });
+    } finally {
+      this.testing.set(false);
+    }
   }
 
   createPr(): void {

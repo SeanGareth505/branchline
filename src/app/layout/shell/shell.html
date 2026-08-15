@@ -62,15 +62,16 @@
               type="button"
               [class.active]="isActive('release')"
               (click)="nav('release')"
-              title="Ship versions, track release progress"
+              [title]="releaseNavTitle()"
             >
               <ng-icon name="lucideRocket" size="14" />
               <span>Release</span>
-              @if (store.releaseBusy() || store.releaseAttaching() || store.releaseActivity()) {
+              @if (releaseNavStatus(); as status) {
                 <span
                   class="nav-dot"
-                  [class.live]="store.releaseBusy() || store.releaseAttaching()"
-                  aria-hidden="true"
+                  [class.live]="status === 'running'"
+                  [attr.data-status]="status"
+                  [attr.aria-label]="releaseNavLabel()"
                 ></span>
               }
             </button>

@@ -39,8 +39,11 @@ fn ssh_keys_found() -> bool {
             "id_ed25519",
             "id_rsa",
             "id_ecdsa",
+            "id_ed25519_sk",
+            "id_ecdsa_sk",
             "id_ed25519.pub",
             "id_rsa.pub",
+            "id_ecdsa.pub",
         ] {
             if ssh.join(name).exists() {
                 return true;

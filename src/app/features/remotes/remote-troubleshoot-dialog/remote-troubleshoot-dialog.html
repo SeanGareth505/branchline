@@ -21,6 +21,18 @@
 
       <p class="lead">{{ summary() }}</p>
 
+      <div class="chips">
+        @if (repoSlug(); as slug) {
+          <span class="chip">{{ slug }}</span>
+        }
+        @if (selected(); as remote) {
+          <span class="chip on">{{ remote.name }}</span>
+        }
+        @if (protocol() !== 'other') {
+          <span class="chip proto">{{ protocol() }}</span>
+        }
+      </div>
+
       @if (remotes().length > 1) {
         <div class="remote-pills">
           @for (remote of remotes(); track remote.name) {
@@ -62,9 +74,14 @@
 
       <ul class="hints">
         @for (hint of hints(); track hint.id) {
-          <li>
+          <li [class.warn]="hint.action === 'ssh'">
             <strong>{{ hint.title }}</strong>
             <span>{{ hint.detail }}</span>
+            @if (hint.action === 'ssh') {
+              <button type="button" class="linkish" (click)="openSshSettings()">
+                Fix in SSH settings
+              </button>
+            }
           </li>
         }
       </ul>
@@ -87,9 +104,11 @@
         <button type="button" class="bl-btn" (click)="showRemotes()" [disabled]="busy()">
           Remotes
         </button>
-        <button type="button" class="bl-btn" (click)="openSshSettings()" [disabled]="busy()">
-          SSH settings
-        </button>
+        @if (primaryAction() !== 'ssh') {
+          <button type="button" class="bl-btn" (click)="openSshSettings()" [disabled]="busy()">
+            SSH settings
+          </button>
+        }
         @if (ssoUrl()) {
           <button type="button" class="bl-btn" (click)="openSso()" [disabled]="busy()">
             Org SSO
@@ -107,7 +126,23 @@
             {{ busy() ? 'Working…' : 'Switch to SSH' }}
           </button>
         }
-        <button type="button" class="bl-btn" [class.bl-btn-primary]="!canSwitchToSsh()" (click)="testConnection()" [disabled]="busy()">
+        @if (primaryAction() === 'ssh') {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            (click)="openSshSettings()"
+            [disabled]="busy()"
+          >
+            Set up SSH
+          </button>
+        }
+        <button
+          type="button"
+          class="bl-btn"
+          [class.bl-btn-primary]="primaryAction() === 'test' && !canSwitchToSsh()"
+          (click)="testConnection()"
+          [disabled]="busy()"
+        >
           {{ busy() ? 'Testing…' : 'Test connection' }}
         </button>
       </footer>

@@ -20,6 +20,14 @@
           <ng-icon name="lucideRefreshCw" size="14" />
           Refresh
         </button>
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="testConnection()"
+          [disabled]="testing()"
+        >
+          {{ testing() ? 'Testing…' : 'Test' }}
+        </button>
         <button type="button" class="bl-btn" (click)="goSettings()">Manage</button>
       }
     </div>

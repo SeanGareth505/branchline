@@ -221,7 +221,7 @@ pub fn probe_remote(input: ProbeRemoteInput) -> AppResult<ProbeRemoteOutput> {
     Ok(run_ls_remote(&path, &url))
 }
 
-fn resolve_probe_url(path: &Path, url: Option<&str>, remote: Option<&str>) -> AppResult<String> {
+pub(crate) fn resolve_probe_url(path: &Path, url: Option<&str>, remote: Option<&str>) -> AppResult<String> {
     let explicit = url.map(str::trim).filter(|v| !v.is_empty());
     if let Some(value) = explicit {
         return Ok(value.to_string());
@@ -252,7 +252,7 @@ fn remote_protocol(url: &str) -> &'static str {
     }
 }
 
-fn run_ls_remote(path: &Path, url: &str) -> ProbeRemoteOutput {
+pub(crate) fn run_ls_remote(path: &Path, url: &str) -> ProbeRemoteOutput {
     let protocol = remote_protocol(url).to_string();
     let bin = match git_cli::git_bin() {
         Ok(bin) => bin,

@@ -16,6 +16,7 @@ import {
   normalizeRemoteUrl,
   parseRemoteWebBase,
   remoteProtocol,
+  remoteRepoSlug,
   toSshRemoteUrl,
 } from '../../../shared/git/repo-links';
 
@@ -34,6 +35,7 @@ export class RemoteTroubleshootDialog {
   readonly busy = signal(false);
   readonly probe = signal<ProbeRemoteOutput | null>(null);
   readonly gitEnv = signal<GitEnvSnapshot | null>(null);
+  readonly envReady = signal(false);
   readonly showRaw = signal(false);
   private opened = false;
 
@@ -42,6 +44,9 @@ export class RemoteTroubleshootDialog {
     const raw = this.rawError();
     if (!raw) {
       return 'Test the remote, confirm the URL, and fix Git credentials or SSH if the host says the repository was not found.';
+    }
+    if (/repository not found/i.test(raw) && this.protocol() === 'ssh') {
+      return 'GitHub returned “not found” for this SSH remote. If you can open the repo in a browser, the key is missing, not added on GitHub, or not authorized for this org’s SSO — GitHub hides private repos as not found.';
     }
     return humanizeGitError(raw);
   });
@@ -59,6 +64,7 @@ export class RemoteTroubleshootDialog {
   });
 
   readonly protocol = computed(() => remoteProtocol(this.currentUrl()));
+  readonly repoSlug = computed(() => remoteRepoSlug(this.currentUrl()));
   readonly sshUrl = computed(() => toSshRemoteUrl(this.currentUrl()));
   readonly webUrl = computed(() => parseRemoteWebBase(this.currentUrl())?.webBase ?? null);
   readonly ssoUrl = computed(() => githubSsoUrl(this.currentUrl()));
@@ -67,11 +73,21 @@ export class RemoteTroubleshootDialog {
     return this.protocol() === 'https' && !!ssh && ssh !== this.currentUrl();
   });
 
+  readonly missingSshKey = computed(() => {
+    if (this.protocol() !== 'ssh' || !this.envReady()) return false;
+    const env = this.gitEnv();
+    return !env?.sshKeysFound && !env?.sshAgent;
+  });
+
+  readonly primaryAction = computed((): 'ssh' | 'test' =>
+    this.missingSshKey() ? 'ssh' : 'test',
+  );
+
   readonly hints = computed(() => {
     const protocol = this.protocol();
     const env = this.gitEnv();
     const helper = env?.credentialHelper?.trim() || 'not set';
-    const items: { id: string; title: string; detail: string }[] = [];
+    const items: { id: string; title: string; detail: string; action?: 'ssh' }[] = [];
     if (protocol === 'https') {
       items.push({
         id: 'auth',
@@ -94,14 +110,36 @@ export class RemoteTroubleshootDialog {
           detail: 'If this is an org repo, authorize your token or SSH key for SSO, then test again.',
         });
       }
-    } else if (protocol === 'ssh') {
-      items.push({
-        id: 'keys',
-        title: env?.sshKeysFound ? 'SSH keys found on this machine' : 'No SSH keys in ~/.ssh',
-        detail: env?.sshKeysFound
-          ? 'Confirm this public key is added on GitHub, and that the org has authorized it for SSO.'
-          : 'Generate a key in Settings → SSH, add it on GitHub, then test again.',
-      });
+    } else if (protocol === 'ssh' && this.envReady()) {
+      if (this.missingSshKey()) {
+        items.push({
+          id: 'keys',
+          title: 'No SSH keys in ~/.ssh',
+          detail: 'Generate a key, add it on GitHub, then test again.',
+          action: 'ssh',
+        });
+      } else if (env?.sshAgent && !env.sshKeyPaths.length) {
+        items.push({
+          id: 'keys',
+          title: 'SSH agent is running',
+          detail:
+            'Keys may live in 1Password or the agent instead of ~/.ssh. Confirm that key is on GitHub and authorized for this org.',
+        });
+      } else {
+        items.push({
+          id: 'keys',
+          title: 'SSH keys found on this machine',
+          detail:
+            'Confirm this public key is added on GitHub, and that the org has authorized it for SSO.',
+        });
+      }
+      if (this.ssoUrl()) {
+        items.push({
+          id: 'sso',
+          title: 'Organization SSO',
+          detail: 'Private org repos look like “not found” until you authorize this SSH key for SSO.',
+        });
+      }
     }
     items.push({
       id: 'url',
@@ -123,6 +161,8 @@ export class RemoteTroubleshootDialog {
       this.probe.set(null);
       this.showRaw.set(false);
       this.busy.set(false);
+      this.envReady.set(false);
+      this.gitEnv.set(null);
       const failed = normalizeRemoteUrl(this.failedUrl());
       const match = this.remotes().find((remote) => {
         const urls = [remote.fetchUrl, remote.pushUrl].map(normalizeRemoteUrl);
@@ -211,6 +251,8 @@ export class RemoteTroubleshootDialog {
       this.gitEnv.set(await this.tauri.getGitEnv());
     } catch {
       this.gitEnv.set(null);
+    } finally {
+      this.envReady.set(true);
     }
   }
 }

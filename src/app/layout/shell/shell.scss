@@ -153,6 +153,26 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+.nav-dot[data-status='running'] {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.nav-dot[data-status='success'] {
+  background: var(--git-added, #22c55e);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--git-added, #22c55e) 28%, transparent);
+}
+
+.nav-dot[data-status='failure'] {
+  background: var(--danger, #ef4444);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger, #ef4444) 28%, transparent);
+}
+
+.nav-dot[data-status='paused'] {
+  background: var(--git-modified);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--git-modified) 28%, transparent);
+}
+
 .nav-dot.live {
   animation: bl-nav-pulse 1.2s ease-in-out infinite;
 }

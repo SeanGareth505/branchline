@@ -91,6 +91,16 @@
   background: color-mix(in srgb, var(--git-deleted) 12%, transparent);
 }
 
+.icon.test:hover,
+.icon.test:disabled {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.icon.test:disabled {
+  opacity: 0.55;
+}
+
 .group-head-row .icon:hover {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);

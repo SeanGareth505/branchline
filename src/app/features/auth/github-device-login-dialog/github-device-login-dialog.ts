@@ -208,14 +208,16 @@ export class GithubDeviceLoginDialog {
       const result = await this.tauri.githubDeviceLoginPoll(clientId, this.deviceCode);
       if (result.status === 'complete' && result.accessToken) {
         this.stopPolling();
-        this.statusText.set('Saving…');
+        this.statusText.set('Checking connection…');
         const ok = await this.store.signInGitHost('github', result.accessToken);
         if (ok) {
           this.step.set('done');
           this.statusText.set('Signed in to GitHub');
           window.setTimeout(() => this.store.closeGithubDeviceLogin(), 900);
         } else {
-          this.errorText.set('Signed in, but saving the token failed.');
+          this.errorText.set(
+            'GitHub authorized this app, but the connection check failed. The token is saved — open Settings → Connections and tap Test.',
+          );
           this.step.set('error');
         }
         return;

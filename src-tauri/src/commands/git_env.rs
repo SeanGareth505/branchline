@@ -13,6 +13,8 @@ pub struct GitEnvSnapshot {
     pub ssh_keys_found: bool,
     pub ssh_key_paths: Vec<String>,
     #[serde(default)]
+    pub ssh_agent: bool,
+    #[serde(default)]
     pub commit_gpgsign: bool,
     #[serde(default)]
     pub gpg_format: String,
@@ -36,16 +38,44 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "user.email",
 ];
 
+fn ssh_agent_present() -> bool {
+    std::env::var_os("SSH_AUTH_SOCK").is_some_and(|v| !v.is_empty())
+}
+
 fn ssh_key_paths() -> Vec<String> {
     let mut paths = Vec::new();
     let Some(home) = dirs::home_dir() else {
         return paths;
     };
     let ssh = home.join(".ssh");
-    for name in ["id_ed25519", "id_rsa", "id_ecdsa"] {
+    for name in ["id_ed25519", "id_rsa", "id_ecdsa", "id_ed25519_sk", "id_ecdsa_sk"] {
         let path = ssh.join(name);
-        if path.exists() {
+        if path.is_file() {
             paths.push(path.to_string_lossy().to_string());
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(&ssh) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("id_") || name.ends_with(".pub") {
+                continue;
+            }
+            let value = path.to_string_lossy().to_string();
+            if !paths.contains(&value) {
+                paths.push(value);
+            }
+        }
+    }
+    if paths.is_empty() {
+        for name in ["id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"] {
+            let path = ssh.join(name);
+            if path.is_file() {
+                paths.push(path.to_string_lossy().to_string());
+            }
         }
     }
     paths
@@ -60,6 +90,7 @@ fn key_allowed(key: &str) -> bool {
 #[command]
 pub fn get_git_env() -> AppResult<GitEnvSnapshot> {
     let keys = ssh_key_paths();
+    let agent = ssh_agent_present();
     let gpgsign = git_cli::config_get("commit.gpgsign")?
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
         .unwrap_or(false);
@@ -68,8 +99,9 @@ pub fn get_git_env() -> AppResult<GitEnvSnapshot> {
         core_editor: git_cli::config_get("core.editor")?.unwrap_or_default(),
         diff_tool: git_cli::config_get("diff.tool")?.unwrap_or_default(),
         merge_tool: git_cli::config_get("merge.tool")?.unwrap_or_default(),
-        ssh_keys_found: !keys.is_empty(),
+        ssh_keys_found: !keys.is_empty() || agent,
         ssh_key_paths: keys,
+        ssh_agent: agent,
         commit_gpgsign: gpgsign,
         gpg_format: git_cli::config_get("gpg.format")?.unwrap_or_default(),
         user_signing_key: git_cli::config_get("user.signingkey")?.unwrap_or_default(),

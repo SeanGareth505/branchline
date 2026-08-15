@@ -332,6 +332,7 @@ export interface GitEnvSnapshot {
   mergeTool: string;
   sshKeysFound: boolean;
   sshKeyPaths: string[];
+  sshAgent: boolean;
   commitGpgsign: boolean;
   gpgFormat: string;
   userSigningKey: string;
@@ -547,6 +548,24 @@ export interface ProbeRemoteOutput {
   message: string;
 }
 
+export interface TestConnectionInput {
+  kind: 'github' | 'gitlab' | 'azureDevOps' | 'jira' | 'gitRemote' | 'ssh';
+  connectionId?: string;
+  path?: string;
+  remote?: string;
+  url?: string;
+  host?: string;
+}
+
+export interface TestConnectionOutput {
+  ok: boolean;
+  kind: string;
+  connectionId?: string;
+  account: string;
+  message: string;
+  detail: string;
+}
+
 export interface ReflogEntry {
   index: number;
   sha: string;
@@ -583,8 +602,17 @@ export interface UiSession {
   prSortKey?: string;
   splitMain?: number[];
   splitNested?: number[];
+  revisionGridColumns?: RevisionGridColumns;
   openRepoPaths?: string[];
   activeRepoPath?: string | null;
+}
+
+export interface RevisionGridColumns {
+  graph?: number;
+  message?: number;
+  author: number;
+  date: number;
+  sha: number;
 }
 
 export type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop';

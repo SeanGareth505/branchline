@@ -75,3 +75,10 @@ export function githubSsoUrl(url: string): string | null {
   if (!org) return null;
   return `https://github.com/orgs/${org}/sso`;
 }
+
+export function remoteRepoSlug(url: string): string | null {
+  const parsed = parseRemoteWebBase(url);
+  if (!parsed) return null;
+  const path = parsed.webBase.replace(/^https:\/\/[^/]+\//i, '');
+  return path || null;
+}

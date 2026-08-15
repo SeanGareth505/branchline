@@ -56,7 +56,7 @@ export function humanizeGitError(message: string): string {
   if (/repository not found/i.test(m)) {
     const url = extractRemoteUrlFromGitError(m);
     const target = url ? ` ${url}` : ' the remote';
-    return `Git said${target} was not found. If you can open that repo in a browser, this is usually missing Git credentials or org SSO — GitHub hides private repos as “not found”.`;
+    return `Git said${target} was not found. If you can open that repo in a browser, this is usually an SSH key, Git credentials, or org SSO — GitHub hides private repos as “not found”.`;
   }
 
   if (/permission denied \(publickey\)/i.test(m)) {

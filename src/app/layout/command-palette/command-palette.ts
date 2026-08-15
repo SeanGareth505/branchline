@@ -135,6 +135,14 @@ export class CommandPalette {
         run: () => store.openSettings('connections', 'jira'),
       },
       {
+        id: 'test-connections',
+        label: 'Test all connections',
+        group: 'Integrations',
+        run: () => {
+          void store.testAllConnections();
+        },
+      },
+      {
         id: 'profiles',
         label: 'Open Profiles',
         group: 'Navigate',

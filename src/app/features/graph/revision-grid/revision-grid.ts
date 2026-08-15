@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   computed,
   effect,
@@ -14,7 +15,7 @@ import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } 
 import { FormsModule } from '@angular/forms';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
-import type { ArtificialCommit, CommitInfo } from '../../../core/models';
+import type { ArtificialCommit, CommitInfo, RevisionGridColumns } from '../../../core/models';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import {
   GRAPH_PAD,
@@ -60,6 +61,33 @@ interface StaticRowView {
   commit?: CommitInfo;
   timeLabel: string;
   refs: RefChipView[];
+}
+
+type GridColId = 'graph' | 'message' | 'author' | 'date' | 'sha';
+
+const GRID_COL_IDS: GridColId[] = ['graph', 'message', 'author', 'date', 'sha'];
+
+const COL_MIN: Record<GridColId, number> = {
+  graph: 48,
+  message: 120,
+  author: 56,
+  date: 64,
+  sha: 52,
+};
+
+const COL_MAX: Record<GridColId, number> = {
+  graph: 800,
+  message: 2000,
+  author: 600,
+  date: 400,
+  sha: 280,
+};
+
+function clampColWidth(col: GridColId, width: number, graphMin: number): number {
+  const min = col === 'graph' ? Math.max(COL_MIN.graph, graphMin) : COL_MIN[col];
+  const max = Math.max(min, COL_MAX[col]);
+  if (!Number.isFinite(width)) return min;
+  return Math.round(Math.min(max, Math.max(min, width)));
 }
 
 @Component({
@@ -113,6 +141,7 @@ export class RevisionGrid {
   private dragSha: string | null = null;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.endResize());
     effect(() => {
       const reveal = this.store.graphReveal();
       if (!reveal) return;
@@ -166,9 +195,33 @@ export class RevisionGrid {
     return Math.max(64, GRAPH_PAD * 2 + lanes * LANE_WIDTH);
   });
 
-  readonly columns = computed(
-    () => `${this.graphWidth()}px minmax(200px, 1fr) 120px 128px 80px`,
-  );
+  readonly headerCols: { id: GridColId; label: string; className: string }[] = [
+    { id: 'graph', label: '', className: 'h-graph' },
+    { id: 'message', label: 'Description', className: 'h-message' },
+    { id: 'author', label: 'Author', className: 'h-author' },
+    { id: 'date', label: 'Date', className: 'h-date' },
+    { id: 'sha', label: 'Commit', className: 'h-sha' },
+  ];
+
+  readonly resizingCol = signal<GridColId | null>(null);
+  private resizeDrag: { col: GridColId; startX: number; startW: number } | null = null;
+  private bodyCursor = '';
+  private bodyUserSelect = '';
+
+  readonly columns = computed(() => {
+    const w = this.store.revisionGridColumns();
+    const graph = Math.max(this.graphWidth(), w.graph ?? this.graphWidth());
+    if (w.message != null) {
+      return `${graph}px ${w.message}px ${w.author}px ${w.date}px ${w.sha}px minmax(0, 1fr)`;
+    }
+    return `${graph}px minmax(200px, 1fr) ${w.author}px ${w.date}px ${w.sha}px`;
+  });
+
+  readonly gridMinWidth = computed(() => {
+    const w = this.store.revisionGridColumns();
+    const graph = Math.max(this.graphWidth(), w.graph ?? this.graphWidth());
+    return graph + (w.message ?? 200) + w.author + w.date + w.sha;
+  });
 
   readonly staticRows = computed((): StaticRowView[] => {
     const nodes = this.layout().nodes;
@@ -292,6 +345,52 @@ export class RevisionGrid {
     const body = this.viewport()?.elementRef.nativeElement;
     const header = this.headerRef()?.nativeElement;
     if (body && header) header.scrollLeft = body.scrollLeft;
+  }
+
+  onResizeStart(col: GridColId, event: PointerEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const header = this.headerRef()?.nativeElement;
+    if (!header) return;
+    const index = GRID_COL_IDS.indexOf(col);
+    const cell = header.children[index] as HTMLElement | undefined;
+    if (!cell) return;
+    this.resizeDrag = { col, startX: event.clientX, startW: cell.getBoundingClientRect().width };
+    this.resizingCol.set(col);
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this.bodyCursor = document.body.style.cursor;
+    this.bodyUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  onResizeMove(event: PointerEvent): void {
+    const drag = this.resizeDrag;
+    if (!drag) return;
+    const next = clampColWidth(
+      drag.col,
+      drag.startW + (event.clientX - drag.startX),
+      this.graphWidth(),
+    );
+    const current = this.store.revisionGridColumns();
+    const patched: RevisionGridColumns = { ...current, [drag.col]: next };
+    this.store.setRevisionGridColumns(patched, { persist: false });
+  }
+
+  onResizeEnd(): void {
+    this.endResize(true);
+  }
+
+  private endResize(persist = false): void {
+    if (!this.resizeDrag && !this.resizingCol()) return;
+    this.resizeDrag = null;
+    this.resizingCol.set(null);
+    document.body.style.cursor = this.bodyCursor;
+    document.body.style.userSelect = this.bodyUserSelect;
+    this.bodyCursor = '';
+    this.bodyUserSelect = '';
+    if (persist) this.store.setRevisionGridColumns(this.store.revisionGridColumns());
   }
 
   onDragStart(row: StaticRowView, event: DragEvent): void {

@@ -72,6 +72,16 @@
           </div>
           <button
             type="button"
+            class="icon always test"
+            (click)="test(r.name, $event)"
+            [disabled]="testingName() === r.name"
+            [attr.aria-label]="'Test ' + r.name"
+            [title]="testingName() === r.name ? 'Testing…' : 'Test connection'"
+          >
+            <ng-icon name="lucideZap" size="11" />
+          </button>
+          <button
+            type="button"
             class="icon"
             (click)="remove(r.name)"
             aria-label="Remove remote"

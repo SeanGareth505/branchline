@@ -37,6 +37,8 @@ import { ToastHost } from '../toast-host/toast-host';
 import { UpdateBanner } from '../../features/updates/update-banner/update-banner';
 import { UpdateService } from '../../core/update.service';
 
+type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
+
 @Component({
   selector: 'app-shell',
   imports: [
@@ -117,4 +119,52 @@ export class Shell {
   isActive(view: AppView): boolean {
     return this.store.view() === view;
   }
+
+  readonly releaseNavStatus = computed((): ReleaseNavStatus | null => {
+    if (this.store.releaseAttaching()) return 'running';
+    const activity = this.store.releaseActivity();
+    if (!activity) return null;
+    if (activity.phase === 'error' || activity.ok === false) return 'failure';
+    const jobs = activity.deployJobs ?? [];
+    let pending = false;
+    let failed = false;
+    for (const job of jobs) {
+      const conclusion = job.conclusion?.trim() ?? '';
+      if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
+        failed = true;
+        continue;
+      }
+      if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
+        continue;
+      }
+      if (job.status.trim() !== 'completed') pending = true;
+    }
+    if (this.store.releaseBusy() || pending) return 'running';
+    if (failed) return 'failure';
+    if (activity.needsRefresh) return 'paused';
+    if (activity.phase === 'done') return 'success';
+    return 'running';
+  });
+
+  readonly releaseNavLabel = computed(() => {
+    switch (this.releaseNavStatus()) {
+      case 'running':
+        return 'Release in progress';
+      case 'success':
+        return 'Last release succeeded';
+      case 'failure':
+        return 'Release failed';
+      case 'paused':
+        return 'Release tracking paused';
+      default:
+        return '';
+    }
+  });
+
+  readonly releaseNavTitle = computed(() => {
+    const label = this.releaseNavLabel();
+    return label
+      ? `Ship versions, track release progress — ${label}`
+      : 'Ship versions, track release progress';
+  });
 }

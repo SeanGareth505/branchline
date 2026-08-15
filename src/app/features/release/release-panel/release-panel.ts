@@ -154,8 +154,7 @@ export class ReleasePanel {
   readonly timelineView = signal<'steps' | 'actions'>('steps');
   private readonly jobOpen = signal<Record<string, boolean>>({});
   private readonly nestedActionsOverride = signal<boolean | null>(null);
-  private jobFilterTouched = false;
-  private lastInProgressCount = -1;
+  private lastActivityStart = 0;
 
   readonly jobCounts = computed(() => {
     let inProgress = 0;
@@ -177,11 +176,14 @@ export class ReleasePanel {
 
   readonly jobFilterTabs = computed((): JobFilterTab[] => {
     const counts = this.jobCounts();
+    const bucket = activityBucket(this.activity());
+    const countFor = (id: JobFilter, jobs: number): number =>
+      jobs || (bucket === id && this.activity() ? 1 : 0);
     return [
-      { id: 'in_progress', label: 'In progress', count: counts.in_progress },
-      { id: 'completed', label: 'History', count: counts.completed },
-      { id: 'failed', label: 'Failed', count: counts.failed },
-      { id: 'all', label: 'All', count: counts.all },
+      { id: 'in_progress', label: 'In progress', count: countFor('in_progress', counts.in_progress) },
+      { id: 'completed', label: 'History', count: countFor('completed', counts.completed) },
+      { id: 'failed', label: 'Failed', count: countFor('failed', counts.failed) },
+      { id: 'all', label: 'All', count: counts.all || (this.activity() ? 1 : 0) },
     ];
   });
 
@@ -229,12 +231,17 @@ export class ReleasePanel {
 
   readonly jobEmptyLabel = computed(() => {
     const counts = this.jobCounts();
+    const bucket = activityBucket(this.activity());
     switch (this.jobFilter()) {
       case 'in_progress':
         if (counts.failed) return `No jobs in progress · ${counts.failed} failed`;
-        return counts.completed
-          ? `No jobs in progress · ${counts.completed} finished`
-          : 'No jobs in progress';
+        if (counts.completed || bucket === 'completed') {
+          return counts.completed
+            ? `No jobs in progress · ${counts.completed} finished`
+            : 'No release in progress';
+        }
+        if (bucket === 'failed') return 'No jobs in progress · last release failed';
+        return 'No jobs in progress';
       case 'completed':
         return 'No finished jobs yet';
       case 'failed':
@@ -242,6 +249,34 @@ export class ReleasePanel {
       default:
         return 'No jobs loaded yet';
     }
+  });
+
+  readonly emptyTabAction = computed((): { filter: JobFilter; label: string } | null => {
+    const filter = this.jobFilter();
+    const counts = this.jobCounts();
+    const bucket = activityBucket(this.activity());
+    if (filter === 'in_progress') {
+      if (counts.failed || bucket === 'failed') return { filter: 'failed', label: 'Show failed' };
+      if (counts.completed || bucket === 'completed') {
+        return { filter: 'completed', label: 'Show history' };
+      }
+    }
+    if (filter !== 'all' && (counts.all || this.activity())) {
+      return { filter: 'all', label: 'Show all' };
+    }
+    return null;
+  });
+
+  readonly showReleaseDetails = computed(() => {
+    const activity = this.activity();
+    if (!activity) return false;
+    const filter = this.jobFilter();
+    if (filter === 'all') return true;
+    const bucket = activityBucket(activity);
+    if (filter === bucket) return true;
+    if (filter === 'failed' && this.jobCounts().failed > 0) return true;
+    if (filter === 'in_progress' && this.jobCounts().in_progress > 0) return true;
+    return false;
   });
 
   readonly actionsHostStep = computed(() => {
@@ -381,13 +416,10 @@ export class ReleasePanel {
       void this.updates.checkForUpdates({ silent: true });
     });
     effect(() => {
-      const counts = this.jobCounts();
-      const prev = this.lastInProgressCount;
-      this.lastInProgressCount = counts.in_progress;
-      if (this.jobFilterTouched || this.jobFilter() !== 'in_progress') return;
-      if (prev > 0 && counts.in_progress === 0) {
-        this.jobFilter.set(counts.failed > 0 ? 'failed' : 'all');
-      }
+      const started = this.activity()?.startedAt ?? 0;
+      if (started === this.lastActivityStart) return;
+      this.lastActivityStart = started;
+      this.jobFilter.set('in_progress');
     });
   }
 
@@ -453,7 +485,6 @@ export class ReleasePanel {
   }
 
   setJobFilter(filter: JobFilter): void {
-    this.jobFilterTouched = true;
     this.jobFilter.set(filter);
   }
 
@@ -465,6 +496,13 @@ export class ReleasePanel {
     }
     this.jobOpen.update((state) => ({ ...state, [view.name]: !view.open }));
   }
+}
+
+function activityBucket(activity: { phase: ReleasePhase; ok?: boolean | null; needsRefresh?: boolean } | null): JobFilter {
+  if (!activity) return 'in_progress';
+  if (activity.phase === 'error' || activity.ok === false) return 'failed';
+  if (activity.phase === 'done' && !activity.needsRefresh) return 'completed';
+  return 'in_progress';
 }
 
 function chipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {

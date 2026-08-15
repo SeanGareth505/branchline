@@ -3,7 +3,7 @@ import {
   humanizeGitError,
   isRemoteAccessError,
 } from './git-error';
-import { githubSsoUrl, normalizeRemoteUrl, remoteProtocol, toSshRemoteUrl } from './repo-links';
+import { githubSsoUrl, normalizeRemoteUrl, remoteProtocol, remoteRepoSlug, toSshRemoteUrl } from './repo-links';
 
 describe('git remote errors', () => {
   const notFound =
@@ -25,6 +25,7 @@ describe('git remote errors', () => {
     expect(text).toContain('https://github.com/Dis-Chem/dischem-sap-commerce/');
     expect(text.toLowerCase()).toContain('credentials');
     expect(text.toLowerCase()).toContain('sso');
+    expect(text.toLowerCase()).toContain('ssh');
   });
 
   it('converts HTTPS remotes to SSH', () => {
@@ -44,6 +45,12 @@ describe('git remote errors', () => {
   it('builds an org SSO URL', () => {
     expect(githubSsoUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
       'https://github.com/orgs/Dis-Chem/sso',
+    );
+  });
+
+  it('reads the org/repo slug from SSH remotes', () => {
+    expect(remoteRepoSlug('git@github.com:Dis-Chem/dischem-sap-commerce.git')).toBe(
+      'Dis-Chem/dischem-sap-commerce',
     );
   });
 });

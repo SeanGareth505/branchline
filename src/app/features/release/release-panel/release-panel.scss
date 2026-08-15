@@ -297,6 +297,31 @@ header {
   color: var(--text-muted);
 }
 
+.status-tabs {
+  flex-shrink: 0;
+  padding: 0.55rem 0.75rem 0.2rem;
+}
+
+.tab-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  flex: 1;
+  min-height: 0;
+  margin: 0.35rem 0.75rem 0.75rem;
+  padding: 1.15rem 1rem;
+  border: 1px dashed var(--glass-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--glass-bg-soft) 70%, transparent);
+}
+
+.tab-empty p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .job-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -357,6 +382,10 @@ header {
 .job-tabs button.fail.on {
   background: color-mix(in srgb, var(--danger, #ef4444) 10%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger, #ef4444) 32%, transparent);
+}
+
+.job-tabs button.live strong {
+  color: var(--accent);
 }
 
 .workflow-badge {

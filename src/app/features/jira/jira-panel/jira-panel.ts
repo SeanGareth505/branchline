@@ -30,6 +30,7 @@ export class JiraPanel {
   readonly transitionKey = signal<string | null>(null);
   readonly transitions = signal<JiraTransition[]>([]);
   readonly transitionsLoading = signal(false);
+  readonly testing = signal(false);
 
   readonly showingDummy = computed(() => !this.store.hasLinkedJira());
   readonly issues = computed(() => this.store.jiraIssues());
@@ -97,6 +98,23 @@ export class JiraPanel {
 
   async reload(): Promise<void> {
     await this.store.refreshJiraIssues(this.showingDummy() ? undefined : this.jql());
+  }
+
+  async testConnection(): Promise<void> {
+    if (this.testing()) return;
+    const conn = this.store
+      .settings()
+      .connections.find((c) => c.provider === 'jira' && this.store.isConnectionLinked(c));
+    if (!conn) {
+      this.goSettings();
+      return;
+    }
+    this.testing.set(true);
+    try {
+      await this.store.testConnection({ kind: 'jira', connectionId: conn.id });
+    } finally {
+      this.testing.set(false);
+    }
   }
 
   async signIn(): Promise<void> {

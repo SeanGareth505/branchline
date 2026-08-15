@@ -240,6 +240,7 @@
                 [class.flash]="isFlashing(row.branch.name)"
                 [class.locked]="row.branch.locked"
                 [class.tip-selected]="isTipSelected(row.branch.tipSha)"
+                [attr.aria-current]="row.branch.isCurrent ? 'true' : null"
                 [style.--depth]="row.depth"
                 (contextmenu)="openBranchMenu(row.branch.name, $event)"
               >
@@ -255,6 +256,9 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label">{{ row.name }}</span>
                   </button>
+                  @if (row.branch.isCurrent) {
+                    <span class="head-chip" title="Checked out — this is the branch you are on">HEAD</span>
+                  }
                   @if (row.branch.isCurrent && syncLabel(); as sync) {
                     @if (sync.kind === 'publish') {
                       <button

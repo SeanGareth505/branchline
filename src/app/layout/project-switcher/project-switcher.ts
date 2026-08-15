@@ -55,6 +55,7 @@ export class ProjectSwitcher {
   readonly repoIdentityKey = repoIdentityKey;
   readonly menuOpen = signal(false);
   readonly filter = signal('');
+  readonly testingHosts = signal(false);
   readonly tab = signal<SwitcherTab>('local');
   readonly activeKey = signal('');
   readonly collapsedGroups = signal<Record<string, boolean>>({});
@@ -256,6 +257,39 @@ export class ProjectSwitcher {
 
   refreshRemote(): void {
     void this.store.refreshHostRepositories(undefined, { force: true, notify: true });
+  }
+
+  async testLinkedHosts(): Promise<void> {
+    if (this.testingHosts()) return;
+    const hosts = this.linkedHosts();
+    if (!hosts.length) {
+      this.goConnections();
+      return;
+    }
+    this.testingHosts.set(true);
+    try {
+      let passed = 0;
+      for (const conn of hosts) {
+        const result = await this.store.testConnection(
+          {
+            kind: conn.provider as 'github' | 'gitlab' | 'azureDevOps',
+            connectionId: conn.id,
+          },
+          { toast: false },
+        );
+        if (result.ok) passed += 1;
+        else this.store.showError(result.message);
+      }
+      if (passed === hosts.length) {
+        this.store.showSuccess(
+          passed === 1 ? hosts[0].label + ' responded' : `All ${passed} hosts responded`,
+        );
+      } else if (passed > 0) {
+        this.store.showWarning(`${passed}/${hosts.length} hosts responded`);
+      }
+    } finally {
+      this.testingHosts.set(false);
+    }
   }
 
   onFilterChange(value: string): void {
