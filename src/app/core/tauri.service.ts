@@ -63,6 +63,7 @@ import type {
   ReleaseSetupFileHint,
   PollReleaseDeployOutput,
 } from './models';
+import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
 
 @Injectable({ providedIn: 'root' })
 export class TauriService {
@@ -1652,6 +1653,7 @@ export class TauriService {
           { id: 'chore', label: 'chore', description: 'Maintenance' },
           { id: 'revert', label: 'revert', description: 'Revert a previous commit' },
         ],
+        ticketFromBranch: { ...DEFAULT_TICKET_FROM_BRANCH },
         githubOAuthClientId: '',
         notificationsEnabled: true,
         notifyToasts: true,
@@ -3006,6 +3008,7 @@ export class TauriService {
         { id: 'chore', label: 'chore', description: 'Maintenance' },
         { id: 'revert', label: 'revert', description: 'Revert a previous commit' },
       ],
+      ticketFromBranch: { ...DEFAULT_TICKET_FROM_BRANCH },
       githubOAuthClientId: '',
       notificationsEnabled: true,
       notifyToasts: true,

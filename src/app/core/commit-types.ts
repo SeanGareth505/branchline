@@ -45,21 +45,50 @@ export function normalizeCommitTypes(raw: unknown): CommitTypeOption[] {
   return out.length ? out : DEFAULT_COMMIT_TYPES.map((t) => ({ ...t }));
 }
 
+export interface ParsedConventionalSubject {
+  type: string;
+  scope: string;
+  breaking: boolean;
+  summary: string;
+}
+
 export function commitTypePrefixPattern(types: CommitTypeOption[]): RegExp {
   const ids = types.map((t) => escapeRegex(t.id)).filter(Boolean);
   const alt = ids.length ? ids.join('|') : '[a-z][a-z0-9-]*';
-  return new RegExp(`^(${alt}):\\s*`, 'i');
+  return new RegExp(`^(${alt})(?:\\([^)]*\\))?(!)?:\\s*`, 'i');
 }
 
 export function parseConventionalSubject(
   subject: string,
   types: CommitTypeOption[],
-): { type: string; summary: string } | null {
+): ParsedConventionalSubject | null {
   const ids = types.map((t) => escapeRegex(t.id)).filter(Boolean);
   const alt = ids.length ? ids.join('|') : '[a-z][a-z0-9-]*';
-  const match = subject.match(new RegExp(`^(${alt}):\\s*(.*)$`, 'i'));
+  const match = subject
+    .trim()
+    .match(new RegExp(`^(${alt})(?:\\(([^)]*)\\))?(!)?:\\s*(.*)$`, 'i'));
   if (!match) return null;
-  return { type: match[1].toLowerCase(), summary: match[2] ?? '' };
+  return {
+    type: match[1].toLowerCase(),
+    scope: (match[2] ?? '').trim(),
+    breaking: !!match[3],
+    summary: match[4] ?? '',
+  };
+}
+
+export function formatConventionalHead(input: {
+  type: string;
+  scope?: string;
+  breaking?: boolean;
+  subject: string;
+}): string {
+  const type = input.type.trim();
+  const subject = input.subject.replace(/\s+/g, ' ').trim();
+  if (!type) return subject;
+  const scope = (input.scope ?? '').trim();
+  const wrapped = scope ? `(${scope})` : '';
+  const bang = input.breaking ? '!' : '';
+  return subject ? `${type}${wrapped}${bang}: ${subject}` : `${type}${wrapped}${bang}:`;
 }
 
 function escapeRegex(value: string): string {

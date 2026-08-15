@@ -261,6 +261,18 @@ export interface DetectedEditors {
   vscodePath: string | null;
 }
 
+export type TicketCase = 'preserve' | 'upper' | 'lower';
+
+export interface TicketFromBranchSettings {
+  enabled: boolean;
+  matchTicketKey: boolean;
+  useSegment: boolean;
+  segmentIndex: number;
+  customPattern: string;
+  ticketCase: TicketCase;
+  putInScope: boolean;
+}
+
 export interface AppSettings {
   theme: string;
   accent: string;
@@ -293,6 +305,7 @@ export interface AppSettings {
   sshClient: SshClientPreference | string;
   connections: ConnectionConfig[];
   commitTypes: CommitTypeOption[];
+  ticketFromBranch: TicketFromBranchSettings;
   githubOAuthClientId: string;
   notificationsEnabled: boolean;
   notifyToasts: boolean;

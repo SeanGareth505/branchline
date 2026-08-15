@@ -374,27 +374,74 @@
                 <button type="button" class="bl-btn quiet" (click)="applyTemplate(t)">{{ t.name }}</button>
               }
             }
-            @if (jiraKeyHint(); as key) {
-              <span class="type-sep" aria-hidden="true"></span>
-              <button type="button" class="bl-btn quiet" (click)="insertJiraKey()" title="Insert Jira key into subject">
-                {{ key }}
-              </button>
-              <button type="button" class="bl-btn quiet" (click)="insertFixesFooter()" title="Add Fixes KEY footer">
-                Fixes
-              </button>
-            }
           </div>
 
-          <label class="field subject-field">
-            <span class="sr-only">Commit message</span>
+          <div class="headline" [class.conventional]="!!commitType()">
+            @if (commitType(); as type) {
+              <span class="headline-type">{{ type }}</span>
+              <span class="headline-paren" aria-hidden="true">(</span>
+              <input
+                class="scope-input"
+                type="text"
+                spellcheck="false"
+                placeholder="scope"
+                [style.width.ch]="scopeWidthCh()"
+                [ngModel]="scope()"
+                (ngModelChange)="onScopeChange($event)"
+                aria-label="Commit scope or ticket"
+              />
+              <span class="headline-paren" aria-hidden="true">)</span>
+              <button
+                type="button"
+                class="headline-bang"
+                [class.on]="breaking()"
+                (click)="toggleBreaking()"
+                [attr.aria-pressed]="breaking()"
+                title="Breaking change"
+              >
+                !
+              </button>
+              <span class="headline-colon" aria-hidden="true">:</span>
+            }
+            <input
+              class="subject-input"
+              type="text"
+              [placeholder]="commitType() ? 'Short summary' : 'Commit message'"
+              [ngModel]="subject()"
+              (ngModelChange)="onSubjectChange($event)"
+              aria-label="Commit subject"
+            />
+          </div>
+
+          <div class="headline-meta">
+            @if (suggestedTicket(); as key) {
+              @if (!commitType()) {
+                <span class="meta-tag">Pick a type for feat({{ key }}):</span>
+              } @else if (scope().trim() !== key) {
+                <button type="button" class="meta-btn" (click)="useSuggestedTicket()" [title]="'Put ' + key + ' in the scope'">
+                  Use {{ key }}
+                </button>
+              } @else if (ticketFromBranch() === key && !store.activeJiraKey()) {
+                <span class="meta-tag">From branch</span>
+              } @else if (store.activeJiraKey()) {
+                <span class="meta-tag">From Jira</span>
+              }
+              <button type="button" class="meta-btn" (click)="insertFixesFooter()" [title]="'Add Fixes ' + key + ' to the body'">
+                Fixes {{ key }}
+              </button>
+            }
+            <span class="hint" [class.warn]="headlineTooLong()">{{ charHint() }}</span>
+          </div>
+
+          <label class="field body-field">
+            <span class="sr-only">Commit body</span>
             <textarea
               class="message"
-              rows="4"
-              placeholder="Commit message"
-              [ngModel]="commitMessageField()"
-              (ngModelChange)="onCommitMessageChange($event)"
+              rows="3"
+              placeholder="Body (optional)"
+              [ngModel]="body()"
+              (ngModelChange)="body.set($event)"
             ></textarea>
-            <span class="hint" [class.warn]="subject().trim().length > 72">{{ charHint() }}</span>
           </label>
         </div>
 

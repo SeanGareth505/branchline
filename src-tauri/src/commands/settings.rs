@@ -92,6 +92,8 @@ pub struct AppSettings {
     pub connections: Vec<ConnectionConfig>,
     #[serde(default = "default_commit_types")]
     pub commit_types: Vec<CommitTypeOption>,
+    #[serde(default = "default_ticket_from_branch")]
+    pub ticket_from_branch: TicketFromBranchSettings,
     #[serde(default)]
     pub github_oauth_client_id: String,
     #[serde(default = "default_true")]
@@ -126,6 +128,25 @@ pub struct AppSettings {
     pub pr_templates: Vec<SavedPrTemplate>,
     #[serde(default = "default_pr_create_method")]
     pub pr_create_method: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TicketFromBranchSettings {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub match_ticket_key: bool,
+    #[serde(default)]
+    pub use_segment: bool,
+    #[serde(default = "default_segment_index")]
+    pub segment_index: i32,
+    #[serde(default)]
+    pub custom_pattern: String,
+    #[serde(default = "default_ticket_case")]
+    pub ticket_case: String,
+    #[serde(default = "default_true")]
+    pub put_in_scope: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +200,26 @@ fn default_branch_prefixes() -> Vec<String> {
 
 fn default_preferred_editor() -> String {
     "auto".into()
+}
+
+fn default_segment_index() -> i32 {
+    -1
+}
+
+fn default_ticket_case() -> String {
+    "preserve".into()
+}
+
+fn default_ticket_from_branch() -> TicketFromBranchSettings {
+    TicketFromBranchSettings {
+        enabled: true,
+        match_ticket_key: true,
+        use_segment: false,
+        segment_index: -1,
+        custom_pattern: String::new(),
+        ticket_case: default_ticket_case(),
+        put_in_scope: true,
+    }
 }
 
 fn default_commit_types() -> Vec<CommitTypeOption> {
@@ -323,6 +364,7 @@ impl Default for AppSettings {
             ssh_client: default_ssh_client(),
             connections: default_connections(),
             commit_types: default_commit_types(),
+            ticket_from_branch: default_ticket_from_branch(),
             github_oauth_client_id: String::new(),
             notifications_enabled: true,
             notify_toasts: true,
@@ -390,6 +432,12 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
     }
     if settings.commit_types.is_empty() {
         settings.commit_types = default_commit_types();
+    }
+    if settings.ticket_from_branch.ticket_case != "preserve"
+        && settings.ticket_from_branch.ticket_case != "upper"
+        && settings.ticket_from_branch.ticket_case != "lower"
+    {
+        settings.ticket_from_branch.ticket_case = default_ticket_case();
     }
     if settings.connections.is_empty() {
         settings.connections = default_connections();

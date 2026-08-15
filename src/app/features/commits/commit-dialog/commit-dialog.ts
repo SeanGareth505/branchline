@@ -14,9 +14,11 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
+  formatConventionalHead,
   normalizeCommitTypeId,
   parseConventionalSubject,
 } from '../../../core/commit-types';
+import { extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
@@ -50,6 +52,9 @@ export class CommitDialog {
   readonly pushAfter = signal(true);
   readonly allowEmpty = signal(false);
   readonly commitType = signal('');
+  readonly scope = signal('');
+  readonly breaking = signal(false);
+  private readonly scopeManual = signal(false);
   readonly fileFilter = signal('');
   readonly selectedPath = signal<string | null>(null);
   readonly selectedStaged = signal(false);
@@ -68,9 +73,16 @@ export class CommitDialog {
   private lastFileIndex: { pane: 'unstaged' | 'staged' | 'conflicted'; index: number } | null =
     null;
 
-  readonly jiraKeyHint = computed(
-    () => this.store.activeJiraKey() || this.jiraFromBranch(this.store.status()?.branch ?? ''),
-  );
+  readonly suggestedTicket = computed(() => {
+    const picked = this.store.activeJiraKey()?.trim();
+    if (picked) return picked;
+    return extractTicketFromBranch(
+      this.store.status()?.branch ?? '',
+      this.store.settings().ticketFromBranch,
+    );
+  });
+
+  readonly jiraKeyHint = computed(() => this.suggestedTicket());
 
   readonly types = computed(() => {
     const configured = this.store.settings().commitTypes;
@@ -118,10 +130,17 @@ export class CommitDialog {
   );
 
   readonly messagePreview = computed(() => {
-    const type = this.commitType();
     const subject = this.subject().trim();
+    const type = this.commitType();
+    const head = type && subject
+      ? formatConventionalHead({
+          type,
+          scope: this.scope(),
+          breaking: this.breaking(),
+          subject,
+        })
+      : subject;
     const body = this.body().trim();
-    const head = type && subject ? `${type}: ${subject}` : subject;
     let msg = head;
     if (body) msg = `${head}\n\n${body}`;
     if (this.signOff() && this.identity()) {
@@ -175,23 +194,52 @@ export class CommitDialog {
   });
 
   readonly charHint = computed(() => {
-    const len = this.subject().trim().length;
-    if (len === 0) return 'Write a commit message';
+    const subject = this.subject().trim();
+    const type = this.commitType();
+    const line = type
+      ? formatConventionalHead({
+          type,
+          scope: this.scope(),
+          breaking: this.breaking(),
+          subject,
+        })
+      : subject;
+    const len = line.length;
+    if (!subject) return 'Write a short summary';
     if (len <= 50) return `${len}/50 ideal`;
     if (len <= 72) return `${len}/72 ok`;
     return `${len} chars — consider shortening`;
   });
 
+  readonly headlineTooLong = computed(() => {
+    const subject = this.subject().trim();
+    if (!subject) return false;
+    const type = this.commitType();
+    const line = type
+      ? formatConventionalHead({
+          type,
+          scope: this.scope(),
+          breaking: this.breaking(),
+          subject,
+        })
+      : subject;
+    return line.length > 72;
+  });
+
   readonly canAddType = computed(() => !!normalizeCommitTypeId(this.newTypeDraft()));
 
-  readonly commitMessageField = computed(() => {
-    const type = this.commitType();
-    const subject = this.subject();
-    const body = this.body();
-    const head = type ? `${type}: ${subject}` : subject;
-    if (!body) return head;
-    return `${head}\n\n${body}`;
+  readonly scopeWidthCh = computed(() => {
+    const n = Math.max(this.scope().length, this.suggestedTicket()?.length ?? 0, 7);
+    return Math.min(24, n + 1);
   });
+
+  readonly ticketFromBranch = computed(
+    () =>
+      extractTicketFromBranch(
+        this.store.status()?.branch ?? '',
+        this.store.settings().ticketFromBranch,
+      ),
+  );
 
   constructor() {
     effect(() => {
@@ -634,25 +682,37 @@ export class CommitDialog {
     }
   }
 
-  onCommitMessageChange(value: string): void {
-    const splitAt = value.indexOf('\n\n');
-    const head = splitAt >= 0 ? value.slice(0, splitAt) : value;
-    const rest = splitAt >= 0 ? value.slice(splitAt + 2).trim() : '';
-    const subjectLine = head.split('\n')[0] ?? '';
-    const match = subjectLine.match(/^([a-z][a-z0-9-]*)\s*:\s*(.*)$/i);
-    if (match && this.store.settings().commitTypes.some((t) => t.id === match[1].toLowerCase())) {
-      this.commitType.set(match[1].toLowerCase());
-      this.subject.set(match[2] ?? '');
-    } else if (this.commitType()) {
-      this.subject.set(subjectLine.replace(new RegExp(`^${this.commitType()}:\\s*`, 'i'), ''));
-    } else {
-      this.subject.set(subjectLine);
+  onSubjectChange(value: string): void {
+    if (value.includes('\n')) {
+      const [first, ...rest] = value.split('\n');
+      this.applySubjectLine(first ?? '');
+      const restText = rest.join('\n').replace(/^\n+/, '').trim();
+      if (restText && !this.body().trim()) this.body.set(restText);
+      return;
     }
-    this.body.set(rest);
+    const types = this.store.settings().commitTypes;
+    const parsed =
+      parseConventionalSubject(value, types) ?? parseConventionalSubject(value, []);
+    if (parsed) {
+      this.applySubjectLine(value);
+      return;
+    }
+    this.subject.set(value);
+  }
+
+  onScopeChange(value: string): void {
+    this.scope.set(value);
+    this.scopeManual.set(true);
   }
 
   setType(type: string): void {
-    this.commitType.set(this.commitType() === type ? '' : type);
+    const next = this.commitType() === type ? '' : type;
+    this.commitType.set(next);
+    if (next) this.fillScopeFromTicket();
+  }
+
+  toggleBreaking(): void {
+    this.breaking.set(!this.breaking());
   }
 
   startAddType(): void {
@@ -698,8 +758,10 @@ export class CommitDialog {
     const filled = template.pattern
       .replaceAll('{type}', this.commitType() || types[0]?.id || 'feat')
       .replaceAll('{summary}', this.subject() || 'summary')
+      .replaceAll('{scope}', this.scope() || this.jiraKeyHint() || 'scope')
       .replaceAll('{name}', branch)
-      .replaceAll('{jira}', jira);
+      .replaceAll('{jira}', jira)
+      .replaceAll('{ticket}', jira);
     if (filled.includes('\n')) {
       const [first, ...rest] = filled.split('\n');
       this.applySubjectLine(first);
@@ -709,25 +771,24 @@ export class CommitDialog {
     }
   }
 
-  insertJiraKey(): void {
-    const key = this.jiraKeyHint();
+  useSuggestedTicket(): void {
+    const key = this.suggestedTicket();
     if (!key) {
-      this.store.showWarning('Pick an issue in Jira first, or use a branch with an issue key');
+      this.store.showWarning(
+        'No ticket found on this branch. Pick a Jira issue, or configure Ticket from branch in Settings → Git.',
+      );
       return;
     }
-    const subject = this.subject().trim();
-    if (!subject) {
-      this.applySubjectLine(key);
-      return;
-    }
-    if (subject.includes(key)) return;
-    this.applySubjectLine(`${key} ${subject}`);
+    this.scope.set(key);
+    this.scopeManual.set(true);
   }
 
   insertFixesFooter(): void {
-    const key = this.jiraKeyHint();
+    const key = this.suggestedTicket();
     if (!key) {
-      this.store.showWarning('Pick an issue in Jira first, or use a branch with an issue key');
+      this.store.showWarning(
+        'No ticket found on this branch. Pick a Jira issue, or configure Ticket from branch in Settings → Git.',
+      );
       return;
     }
     const line = `Fixes ${key}`;
@@ -736,9 +797,12 @@ export class CommitDialog {
     this.body.set(body ? `${body}\n\n${line}` : line);
   }
 
-  private jiraFromBranch(branch: string): string | null {
-    const match = branch.match(/\b([A-Z][A-Z0-9]+-\d+)\b/);
-    return match?.[1] ?? null;
+  private fillScopeFromTicket(): void {
+    const settings = this.store.settings().ticketFromBranch;
+    if (!settings.enabled || !settings.putInScope) return;
+    if (this.scopeManual()) return;
+    const ticket = this.suggestedTicket();
+    if (ticket) this.scope.set(ticket);
   }
 
   toggleAmend(checked: boolean): void {
@@ -924,16 +988,14 @@ export class CommitDialog {
 
   private applySubjectLine(line: string): void {
     const types = this.store.settings().commitTypes;
-    const parsed = parseConventionalSubject(line, types);
+    const parsed =
+      parseConventionalSubject(line, types) ?? parseConventionalSubject(line, []);
     if (parsed) {
       this.commitType.set(parsed.type);
+      this.scope.set(parsed.scope);
+      this.breaking.set(parsed.breaking);
       this.subject.set(parsed.summary);
-      return;
-    }
-    const loose = line.match(/^([a-z][a-z0-9-]*):\s*(.*)$/i);
-    if (loose) {
-      this.commitType.set(loose[1].toLowerCase());
-      this.subject.set(loose[2] ?? '');
+      if (parsed.scope) this.scopeManual.set(true);
       return;
     }
     this.subject.set(line);
@@ -952,6 +1014,7 @@ export class CommitDialog {
     this.allowEmpty.set(false);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
+    this.fillScopeFromTicket();
     void this.store.loadRepoChecks();
 
     const status = this.store.status();
@@ -1022,6 +1085,9 @@ export class CommitDialog {
     this.pushAfter.set(this.store.settings().pushAfterCommit ?? true);
     this.allowEmpty.set(false);
     this.commitType.set('');
+    this.scope.set('');
+    this.breaking.set(false);
+    this.scopeManual.set(false);
     this.cancelAddType();
     this.selectedFiles.set(new Set());
   }

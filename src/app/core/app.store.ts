@@ -55,6 +55,10 @@ import { SelectService } from '../shared/ui/select-dialog/select.service';
 import { ReleaseDialogService } from '../features/release/release-dialog/release-dialog.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 import {
+  DEFAULT_TICKET_FROM_BRANCH,
+  normalizeTicketFromBranch,
+} from '../shared/git/ticket-from-branch';
+import {
   openPathsInPreferredEditor,
   preferredEditorLabel,
 } from '../shared/git/open-in-editor';
@@ -269,6 +273,7 @@ export class AppStore {
     sshClient: 'openssh',
     connections: defaultConnections(),
     commitTypes: DEFAULT_COMMIT_TYPES.map((t) => ({ ...t })),
+    ticketFromBranch: { ...DEFAULT_TICKET_FROM_BRANCH },
     githubOAuthClientId: '',
     notificationsEnabled: true,
     notifyToasts: true,
@@ -6659,6 +6664,7 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     sshClient: raw.sshClient || 'openssh',
     connections,
     commitTypes: normalizeCommitTypes(raw.commitTypes),
+    ticketFromBranch: normalizeTicketFromBranch(raw.ticketFromBranch),
     githubOAuthClientId: (raw.githubOAuthClientId ?? '').trim(),
     notificationsEnabled: raw.notificationsEnabled ?? true,
     notifyToasts: raw.notifyToasts ?? true,

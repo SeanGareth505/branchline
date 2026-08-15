@@ -16,10 +16,11 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
 import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
+import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
 
 @Component({
   selector: 'app-settings-page',
-  imports: [FormsModule, NgIcon, Dashboard],
+  imports: [FormsModule, NgIcon, Dashboard, TicketFromBranch],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
 })
@@ -45,7 +46,7 @@ export class SettingsPage implements OnInit {
   readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
     { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
     { id: 'appearance', label: 'Appearance', hint: 'Theme, accent, and UI modes' },
-    { id: 'git', label: 'Git', hint: 'Identity, pull/push, confirmations, commit types' },
+    { id: 'git', label: 'Git', hint: 'Identity, pull/push, commit types, and ticket from branch' },
     {
       id: 'notifications',
       label: 'Notifications',

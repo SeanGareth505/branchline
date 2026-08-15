@@ -1,0 +1,200 @@
+<article class="bl-panel block">
+  <div class="block-head">
+    <div>
+      <h2 class="block-title">Ticket from branch</h2>
+      <p class="block-hint">
+        Fill the conventional-commit scope from the current branch, like
+        <code>feat(sotf-123):</code>. You can always edit it before committing.
+      </p>
+    </div>
+    <button type="button" class="bl-btn quiet" (click)="resetDefaults()">Reset defaults</button>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Auto-fill from branch</strong>
+      <span>Read a ticket or folder from the branch name when you open Commit</span>
+    </div>
+    <div class="setting-control">
+      <label class="switch">
+        <input
+          type="checkbox"
+          [ngModel]="settings().enabled"
+          (ngModelChange)="setEnabled($event)"
+        />
+        <span></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="preview" [class.off]="!settings().enabled">
+    <div class="preview-head">
+      <span class="preview-kicker">Live preview</span>
+      @if (currentBranch() && tryBranch().trim()) {
+        <span class="preview-note">Trying a sample name — current branch is {{ currentBranch() }}</span>
+      } @else if (currentBranch()) {
+        <span class="preview-note">Using {{ currentBranch() }}</span>
+      }
+    </div>
+
+    <label class="try-field">
+      <span>Branch name</span>
+      <input
+        type="text"
+        [ngModel]="tryBranch()"
+        (ngModelChange)="tryBranch.set($event)"
+        [placeholder]="currentBranch() || 'sotf/feature/sotf-123'"
+        spellcheck="false"
+      />
+    </label>
+
+    <div class="segments" role="list">
+      @for (part of segments(); track $index) {
+        <button
+          type="button"
+          class="seg-part"
+          role="listitem"
+          [class.on]="selectedSegmentIndex($index)"
+          [disabled]="!settings().enabled"
+          (click)="pickSegment($index)"
+          [title]="'Use “' + part + '” as the ticket'"
+        >
+          {{ part }}
+        </button>
+        @if (!$last) {
+          <span class="seg-slash" aria-hidden="true">/</span>
+        }
+      } @empty {
+        <span class="empty">Enter a branch name to split it into folders</span>
+      }
+    </div>
+
+    <div class="result-row">
+      @if (extracted(); as ticket) {
+        <span class="result">
+          Ticket
+          <code>{{ ticket }}</code>
+        </span>
+        <code class="example">{{ exampleHead() }}</code>
+      } @else {
+        <span class="result muted">No ticket found — click a folder or add a pattern below</span>
+      }
+    </div>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Match ticket keys</strong>
+      <span>Find keys like <code>SOTF-123</code> or <code>sotf-123</code> anywhere in the branch</span>
+    </div>
+    <div class="setting-control">
+      <label class="switch">
+        <input
+          type="checkbox"
+          [ngModel]="settings().matchTicketKey"
+          (ngModelChange)="setMatchTicketKey($event)"
+          [disabled]="!settings().enabled"
+        />
+        <span></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Use a branch folder</strong>
+      <span>
+        Click a folder above. Ticket keys win when both match — turn that off to force a folder.
+      </span>
+    </div>
+    <div class="setting-control">
+      <button
+        type="button"
+        class="bl-btn quiet"
+        [disabled]="!settings().enabled"
+        (click)="useLastSegment()"
+      >
+        Last folder
+      </button>
+    </div>
+  </div>
+
+  <div class="setting stack">
+    <div class="setting-label">
+      <strong>Custom pattern</strong>
+      <span>Optional regex. First capture group wins, otherwise the whole match. Checked first.</span>
+    </div>
+    <label class="pattern-field">
+      <input
+        type="text"
+        spellcheck="false"
+        placeholder="([A-Za-z]+-\d+)"
+        [ngModel]="patternValue()"
+        (ngModelChange)="setCustomPattern($event)"
+        (blur)="commitCustomPattern()"
+        (keydown.enter)="$event.preventDefault(); commitCustomPattern()"
+        [disabled]="!settings().enabled"
+        [attr.aria-invalid]="!!patternError()"
+      />
+      @if (patternError(); as err) {
+        <span class="field-error">{{ err }}</span>
+      }
+    </label>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Put ticket in scope</strong>
+      <span>Write <code>feat(sotf-123):</code> instead of leaving the scope empty</span>
+    </div>
+    <div class="setting-control">
+      <label class="switch">
+        <input
+          type="checkbox"
+          [ngModel]="settings().putInScope"
+          (ngModelChange)="setPutInScope($event)"
+          [disabled]="!settings().enabled"
+        />
+        <span></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Ticket case</strong>
+      <span>Normalize the extracted key before it is filled in</span>
+    </div>
+    <div class="setting-control">
+      <div class="seg">
+        <button
+          type="button"
+          class="seg-btn"
+          [class.on]="settings().ticketCase === 'preserve'"
+          [disabled]="!settings().enabled"
+          (click)="setTicketCase('preserve')"
+        >
+          Keep
+        </button>
+        <button
+          type="button"
+          class="seg-btn"
+          [class.on]="settings().ticketCase === 'upper'"
+          [disabled]="!settings().enabled"
+          (click)="setTicketCase('upper')"
+        >
+          UPPER
+        </button>
+        <button
+          type="button"
+          class="seg-btn"
+          [class.on]="settings().ticketCase === 'lower'"
+          [disabled]="!settings().enabled"
+          (click)="setTicketCase('lower')"
+        >
+          lower
+        </button>
+      </div>
+    </div>
+  </div>
+</article>
