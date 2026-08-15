@@ -244,6 +244,14 @@ export class FileTreePanel {
     void this.store.ignorePath(path);
   }
 
+  skipLocally(path: string): void {
+    void this.store.setFileFlag(path, 'skip-worktree', true);
+  }
+
+  assumeUnchanged(path: string): void {
+    void this.store.setFileFlag(path, 'assume-unchanged', true);
+  }
+
   openMore(path: string, area: FileArea, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();

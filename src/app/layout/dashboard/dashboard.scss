@@ -212,6 +212,12 @@ h1 {
   background: var(--accent-hover);
 }
 
+.tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
 .search {
   display: flex;
   align-items: center;

@@ -79,6 +79,16 @@
       Untracked
       <strong>{{ counts().untracked }}</strong>
     </button>
+    @if (filter() === 'untracked' && counts().untracked > 0) {
+      <button
+        type="button"
+        class="extra"
+        title="Remove untracked files"
+        (click)="store.openGitCleanDialog()"
+      >
+        Clean…
+      </button>
+    }
   </div>
 
   <cdk-virtual-scroll-viewport
@@ -228,5 +238,12 @@
       <button type="button" (click)="openMergeTool(moreMenu().path); closeMore()">Mergetool</button>
       <button type="button" (click)="markResolved(moreMenu().path); closeMore()">Stage</button>
     }
+    <button type="button" (click)="skipLocally(moreMenu().path); closeMore()">
+      Skip this file locally
+    </button>
+    <button type="button" (click)="assumeUnchanged(moreMenu().path); closeMore()">
+      Assume unchanged
+    </button>
+    <button type="button" (click)="store.openGitCleanDialog(); closeMore()">Clean untracked…</button>
   </div>
 </ng-template>

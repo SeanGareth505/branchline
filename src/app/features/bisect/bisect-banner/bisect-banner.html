@@ -1,0 +1,35 @@
+@if (status(); as s) {
+  <div class="banner">
+    <div class="info">
+      <ng-icon name="lucideGitCommitHorizontal" size="16" />
+      <div class="copy">
+        <strong>{{ title() }}</strong>
+        <p class="hint">{{ hint() }}</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button
+        type="button"
+        class="bl-btn"
+        title="This commit does not have the bug"
+        (click)="store.bisectGood()"
+      >
+        Good
+      </button>
+      <button
+        type="button"
+        class="bl-btn bl-btn-primary"
+        title="This commit has the bug"
+        (click)="store.bisectBad()"
+      >
+        Bad
+      </button>
+      <button type="button" class="bl-btn" title="Skip this commit" (click)="store.bisectSkip()">
+        Skip
+      </button>
+      <button type="button" class="bl-btn" title="Leave bisect and return to the start branch" (click)="store.bisectReset()">
+        Reset
+      </button>
+    </div>
+  </div>
+}

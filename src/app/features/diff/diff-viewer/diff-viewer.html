@@ -109,6 +109,24 @@
             </button>
             <button
               type="button"
+              class="diff-toggle"
+              [class.on]="store.diffIgnoreWhitespace()"
+              title="Hide whitespace-only changes"
+              (click)="store.toggleDiffIgnoreWhitespace()"
+            >
+              Whitespace
+            </button>
+            <button
+              type="button"
+              class="diff-toggle"
+              [class.on]="store.diffWordHighlight()"
+              title="Highlight changed words on adjacent lines"
+              (click)="store.toggleDiffWordHighlight()"
+            >
+              Words
+            </button>
+            <button
+              type="button"
               class="bl-btn"
               (click)="toggleSideBySide()"
               [title]="sideBySide() ? 'Switch to unified diff' : 'Switch to side-by-side diff'"
@@ -124,16 +142,51 @@
           <p class="empty">Select a commit, Working directory, or file to view the diff.</p>
         } @else if (!store.selectedDiffPath()) {
           <p class="empty">Select a file from the list to view its diff.</p>
-        } @else if (!patch()) {
+        } @else if (imagePreview() && !preferPatch()) {
+          <div class="image-preview">
+            <div class="image-actions">
+              <button type="button" class="show-patch" (click)="showPatchView()">Show patch</button>
+            </div>
+            <div class="image-frames" [class.pair]="!!imagePreview()?.before && !!imagePreview()?.after">
+              @if (imagePreview()?.before; as before) {
+                <figure>
+                  <img [src]="before" alt="Before" />
+                  <figcaption>Before</figcaption>
+                </figure>
+              }
+              @if (imagePreview()?.after; as after) {
+                <figure>
+                  <img [src]="after" alt="After" />
+                  <figcaption>After</figcaption>
+                </figure>
+              }
+              @if (imagePreview()?.single; as single) {
+                <figure>
+                  <img [src]="single" alt="Preview" />
+                </figure>
+              }
+            </div>
+          </div>
+        } @else if (!patch() && !imagePreview()) {
           <p class="empty">No changes in this file.</p>
         } @else {
-          <app-patch-lines-view
-            [patch]="patch()"
-            [mode]="linesMode()"
-            [layout]="sideBySide() ? 'sideBySide' : 'unified'"
-            emptyMessage="No changes in this diff."
-            (applied)="onApplied()"
-          />
+          @if (imagePreview()) {
+            <div class="image-actions inline">
+              <button type="button" class="show-patch" (click)="showImageView()">Show image</button>
+            </div>
+          }
+          @if (patch()) {
+            <app-patch-lines-view
+              [patch]="patch()"
+              [mode]="linesMode()"
+              [layout]="sideBySide() ? 'sideBySide' : 'unified'"
+              [wordHighlight]="store.diffWordHighlight()"
+              emptyMessage="No changes in this diff."
+              (applied)="onApplied()"
+            />
+          } @else {
+            <p class="empty">No textual diff for this file.</p>
+          }
         }
       </section>
     </as-split-area>
@@ -183,5 +236,12 @@
         Apply all files
       </button>
     }
+    <button
+      type="button"
+      title="Restore this file from the selected commit"
+      (click)="restoreFile(fileMenu().path)"
+    >
+      Restore this version…
+    </button>
   </div>
 </ng-template>

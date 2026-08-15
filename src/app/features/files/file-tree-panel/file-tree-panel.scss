@@ -111,6 +111,18 @@
   cursor: default;
 }
 
+.chips .extra {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0.28rem 0.4rem;
+}
+
+.chips .extra:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
 .tree {
   flex: 1;
   min-height: 0;

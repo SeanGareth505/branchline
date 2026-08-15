@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -11,6 +11,7 @@ import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
   imports: [NgIcon, HelpTip, PageSkeleton],
   templateUrl: './templates-page.html',
   styleUrl: './templates-page.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TemplatesPage implements OnInit {
   private readonly tauri = inject(TauriService);

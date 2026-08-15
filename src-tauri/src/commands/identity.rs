@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli::{self, ConfigScope};
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -210,68 +210,28 @@ fn push_config_candidate(
 }
 
 fn history_authors(path: &Path) -> HashMap<String, HistoryAgg> {
-    let mut by_email: HashMap<String, HistoryAgg> = HashMap::new();
-
-    let (ok, out, _) = git_cli::run_git_allow_fail(path, &["shortlog", "-sne", "--all", "HEAD"]);
-    let lines: Vec<String> = if ok && !out.trim().is_empty() {
-        out.lines().map(|l| l.to_string()).collect()
-    } else {
-        let (ok2, out2, _) = git_cli::run_git_allow_fail(
-            path,
-            &["log", "--all", "--format=%aN%x09%aE", "-n", "400"],
-        );
-        if !ok2 {
-            return by_email;
-        }
-        let mut counts: HashMap<(String, String), i32> = HashMap::new();
-        for line in out2.lines() {
-            let Some((name, email)) = line.split_once('\t') else {
-                continue;
-            };
-            let name = name.trim();
-            let email = email.trim();
-            if name.is_empty() || email.is_empty() {
-                continue;
-            }
-            *counts
-                .entry((name.to_string(), email.to_string()))
-                .or_insert(0) += 1;
-        }
-        return fold_name_email_counts(counts);
-    };
-
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let Some((count_part, rest)) = trimmed.split_once('\t').or_else(|| {
-            let parts: Vec<_> = trimmed.splitn(2, char::is_whitespace).collect();
-            if parts.len() == 2 {
-                Some((parts[0], parts[1]))
-            } else {
-                None
-            }
-        }) else {
+    let (ok, out, _) = git_cli::run_git_allow_fail(
+        path,
+        &["log", "--all", "--format=%aN%x09%aE", "-n", "2000"],
+    );
+    if !ok {
+        return HashMap::new();
+    }
+    let mut counts: HashMap<(String, String), i32> = HashMap::new();
+    for line in out.lines() {
+        let Some((name, email)) = line.split_once('\t') else {
             continue;
         };
-        let count: i32 = count_part.trim().parse().unwrap_or(0);
-        let rest = rest.trim();
-        let (name, email) = if let Some(start) = rest.rfind('<') {
-            let name = rest[..start].trim();
-            let email = rest[start + 1..].trim().trim_end_matches('>');
-            (name, email)
-        } else {
-            continue;
-        };
+        let name = name.trim();
+        let email = email.trim();
         if name.is_empty() || email.is_empty() {
             continue;
         }
-        let agg = by_email.entry(email_key(email)).or_default();
-        *agg.names.entry(name.to_string()).or_insert(0) += count;
-        agg.total += count;
+        *counts
+            .entry((name.to_string(), email.to_string()))
+            .or_insert(0) += 1;
     }
-    by_email
+    fold_name_email_counts(counts)
 }
 
 fn fold_name_email_counts(counts: HashMap<(String, String), i32>) -> HashMap<String, HistoryAgg> {
@@ -352,7 +312,13 @@ pub fn set_git_identity(input: SetGitIdentityInput) -> AppResult<GitIdentity> {
 }
 
 #[command]
-pub fn list_identity_contexts(
+pub async fn list_identity_contexts(
+    input: ListIdentityContextsInput,
+) -> AppResult<IdentityContextsOutput> {
+    run_blocking(move || list_identity_contexts_inner(input)).await
+}
+
+fn list_identity_contexts_inner(
     input: ListIdentityContextsInput,
 ) -> AppResult<IdentityContextsOutput> {
     let path = input

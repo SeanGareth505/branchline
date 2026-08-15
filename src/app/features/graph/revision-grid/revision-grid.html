@@ -48,6 +48,15 @@
         >
           Branch
         </button>
+        <button
+          type="button"
+          class="filter-toggle"
+          [class.on]="store.historyFilter().firstParent"
+          title="Show only the first-parent history (hides merged-in side branches)"
+          (click)="store.toggleFirstParentFilter(); $event.stopPropagation()"
+        >
+          First
+        </button>
       </div>
     </div>
     <div class="filter-meta">
@@ -114,6 +123,7 @@
       [class.artificial]="row.artificial"
       [class.selected]="isRowSelected(row)"
       [class.compare]="isRowCompare(row)"
+      [class.selected-compare]="isRowCompare(row)"
       [class.head]="row.head"
       [class.dim]="isRowDim(row)"
       [class.parent-of]="isRowParent(row)"
@@ -137,7 +147,7 @@
             [attr.height]="rowHeight"
             [class.dashed]="row.artificial"
           >
-            @for (link of row.baseTopLinks; track link.key) {
+            @for (link of topLinks(row); track link.key) {
               <path
                 class="edge"
                 [class.merge-parent]="link.mergeParent"
@@ -146,7 +156,7 @@
                 [attr.stroke]="link.stroke"
               />
             }
-            @for (link of row.baseBottomLinks; track link.key) {
+            @for (link of bottomLinks(row); track link.key) {
               <path
                 class="edge"
                 [class.merge-parent]="link.mergeParent"
@@ -204,8 +214,24 @@
         } @else if (row.commit; as c) {
           <div class="col-message">
             <span class="subject" [title]="c.message">{{ c.subject }}</span>
+            @let ci = ciState(c);
+            @if (store.isCommitPinned(c.sha) || c.signature === 'G' || isBadSignature(c.signature) || ci) {
+              <span class="msg-marks">
+                @if (store.isCommitPinned(c.sha)) {
+                  <span class="pin-mark" title="Pinned">●</span>
+                }
+                @if (c.signature === 'G') {
+                  <span class="sig-good" title="Signed">✓</span>
+                } @else if (isBadSignature(c.signature)) {
+                  <span class="sig-bad" title="Signature problem">!</span>
+                }
+                @if (ci) {
+                  <span class="ci-dot" [attr.data-state]="ci" [title]="ciTitle(ci)"></span>
+                }
+              </span>
+            }
             <div class="refs">
-              @for (chip of row.refs; track chip.ref) {
+              @for (chip of refChips(c); track chip.ref) {
                 <button
                   type="button"
                   [class]="chip.className"
@@ -219,7 +245,8 @@
             </div>
           </div>
           <div class="col-muted" [title]="c.email">{{ c.author }}</div>
-          <div class="col-muted" [title]="row.timeLabel">{{ row.timeLabel }}</div>
+          @let when = timeLabel(c.timestamp);
+          <div class="col-muted" [title]="when">{{ when }}</div>
           <button
             type="button"
             class="col-sha mono"
@@ -297,6 +324,13 @@
       </button>
       <button
         type="button"
+        title="Start git bisect with this commit as bad"
+        (click)="startBisectHere()"
+      >
+        Start bisect from here…
+      </button>
+      <button
+        type="button"
         title="Build a changelog from commits up to this point"
         (click)="extractChangelog(); closeMenu()"
       >
@@ -329,6 +363,43 @@
         (click)="resetHard()"
       >
         Hard reset…
+      </button>
+      <div class="bl-menu-sep"></div>
+      <button
+        type="button"
+        title="Compare this commit with the currently selected commit"
+        [disabled]="!canCompareMenu()"
+        (click)="compareWithSelected()"
+      >
+        Compare with selected
+      </button>
+      <button
+        type="button"
+        title="Open this commit on GitHub or GitLab"
+        (click)="openOnHost()"
+      >
+        Open on host
+      </button>
+      <button
+        type="button"
+        title="Copy a permalink to this commit"
+        (click)="copyLink()"
+      >
+        Copy link
+      </button>
+      <button
+        type="button"
+        title="Save this commit as a patch file"
+        (click)="savePatch()"
+      >
+        Save as patch…
+      </button>
+      <button
+        type="button"
+        [title]="store.isCommitPinned(menu().sha) ? 'Unpin this commit' : 'Pin this commit'"
+        (click)="togglePin()"
+      >
+        {{ store.isCommitPinned(menu().sha) ? 'Unpin' : 'Pin' }}
       </button>
       <button
         type="button"

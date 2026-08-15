@@ -199,7 +199,14 @@
               (click)="onDiffLineClick(line.index, $event)"
               (contextmenu)="onDiffLineContextMenu(line.index, $event)"
             >
-              {{ line.text }}
+              @if (wordSpansFor(line.index); as spans) {
+                <span class="wd-gutter">{{ line.text.charAt(0) }}</span>
+                @for (span of spans; track $index) {
+                  <span [class.wd-add]="span.kind === 'insert'" [class.wd-del]="span.kind === 'delete'">{{ span.text }}</span>
+                }
+              } @else {
+                {{ line.text }}
+              }
             </div>
           }
         </div>

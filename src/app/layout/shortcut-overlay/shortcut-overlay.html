@@ -15,7 +15,7 @@
         <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close">Esc</button>
       </header>
       <div class="groups">
-        @for (group of groups; track group.title) {
+        @for (group of groups(); track group.title) {
           <section>
             <h3>{{ group.title }}</h3>
             <ul>

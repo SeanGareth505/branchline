@@ -160,25 +160,53 @@
         <app-browse-shell />
       }
       @case ('settings') {
-        <app-settings-page />
+        @defer {
+          <app-settings-page />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('prs') {
-        <app-pr-panel />
+        @defer {
+          <app-pr-panel />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('jira') {
-        <app-jira-panel />
+        @defer {
+          <app-jira-panel />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('release') {
-        <app-release-page />
+        @defer {
+          <app-release-page />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('profiles') {
-        <app-profiles-page />
+        @defer {
+          <app-profiles-page />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('automation') {
-        <app-workflows-page />
+        @defer {
+          <app-workflows-page />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
       @case ('templates') {
-        <app-templates-page />
+        @defer {
+          <app-templates-page />
+        } @placeholder {
+          <app-page-skeleton />
+        }
       }
     }
 
@@ -197,23 +225,65 @@
   }
 
   <app-command-palette />
-  <app-shortcut-overlay />
-  <app-file-search-dialog />
+  @defer (when store.shortcutOverlayOpen()) {
+    <app-shortcut-overlay />
+  }
+  @defer (when store.fileSearchOpen()) {
+    <app-file-search-dialog />
+  }
   <app-toast-host />
   <app-safety-dialog />
   <app-prompt-dialog />
   <app-select-dialog />
-  <app-release-dialog />
-  <app-cherry-pick-preview />
-  <app-commit-dialog />
-  <app-changelog-dialog />
-  <app-clone-dialog />
-  <app-create-branch-dialog />
-  <app-interactive-rebase-dialog />
-  <app-conflict-resolver-dialog />
-  <app-ignore-editor-dialog />
-  <app-publish-github-dialog />
-  <app-create-pr-dialog />
-  <app-github-device-login-dialog />
-  <app-remote-troubleshoot-dialog />
+  @defer (when releasePromptOpen()) {
+    <app-release-dialog />
+  }
+  @defer (when store.cherryPreviewOpen()) {
+    <app-cherry-pick-preview />
+  }
+  @defer (when store.commitModalOpen()) {
+    <app-commit-dialog />
+  }
+  @defer (when store.changelogModalOpen()) {
+    <app-changelog-dialog />
+  }
+  @defer (when store.cloneDialogOpen()) {
+    <app-clone-dialog />
+  }
+  @defer (when store.createBranchDialogOpen()) {
+    <app-create-branch-dialog />
+  }
+  @defer (when store.interactiveRebaseOpen()) {
+    <app-interactive-rebase-dialog />
+  }
+  @defer (when store.conflictResolverOpen()) {
+    <app-conflict-resolver-dialog />
+  }
+  @defer (when store.ignoreEditorOpen()) {
+    <app-ignore-editor-dialog />
+  }
+  @defer (when store.publishGithubDialogOpen()) {
+    <app-publish-github-dialog />
+  }
+  @defer (when store.createPrDialogOpen()) {
+    <app-create-pr-dialog />
+  }
+  @defer (when store.gitFlowDialogOpen()) {
+    <app-git-flow-dialog />
+  }
+  @defer (when store.branchHygieneDialogOpen()) {
+    <app-branch-hygiene-dialog />
+  }
+  @defer (when store.gitCleanDialogOpen()) {
+    <app-git-clean-dialog />
+  }
+  @defer (when store.syncPreviewDialogOpen()) {
+    <app-sync-preview-dialog />
+  }
+  @defer (when store.githubDeviceLoginOpen()) {
+    <app-github-device-login-dialog />
+  }
+  @defer (when store.remoteTroubleshootOpen()) {
+    <app-remote-troubleshoot-dialog />
+  }
 </div>

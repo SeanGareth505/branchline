@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 let markSeq = 0;
 
@@ -6,6 +6,7 @@ let markSeq = 0;
   selector: 'app-brand-mark',
   templateUrl: './brand-mark.html',
   styleUrl: './brand-mark.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BrandMark {
   @Input() size: number | string = 20;

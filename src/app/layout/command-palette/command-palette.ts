@@ -41,6 +41,24 @@ export class CommandPalette {
     const store = this.store;
     const prompts = this.prompts;
     const updates = this.updates;
+    const startBisect = async (): Promise<void> => {
+      const sha = store.selectedSha();
+      const good = await prompts.ask({
+        title: 'Start bisect',
+        message: sha
+          ? `Mark ${sha.slice(0, 7)} as bad. Enter a known good SHA, tag, or branch.`
+          : 'Enter a known good SHA, tag, or branch. HEAD will be marked bad.',
+        label: 'Good commit',
+        placeholder: 'main or abc1234',
+        confirmLabel: 'Start bisect',
+        mono: true,
+      });
+      if (!good?.trim()) return;
+      void store.startBisect({
+        badSha: sha ?? undefined,
+        goodSha: good.trim(),
+      });
+    };
     const items: PaletteItem[] = [
       {
         id: 'repos',
@@ -230,6 +248,12 @@ export class CommandPalette {
       },
       { id: 'sync', label: 'Sync with remote', group: 'Git', run: () => void store.syncRemote() },
       {
+        id: 'sync-fork',
+        label: 'Sync fork',
+        group: 'Git',
+        run: () => void store.syncUpstream(),
+      },
+      {
         id: 'troubleshoot-remote',
         label: 'Troubleshoot remote access',
         group: 'Git',
@@ -333,6 +357,12 @@ export class CommandPalette {
         },
       },
       {
+        id: 'first-parent',
+        label: 'Toggle first-parent history',
+        group: 'View',
+        run: () => store.toggleFirstParentFilter(),
+      },
+      {
         id: 'density-compact',
         label: 'Use compact density',
         group: 'View',
@@ -410,6 +440,42 @@ export class CommandPalette {
         run: () => void store.openCreatePullRequest(),
       },
       {
+        id: 'git-flow',
+        label: 'Git Flow start / finish…',
+        group: 'Git',
+        run: () => store.openGitFlowDialog(),
+      },
+      {
+        id: 'bisect-start',
+        label: 'Start bisect…',
+        group: 'Git',
+        run: () => void startBisect(),
+      },
+      {
+        id: 'bisect-good',
+        label: 'Bisect: mark good',
+        group: 'Git',
+        run: () => void store.bisectGood(),
+      },
+      {
+        id: 'bisect-bad',
+        label: 'Bisect: mark bad',
+        group: 'Git',
+        run: () => void store.bisectBad(),
+      },
+      {
+        id: 'bisect-skip',
+        label: 'Bisect: skip',
+        group: 'Git',
+        run: () => void store.bisectSkip(),
+      },
+      {
+        id: 'bisect-reset',
+        label: 'Bisect: reset',
+        group: 'Git',
+        run: () => void store.bisectReset(),
+      },
+      {
         id: 'shortcut-commit',
         label: 'Shortcut · ⌘⇧C / Ctrl+Shift+C — Commit',
         group: 'Shortcuts',
@@ -456,6 +522,63 @@ export class CommandPalette {
         label: 'Cherry-pick commit(s) onto HEAD…',
         group: 'Git',
         run: () => void store.openCherryPickPreview(),
+      },
+      {
+        id: 'compare-selected',
+        label: 'Compare selected commits',
+        group: 'Git',
+        run: () => store.compareSelectedCommits(),
+      },
+      {
+        id: 'open-commit-host',
+        label: 'Open commit on host',
+        group: 'Git',
+        run: () => {
+          const sha = store.selectedSha();
+          if (sha) void store.openCommitOnHost(sha);
+        },
+      },
+      {
+        id: 'export-patch',
+        label: 'Save commit as patch…',
+        group: 'Git',
+        run: () => {
+          const sha = store.selectedSha();
+          if (sha) void store.exportPatchForSha(sha);
+        },
+      },
+      {
+        id: 'apply-patch',
+        label: 'Apply patch file…',
+        group: 'Git',
+        run: () => void store.applyPatchFromUser(),
+      },
+      {
+        id: 'git-clean',
+        label: 'Clean untracked files…',
+        group: 'Git',
+        run: () => store.openGitCleanDialog(),
+      },
+      {
+        id: 'incoming',
+        label: 'Incoming commits…',
+        group: 'Git',
+        run: () => store.openSyncPreview('incoming'),
+      },
+      {
+        id: 'outgoing',
+        label: 'Outgoing commits…',
+        group: 'Git',
+        run: () => store.openSyncPreview('outgoing'),
+      },
+      {
+        id: 'pin-commit',
+        label: 'Pin selected commit',
+        group: 'Git',
+        run: () => {
+          const sha = store.selectedSha();
+          if (sha) store.togglePinnedCommit(sha);
+        },
       },
       {
         id: 'cherry-file',
@@ -597,6 +720,12 @@ export class CommandPalette {
         run: () => store.openCloneDialog(),
       },
       {
+        id: 'fetch-all',
+        label: 'Fetch all repositories',
+        group: 'Repositories',
+        run: () => void store.fetchAllRecent(),
+      },
+      {
         id: 'theme',
         label: 'Toggle theme',
         group: 'Preferences',
@@ -615,6 +744,17 @@ export class CommandPalette {
         run: () => void store.toggleFocusMode(),
       },
     ];
+
+    const restoreFile = store.selectedDiffPath();
+    const restoreSha = store.selectedSha();
+    if (restoreFile && restoreSha) {
+      items.push({
+        id: 'restore-file',
+        label: 'Restore selected file from commit',
+        group: 'Git',
+        run: () => void store.restoreFileFromRevision(restoreFile, restoreSha),
+      });
+    }
 
     for (const repo of store.repos()) {
       const isOpen = store.currentRepo()?.path === repo.path;

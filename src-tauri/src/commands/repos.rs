@@ -122,35 +122,27 @@ pub fn set_last_repo(state: State<'_, AppState>, input: PathInput) -> AppResult<
 }
 
 #[command]
-pub fn open_repository(
+pub async fn open_repository(
     app: AppHandle,
     state: State<'_, AppState>,
     input: PathInput,
 ) -> AppResult<RepoSummary> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let name = repo_name(&path);
+    let input_path = input.path;
+    let summary = run_blocking(move || {
+        let path = PathBuf::from(&input_path);
+        light_summary(&path, &input_path)
+    })
+    .await?;
     let opened_at = Utc::now().to_rfc3339();
-    let status = git2_repo::repo_status(&path)?;
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-        sqlite::upsert_recent_repo(&db, &input.path, &name, &opened_at)?;
-        sqlite::set_last_repo(&db, &input.path)?;
+        sqlite::upsert_recent_repo(&db, &summary.path, &summary.name, &opened_at)?;
+        sqlite::set_last_repo(&db, &summary.path)?;
     }
+    let path = PathBuf::from(&summary.path);
     state.set_current_repo(Some(path.clone()));
     state.repo_watcher.watch(app, path);
-    let has_changes = !status.staged.is_empty()
-        || !status.unstaged.is_empty()
-        || !status.untracked.is_empty()
-        || !status.conflicted.is_empty();
-    Ok(RepoSummary {
-        path: input.path,
-        name,
-        branch: status.branch,
-        ahead: status.ahead,
-        behind: status.behind,
-        has_changes,
-    })
+    Ok(summary)
 }
 
 #[command]
@@ -188,6 +180,12 @@ pub async fn focus_repository(
 pub struct CloneRepoInput {
     pub url: String,
     pub destination: String,
+    #[serde(default)]
+    pub shallow: Option<bool>,
+    #[serde(default)]
+    pub recurse_submodules: Option<bool>,
+    #[serde(default)]
+    pub sparse: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,12 +195,12 @@ pub struct InitRepoInput {
 }
 
 #[command]
-pub fn clone_repository(
+pub async fn clone_repository(
     app: AppHandle,
     state: State<'_, AppState>,
     input: CloneRepoInput,
 ) -> AppResult<RepoSummary> {
-    let url = input.url.trim();
+    let url = input.url.trim().to_string();
     let dest = PathBuf::from(input.destination.trim());
     if url.is_empty() {
         return Err(AppError::msg("Clone URL is required"));
@@ -232,7 +230,21 @@ pub fn clone_repository(
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".into());
-    git_cli::run_git(&parent, &["clone", url, &folder])?;
+    let mut clone_args = vec!["clone".to_string()];
+    if input.shallow.unwrap_or(false) {
+        clone_args.push("--depth".into());
+        clone_args.push("1".into());
+    }
+    if input.recurse_submodules.unwrap_or(false) {
+        clone_args.push("--recurse-submodules".into());
+    }
+    if input.sparse.unwrap_or(false) {
+        clone_args.push("--filter=blob:none".into());
+        clone_args.push("--sparse".into());
+    }
+    clone_args.push(url);
+    clone_args.push(folder);
+    git_cli::run_git_strings(&parent, &clone_args)?;
     open_repository(
         app,
         state,
@@ -240,10 +252,11 @@ pub fn clone_repository(
             path: dest.to_string_lossy().to_string(),
         },
     )
+    .await
 }
 
 #[command]
-pub fn init_repository(
+pub async fn init_repository(
     app: AppHandle,
     state: State<'_, AppState>,
     input: InitRepoInput,
@@ -264,4 +277,5 @@ pub fn init_repository(
             path: path.to_string_lossy().to_string(),
         },
     )
+    .await
 }

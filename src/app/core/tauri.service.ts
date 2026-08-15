@@ -7,6 +7,7 @@ import type {
   BranchInfo,
   BranchLockInfo,
   CherryPickPreview,
+  BlobPreview,
   CommitInfo,
   DiffOutput,
   DetectedEditors,
@@ -57,8 +58,15 @@ import type {
   FileStatusEntry,
   SubmoduleInfo,
   LfsFileInfo,
+  BisectStatus,
+  BranchHygieneEntry,
+  CleanEntry,
+  CommitStatusInfo,
   ConflictSidesOutput,
   CreatePullRequestOutput,
+  FileFlagEntry,
+  FormatPatchOutput,
+  LargeFileEntry,
   RepoPrTemplate,
   ReleaseStatusOutput,
   ReleasePreviewOutput,
@@ -67,8 +75,10 @@ import type {
   ReleaseSetupFileHint,
   PollReleaseDeployOutput,
   GithubReleaseNotesOutput,
+  SyncCommitInfo,
 } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
+import { DEFAULT_SHORTCUTS } from '../shared/git/shortcuts';
 
 @Injectable({ providedIn: 'root' })
 export class TauriService {
@@ -301,8 +311,20 @@ export class TauriService {
     return this.invoke<RepoSummary>('focus_repository', { input: { path } });
   }
 
-  cloneRepository(url: string, destination: string) {
-    return this.invoke<RepoSummary>('clone_repository', { input: { url, destination } });
+  cloneRepository(
+    url: string,
+    destination: string,
+    opts?: { shallow?: boolean; recurseSubmodules?: boolean; sparse?: boolean },
+  ) {
+    return this.invoke<RepoSummary>('clone_repository', {
+      input: {
+        url,
+        destination,
+        shallow: opts?.shallow ?? false,
+        recurseSubmodules: opts?.recurseSubmodules ?? false,
+        sparse: opts?.sparse ?? false,
+      },
+    });
   }
 
   initRepository(path: string) {
@@ -323,8 +345,10 @@ export class TauriService {
     });
   }
 
-  getCommitLog(path: string, limit = 200) {
-    return this.invoke<CommitInfo[]>('get_commit_log', { input: { path, limit } });
+  getCommitLog(path: string, limit = 200, opts?: { firstParent?: boolean }) {
+    return this.invoke<CommitInfo[]>('get_commit_log', {
+      input: { path, limit, firstParent: opts?.firstParent ?? false },
+    });
   }
 
   searchRepo(path: string, query: string, maxResults = 80) {
@@ -341,10 +365,20 @@ export class TauriService {
       commit?: string;
       compareFrom?: string;
       compareTo?: string;
+      ignoreWhitespace?: boolean;
     } = {},
   ) {
     return this.invoke<DiffOutput>('get_diff', {
       input: { path, ...opts },
+    });
+  }
+
+  getBlobPreview(
+    path: string,
+    opts: { file: string; revision?: string | null },
+  ) {
+    return this.invoke<BlobPreview>('get_blob_preview', {
+      input: { path, file: opts.file, revision: opts.revision ?? null },
     });
   }
 
@@ -565,6 +599,129 @@ export class TauriService {
 
   lfsPull(path: string) {
     return this.invoke<MutationOutput>('lfs_pull', { input: { path } });
+  }
+
+  lfsTrack(path: string, target: string) {
+    return this.invoke<MutationOutput>('lfs_track', { input: { path, target } });
+  }
+
+  lfsUntrack(path: string, target: string) {
+    return this.invoke<MutationOutput>('lfs_untrack', { input: { path, target } });
+  }
+
+  lfsLock(path: string, target: string) {
+    return this.invoke<MutationOutput>('lfs_lock', { input: { path, target } });
+  }
+
+  lfsUnlock(path: string, target: string) {
+    return this.invoke<MutationOutput>('lfs_unlock', { input: { path, target } });
+  }
+
+  getBisectStatus(path: string) {
+    return this.invoke<BisectStatus>('get_bisect_status', { input: { path } });
+  }
+
+  bisectStart(path: string, opts: { badSha?: string; goodSha?: string } = {}) {
+    return this.invoke<MutationOutput>('bisect_start', {
+      input: { path, badSha: opts.badSha ?? '', goodSha: opts.goodSha ?? '' },
+    });
+  }
+
+  bisectGood(path: string, sha = '') {
+    return this.invoke<MutationOutput>('bisect_good', { input: { path, sha } });
+  }
+
+  bisectBad(path: string, sha = '') {
+    return this.invoke<MutationOutput>('bisect_bad', { input: { path, sha } });
+  }
+
+  bisectSkip(path: string, sha = '') {
+    return this.invoke<MutationOutput>('bisect_skip', { input: { path, sha } });
+  }
+
+  bisectReset(path: string) {
+    return this.invoke<MutationOutput>('bisect_reset', { input: { path } });
+  }
+
+  gitFlow(
+    path: string,
+    input: {
+      kind: 'feature' | 'release' | 'hotfix' | string;
+      action: 'start' | 'finish' | string;
+      name: string;
+      main?: string;
+      develop?: string;
+      deleteBranch?: boolean;
+      tag?: boolean;
+      push?: boolean;
+    },
+  ) {
+    return this.invoke<MutationOutput>('git_flow', {
+      input: {
+        path,
+        kind: input.kind,
+        action: input.action,
+        name: input.name,
+        main: input.main ?? '',
+        develop: input.develop ?? '',
+        deleteBranch: input.deleteBranch,
+        tag: input.tag,
+        push: input.push,
+      },
+    });
+  }
+
+  listBranchHygiene(path: string) {
+    return this.invoke<BranchHygieneEntry[]>('list_branch_hygiene', { input: { path } });
+  }
+
+  listSyncCommits(path: string, direction: 'incoming' | 'outgoing') {
+    return this.invoke<SyncCommitInfo[]>('list_sync_commits', { input: { path, direction } });
+  }
+
+  previewClean(path: string) {
+    return this.invoke<CleanEntry[]>('preview_clean', { input: { path } });
+  }
+
+  runClean(path: string, paths: string[]) {
+    return this.invoke<MutationOutput>('run_clean', { input: { path, paths } });
+  }
+
+  listDanglingCommits(path: string) {
+    return this.invoke<CommitInfo[]>('list_dangling_commits', { input: { path } });
+  }
+
+  listLargeFiles(path: string) {
+    return this.invoke<LargeFileEntry[]>('list_large_files', { input: { path } });
+  }
+
+  setFileFlag(
+    path: string,
+    file: string,
+    flag: 'skipWorktree' | 'assumeUnchanged' | 'skip-worktree' | 'assume-unchanged',
+    enable: boolean,
+  ) {
+    return this.invoke<MutationOutput>('set_file_flag', { input: { path, file, flag, enable } });
+  }
+
+  listFileFlags(path: string) {
+    return this.invoke<FileFlagEntry[]>('list_file_flags', { input: { path } });
+  }
+
+  formatPatch(path: string, sha: string) {
+    return this.invoke<FormatPatchOutput>('format_patch', { input: { path, sha } });
+  }
+
+  applyMailboxPatch(path: string, patch: string) {
+    return this.invoke<MutationOutput>('apply_mailbox_patch', { input: { path, patch } });
+  }
+
+  syncUpstream(path: string) {
+    return this.invoke<MutationOutput>('sync_upstream', { input: { path } });
+  }
+
+  listCommitStatuses(path: string, shas: string[]) {
+    return this.invoke<CommitStatusInfo[]>('list_commit_statuses', { input: { path, shas } });
   }
 
   listPullRequests(path: string, state: 'open' | 'closed' | 'all' = 'open') {
@@ -1581,6 +1738,62 @@ export class TauriService {
         },
       ],
       get_diff: this.mockDiff(args),
+      get_blob_preview: { kind: 'missing', mime: '', base64: null },
+      list_branch_hygiene: [
+        {
+          name: 'feature/onboarding',
+          reason: 'merged',
+          detail: 'Merged into main',
+          tipSha: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+          tipShortSha: 'c3d4e5f',
+        },
+        {
+          name: 'old-experiment',
+          reason: 'gone',
+          detail: 'Upstream branch deleted',
+          tipSha: 'd4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+          tipShortSha: 'd4e5f6a',
+        },
+      ],
+      list_sync_commits: [
+        {
+          sha: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+          shortSha: 'a1b2c3d',
+          subject: 'Polish dashboard empty states',
+          author: 'Sean',
+          timestamp: Math.floor(Date.now() / 1000) - 7200,
+        },
+        {
+          sha: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+          shortSha: 'c3d4e5f',
+          subject: 'Add onboarding wizard',
+          author: 'Sean',
+          timestamp: Math.floor(Date.now() / 1000) - 86400,
+        },
+      ],
+      preview_clean: [{ path: 'notes.md', kind: 'untracked', sizeLabel: '1 KB' }],
+      list_dangling_commits: [
+        {
+          sha: 'deadbeefcafebabe000000000000000000000001',
+          shortSha: 'deadbee',
+          message: 'Orphaned experiment',
+          subject: 'Orphaned experiment',
+          author: 'Alex',
+          email: 'alex@example.com',
+          timestamp: Math.floor(Date.now() / 1000) - 200000,
+          parents: [],
+          refs: [],
+          laneHint: 0,
+          isRelativeToHead: false,
+        },
+      ],
+      list_large_files: [
+        { path: 'assets/demo.mp4', sizeLabel: '24 MB', bytes: 25165824, lfs: true },
+      ],
+      list_file_flags: [],
+      format_patch: {
+        patch: 'From a1b2c3d Mon Sep 17 00:00:00 2001\nSubject: [PATCH] demo\n\n---\n notes.md | 1 +\n',
+      },
       stage_paths: mutation,
       unstage_paths: mutation,
       discard_paths: mutation,
@@ -1744,6 +1957,8 @@ export class TauriService {
         hideUntracked: false,
         uiDensity: 'comfortable',
         githubRepoAccounts: {},
+        gitFlowMain: 'main',
+        gitFlowDevelop: 'develop',
       },
       save_settings: args?.['input'] ?? {},
       get_git_env: {
@@ -2439,16 +2654,46 @@ export class TauriService {
       cmd === 'update_submodules' ||
       cmd === 'sync_submodules' ||
       cmd === 'update_submodule' ||
-      cmd === 'lfs_pull'
+      cmd === 'lfs_pull' ||
+      cmd === 'lfs_track' ||
+      cmd === 'lfs_untrack' ||
+      cmd === 'lfs_lock' ||
+      cmd === 'lfs_unlock' ||
+      cmd === 'bisect_start' ||
+      cmd === 'bisect_good' ||
+      cmd === 'bisect_bad' ||
+      cmd === 'bisect_skip' ||
+      cmd === 'bisect_reset' ||
+      cmd === 'git_flow' ||
+      cmd === 'run_clean' ||
+      cmd === 'set_file_flag' ||
+      cmd === 'apply_mailbox_patch' ||
+      cmd === 'sync_upstream'
     ) {
       return mutation as T;
     }
 
+    if (cmd === 'get_bisect_status') {
+      return {
+        active: false,
+        currentSha: '',
+        currentShortSha: '',
+        terms: '',
+        stepsLeft: null,
+        logTail: '',
+      } as T;
+    }
+
     if (cmd === 'list_lfs_files') {
       return [
-        { path: 'assets/hero.png', locked: false, size: '1.2 MB' },
-        { path: 'assets/demo.mp4', locked: false, size: '24 MB' },
+        { path: 'assets/hero.png', locked: false, lockOwner: '', size: '1.2 MB' },
+        { path: 'assets/demo.mp4', locked: true, lockOwner: 'you', size: '24 MB' },
       ] as T;
+    }
+
+    if (cmd === 'list_commit_statuses') {
+      const shas = (args?.['input'] as { shas?: string[] } | undefined)?.shas ?? [];
+      return shas.map((sha) => ({ sha, state: 'unknown' })) as T;
     }
 
     if (cmd === 'list_pull_requests') {
@@ -3010,16 +3255,19 @@ export class TauriService {
     const root = '0102030405060708090a0b0c0d0e0f1011121314';
 
     return [
-      c(
-        m0,
-        "Merge branch 'feature/auth' into main",
-        'Sean',
-        1800,
-        [m1, auth1],
-        ['HEAD', 'main'],
-        0,
-        true,
-      ),
+      {
+        ...c(
+          m0,
+          "Merge branch 'feature/auth' into main",
+          'Sean',
+          1800,
+          [m1, auth1],
+          ['HEAD', 'main'],
+          0,
+          true,
+        ),
+        signature: 'G',
+      },
       c(auth1, 'Add OAuth providers', 'Maya', 3600, [auth0], ['feature/auth'], 1, true),
       c(
         m1,
@@ -3150,6 +3398,10 @@ export class TauriService {
       prTemplates: [],
       prCreateMethod: 'browser' as const,
       githubRepoAccounts: {},
+      gitFlowMain: 'main',
+      gitFlowDevelop: 'develop',
+      pinnedCommits: {},
+      keyboardShortcuts: { ...DEFAULT_SHORTCUTS },
     };
 
     try {

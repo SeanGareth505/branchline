@@ -1,7 +1,6 @@
 use crate::infrastructure::git_cli;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::path::PathBuf;
 use tauri::command;
 
@@ -31,6 +30,8 @@ pub struct SubmodulePathInput {
 pub struct LfsFileInfo {
     pub path: String,
     pub locked: bool,
+    #[serde(default)]
+    pub lock_owner: String,
     pub size: String,
 }
 
@@ -212,10 +213,15 @@ pub fn list_lfs_files(input: RepoPathInput) -> AppResult<Vec<LfsFileInfo>> {
             if file_path.is_empty() {
                 continue;
             }
-            let locked = locked_paths.contains(&file_path);
+            let locked = locked_paths.contains_key(&file_path);
+            let lock_owner = locked_paths
+                .get(&file_path)
+                .cloned()
+                .unwrap_or_default();
             entries.push(LfsFileInfo {
                 path: file_path,
                 locked,
+                lock_owner,
                 size,
             });
         }
@@ -223,25 +229,134 @@ pub fn list_lfs_files(input: RepoPathInput) -> AppResult<Vec<LfsFileInfo>> {
     })
 }
 
-fn lfs_locked_paths(repo: &std::path::Path) -> HashSet<String> {
+fn lfs_locked_paths(repo: &std::path::Path) -> std::collections::HashMap<String, String> {
     let (ok, out, _) = git_cli::run_git_allow_fail(repo, &["lfs", "locks", "--json"]);
     if !ok || out.trim().is_empty() {
-        return HashSet::new();
+        return std::collections::HashMap::new();
     }
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&out) else {
-        return HashSet::new();
+        return std::collections::HashMap::new();
     };
-    let mut set = HashSet::new();
+    let mut map = std::collections::HashMap::new();
     if let Some(arr) = value.as_array() {
         for item in arr {
-            if let Some(p) = item.get("path").and_then(|v| v.as_str()) {
-                if !p.is_empty() {
-                    set.insert(p.to_string());
-                }
+            let Some(p) = item.get("path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if p.is_empty() {
+                continue;
             }
+            let owner = item
+                .get("owner")
+                .and_then(|v| {
+                    v.as_str().map(|s| s.to_string()).or_else(|| {
+                        v.get("name")
+                            .and_then(|n| n.as_str())
+                            .map(|s| s.to_string())
+                    })
+                })
+                .unwrap_or_default();
+            map.insert(p.to_string(), owner);
         }
     }
-    set
+    map
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LfsTargetInput {
+    pub path: String,
+    pub target: String,
+}
+
+fn lfs_mutation(path: &std::path::Path, args: &[&str], empty_ok: &str) -> MutationOutput {
+    let (ok, out, err) = git_cli::run_git_allow_fail(path, args);
+    if !ok {
+        return MutationOutput {
+            ok: false,
+            message: if err.trim().is_empty() { out } else { err },
+        };
+    }
+    MutationOutput {
+        ok: true,
+        message: if out.trim().is_empty() {
+            empty_ok.into()
+        } else {
+            out
+        },
+    }
+}
+
+#[command]
+pub fn lfs_track(input: LfsTargetInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let pattern = input.target.trim();
+        if pattern.is_empty() {
+            return Ok(MutationOutput {
+                ok: false,
+                message: "Pattern is required".into(),
+            });
+        }
+        let result = lfs_mutation(path, &["lfs", "track", pattern], &format!("Tracking {pattern}"));
+        if result.ok {
+            let _ = git_cli::run_git_allow_fail(path, &["add", ".gitattributes"]);
+        }
+        Ok(result)
+    })
+}
+
+#[command]
+pub fn lfs_untrack(input: LfsTargetInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let pattern = input.target.trim();
+        if pattern.is_empty() {
+            return Ok(MutationOutput {
+                ok: false,
+                message: "Pattern is required".into(),
+            });
+        }
+        let result = lfs_mutation(
+            path,
+            &["lfs", "untrack", pattern],
+            &format!("Stopped tracking {pattern}"),
+        );
+        if result.ok {
+            let _ = git_cli::run_git_allow_fail(path, &["add", ".gitattributes"]);
+        }
+        Ok(result)
+    })
+}
+
+#[command]
+pub fn lfs_lock(input: LfsTargetInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let file = input.target.trim();
+        if file.is_empty() {
+            return Ok(MutationOutput {
+                ok: false,
+                message: "File path is required".into(),
+            });
+        }
+        Ok(lfs_mutation(path, &["lfs", "lock", file], &format!("Locked {file}")))
+    })
+}
+
+#[command]
+pub fn lfs_unlock(input: LfsTargetInput) -> AppResult<MutationOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        let file = input.target.trim();
+        if file.is_empty() {
+            return Ok(MutationOutput {
+                ok: false,
+                message: "File path is required".into(),
+            });
+        }
+        Ok(lfs_mutation(
+            path,
+            &["lfs", "unlock", file],
+            &format!("Unlocked {file}"),
+        ))
+    })
 }
 
 #[command]

@@ -1,0 +1,49 @@
+@if (store.syncPreviewDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sync-preview-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Sync</span>
+          <h2 id="sync-preview-title">{{ title() }}</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      @if (loading()) {
+        <p class="empty">Loading…</p>
+      } @else if (commits().length === 0) {
+        <p class="empty">{{ emptyLabel() }}</p>
+      } @else {
+        <div class="list">
+          @for (commit of commits(); track commit.sha) {
+            <button type="button" class="commit" (click)="openCommit(commit)">
+              <span class="mono sha">{{ commit.shortSha }}</span>
+              <span class="subject">{{ commit.subject }}</span>
+              <span class="author">{{ commit.author }}</span>
+            </button>
+          }
+        </div>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Close</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ submitLabel() }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

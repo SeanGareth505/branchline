@@ -12,14 +12,22 @@ import {
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
+import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { AppStore } from '../../../core/app.store';
 import {
   acceptAllChoices,
+  alignConflictLines,
   buildConflictResult,
-  ConflictChoice,
+  contentForChoice,
+  type AlignedLine,
+  type ConflictChoice,
+  type ConflictRegion,
+  type ContextSlice,
   draftHasConflictMarkers,
   parseConflictMarkers,
   remainingConflictIds,
+  reconstructMarkers,
+  sliceContext,
 } from '../../../core/conflict-parse';
 import {
   preferredEditorLabel,
@@ -27,6 +35,23 @@ import {
 } from '../../../shared/git/open-in-editor';
 
 type OpenMenu = 'tools' | null;
+
+interface TextBlock {
+  kind: 'text';
+  index: number;
+  startLine: number;
+  slice: ContextSlice;
+}
+
+interface ConflictBlock {
+  kind: 'conflict';
+  index: number;
+  startLine: number;
+  conflict: ConflictRegion;
+  aligned: AlignedLine[];
+}
+
+type DocumentBlock = TextBlock | ConflictBlock;
 
 @Component({
   selector: 'app-conflict-resolver-dialog',
@@ -37,6 +62,7 @@ type OpenMenu = 'tools' | null;
 })
 export class ConflictResolverDialog {
   readonly store = inject(AppStore);
+  private readonly prompts = inject(PromptService);
 
   readonly conflicted = computed(() => this.store.status()?.conflicted ?? []);
   readonly sides = computed(() => this.store.conflictResolver());
@@ -46,11 +72,16 @@ export class ConflictResolverDialog {
   });
 
   readonly choices = signal<Map<string, ConflictChoice>>(new Map());
+  readonly custom = signal<Map<string, string>>(new Map());
   readonly activeConflictId = signal<string | null>(null);
   readonly showBase = signal(false);
   readonly resultMode = signal<'guided' | 'edit'>('guided');
   readonly openMenu = signal<OpenMenu>(null);
   readonly saving = signal(false);
+  readonly editingId = signal<string | null>(null);
+  readonly editDraft = signal('');
+  readonly expandedContext = signal<Set<number>>(new Set());
+  readonly closing = signal(false);
   private syncedKey = '';
 
   readonly conflictCards = viewChildren<ElementRef<HTMLElement>>('conflictCard');
@@ -109,7 +140,7 @@ export class ConflictResolverDialog {
     if (kind === 'cherryPick') {
       return 'Keep what is on your branch, take the cherry-picked change, or combine both.';
     }
-    return 'Keep your version, take theirs, or combine both for each conflict.';
+    return 'Keep yours, take incoming, combine both, or edit the hunk in place.';
   });
 
   readonly parsed = computed(() => {
@@ -121,6 +152,29 @@ export class ConflictResolverDialog {
   });
 
   readonly conflicts = computed(() => this.parsed().conflicts);
+
+  readonly documentBlocks = computed((): DocumentBlock[] => {
+    const parsed = this.parsed();
+    const expanded = this.expandedContext();
+    let line = 1;
+    return parsed.segments.map((segment, index) => {
+      if (segment.kind === 'text') {
+        const slice = sliceContext(segment.text, expanded.has(index));
+        const startLine = line;
+        line += slice.total;
+        return { kind: 'text', index, startLine, slice };
+      }
+      const startLine = line;
+      line += markerLineCount(segment.conflict);
+      return {
+        kind: 'conflict',
+        index,
+        startLine,
+        conflict: segment.conflict,
+        aligned: alignConflictLines(segment.conflict.ours, segment.conflict.theirs),
+      };
+    });
+  });
 
   readonly isDeleteConflict = computed(() => {
     const kind = this.currentFile()?.conflictKind ?? '';
@@ -135,7 +189,9 @@ export class ConflictResolverDialog {
     return sides.hasMarkers === false && sides.unmerged !== false;
   });
 
-  readonly remaining = computed(() => remainingConflictIds(this.conflicts(), this.choices()));
+  readonly remaining = computed(() =>
+    remainingConflictIds(this.conflicts(), this.choices(), this.custom()),
+  );
 
   readonly remainingCount = computed(() => this.remaining().length);
 
@@ -159,7 +215,7 @@ export class ConflictResolverDialog {
       return `File ${this.fileIndex()} of ${this.fileTotal()}`;
     }
     const done = conflicts.length - this.remainingCount();
-    return `File ${this.fileIndex()} of ${this.fileTotal()} · ${done}/${conflicts.length} conflicts`;
+    return `${done}/${conflicts.length} in this file · ${this.fileIndex()}/${this.fileTotal()} files`;
   });
 
   readonly activeIndex = computed(() => {
@@ -179,27 +235,39 @@ export class ConflictResolverDialog {
     return !draftHasConflictMarkers(this.store.conflictResolverDraft());
   });
 
+  readonly dirty = computed(() => this.choices().size > 0 || this.custom().size > 0);
+
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
-    if (!this.store.conflictResolverOpen()) return;
+    if (!this.store.conflictResolverOpen() || this.prompts.request()) return;
     const target = event.target as HTMLElement | null;
     const typing =
       target?.tagName === 'TEXTAREA' ||
       target?.tagName === 'INPUT' ||
       target?.isContentEditable;
     if (event.key === 'Escape') {
+      if (this.editingId()) {
+        this.cancelHunkEdit();
+        event.preventDefault();
+        return;
+      }
       if (this.openMenu()) {
         this.openMenu.set(null);
         event.preventDefault();
         return;
       }
       if (!typing) {
-        this.store.closeConflictResolver();
         event.preventDefault();
+        void this.requestClose();
       }
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      if (this.editingId()) {
+        event.preventDefault();
+        this.commitHunkEdit();
+        return;
+      }
       if (this.canSave()) {
         event.preventDefault();
         void this.save();
@@ -217,6 +285,16 @@ export class ConflictResolverDialog {
       this.focusConflict(this.activeIndex() - 1);
       return;
     }
+    if (event.key === 'n') {
+      event.preventDefault();
+      this.focusNextUnresolved(1);
+      return;
+    }
+    if (event.key === 'p') {
+      event.preventDefault();
+      this.focusNextUnresolved(-1);
+      return;
+    }
     if (event.key === '1') {
       event.preventDefault();
       this.acceptActive('ours');
@@ -232,14 +310,32 @@ export class ConflictResolverDialog {
       this.acceptActive('both');
       return;
     }
+    if (event.key === '4') {
+      event.preventDefault();
+      this.acceptActive('base');
+      return;
+    }
+    if (event.key === 'r') {
+      event.preventDefault();
+      this.acceptActive('bothReverse');
+      return;
+    }
+    if (event.key === 'e') {
+      event.preventDefault();
+      this.startHunkEdit(this.conflicts()[this.activeIndex()]?.id ?? null);
+    }
   }
 
   syncFromSides(): void {
     const sides = this.sides();
     this.choices.set(new Map());
+    this.custom.set(new Map());
     this.resultMode.set('guided');
     this.openMenu.set(null);
     this.showBase.set(false);
+    this.editingId.set(null);
+    this.editDraft.set('');
+    this.expandedContext.set(new Set());
     const parsed = this.parsed();
     if (parsed.conflicts.length) {
       this.activeConflictId.set(parsed.conflicts[0]?.id ?? null);
@@ -268,18 +364,41 @@ export class ConflictResolverDialog {
         return this.incomingLabel();
       case 'both':
         return 'Both';
+      case 'bothReverse':
+        return 'Incoming then yours';
       case 'base':
         return 'Base';
+      case 'custom':
+        return 'Edited';
     }
   }
 
+  chosenPreview(id: string): string {
+    const conflict = this.conflicts().find((c) => c.id === id);
+    if (!conflict) return '';
+    const choice = this.choiceFor(id);
+    if (!choice) return '';
+    if (choice === 'custom') return this.custom().get(id) ?? '';
+    return contentForChoice(conflict, choice);
+  }
+
   accept(id: string, choice: ConflictChoice): void {
+    if (choice === 'base') {
+      const conflict = this.conflicts().find((c) => c.id === id);
+      if (!conflict?.hasBase) return;
+    }
     const next = new Map(this.choices());
     next.set(id, choice);
     this.choices.set(next);
+    if (choice !== 'custom') {
+      const custom = new Map(this.custom());
+      custom.delete(id);
+      this.custom.set(custom);
+    }
+    this.editingId.set(null);
     this.activeConflictId.set(id);
     this.rebuildDraft();
-    const remaining = remainingConflictIds(this.conflicts(), next);
+    const remaining = remainingConflictIds(this.conflicts(), next, this.custom());
     if (remaining.length) {
       const currentIdx = this.conflicts().findIndex((c) => c.id === id);
       const nextId =
@@ -305,6 +424,8 @@ export class ConflictResolverDialog {
   acceptAll(side: ConflictChoice): void {
     const map = acceptAllChoices(this.conflicts(), side);
     this.choices.set(map);
+    this.custom.set(new Map());
+    this.editingId.set(null);
     this.rebuildDraft();
     this.activeConflictId.set(this.conflicts()[0]?.id ?? null);
   }
@@ -313,18 +434,59 @@ export class ConflictResolverDialog {
     const next = new Map(this.choices());
     next.delete(id);
     this.choices.set(next);
+    const custom = new Map(this.custom());
+    custom.delete(id);
+    this.custom.set(custom);
     this.rebuildDraft();
   }
 
   rebuildDraft(): void {
     const parsed = this.parsed();
     if (!parsed.hasMarkers) return;
-    this.store.setConflictResolverDraft(buildConflictResult(parsed, this.choices()));
+    this.store.setConflictResolverDraft(buildConflictResult(parsed, this.choices(), this.custom()));
   }
 
   onDraftEdit(value: string): void {
     this.store.setConflictResolverDraft(value);
     this.resultMode.set('edit');
+  }
+
+  startHunkEdit(id: string | null): void {
+    if (!id) return;
+    const conflict = this.conflicts().find((c) => c.id === id);
+    if (!conflict) return;
+    const existing = this.choiceFor(id);
+    const draft =
+      existing === 'custom'
+        ? (this.custom().get(id) ?? '')
+        : existing
+          ? this.chosenPreview(id)
+          : conflict.ours || conflict.theirs;
+    this.editingId.set(id);
+    this.editDraft.set(draft.endsWith('\n') ? draft.slice(0, -1) : draft);
+    this.activeConflictId.set(id);
+    this.focusConflictById(id);
+  }
+
+  commitHunkEdit(): void {
+    const id = this.editingId();
+    if (!id) return;
+    const custom = new Map(this.custom());
+    custom.set(id, this.editDraft().endsWith('\n') ? this.editDraft() : `${this.editDraft()}\n`);
+    this.custom.set(custom);
+    this.editingId.set(null);
+    this.accept(id, 'custom');
+  }
+
+  cancelHunkEdit(): void {
+    this.editingId.set(null);
+    this.editDraft.set('');
+  }
+
+  expandContext(index: number): void {
+    const next = new Set(this.expandedContext());
+    next.add(index);
+    this.expandedContext.set(next);
   }
 
   focusConflict(index: number): void {
@@ -333,6 +495,23 @@ export class ConflictResolverDialog {
     const clamped = Math.max(0, Math.min(list.length - 1, index));
     const id = list[clamped]?.id;
     if (id) this.focusConflictById(id);
+  }
+
+  focusNextUnresolved(dir: 1 | -1): void {
+    const remaining = this.remaining();
+    if (!remaining.length) return;
+    const list = this.conflicts();
+    const current = this.activeIndex();
+    if (dir === 1) {
+      const nextId =
+        remaining.find((id) => (list.findIndex((c) => c.id === id) > current)) ?? remaining[0];
+      if (nextId) this.focusConflictById(nextId);
+      return;
+    }
+    const prev = [...remaining]
+      .reverse()
+      .find((id) => (list.findIndex((c) => c.id === id) < current));
+    this.focusConflictById(prev ?? remaining[remaining.length - 1]!);
   }
 
   focusConflictById(id: string): void {
@@ -349,6 +528,27 @@ export class ConflictResolverDialog {
 
   closeMenu(): void {
     this.openMenu.set(null);
+  }
+
+  async requestClose(): Promise<void> {
+    if (this.closing()) return;
+    if (this.dirty() && !this.allResolved()) {
+      this.closing.set(true);
+      try {
+        const ok = await this.prompts.ask({
+          title: 'Discard conflict choices?',
+          message: 'Unsaved hunk choices in this file will be lost.',
+          confirmLabel: 'Discard',
+          cancelLabel: 'Keep editing',
+          confirmOnly: true,
+          required: false,
+        });
+        if (!ok) return;
+      } finally {
+        this.closing.set(false);
+      }
+    }
+    this.store.closeConflictResolver();
   }
 
   openPreferred(): void {
@@ -398,6 +598,7 @@ export class ConflictResolverDialog {
   useWholeFile(side: 'ours' | 'theirs' | 'base' | 'working'): void {
     this.store.useConflictSide(side);
     this.choices.set(new Map());
+    this.custom.set(new Map());
     this.resultMode.set('edit');
   }
 
@@ -417,11 +618,17 @@ export class ConflictResolverDialog {
     return parts[parts.length - 1] || path;
   }
 
-  previewLines(text: string, max = 12): string[] {
-    if (!text) return ['(empty)'];
-    const trimmed = text.endsWith('\n') ? text.slice(0, -1) : text;
-    const lines = trimmed.length ? trimmed.split('\n') : ['(empty)'];
-    if (lines.length <= max) return lines;
-    return [...lines.slice(0, max), `… ${lines.length - max} more lines`];
+  dirName(path: string): string {
+    const idx = path.lastIndexOf('/');
+    return idx > 0 ? path.slice(0, idx) : '';
   }
+
+  lineNo(start: number, offset: number): number {
+    return start + offset;
+  }
+}
+
+function markerLineCount(conflict: ConflictRegion): number {
+  const raw = reconstructMarkers(conflict);
+  return raw.endsWith('\n') ? raw.slice(0, -1).split('\n').length : raw.split('\n').length;
 }

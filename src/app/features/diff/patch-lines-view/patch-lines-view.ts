@@ -26,9 +26,11 @@ import {
   buildSideBySideRows,
   parseUnifiedDiff,
   selectableIndexesForHunk,
+  type DiffLine,
   type ParsedDiff,
   type SideBySideRow,
 } from '../../../core/patch-ops';
+import { wordDiff, type DiffSpan } from '../../../core/conflict-parse';
 
 export type PatchLinesMode = 'unstaged' | 'staged' | 'revert' | 'cherryPick' | 'readonly';
 export type PatchApplyMode = 'stage' | 'unstage' | 'discard' | 'apply' | 'apply-index';
@@ -55,6 +57,7 @@ export class PatchLinesView implements OnDestroy {
   readonly patch = input.required<string>();
   readonly mode = input<PatchLinesMode>('readonly');
   readonly layout = input<PatchLinesLayout>('unified');
+  readonly wordHighlight = input(false);
   readonly emptyMessage = input('No diff to show.');
   readonly showToolbar = input(true);
   readonly captureKeys = input(true);
@@ -116,9 +119,18 @@ export class PatchLinesView implements OnDestroy {
     return rows.length > this.maxRenderLines ? rows.slice(0, this.maxRenderLines) : rows;
   });
 
+  readonly wordSpanMap = computed(() => {
+    if (!this.wordHighlight() || this.layout() !== 'unified') return null;
+    return buildWordSpanMap(this.displayLines());
+  });
+
   trackLine = (_: number, line: { index: number }) => line.index;
   trackFallback = (index: number) => index;
   trackSideRow = (index: number) => index;
+
+  wordSpansFor(index: number): DiffSpan[] | undefined {
+    return this.wordSpanMap()?.get(index);
+  }
 
   private dragSelecting = false;
   private dragAdditive = false;
@@ -507,4 +519,24 @@ export class PatchLinesView implements OnDestroy {
       this.patchBusy.set(false);
     }
   }
+}
+
+function lineContent(text: string): string {
+  return text.length ? text.slice(1) : text;
+}
+
+function buildWordSpanMap(lines: DiffLine[]): Map<number, DiffSpan[]> {
+  const map = new Map<number, DiffSpan[]>();
+  for (let i = 0; i < lines.length - 1; i++) {
+    const del = lines[i];
+    const add = lines[i + 1];
+    if (!del || !add) continue;
+    if (del.kind !== 'del' || add.kind !== 'add') continue;
+    if (!del.hunkId || del.hunkId !== add.hunkId) continue;
+    const diff = wordDiff(lineContent(del.text), lineContent(add.text));
+    map.set(del.index, diff.left);
+    map.set(add.index, diff.right);
+    i += 1;
+  }
+  return map;
 }

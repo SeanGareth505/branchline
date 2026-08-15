@@ -111,6 +111,20 @@
   background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
 }
 
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.05rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .meta {
   display: flex;
   flex-direction: column;
@@ -163,4 +177,37 @@
   font-size: 12.5px;
   border: 0 !important;
   background: transparent !important;
+}
+
+.subhead {
+  margin: 0.4rem 0.45rem 0.05rem;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card-list.quiet > li {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-list.quiet .name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.size {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }

@@ -1,4 +1,5 @@
 import {
+  ChangeDetectionStrategy,
   Component,
   HostListener,
   computed,
@@ -23,6 +24,7 @@ import {
   imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './changelog-dialog.html',
   styleUrl: './changelog-dialog.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChangelogDialog {
   readonly store = inject(AppStore);

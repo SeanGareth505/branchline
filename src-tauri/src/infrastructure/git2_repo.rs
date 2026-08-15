@@ -1,6 +1,7 @@
 use crate::infrastructure::git_cli;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,8 @@ pub struct CommitInfo {
     pub timestamp: i64,
     pub parents: Vec<String>,
     pub refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
     pub lane_hint: i32,
     pub is_relative_to_head: bool,
 }
@@ -432,33 +435,32 @@ fn map_status_char(c: char) -> FileStatusKind {
     }
 }
 
-pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
+fn parse_signature_letter(raw: &str) -> Option<String> {
+    let letter = raw.trim();
+    if letter.is_empty() || letter == "N" {
+        None
+    } else {
+        Some(letter.to_string())
+    }
+}
+
+pub fn commit_log(path: &Path, limit: usize, first_parent: bool) -> AppResult<Vec<CommitInfo>> {
     git_cli::ensure_repo(path)?;
 
-    let mut relative = std::collections::HashSet::new();
-    if let Ok(head_list) = git_cli::run_git(
-        path,
-        &["rev-list", &format!("--max-count={limit}"), "HEAD"],
-    ) {
-        for line in head_list.lines() {
-            let sha = line.trim();
-            if !sha.is_empty() {
-                relative.insert(sha.to_string());
-            }
-        }
+    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1f%G?%x1e";
+    let max = format!("--max-count={limit}");
+    let pretty = format!("--pretty=format:{format}");
+    let mut args = vec![
+        "log",
+        &max,
+        &pretty,
+        "--decorate=short",
+        "--all",
+    ];
+    if first_parent {
+        args.push("--first-parent");
     }
-
-    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1e";
-    let out = git_cli::run_git(
-        path,
-        &[
-            "log",
-            &format!("--max-count={limit}"),
-            &format!("--pretty=format:{format}"),
-            "--decorate=short",
-            "--all",
-        ],
-    )?;
+    let out = git_cli::run_git(path, &args)?;
 
     let mut commits = Vec::new();
     let mut lane = 0i32;
@@ -478,7 +480,7 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             .map(|s| s.to_string())
             .collect();
         let refs = parse_decorate_refs(parts.get(7).copied().unwrap_or(""));
-        let is_relative = relative.contains(&sha);
+        let signature = parse_signature_letter(parts.get(8).copied().unwrap_or(""));
         let subject = parts[2].to_string();
         let message = subject.clone();
         commits.push(CommitInfo {
@@ -491,12 +493,53 @@ pub fn commit_log(path: &Path, limit: usize) -> AppResult<Vec<CommitInfo>> {
             timestamp: parts[5].parse().unwrap_or(0),
             parents,
             refs,
+            signature,
             lane_hint: lane % 8,
-            is_relative_to_head: is_relative,
+            is_relative_to_head: false,
         });
         lane += 1;
     }
+    mark_relative_to_head(&mut commits);
     Ok(commits)
+}
+
+fn mark_relative_to_head(commits: &mut [CommitInfo]) {
+    if commits.is_empty() {
+        return;
+    }
+    let mut by_sha: HashMap<String, usize> = HashMap::with_capacity(commits.len() * 2);
+    let mut head_idx = None;
+    for (i, commit) in commits.iter().enumerate() {
+        by_sha.insert(commit.sha.clone(), i);
+        by_sha.entry(commit.short_sha.clone()).or_insert(i);
+        if head_idx.is_none() && commit.refs.iter().any(|r| r == "HEAD") {
+            head_idx = Some(i);
+        }
+    }
+    let Some(start) = head_idx else {
+        return;
+    };
+    let mut stack = vec![start];
+    let mut seen = vec![false; commits.len()];
+    while let Some(i) = stack.pop() {
+        if seen[i] {
+            continue;
+        }
+        seen[i] = true;
+        commits[i].is_relative_to_head = true;
+        let parents = commits[i].parents.clone();
+        for parent in parents {
+            if let Some(&idx) = by_sha.get(&parent) {
+                stack.push(idx);
+                continue;
+            }
+            if parent.len() >= 7 {
+                if let Some(&idx) = by_sha.get(&parent[..7]) {
+                    stack.push(idx);
+                }
+            }
+        }
+    }
 }
 
 fn parse_decorate_refs(raw: &str) -> Vec<String> {
@@ -584,6 +627,7 @@ pub fn commit_range(
             timestamp: parts[6].parse().unwrap_or(0),
             parents,
             refs: vec![],
+            signature: None,
             lane_hint: lane % 8,
             is_relative_to_head: true,
         });
@@ -907,5 +951,35 @@ mod tests {
         let rest = "DU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccc src/gone.ts";
         let entry = parse_unmerged_change(rest).expect("parsed");
         assert_eq!(entry.conflict_kind.as_deref(), Some("deletedByUs"));
+    }
+
+    fn sample_commit(sha: &str, parents: &[&str], refs: &[&str]) -> CommitInfo {
+        CommitInfo {
+            sha: sha.into(),
+            short_sha: sha[..7].into(),
+            message: sha.into(),
+            subject: sha.into(),
+            author: "a".into(),
+            email: "a@b".into(),
+            timestamp: 0,
+            parents: parents.iter().map(|p| (*p).to_string()).collect(),
+            refs: refs.iter().map(|r| (*r).to_string()).collect(),
+            signature: None,
+            lane_hint: 0,
+            is_relative_to_head: false,
+        }
+    }
+
+    #[test]
+    fn mark_relative_walks_parents_from_head() {
+        let mut commits = vec![
+            sample_commit("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", &["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], &["HEAD", "main"]),
+            sample_commit("cccccccccccccccccccccccccccccccccccccccc", &["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], &["feature"]),
+            sample_commit("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", &[], &[]),
+        ];
+        mark_relative_to_head(&mut commits);
+        assert!(commits[0].is_relative_to_head);
+        assert!(!commits[1].is_relative_to_head);
+        assert!(commits[2].is_relative_to_head);
     }
 }

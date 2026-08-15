@@ -14,6 +14,8 @@ pub struct DiffInput {
     pub commit: Option<String>,
     pub compare_from: Option<String>,
     pub compare_to: Option<String>,
+    #[serde(default)]
+    pub ignore_whitespace: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +32,12 @@ pub struct DiffFileEntry {
 pub struct DiffOutput {
     pub unified: String,
     pub files: Vec<DiffFileEntry>,
+}
+
+fn apply_whitespace_arg(args: &mut Vec<String>, input: &DiffInput) {
+    if input.ignore_whitespace.unwrap_or(false) {
+        args.push("-w".into());
+    }
 }
 
 fn apply_range_args(args: &mut Vec<String>, input: &DiffInput) {
@@ -77,6 +85,7 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
     // Listing (no pathspec): only file names/stats. Patch view (pathspec): only unified.
     if input.pathspec.is_some() {
         let mut args: Vec<String> = vec!["diff".into(), "--no-color".into()];
+        apply_whitespace_arg(&mut args, &input);
         apply_range_args(&mut args, &input);
         apply_pathspec(&mut args, &input.pathspec);
         let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -103,6 +112,8 @@ pub fn get_diff(input: DiffInput) -> AppResult<DiffOutput> {
     let mut name_args: Vec<String> =
         vec!["diff".into(), "--name-status".into(), "--no-color".into()];
     let mut num_args: Vec<String> = vec!["diff".into(), "--numstat".into(), "--no-color".into()];
+    apply_whitespace_arg(&mut name_args, &input);
+    apply_whitespace_arg(&mut num_args, &input);
     apply_range_args(&mut name_args, &input);
     apply_range_args(&mut num_args, &input);
 

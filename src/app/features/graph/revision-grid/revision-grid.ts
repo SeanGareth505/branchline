@@ -54,12 +54,8 @@ interface StaticRowView {
   head: boolean;
   cx: number;
   nodeFill: string;
-  baseTopLinks: LinkView[];
-  baseBottomLinks: LinkView[];
   art?: ArtificialCommit;
   commit?: CommitInfo;
-  timeLabel: string;
-  refs: RefChipView[];
 }
 
 type GridColId = 'graph' | 'message' | 'author' | 'date' | 'sha';
@@ -113,11 +109,12 @@ export class RevisionGrid {
   readonly authorDraft = signal(this.store.historyFilter().author);
   private filterTimer: number | null = null;
 
-  readonly menu = signal<{ open: boolean; x: number; y: number; sha: string }>({
+  readonly menu = signal<{ open: boolean; x: number; y: number; sha: string; priorSha: string | null }>({
     open: false,
     x: 0,
     y: 0,
     sha: '',
+    priorSha: null,
   });
   private suppressMenuCloseUntil = 0;
 
@@ -131,7 +128,7 @@ export class RevisionGrid {
 
   readonly filterActive = computed(() => {
     const f = this.store.historyFilter();
-    return !!(f.query.trim() || f.author.trim() || f.currentBranchOnly || f.mineOnly);
+    return !!(f.query.trim() || f.author.trim() || f.currentBranchOnly || f.mineOnly || f.firstParent);
   });
 
   readonly dropTargetSha = signal<string | null>(null);
@@ -229,12 +226,10 @@ export class RevisionGrid {
 
   readonly staticRows = computed((): StaticRowView[] => {
     const nodes = this.layout().nodes;
-    const remotes = this.remoteRefNames();
     const pitch = this.lanePitch();
 
     return nodes.map((node, i) => {
       const commit = node.commit;
-      const fill = laneColor(node.colorIndex);
       return {
         id: node.id,
         node,
@@ -242,21 +237,34 @@ export class RevisionGrid {
         artificial: node.kind === 'artificial',
         head: !!commit?.refs.includes('HEAD'),
         cx: laneX(node.lane, pitch),
-        nodeFill: fill,
-        baseTopLinks: mapLinks(node.topLinks, 'top', pitch),
-        baseBottomLinks: mapLinks(node.bottomLinks, 'bottom', pitch),
+        nodeFill: laneColor(node.colorIndex),
         art: node.artificial,
         commit,
-        timeLabel: commit ? formatTime(commit.timestamp) : '',
-        refs: (commit?.refs ?? []).map((ref) => ({
-          ref,
-          className: chipClass(ref, remotes),
-          title: ref === 'HEAD' ? 'HEAD' : `Checkout ${ref}`,
-          disabled: ref === 'HEAD' || ref.startsWith('tag:') || ref.startsWith('tags/'),
-        })),
       };
     });
   });
+
+  topLinks(row: StaticRowView): LinkView[] {
+    return mapLinks(row.node.topLinks, 'top', this.lanePitch());
+  }
+
+  bottomLinks(row: StaticRowView): LinkView[] {
+    return mapLinks(row.node.bottomLinks, 'bottom', this.lanePitch());
+  }
+
+  timeLabel(ts: number): string {
+    return formatTime(ts);
+  }
+
+  refChips(commit: CommitInfo): RefChipView[] {
+    const remotes = this.remoteRefNames();
+    return commit.refs.map((ref) => ({
+      ref,
+      className: chipClass(ref, remotes),
+      title: ref === 'HEAD' ? 'HEAD' : `Checkout ${ref}`,
+      disabled: ref === 'HEAD' || ref.startsWith('tag:') || ref.startsWith('tags/'),
+    }));
+  }
 
   trackRow = (_: number, row: StaticRowView): string => row.id;
 
@@ -479,9 +487,16 @@ export class RevisionGrid {
     event.preventDefault();
     event.stopPropagation();
     if (!row.commit) return;
+    const priorSha = this.store.selectedSha();
     this.store.selectCommit(row.commit.sha);
     this.suppressMenuCloseUntil = performance.now() + 500;
-    this.menu.set({ open: true, x: event.clientX, y: event.clientY, sha: row.commit.sha });
+    this.menu.set({
+      open: true,
+      x: event.clientX,
+      y: event.clientY,
+      sha: row.commit.sha,
+      priorSha: priorSha && priorSha !== row.commit.sha ? priorSha : null,
+    });
   }
 
   onRefClick(ref: string, event: MouseEvent): void {
@@ -498,6 +513,65 @@ export class RevisionGrid {
     } catch {
       this.store.showError('Could not copy SHA');
     }
+  }
+
+  canCompareMenu(): boolean {
+    const menu = this.menu();
+    return !!menu.priorSha && menu.priorSha !== menu.sha;
+  }
+
+  compareWithSelected(): void {
+    const { sha, priorSha } = this.menu();
+    this.closeMenu();
+    if (priorSha && priorSha !== sha) {
+      this.store.selectedSha.set(priorSha);
+      this.store.selectedShas.set([priorSha]);
+      this.store.toggleCompare(sha);
+      this.store.setBrowseTab('diff');
+      return;
+    }
+    this.store.compareSelectedCommits();
+  }
+
+  openOnHost(): void {
+    const sha = this.menu().sha;
+    this.closeMenu();
+    if (sha) void this.store.openCommitOnHost(sha);
+  }
+
+  copyLink(): void {
+    const sha = this.menu().sha;
+    this.closeMenu();
+    if (sha) void this.store.copyCommitPermalink(sha);
+  }
+
+  savePatch(): void {
+    const sha = this.menu().sha;
+    this.closeMenu();
+    if (sha) void this.store.exportPatchForSha(sha);
+  }
+
+  togglePin(): void {
+    const sha = this.menu().sha;
+    this.closeMenu();
+    if (sha) this.store.togglePinnedCommit(sha);
+  }
+
+  isBadSignature(signature?: string | null): boolean {
+    return !!signature && BAD_SIGNATURES.has(signature);
+  }
+
+  ciState(commit: CommitInfo): 'success' | 'failure' | 'pending' | null {
+    const statuses = this.store.commitStatuses();
+    const state = statuses[commit.sha] ?? statuses[commit.shortSha];
+    if (state === 'success' || state === 'failure' || state === 'pending') return state;
+    return null;
+  }
+
+  ciTitle(state: 'success' | 'failure' | 'pending'): string {
+    if (state === 'success') return 'Checks passed';
+    if (state === 'failure') return 'Checks failed';
+    return 'Checks pending';
   }
 
   closeMenu(): void {
@@ -559,6 +633,21 @@ export class RevisionGrid {
     });
     if (!name?.trim()) return;
     void this.store.createTag(name.trim(), sha);
+  }
+
+  async startBisectHere(): Promise<void> {
+    const sha = this.menu().sha;
+    this.closeMenu();
+    const good = await this.prompts.ask({
+      title: 'Bisect: known good commit',
+      message: `Mark ${sha.slice(0, 7)} as bad. Enter a known good SHA, tag, or branch.`,
+      label: 'Good commit',
+      placeholder: 'main or abc1234',
+      confirmLabel: 'Start bisect',
+      mono: true,
+    });
+    if (!good?.trim()) return;
+    void this.store.startBisect({ badSha: sha, goodSha: good.trim() });
   }
 
   extractChangelog(): void {
@@ -721,3 +810,4 @@ function matchesSha(raw: string, full: string): boolean {
 }
 
 const EMPTY_SHA_SET = new Set<string>();
+const BAD_SIGNATURES = new Set(['B', 'U', 'X', 'Y', 'R', 'E']);

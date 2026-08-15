@@ -55,22 +55,22 @@ export class PrPanel {
   readonly showingDummy = computed(
     () => this.store.isDummyBackend && !this.store.hasLinkedPrHost(),
   );
-  readonly hasGithub = computed(() => this.store.hasGithubConnection());
-  readonly needsConnect = computed(() => !this.showingDummy() && !this.hasGithub());
+  readonly hasHost = computed(() => this.store.hasLinkedPrHost());
+  readonly needsConnect = computed(() => !this.showingDummy() && !this.hasHost());
 
-  readonly liveMode = computed(() => !this.showingDummy() && this.hasGithub());
+  readonly liveMode = computed(() => !this.showingDummy() && this.hasHost());
   readonly busy = computed(() => this.loading() || this.store.pullRequestsRefreshing());
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
-      return 'Browser preview — sample PRs. Link GitHub under Settings → Connections for live PRs.';
+      return 'Browser preview — sample PRs. Link GitHub, GitLab, or Azure DevOps under Settings → Connections for live PRs.';
     }
-    if (this.hasGithub()) {
+    if (this.hasHost()) {
       const n = this.prs().length;
       const updating = this.store.pullRequestsRefreshing() ? ' · updating…' : '';
-      return `Live GitHub PRs for this repo${n ? ` · ${n} loaded` : ''}${updating}.`;
+      return `Live pull requests for this repo${n ? ` · ${n} loaded` : ''}${updating}.`;
     }
-    return 'Link GitHub to load pull requests here. GitLab and Azure DevOps open in the browser.';
+    return 'Link GitHub, GitLab, or Azure DevOps to load pull requests here.';
   });
 
   readonly teams = computed(() => this.unique((p) => p.team));
@@ -177,7 +177,7 @@ export class PrPanel {
     effect(() => {
       this.store.currentRepo()?.path;
       this.store.hasLinkedPrHost();
-      this.hasGithub();
+      this.hasHost();
       const state = this.listState();
       void this.store.refreshPullRequests(state);
     });
@@ -247,7 +247,7 @@ export class PrPanel {
   private allowDummyMutation(pr: MockPullRequest, action: string): boolean {
     if (this.showingDummy()) return true;
     this.store.showInfo(
-      `${action} isn’t available for live GitHub PRs yet — opening #${pr.number} in the browser.`,
+      `${action} isn’t available for live PRs yet — opening #${pr.number} in the browser.`,
     );
     this.openBrowser(pr);
     return false;

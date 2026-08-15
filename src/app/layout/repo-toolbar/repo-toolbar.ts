@@ -127,6 +127,11 @@ export class RepoToolbar {
     void this.store.openCreatePullRequest();
   }
 
+  openGitFlow(): void {
+    this.menu.set(null);
+    this.store.openGitFlowDialog();
+  }
+
   openConsole(): void {
     this.menu.set(null);
     this.store.setView('browse');

@@ -10,6 +10,8 @@ use tauri::command;
 pub struct CommitLogInput {
     pub path: String,
     pub limit: Option<usize>,
+    #[serde(default)]
+    pub first_parent: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,18 +65,21 @@ pub async fn get_commit_log(input: CommitLogInput) -> AppResult<Vec<CommitInfo>>
     run_blocking(move || {
         let path = PathBuf::from(&input.path);
         let limit = input.limit.unwrap_or(200).clamp(1, 5000);
-        git2_repo::commit_log(&path, limit)
+        git2_repo::commit_log(&path, limit, input.first_parent.unwrap_or(false))
     })
     .await
 }
 
 #[command]
-pub fn get_commit_range(input: CommitRangeInput) -> AppResult<Vec<CommitInfo>> {
-    let path = PathBuf::from(&input.path);
-    let limit = input.limit.unwrap_or(500).clamp(1, 5000);
-    git_cli::with_repo_lock(&path, |resolved| {
-        git2_repo::commit_range(resolved, input.from.as_deref(), input.to.as_deref(), limit)
+pub async fn get_commit_range(input: CommitRangeInput) -> AppResult<Vec<CommitInfo>> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        let limit = input.limit.unwrap_or(500).clamp(1, 5000);
+        git_cli::with_repo_lock(&path, |resolved| {
+            git2_repo::commit_range(resolved, input.from.as_deref(), input.to.as_deref(), limit)
+        })
     })
+    .await
 }
 
 #[command]
@@ -84,7 +89,11 @@ pub fn get_artificial_commits(input: RepoPathInput) -> AppResult<Vec<ArtificialC
 }
 
 #[command]
-pub fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
+pub async fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
+    run_blocking(move || get_file_blame_inner(input)).await
+}
+
+fn get_file_blame_inner(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
     use crate::infrastructure::git_cli;
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
@@ -143,7 +152,11 @@ pub fn get_file_blame(input: FilePathInput) -> AppResult<Vec<BlameLine>> {
 }
 
 #[command]
-pub fn get_file_history(input: FilePathInput) -> AppResult<Vec<FileHistoryEntry>> {
+pub async fn get_file_history(input: FilePathInput) -> AppResult<Vec<FileHistoryEntry>> {
+    run_blocking(move || get_file_history_inner(input)).await
+}
+
+fn get_file_history_inner(input: FilePathInput) -> AppResult<Vec<FileHistoryEntry>> {
     use crate::infrastructure::git_cli;
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;

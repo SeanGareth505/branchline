@@ -699,6 +699,11 @@ code,
   cursor: pointer;
 }
 
+.bl-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .bl-menu button .check {
   display: inline-flex;
   width: 14px;

@@ -1,4 +1,4 @@
-use crate::infrastructure::sqlite;
+use crate::infrastructure::{secrets, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -134,6 +134,14 @@ pub struct AppSettings {
     pub pr_create_method: String,
     #[serde(default)]
     pub github_repo_accounts: std::collections::HashMap<String, GithubRepoAccountPref>,
+    #[serde(default = "default_git_flow_main")]
+    pub git_flow_main: String,
+    #[serde(default = "default_git_flow_develop")]
+    pub git_flow_develop: String,
+    #[serde(default)]
+    pub pinned_commits: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub keyboard_shortcuts: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +187,14 @@ fn default_density() -> String {
 
 fn default_pr_create_method() -> String {
     "browser".into()
+}
+
+fn default_git_flow_main() -> String {
+    "main".into()
+}
+
+fn default_git_flow_develop() -> String {
+    "develop".into()
 }
 
 fn default_pull_action() -> String {
@@ -398,6 +414,10 @@ impl Default for AppSettings {
             pr_templates: Vec::new(),
             pr_create_method: default_pr_create_method(),
             github_repo_accounts: std::collections::HashMap::new(),
+            git_flow_main: default_git_flow_main(),
+            git_flow_develop: default_git_flow_develop(),
+            pinned_commits: std::collections::HashMap::new(),
+            keyboard_shortcuts: std::collections::HashMap::new(),
         }
     }
 }
@@ -417,6 +437,12 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
     }
     if settings.pr_create_method != "cli" && settings.pr_create_method != "browser" {
         settings.pr_create_method = default_pr_create_method();
+    }
+    if settings.git_flow_main.trim().is_empty() {
+        settings.git_flow_main = default_git_flow_main();
+    }
+    if settings.git_flow_develop.trim().is_empty() {
+        settings.git_flow_develop = default_git_flow_develop();
     }
     if settings.branch_prefix.trim().is_empty() {
         settings.branch_prefix = default_branch_prefix();
@@ -483,6 +509,10 @@ fn merge_preserved_tokens(mut incoming: AppSettings, stored: &AppSettings) -> Ap
     for connection in &mut incoming.connections {
         let token = connection.token.trim();
         if token.is_empty() {
+            if !connection.has_token {
+                connection.token.clear();
+                continue;
+            }
             if let Some(existing) = stored
                 .connections
                 .iter()
@@ -497,6 +527,48 @@ fn merge_preserved_tokens(mut incoming: AppSettings, stored: &AppSettings) -> Ap
     incoming
 }
 
+fn hydrate_connection_tokens(settings: &mut AppSettings) -> bool {
+    let mut migrated = false;
+    for connection in &mut settings.connections {
+        let db_token = connection.token.trim().to_string();
+        match secrets::get_connection_token(&connection.id) {
+            Ok(Some(secret)) => {
+                connection.token = secret;
+                if !db_token.is_empty() {
+                    migrated = true;
+                }
+            }
+            Ok(None) | Err(_) => {
+                if !db_token.is_empty() {
+                    if secrets::set_connection_token(&connection.id, &db_token).is_ok() {
+                        migrated = true;
+                    }
+                    connection.token = db_token;
+                }
+            }
+        }
+        connection.has_token = !connection.token.trim().is_empty();
+    }
+    migrated
+}
+
+fn persist_connection_secrets(settings: &AppSettings) -> AppSettings {
+    let mut disk = settings.clone();
+    for connection in &mut disk.connections {
+        let token = connection.token.trim().to_string();
+        connection.has_token = !token.is_empty();
+        if token.is_empty() {
+            let _ = secrets::delete_connection_token(&connection.id);
+            connection.token.clear();
+            continue;
+        }
+        if secrets::set_connection_token(&connection.id, &token).is_ok() {
+            connection.token.clear();
+        }
+    }
+    disk
+}
+
 #[command]
 pub fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
     Ok(redact_tokens(load_settings_with_tokens(&state)?))
@@ -504,24 +576,32 @@ pub fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
 
 pub fn load_settings_with_tokens(state: &AppState) -> AppResult<AppSettings> {
     let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-    match sqlite::get_setting(&db, "app_settings")? {
+    let mut settings = match sqlite::get_setting(&db, "app_settings")? {
         Some(raw) => {
             let parsed: AppSettings = serde_json::from_str(&raw).unwrap_or_default();
-            Ok(ensure_defaults(parsed))
+            ensure_defaults(parsed)
         }
-        None => Ok(AppSettings::default()),
+        None => AppSettings::default(),
+    };
+    let migrated = hydrate_connection_tokens(&mut settings);
+    if migrated {
+        let disk = persist_connection_secrets(&settings);
+        sqlite::set_setting(&db, "app_settings", &serde_json::to_string(&disk)?)?;
     }
+    Ok(settings)
 }
 
 #[command]
 pub fn save_settings(state: State<'_, AppState>, input: AppSettings) -> AppResult<AppSettings> {
     let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-    let stored = match sqlite::get_setting(&db, "app_settings")? {
+    let mut stored = match sqlite::get_setting(&db, "app_settings")? {
         Some(raw) => serde_json::from_str::<AppSettings>(&raw).unwrap_or_default(),
         None => AppSettings::default(),
     };
+    hydrate_connection_tokens(&mut stored);
     let settings = ensure_defaults(merge_preserved_tokens(input, &stored));
-    let raw = serde_json::to_string(&settings)?;
+    let disk = persist_connection_secrets(&settings);
+    let raw = serde_json::to_string(&disk)?;
     sqlite::set_setting(&db, "app_settings", &raw)?;
     if let Some(obj) = settings.layout.as_object() {
         if !obj.is_empty() {

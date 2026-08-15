@@ -80,6 +80,11 @@ export class RemotesPanel {
     this.store.openPublishGithubDialog();
   }
 
+  syncFork(event?: Event): void {
+    event?.stopPropagation();
+    void this.store.syncUpstream();
+  }
+
   async add(): Promise<void> {
     const name = this.name().trim();
     const url = this.url().trim();

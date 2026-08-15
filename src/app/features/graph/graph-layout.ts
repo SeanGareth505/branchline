@@ -84,6 +84,7 @@ export function buildGraphLayout(
   }
 
   const lanes: (LaneSlot | null)[] = [];
+  const laneBySha = new Map<string, number>();
   let nextColor = 0;
 
   const nextColorIndex = (): number => {
@@ -101,8 +102,22 @@ export function buildGraphLayout(
     while (lanes.length <= index) lanes.push(null);
   };
 
+  const occupy = (index: number, slot: LaneSlot): void => {
+    ensureLane(index);
+    const prev = lanes[index];
+    if (prev && laneBySha.get(prev.sha) === index) laneBySha.delete(prev.sha);
+    lanes[index] = slot;
+    laneBySha.set(slot.sha, index);
+  };
+
+  const clearLane = (index: number): void => {
+    const prev = lanes[index];
+    if (prev && laneBySha.get(prev.sha) === index) laneBySha.delete(prev.sha);
+    lanes[index] = null;
+  };
+
   if (artificial.length) {
-    lanes[0] = { sha: commits[0].sha, colorIndex: 0 };
+    occupy(0, { sha: commits[0].sha, colorIndex: 0 });
     nextColor = 1;
   }
 
@@ -113,7 +128,7 @@ export function buildGraphLayout(
       if (slot) incoming.push({ col: k, sha: slot.sha, colorIndex: slot.colorIndex });
     }
 
-    let col = lanes.findIndex((l) => l?.sha === commit.sha);
+    let col = laneBySha.get(commit.sha) ?? -1;
     let colorIndex: number;
 
     if (col < 0) {
@@ -125,7 +140,7 @@ export function buildGraphLayout(
     }
 
     for (let k = 0; k < lanes.length; k++) {
-      if (lanes[k]?.sha === commit.sha) lanes[k] = null;
+      if (lanes[k]?.sha === commit.sha) clearLane(k);
     }
 
     const parents = commit.parents
@@ -142,13 +157,12 @@ export function buildGraphLayout(
       const mergeParent = index > 0;
 
       if (index === 0) {
-        ensureLane(col);
-        lanes[col] = { sha: targetSha, colorIndex };
+        occupy(col, { sha: targetSha, colorIndex });
         parentCols.push({ col, colorIndex, mergeParent });
         return;
       }
 
-      const existing = lanes.findIndex((l) => l?.sha === targetSha);
+      const existing = laneBySha.get(targetSha) ?? -1;
       if (existing >= 0) {
         parentCols.push({
           col: existing,
@@ -159,14 +173,13 @@ export function buildGraphLayout(
       }
 
       const pc = firstFree();
-      ensureLane(pc);
       const branchColor = nextColorIndex();
-      lanes[pc] = { sha: targetSha, colorIndex: branchColor };
+      occupy(pc, { sha: targetSha, colorIndex: branchColor });
       parentCols.push({ col: pc, colorIndex: branchColor, mergeParent });
     });
 
     if (!parents.length) {
-      lanes[col] = null;
+      clearLane(col);
     }
 
     while (lanes.length > 0 && lanes[lanes.length - 1] === null) {

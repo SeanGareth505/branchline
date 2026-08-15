@@ -103,3 +103,49 @@ export function remoteRepoSlug(url: string): string | null {
   const path = parsed.webBase.replace(/^https:\/\/[^/]+\//i, '');
   return path || null;
 }
+
+export function commitWebUrl(remoteUrl: string, sha: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  const id = sha.trim();
+  if (!parsed || !id) return null;
+  if (isGitLabHost(parsed.host)) return `${parsed.webBase}/-/commit/${encodeURIComponent(id)}`;
+  return `${parsed.webBase}/commit/${encodeURIComponent(id)}`;
+}
+
+export function compareWebUrl(remoteUrl: string, from: string, to: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  const start = from.trim();
+  const end = to.trim();
+  if (!parsed || !start || !end) return null;
+  if (isAzureHost(parsed.host)) return commitWebUrl(remoteUrl, end);
+  const range = `${encodeURIComponent(start)}...${encodeURIComponent(end)}`;
+  if (isGitLabHost(parsed.host)) return `${parsed.webBase}/-/compare/${range}`;
+  return `${parsed.webBase}/compare/${range}`;
+}
+
+export function fileWebUrl(remoteUrl: string, sha: string, filePath: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  const id = sha.trim();
+  const file = filePath.replace(/^\/+/, '').trim();
+  if (!parsed || !id || !file) return null;
+  if (isAzureHost(parsed.host)) {
+    return `${parsed.webBase}?path=${encodeURIComponent(file)}&version=GC${encodeURIComponent(id)}`;
+  }
+  const encoded = file
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
+  if (isGitLabHost(parsed.host)) {
+    return `${parsed.webBase}/-/blob/${encodeURIComponent(id)}/${encoded}`;
+  }
+  return `${parsed.webBase}/blob/${encodeURIComponent(id)}/${encoded}`;
+}
+
+function isGitLabHost(host: string): boolean {
+  return host.includes('gitlab');
+}
+
+function isAzureHost(host: string): boolean {
+  return host.includes('dev.azure.com') || host.includes('visualstudio.com');
+}

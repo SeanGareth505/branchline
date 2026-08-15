@@ -13,8 +13,17 @@
     <app-help-tip
       compact
       heading="LFS"
-      body="Git Large File Storage tracks big binaries as pointers in Git. Pull downloads the real files. Needs git-lfs installed."
+      body="Git Large File Storage tracks big binaries as pointers in Git. Track a pattern, lock a file while you edit it, then pull to download the real objects. Needs git-lfs installed."
     />
+    <button
+      type="button"
+      class="icon always"
+      (click)="trackPattern($event)"
+      aria-label="Track LFS pattern"
+      title="git lfs track"
+    >
+      <ng-icon name="lucidePlus" size="11" />
+    </button>
     <button
       type="button"
       class="icon always"
@@ -39,25 +48,73 @@
     <ul class="card-list">
       @for (f of filtered(); track f.path) {
         <li>
-          <div class="meta">
-            <div class="title-row">
-              <ng-icon name="lucideFileText" size="12" />
-              <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
-              @if (f.locked) {
-                <span class="chip">locked</span>
-              }
+          <div class="row">
+            <div class="meta">
+              <div class="title-row">
+                <ng-icon name="lucideFileText" size="12" />
+                <span class="name" [title]="f.path">{{ fileName(f.path) }}</span>
+                @if (f.locked) {
+                  <span class="chip">locked</span>
+                }
+              </div>
+              <span class="msg" [title]="f.path">
+                {{ f.path }}
+                @if (f.size) {
+                  · {{ f.size }}
+                }
+                @if (f.locked && f.lockOwner) {
+                  · {{ f.lockOwner }}
+                }
+              </span>
             </div>
-            <span class="msg" [title]="f.path">
-              {{ f.path }}
-              @if (f.size) {
-                · {{ f.size }}
+            <div class="row-actions">
+              @if (f.locked) {
+                <button
+                  type="button"
+                  class="icon always"
+                  (click)="unlockFile(f.path, $event)"
+                  aria-label="Unlock file"
+                  title="git lfs unlock"
+                >
+                  <ng-icon name="lucideUnlock" size="11" />
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="icon always"
+                  (click)="lockFile(f.path, $event)"
+                  aria-label="Lock file"
+                  title="git lfs lock"
+                >
+                  <ng-icon name="lucideLock" size="11" />
+                </button>
               }
-            </span>
+              <button
+                type="button"
+                class="icon always"
+                (click)="untrackFile(f.path, $event)"
+                aria-label="Untrack file"
+                title="git lfs untrack"
+              >
+                <ng-icon name="lucideMinus" size="11" />
+              </button>
+            </div>
           </div>
         </li>
       } @empty {
         <li class="empty-row">No LFS files (or git-lfs not installed)</li>
       }
     </ul>
+    @if (worktreeLarge().length) {
+      <p class="subhead">Large in worktree</p>
+      <ul class="card-list quiet">
+        @for (f of worktreeLarge(); track f.path) {
+          <li>
+            <span class="name" [title]="f.path">{{ f.path }}</span>
+            <span class="size">{{ f.sizeLabel }}</span>
+          </li>
+        }
+      </ul>
+    }
   }
 </section>

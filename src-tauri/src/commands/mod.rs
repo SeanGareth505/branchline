@@ -1,4 +1,5 @@
 pub mod advanced;
+pub mod bisect;
 pub mod branch;
 pub mod cherry_pick;
 pub mod commit;
@@ -8,6 +9,7 @@ pub mod diagnostics;
 pub mod diff;
 pub mod git_detect;
 pub mod git_env;
+pub mod git_flow;
 pub mod github_auth;
 pub mod github_git;
 pub mod hooks;
@@ -35,6 +37,7 @@ pub mod submodules;
 pub mod tags;
 pub mod undo;
 pub mod workflows;
+pub mod workspace;
 pub mod worktrees;
 
 use crate::infrastructure::mock_providers;

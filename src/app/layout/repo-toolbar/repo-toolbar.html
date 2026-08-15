@@ -312,6 +312,15 @@
         <button
           type="button"
           class="tool icon-only"
+          title="Git Flow start or finish"
+          aria-label="Git Flow"
+          (click)="openGitFlow()"
+        >
+          <ng-icon name="lucideGitMerge" size="15" />
+        </button>
+        <button
+          type="button"
+          class="tool icon-only"
           title="Build a changelog from recent commits"
           aria-label="Extract changelog"
           (click)="store.openChangelogModal()"

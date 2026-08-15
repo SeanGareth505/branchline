@@ -197,7 +197,7 @@
           <button
             type="button"
             class="group-action danger"
-            title="Delete other local branches (keeps current, locked, and worktree branches)"
+            title="Review leftover local branches"
             (click)="cleanupLocalBranches($event)"
           >
             Clean up
@@ -214,10 +214,21 @@
         </button>
       </div>
       @if (isOpen('local')) {
-        <ul class="ref-list">
-          @for (row of localRows(); track row.path) {
+        @if (localRows().length === 0) {
+          <ul class="ref-list">
+            <li class="ref-row empty-row">{{ store.myBranchesOnly() ? 'No branches tipped by you' : 'No local branches' }}</li>
+          </ul>
+        } @else {
+          <cdk-virtual-scroll-viewport
+            class="ref-viewport"
+            [itemSize]="refRowHeight"
+            [minBufferPx]="80"
+            [maxBufferPx]="240"
+            [style.height.px]="refViewportPx(localRows().length)"
+          >
+            <ng-container *cdkVirtualFor="let row of localRows(); trackBy: trackBranchRow">
             @if (row.kind === 'dir') {
-              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
+              <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                 <span class="tree-guides" aria-hidden="true"></span>
                 <button
                   type="button"
@@ -230,9 +241,10 @@
                   <span class="label">{{ row.name }}</span>
                   <span class="count">{{ row.branchCount }}</span>
                 </button>
-              </li>
+              </div>
             } @else {
-              <li
+              <div
+                class="ref-row"
                 [attr.data-branch-path]="row.branch.name"
                 [attr.data-depth]="row.depth"
                 [class.current]="row.branch.isCurrent"
@@ -316,12 +328,11 @@
                     <ng-icon name="lucideTrash2" size="11" />
                   </button>
                 }
-              </li>
+              </div>
             }
-          } @empty {
-            <li class="empty-row">{{ store.myBranchesOnly() ? 'No branches tipped by you' : 'No local branches' }}</li>
-          }
-        </ul>
+            </ng-container>
+          </cdk-virtual-scroll-viewport>
+        }
       }
     </section>
     }
@@ -368,10 +379,21 @@
           </button>
         </div>
         @if (isRemoteGroupOpen(group.path)) {
-          <ul class="ref-list">
-            @for (row of group.rows; track row.path) {
+          @if (group.rows.length === 0) {
+            <ul class="ref-list">
+              <li class="ref-row empty-row">No branches</li>
+            </ul>
+          } @else {
+            <cdk-virtual-scroll-viewport
+              class="ref-viewport"
+              [itemSize]="refRowHeight"
+              [minBufferPx]="80"
+              [maxBufferPx]="240"
+              [style.height.px]="refViewportPx(group.rows.length)"
+            >
+              <ng-container *cdkVirtualFor="let row of group.rows; trackBy: trackBranchRow">
               @if (row.kind === 'dir') {
-                <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
+                <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                   <span class="tree-guides" aria-hidden="true"></span>
                   <button
                     type="button"
@@ -384,9 +406,10 @@
                     <span class="label">{{ row.name }}</span>
                     <span class="count">{{ row.branchCount }}</span>
                   </button>
-                </li>
+                </div>
               } @else {
-                <li
+                <div
+                  class="ref-row"
                   [attr.data-branch-path]="row.branch.name"
                   [attr.data-depth]="row.depth"
                   [class.mainline]="isMainline(row.branch.name)"
@@ -406,12 +429,11 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label">{{ row.name }}</span>
                   </button>
-                </li>
+                </div>
               }
-            } @empty {
-              <li class="empty-row">No branches</li>
-            }
-          </ul>
+              </ng-container>
+            </cdk-virtual-scroll-viewport>
+          }
         }
       </section>
       }
@@ -477,10 +499,21 @@
             </div>
           </div>
         }
-        <ul class="ref-list">
-          @for (row of tagRows(); track row.path) {
+        @if (tagRows().length === 0) {
+          <ul class="ref-list">
+            <li class="ref-row empty-row">No tags</li>
+          </ul>
+        } @else {
+          <cdk-virtual-scroll-viewport
+            class="ref-viewport"
+            [itemSize]="refRowHeight"
+            [minBufferPx]="80"
+            [maxBufferPx]="240"
+            [style.height.px]="refViewportPx(tagRows().length)"
+          >
+            <ng-container *cdkVirtualFor="let row of tagRows(); trackBy: trackTagRow">
             @if (row.kind === 'dir') {
-              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
+              <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                 <span class="tree-guides" aria-hidden="true"></span>
                 <button
                   type="button"
@@ -493,9 +526,10 @@
                   <span class="label">{{ row.name }}</span>
                   <span class="count">{{ row.tagCount }}</span>
                 </button>
-              </li>
+              </div>
             } @else {
-              <li
+              <div
+                class="ref-row"
                 [attr.data-depth]="row.depth"
                 [class.tip-selected]="isTipSelected(row.sha)"
                 [style.--depth]="row.depth"
@@ -515,12 +549,11 @@
                 >
                   <ng-icon name="lucideTrash2" size="11" />
                 </button>
-              </li>
+              </div>
             }
-          } @empty {
-            <li class="empty-row">No tags</li>
-          }
-        </ul>
+            </ng-container>
+          </cdk-virtual-scroll-viewport>
+        }
       }
     </section>
     }

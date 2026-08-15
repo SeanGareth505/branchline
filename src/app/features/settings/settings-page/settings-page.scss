@@ -433,6 +433,50 @@ input[type='color'] {
   gap: 0.45rem;
 }
 
+.shortcut-list {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shortcut-row:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
+.shortcut-row.capturing {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.shortcut-row kbd {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .bl-btn.quiet.danger {
   color: color-mix(in srgb, #c45c5c 80%, var(--text-secondary));
 }

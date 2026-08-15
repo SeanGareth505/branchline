@@ -11,6 +11,7 @@ import {
   CdkOverlayOrigin,
   type ConnectedPosition,
 } from '@angular/cdk/overlay';
+import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
@@ -99,6 +100,9 @@ type TagFlatRow =
     NgIcon,
     CdkConnectedOverlay,
     CdkOverlayOrigin,
+    CdkVirtualScrollViewport,
+    CdkFixedSizeVirtualScroll,
+    CdkVirtualForOf,
     StashPanel,
     RemotesPanel,
     WorktreesPanel,
@@ -114,6 +118,15 @@ export class RefsPanel {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
+  readonly refRowHeight = 28;
+  trackBranchRow = (_: number, row: BranchFlatRow): string => row.path + ':' + row.kind;
+  trackTagRow = (_: number, row: TagFlatRow): string => row.path + ':' + row.kind;
+
+  refViewportPx(count: number): number {
+    if (count <= 0) return this.refRowHeight;
+    return Math.min(count * this.refRowHeight, 392);
+  }
+
   readonly creatingTag = signal(false);
   readonly newTag = signal('');
   readonly query = signal('');
@@ -504,9 +517,9 @@ export class RefsPanel {
     await this.store.openSafety('deleteBranch', name);
   }
 
-  async cleanupLocalBranches(event?: Event): Promise<void> {
+  cleanupLocalBranches(event?: Event): void {
     event?.stopPropagation();
-    await this.store.deleteOtherLocalBranches();
+    this.store.openBranchHygieneDialog();
   }
 
   fetchRemote(name: string, event?: Event): void {

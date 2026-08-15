@@ -12,6 +12,7 @@ import { PrPanel } from '../../features/pull-requests/pr-panel/pr-panel';
 import { SettingsPage } from '../../features/settings/settings-page/settings-page';
 import { TemplatesPage } from '../../features/templates/templates-page/templates-page';
 import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
+import { PageSkeleton } from '../../shared/ui/page-skeleton/page-skeleton';
 import { PromptDialog } from '../../shared/ui/prompt-dialog/prompt-dialog';
 import { SelectDialog } from '../../shared/ui/select-dialog/select-dialog';
 import { SafetyDialog } from '../../shared/ui/safety-dialog/safety-dialog';
@@ -23,9 +24,14 @@ import { ConflictResolverDialog } from '../../features/conflicts/conflict-resolv
 import { IgnoreEditorDialog } from '../../features/ignore/ignore-editor-dialog/ignore-editor-dialog';
 import { PublishGithubDialog } from '../../features/publish/publish-github-dialog/publish-github-dialog';
 import { CreatePrDialog } from '../../features/pull-requests/create-pr-dialog/create-pr-dialog';
+import { GitFlowDialog } from '../../features/git-flow/git-flow-dialog/git-flow-dialog';
+import { BranchHygieneDialog } from '../../features/hygiene/branch-hygiene-dialog/branch-hygiene-dialog';
+import { GitCleanDialog } from '../../features/clean/git-clean-dialog/git-clean-dialog';
+import { SyncPreviewDialog } from '../../features/sync/sync-preview-dialog/sync-preview-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
 import { RemoteTroubleshootDialog } from '../../features/remotes/remote-troubleshoot-dialog/remote-troubleshoot-dialog';
 import { ReleaseDialog } from '../../features/release/release-dialog/release-dialog';
+import { ReleaseDialogService } from '../../features/release/release-dialog/release-dialog.service';
 import { ReleasePage } from '../../features/release/release-page/release-page';
 import { BrowseShell } from '../browse-shell/browse-shell';
 import { CommandPalette } from '../command-palette/command-palette';
@@ -46,6 +52,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
   imports: [
     NgIcon,
     BrandMark,
+    PageSkeleton,
     Spinner,
     ProjectSwitcher,
     RepoTabs,
@@ -77,6 +84,10 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     IgnoreEditorDialog,
     PublishGithubDialog,
     CreatePrDialog,
+    GitFlowDialog,
+    BranchHygieneDialog,
+    GitCleanDialog,
+    SyncPreviewDialog,
     GithubDeviceLoginDialog,
     RemoteTroubleshootDialog,
     ReleaseDialog,
@@ -89,6 +100,8 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
 export class Shell {
   readonly store = inject(AppStore);
   readonly updates = inject(UpdateService);
+  private readonly releaseDialog = inject(ReleaseDialogService);
+  readonly releasePromptOpen = computed(() => !!this.releaseDialog.request());
 
   readonly appliedTheme = computed(() => {
     const preference = this.store.settings().theme;

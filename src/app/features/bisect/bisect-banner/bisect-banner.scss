@@ -1,0 +1,38 @@
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.85rem;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-subtle));
+}
+
+.info {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  color: var(--accent);
+  min-width: 0;
+  flex: 1;
+}
+
+.copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.hint {
+  margin: 0.2rem 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}

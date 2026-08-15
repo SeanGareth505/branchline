@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppStore } from './core/app.store';
 import { DiagnosticsService } from './core/diagnostics.service';
@@ -7,12 +7,14 @@ import { PromptService } from './shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from './shared/ui/select-dialog/select.service';
 import { ReleaseDialogService } from './features/release/release-dialog/release-dialog.service';
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
+import { resolveShortcuts, shortcutMatches } from './shared/git/shortcuts';
 
 @Component({
   selector: 'app-root',
   imports: [RouterOutlet],
   templateUrl: './app.html',
   styleUrl: './app.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App implements OnInit {
   private readonly store = inject(AppStore);
@@ -43,7 +45,7 @@ export class App implements OnInit {
 
   @HostListener('window:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
-    const meta = event.metaKey || event.ctrlKey;
+    const shortcuts = resolveShortcuts(this.store.settings().keyboardShortcuts);
     const target = event.target as HTMLElement | null;
     const typing =
       !!target &&
@@ -52,42 +54,36 @@ export class App implements OnInit {
         target.tagName === 'SELECT' ||
         target.isContentEditable);
 
-    if (meta && event.key.toLowerCase() === 'k') {
+    if (shortcutMatches(event, shortcuts.palette)) {
       event.preventDefault();
       this.store.paletteOpen.update((v) => !v);
       return;
     }
-    if (!typing && event.key === 'F5') {
+    if (!typing && shortcutMatches(event, shortcuts.refresh)) {
       event.preventDefault();
       void this.store.refreshRepo({ notify: true });
       return;
     }
-    if (meta && event.shiftKey && event.key.toLowerCase() === 'f' && !typing && this.store.currentRepo()) {
+    if (!typing && shortcutMatches(event, shortcuts.fetch) && this.store.currentRepo()) {
       event.preventDefault();
       void this.store.fetchRemote();
       return;
     }
-    if (
-      meta &&
-      event.shiftKey &&
-      event.key.toLowerCase() === 'c' &&
-      !typing &&
-      this.store.currentRepo()
-    ) {
+    if (!typing && shortcutMatches(event, shortcuts.commit) && this.store.currentRepo()) {
       event.preventDefault();
       this.store.openCommitModal();
       return;
     }
-    if (meta && event.key.toLowerCase() === 'z' && !typing && this.store.toast()?.undo) {
+    if (!typing && shortcutMatches(event, shortcuts.undo) && this.store.toast()?.undo) {
       event.preventDefault();
       this.store.runUndoFromToast();
     }
-    if (meta && event.key.toLowerCase() === 'p' && !typing) {
+    if (!typing && shortcutMatches(event, shortcuts.search)) {
       event.preventDefault();
       this.store.openFileSearch();
       return;
     }
-    if (event.key === '?' && !typing && !meta && !event.altKey) {
+    if (event.key === '?' && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       this.store.openShortcutOverlay();
       return;
@@ -119,6 +115,14 @@ export class App implements OnInit {
         this.store.closeCreateBranchDialog();
       } else if (this.store.createPrDialogOpen()) {
         this.store.closeCreatePrDialog();
+      } else if (this.store.gitFlowDialogOpen()) {
+        this.store.closeGitFlowDialog();
+      } else if (this.store.branchHygieneDialogOpen()) {
+        this.store.closeBranchHygieneDialog();
+      } else if (this.store.gitCleanDialogOpen()) {
+        this.store.closeGitCleanDialog();
+      } else if (this.store.syncPreviewDialogOpen()) {
+        this.store.closeSyncPreviewDialog();
       } else if (this.store.publishGithubDialogOpen()) {
         this.store.closePublishGithubDialog();
       } else if (this.store.githubDeviceLoginOpen()) {

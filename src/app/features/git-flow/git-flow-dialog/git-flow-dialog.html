@@ -1,0 +1,107 @@
+@if (store.gitFlowDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="git-flow-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Git Flow</span>
+          <h2 id="git-flow-title">Start or finish a flow branch</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <section class="methods">
+        <h3>Kind</h3>
+        <div class="method-grid">
+          <button type="button" class="method" [class.on]="kind() === 'feature'" (click)="setKind('feature')">
+            <strong>Feature</strong>
+            <span>From develop (or main)</span>
+          </button>
+          <button type="button" class="method" [class.on]="kind() === 'release'" (click)="setKind('release')">
+            <strong>Release</strong>
+            <span>Merge to main and develop</span>
+          </button>
+          <button type="button" class="method" [class.on]="kind() === 'hotfix'" (click)="setKind('hotfix')">
+            <strong>Hotfix</strong>
+            <span>From main, then back to develop</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="methods">
+        <h3>Action</h3>
+        <div class="method-grid two">
+          <button type="button" class="method" [class.on]="action() === 'start'" (click)="setAction('start')">
+            <strong>Start</strong>
+            <span>Create and check out the branch</span>
+          </button>
+          <button type="button" class="method" [class.on]="action() === 'finish'" (click)="setAction('finish')">
+            <strong>Finish</strong>
+            <span>Merge, optional tag, then delete</span>
+          </button>
+        </div>
+      </section>
+
+      <label class="field">
+        <span>Name</span>
+        <input
+          type="text"
+          [ngModel]="name()"
+          (ngModelChange)="onNameChange($event)"
+          placeholder="onboarding"
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </label>
+
+      <div class="preview" [class.ready]="canSubmit()">
+        <span class="preview-label">Branch</span>
+        <code class="mono">{{ preview() }}</code>
+      </div>
+
+      @if (action() === 'finish') {
+        <div class="options">
+          <label class="check">
+            <input type="checkbox" [ngModel]="deleteBranch()" (ngModelChange)="deleteBranch.set($event)" />
+            <span>Delete the flow branch after merge</span>
+          </label>
+          @if (kind() !== 'feature') {
+            <label class="check">
+              <input type="checkbox" [ngModel]="tag()" (ngModelChange)="tag.set($event)" />
+              <span>Create a release tag</span>
+            </label>
+          }
+          <label class="check">
+            <input
+              type="checkbox"
+              [ngModel]="push() && hasRemote()"
+              [disabled]="!hasRemote()"
+              (ngModelChange)="hasRemote() && push.set($event)"
+            />
+            <span>{{ hasRemote() ? 'Push merged branches' : 'Add a remote to push' }}</span>
+          </label>
+        </div>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ submitLabel() }}
+          <kbd class="kbd">⌘↵</kbd>
+        </button>
+      </footer>
+    </div>
+  </div>
+}

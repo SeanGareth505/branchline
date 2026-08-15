@@ -1,0 +1,74 @@
+@if (store.branchHygieneDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="branch-hygiene-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Branches</span>
+          <h2 id="branch-hygiene-title">Clean up local branches</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      @if (loading()) {
+        <p class="empty">Loading…</p>
+      } @else if (entries().length === 0) {
+        <p class="empty">Nothing to clean up</p>
+      } @else {
+        @if (hasSafeBranches()) {
+          <button type="button" class="helper" (click)="selectMergedAndGone()">
+            Select all merged and gone
+          </button>
+        }
+        <div class="list">
+          @for (group of groups(); track group.reason) {
+            <section class="group">
+              <h3>{{ group.label }}</h3>
+              @for (entry of group.entries; track entry.name) {
+                <label class="row">
+                  <input
+                    type="checkbox"
+                    [checked]="isSelected(entry.name)"
+                    (change)="toggle(entry.name, $event)"
+                  />
+                  <span class="row-body">
+                    <span class="name">{{ entry.name }}</span>
+                    @if (entry.detail || entry.tipShortSha) {
+                      <span class="meta">
+                        @if (entry.tipShortSha) {
+                          <span class="mono">{{ entry.tipShortSha }}</span>
+                        }
+                        @if (entry.detail) {
+                          <span>{{ entry.detail }}</span>
+                        }
+                      </span>
+                    }
+                  </span>
+                </label>
+              }
+            </section>
+          }
+        </div>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ submitLabel() }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

@@ -132,9 +132,9 @@
             <ng-icon name="lucideTerminal" size="16" />
             <strong>Command line</strong>
             <span>{{
-              githubReady()
-                ? 'Create from Branchline with GitHub'
-                : 'Uses gh if installed, or linked GitHub'
+              hostReady()
+                ? 'Create from Branchline with the linked host'
+                : 'Uses gh if installed, or a linked GitHub / GitLab / Azure token'
             }}</span>
           </button>
           <button

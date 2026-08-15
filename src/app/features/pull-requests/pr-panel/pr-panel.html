@@ -5,7 +5,7 @@
         <h1>Pull requests</h1>
         <app-help-tip
           heading="Pull requests"
-          body="GitHub pull requests for this repository. Link GitHub under Settings → Connections. GitLab and Azure DevOps open in the browser."
+          body="Pull requests for this repository from the linked GitHub, GitLab, or Azure DevOps account."
         />
         @if (showingDummy()) {
           <span class="dummy-badge">PREVIEW</span>
@@ -55,9 +55,9 @@
 
   @if (needsConnect()) {
     <app-empty-state
-      title="Link GitHub to see pull requests"
-      message="Live PR listing is GitHub-only. You can still create a PR in the browser, or open GitLab / Azure DevOps from Connections."
-      ctaLabel="Connect GitHub"
+      title="Link a Git host to see pull requests"
+      message="Connect GitHub, GitLab, or Azure DevOps under Settings → Connections. You can still open a PR in the browser from New PR."
+      ctaLabel="Connect host"
       (cta)="connectHosts()"
     />
   } @else {
@@ -351,8 +351,8 @@
           {{ liveError() }}
         } @else if (showingDummy()) {
           No pull requests match these filters.
-        } @else if (!hasGithub()) {
-          Link GitHub under Settings → Connections to load live pull requests.
+        } @else if (!hasHost()) {
+          Link GitHub, GitLab, or Azure DevOps under Settings → Connections to load live pull requests.
         } @else {
           No pull requests found for this repository.
         }

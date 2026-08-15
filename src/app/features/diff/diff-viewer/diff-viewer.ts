@@ -13,10 +13,14 @@ import {
   CdkVirtualForOf,
 } from '@angular/cdk/scrolling';
 import { AngularSplitModule, type SplitGutterInteractionEvent } from 'angular-split';
+import { DomSanitizer, type SafeUrl } from '@angular/platform-browser';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
+import type { BlobPreview } from '../../../core/models';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { PatchLinesView, type PatchLinesMode } from '../patch-lines-view/patch-lines-view';
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 
 @Component({
   selector: 'app-diff-viewer',
@@ -36,8 +40,15 @@ import { PatchLinesView, type PatchLinesMode } from '../patch-lines-view/patch-l
 export class DiffViewer {
   readonly store = inject(AppStore);
   private readonly tauri = inject(TauriService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly sideBySide = signal(false);
+  readonly preferPatch = signal(false);
+  readonly imagePreview = signal<{
+    before?: SafeUrl;
+    after?: SafeUrl;
+    single?: SafeUrl;
+  } | null>(null);
   readonly patch = signal('');
   readonly files = signal<
     { path: string; status: string; additions?: number | null; deletions?: number | null }[]
@@ -53,6 +64,7 @@ export class DiffViewer {
   });
   private suppressMenuCloseUntil = 0;
   private loadToken = 0;
+  private lastPreviewKey = '';
 
   readonly menuOrigin = computed(() => ({ x: this.fileMenu().x, y: this.fileMenu().y }));
   readonly menuPositions: ConnectedPosition[] = [
@@ -94,6 +106,7 @@ export class DiffViewer {
       const file = this.store.selectedDiffPath();
       const source = this.store.diffSource();
       const tab = this.store.browseTab();
+      this.store.diffIgnoreWhitespace();
       if (source === 'workingDirectory' || source === 'staged') {
         this.store.changeCount();
       }
@@ -193,6 +206,26 @@ export class DiffViewer {
     await this.store.cherryPickPathsFromCommit(paths, target);
   }
 
+  restoreFile(path?: string): void {
+    this.closeFileMenu();
+    const file = path ?? this.store.selectedDiffPath();
+    const sha = this.store.selectedSha();
+    if (!file || !sha) return;
+    void this.store.restoreFileFromRevision(file, sha);
+  }
+
+  showPatchView(): void {
+    this.preferPatch.set(true);
+  }
+
+  showImageView(): void {
+    this.preferPatch.set(false);
+  }
+
+  isImagePath(path: string | null | undefined): boolean {
+    return !!path && IMAGE_EXT.test(path);
+  }
+
   onSplitDragEnd(event: SplitGutterInteractionEvent): void {
     const nums = event.sizes.filter((s): s is number => typeof s === 'number');
     if (nums.length >= 2) this.splitSizes.set([nums[0], nums[1]]);
@@ -267,13 +300,20 @@ export class DiffViewer {
     source: 'commit' | 'workingDirectory' | 'staged',
   ): Promise<void> {
     const token = ++this.loadToken;
+    const ignoreWhitespace = this.store.diffIgnoreWhitespace();
+    const previewKey = `${source}:${sha ?? ''}:${compare ?? ''}:${file ?? ''}`;
+    if (previewKey !== this.lastPreviewKey) {
+      this.lastPreviewKey = previewKey;
+      this.preferPatch.set(false);
+    }
     const baseOpts: {
       pathspec?: string;
       staged?: boolean;
       commit?: string;
       compareFrom?: string;
       compareTo?: string;
-    } = {};
+      ignoreWhitespace?: boolean;
+    } = { ignoreWhitespace };
 
     if (source === 'workingDirectory') {
       baseOpts.staged = false;
@@ -307,18 +347,87 @@ export class DiffViewer {
 
       if (!selected) {
         this.patch.set('');
+        this.imagePreview.set(null);
+        this.preferPatch.set(false);
         return;
       }
 
       const diff = await this.tauri.getDiff(path, { ...baseOpts, pathspec: selected });
       if (token !== this.loadToken) return;
       this.patch.set(diff.unified || '');
+
+      if (this.isImagePath(selected) && !this.isMissingWorkingTreeFile(selected, source, nextFiles)) {
+        const preview = await this.loadImagePreview(path, selected, sha, compare, source);
+        if (token !== this.loadToken) return;
+        this.imagePreview.set(preview);
+      } else {
+        this.imagePreview.set(null);
+        this.preferPatch.set(false);
+      }
     } catch {
       if (token !== this.loadToken) return;
       this.patch.set('Could not load diff.');
       this.files.set([]);
+      this.imagePreview.set(null);
     } finally {
       if (token === this.loadToken) this.loading.set(false);
     }
   }
+
+  private isMissingWorkingTreeFile(
+    file: string,
+    source: 'commit' | 'workingDirectory' | 'staged',
+    files: { path: string; status: string }[],
+  ): boolean {
+    if (source === 'commit') return false;
+    const entry = files.find((f) => f.path === file);
+    if (!entry) return true;
+    return entry.status.trim().charAt(0).toUpperCase() === 'D';
+  }
+
+  private async loadImagePreview(
+    repo: string,
+    file: string,
+    sha: string | null,
+    compare: string | null,
+    source: 'commit' | 'workingDirectory' | 'staged',
+  ): Promise<{ before?: SafeUrl; after?: SafeUrl; single?: SafeUrl } | null> {
+    const fetchUrl = async (revision: string | null) => {
+      try {
+        const blob = await this.tauri.getBlobPreview(repo, { file, revision });
+        return blobToSafeUrl(blob, this.sanitizer);
+      } catch {
+        return null;
+      }
+    };
+
+    if (source === 'commit' && sha && compare) {
+      const [before, after] = await Promise.all([fetchUrl(compare), fetchUrl(sha)]);
+      if (before && after) return { before, after };
+      if (after) return { single: after };
+      if (before) return { single: before };
+      return null;
+    }
+
+    if (source === 'commit' && sha) {
+      const parent = this.store.selectedCommit()?.parents[0] ?? null;
+      const [before, after] = await Promise.all([
+        parent ? fetchUrl(parent) : Promise.resolve(null),
+        fetchUrl(sha),
+      ]);
+      if (before && after) return { before, after };
+      if (after) return { single: after };
+      if (before) return { single: before };
+      return null;
+    }
+
+    const current = await fetchUrl(source === 'staged' ? 'HEAD' : null);
+    return current ? { single: current } : null;
+  }
+}
+
+function blobToSafeUrl(blob: BlobPreview | null | undefined, sanitizer: DomSanitizer): SafeUrl | null {
+  if (!blob || blob.kind !== 'image' || !blob.base64) return null;
+  const mime = blob.mime || 'image/png';
+  return sanitizer.bypassSecurityTrustUrl(`data:${mime};base64,${blob.base64}`);
 }

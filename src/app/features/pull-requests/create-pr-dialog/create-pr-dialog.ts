@@ -40,7 +40,7 @@ export class CreatePrDialog {
   readonly busy = signal(false);
 
   readonly savedTemplates = computed(() => this.store.settings().prTemplates);
-  readonly githubReady = computed(() => this.store.hasLinkedGithub());
+  readonly hostReady = computed(() => this.store.hasLinkedPrHost());
 
   readonly branchOptions = computed(() => {
     const locals = this.store.localBranches().map((b) => b.name);

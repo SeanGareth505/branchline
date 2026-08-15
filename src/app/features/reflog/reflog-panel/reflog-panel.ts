@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -11,10 +11,11 @@ import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
   imports: [HelpTip, LoadingBlock],
   templateUrl: './reflog-panel.html',
   styleUrl: './reflog-panel.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ReflogPanel {
   private readonly tauri = inject(TauriService);
-  private readonly store = inject(AppStore);
+  readonly store = inject(AppStore);
   readonly entries = signal<ReflogEntry[]>([]);
   readonly loading = signal(false);
 
@@ -27,6 +28,7 @@ export class ReflogPanel {
         return;
       }
       void this.load(path);
+      void this.store.loadDanglingCommits();
     });
   }
 
@@ -53,5 +55,14 @@ export class ReflogPanel {
 
   checkout(entry: ReflogEntry): void {
     void this.store.createBranch(`reflog/${entry.shortSha}`, entry.sha);
+  }
+
+  selectDangling(entry: { sha: string }): void {
+    this.store.selectCommit(entry.sha);
+    this.store.setBrowseTab('diff');
+  }
+
+  recover(entry: { sha: string; shortSha: string }): void {
+    void this.store.createBranch(`recover/${entry.shortSha}`, entry.sha);
   }
 }

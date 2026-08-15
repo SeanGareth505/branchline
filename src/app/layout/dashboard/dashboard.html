@@ -60,6 +60,18 @@
           <ng-icon name="lucideLink" size="16" />
           Connect
         </button>
+        @if (store.repos().length > 0) {
+          <button
+            type="button"
+            class="tool"
+            (click)="store.fetchAllRecent()"
+            [disabled]="store.fetchAllBusy()"
+            title="Fetch remotes for every listed repository"
+          >
+            <ng-icon name="lucideRefreshCw" size="16" />
+            Fetch all
+          </button>
+        }
       </div>
       <div class="search">
         <ng-icon name="lucideSearch" size="15" />

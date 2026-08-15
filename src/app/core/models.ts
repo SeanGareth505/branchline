@@ -105,6 +105,66 @@ export interface CommitInfo {
   refs: string[];
   laneHint: number;
   isRelativeToHead: boolean;
+  signature?: string | null;
+}
+
+export interface BranchHygieneEntry {
+  name: string;
+  reason: 'merged' | 'gone' | 'stale' | string;
+  detail: string;
+  tipSha?: string;
+  tipShortSha?: string;
+}
+
+export interface SyncCommitInfo {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: string;
+  timestamp: number;
+}
+
+export interface CleanEntry {
+  path: string;
+  kind: 'untracked' | 'ignored' | string;
+  sizeLabel: string;
+}
+
+export interface LargeFileEntry {
+  path: string;
+  sizeLabel: string;
+  bytes: number;
+  lfs: boolean;
+}
+
+export interface FileFlagEntry {
+  path: string;
+  skipWorktree: boolean;
+  assumeUnchanged: boolean;
+}
+
+export interface FormatPatchOutput {
+  patch: string;
+}
+
+export interface CommitStatusInfo {
+  sha: string;
+  state: 'success' | 'failure' | 'pending' | 'unknown' | string;
+}
+
+export interface BlobPreview {
+  kind: 'image' | 'binary' | 'missing' | string;
+  mime: string;
+  base64?: string | null;
+}
+
+export interface KeyboardShortcuts {
+  palette: string;
+  commit: string;
+  fetch: string;
+  search: string;
+  undo: string;
+  refresh: string;
 }
 
 export interface ArtificialCommit {
@@ -327,6 +387,10 @@ export interface AppSettings {
   prTemplates: SavedPrTemplate[];
   prCreateMethod: PrCreateMethod;
   githubRepoAccounts: Record<string, GithubRepoAccountPref>;
+  gitFlowMain: string;
+  gitFlowDevelop: string;
+  pinnedCommits: Record<string, string[]>;
+  keyboardShortcuts: KeyboardShortcuts;
 }
 
 export interface GitEnvSnapshot {
@@ -616,6 +680,7 @@ export interface HistoryFilter {
   author: string;
   currentBranchOnly: boolean;
   mineOnly: boolean;
+  firstParent: boolean;
 }
 
 export interface UiSession {
@@ -693,7 +758,17 @@ export interface SubmoduleInfo {
 export interface LfsFileInfo {
   path: string;
   locked: boolean;
+  lockOwner?: string;
   size: string;
+}
+
+export interface BisectStatus {
+  active: boolean;
+  currentSha: string;
+  currentShortSha: string;
+  terms: string;
+  stepsLeft?: string | null;
+  logTail: string;
 }
 
 export interface ConflictSidesOutput {

@@ -36,10 +36,10 @@
               type="button"
               class="sync-btn"
               data-kind="behind"
-              title="Pull remote commits into this branch"
+              title="Review incoming commits"
               [disabled]="!!store.remoteBusy()"
               [attr.aria-busy]="store.remoteBusy() === 'pull'"
-              (click)="store.pullRemote()"
+              (click)="store.openSyncPreview('incoming')"
             >
               @if (store.remoteBusy() === 'pull') {
                 <app-spinner size="sm" label="Pulling" />
@@ -59,9 +59,9 @@
               [title]="
                 sync.kind === 'publish'
                   ? 'Publish this branch to the remote'
-                  : 'Push local commits to the remote'
+                  : 'Review outgoing commits'
               "
-              (click)="store.pushRemote()"
+              (click)="onAheadOrPublish(sync.kind)"
             >
               @if (store.remoteBusy() === 'push') {
                 <app-spinner size="sm" label="Pushing" />

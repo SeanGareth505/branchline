@@ -1,0 +1,55 @@
+@if (store.gitCleanDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="git-clean-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Working tree</span>
+          <h2 id="git-clean-title">Remove untracked files</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      @if (loading()) {
+        <p class="empty">Loading…</p>
+      } @else if (entries().length === 0) {
+        <p class="empty">No untracked files to clean</p>
+      } @else {
+        <div class="list">
+          @for (entry of entries(); track entry.path) {
+            <label class="row">
+              <input
+                type="checkbox"
+                [checked]="isSelected(entry.path)"
+                (change)="toggle(entry.path, $event)"
+              />
+              <span class="row-body">
+                <span class="name">{{ entry.path }}</span>
+                <span class="meta">{{ entry.sizeLabel }}</span>
+              </span>
+            </label>
+          }
+        </div>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="!canSubmit()"
+          (click)="submit()"
+        >
+          {{ submitLabel() }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

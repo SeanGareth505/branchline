@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import type { ToastKind } from '../../../core/app.store';
 
@@ -7,6 +7,7 @@ import type { ToastKind } from '../../../core/app.store';
   imports: [NgIcon],
   templateUrl: './undo-toast.html',
   styleUrl: './undo-toast.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UndoToast {
   @Input() message = '';

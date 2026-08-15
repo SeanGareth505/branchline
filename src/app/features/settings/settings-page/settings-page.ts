@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore, normalizeSettingsSection, type SettingsSection } from '../../../core/app.store';
@@ -19,6 +19,14 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
 import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
+import {
+  DEFAULT_SHORTCUTS,
+  formatShortcut,
+  isModifierOnly,
+  normalizeShortcut,
+  resolveShortcuts,
+  type ShortcutId,
+} from '../../../shared/git/shortcuts';
 import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
 import { GitAccountBar } from '../../remotes/git-account-bar/git-account-bar';
 
@@ -39,6 +47,7 @@ type ConfirmationKey =
   imports: [FormsModule, NgIcon, HelpTip, Dashboard, TicketFromBranch, GitAccountBar],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsPage implements OnInit {
   readonly store = inject(AppStore);
@@ -62,6 +71,16 @@ export class SettingsPage implements OnInit {
   readonly testingSsh = signal(false);
   readonly connectionTests = signal<Record<string, TestConnectionOutput>>({});
   readonly sshTest = signal<TestConnectionOutput | null>(null);
+  readonly capturingShortcut = signal<ShortcutId | null>(null);
+  readonly formatShortcut = formatShortcut;
+  readonly shortcutRows: { id: ShortcutId; label: string }[] = [
+    { id: 'palette', label: 'Palette' },
+    { id: 'commit', label: 'Commit' },
+    { id: 'fetch', label: 'Fetch' },
+    { id: 'search', label: 'Search' },
+    { id: 'undo', label: 'Undo' },
+    { id: 'refresh', label: 'Refresh' },
+  ];
 
   readonly confirmations: { key: ConfirmationKey; label: string; hint: string }[] = [
     { key: 'confirmForcePush', label: 'Force push', hint: 'Safety dialog for force-with-lease / force' },
@@ -141,6 +160,13 @@ export class SettingsPage implements OnInit {
       }
       this.editingConnectionId.set(focus);
     });
+    effect((onCleanup) => {
+      const id = this.capturingShortcut();
+      if (!id) return;
+      const onKey = (event: KeyboardEvent) => this.onCaptureKey(event, id);
+      window.addEventListener('keydown', onKey, true);
+      onCleanup(() => window.removeEventListener('keydown', onKey, true));
+    });
   }
 
   async ngOnInit(): Promise<void> {
@@ -206,6 +232,34 @@ export class SettingsPage implements OnInit {
     void this.store.saveSettings({ theme });
   }
 
+  shortcutAccel(id: ShortcutId): string {
+    return resolveShortcuts(this.store.settings().keyboardShortcuts)[id];
+  }
+
+  startCapture(id: ShortcutId): void {
+    this.capturingShortcut.set(this.capturingShortcut() === id ? null : id);
+  }
+
+  resetShortcuts(): void {
+    this.capturingShortcut.set(null);
+    void this.store.saveSettings({ keyboardShortcuts: { ...DEFAULT_SHORTCUTS } });
+  }
+
+  private onCaptureKey(event: KeyboardEvent, id: ShortcutId): void {
+    if (isModifierOnly(event)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.key === 'Escape') {
+      this.capturingShortcut.set(null);
+      return;
+    }
+    const accel = normalizeShortcut(event);
+    if (!accel) return;
+    const current = resolveShortcuts(this.store.settings().keyboardShortcuts);
+    void this.store.saveSettings({ keyboardShortcuts: { ...current, [id]: accel } });
+    this.capturingShortcut.set(null);
+  }
+
   async onHideUntracked(hideUntracked: boolean): Promise<void> {
     await this.store.saveSettings({ hideUntracked });
     await this.store.refreshRepo();
@@ -221,6 +275,16 @@ export class SettingsPage implements OnInit {
 
   setPushAction(defaultPushAction: DefaultPushAction): void {
     void this.store.saveSettings({ defaultPushAction });
+  }
+
+  onGitFlowMain(event: Event): void {
+    const value = (event.target as HTMLInputElement).value.trim() || 'main';
+    void this.store.saveSettings({ gitFlowMain: value });
+  }
+
+  onGitFlowDevelop(event: Event): void {
+    const value = (event.target as HTMLInputElement).value.trim() || 'develop';
+    void this.store.saveSettings({ gitFlowDevelop: value });
   }
 
   setSshClient(sshClient: string): void {

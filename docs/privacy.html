@@ -33,9 +33,10 @@
       <article class="feature" style="display: block">
         <h3>What stays on this machine</h3>
         <p>
-          Recent repos, settings, GitHub / GitLab / Azure / Jira tokens, and local crash reports are
-          stored in Branchline’s app data (SQLite) on your device. Tokens are redacted in the UI.
-          They are not encrypted at rest.
+          Recent repos, settings, and local crash reports are stored in Branchline’s app data
+          (SQLite) on your device. GitHub / GitLab / Azure / Jira tokens are stored in the OS
+          keychain when available, and otherwise in that local database. Tokens are redacted in the
+          UI.
         </p>
         <h3>What we do not collect</h3>
         <p>
@@ -51,8 +52,9 @@
         </p>
         <h3>Other hosts</h3>
         <p>
-          GitLab, Azure DevOps, and Jira use personal access tokens you paste. They are stored locally
-          and sent only to those hosts when you use clone, PRs, or the Jira panel.
+          GitLab, Azure DevOps, and Jira use personal access tokens you paste. They are stored in
+          the OS keychain when available and sent only to those hosts when you use clone, PRs, or
+          the Jira panel.
         </p>
         <h3>Questions</h3>
         <p>

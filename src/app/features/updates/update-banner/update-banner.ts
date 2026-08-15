@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { UpdateService } from '../../../core/update.service';
 
 @Component({
@@ -6,6 +6,7 @@ import { UpdateService } from '../../../core/update.service';
   imports: [],
   templateUrl: './update-banner.html',
   styleUrl: './update-banner.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UpdateBanner {
   readonly updates = inject(UpdateService);

@@ -5,6 +5,7 @@ import { RefsPanel } from '../../features/branches/refs-panel/refs-panel';
 import { BlameView } from '../../features/blame/blame-view/blame-view';
 import { CommitPanel } from '../../features/commits/commit-panel/commit-panel';
 import { ConflictBanner } from '../../features/conflicts/conflict-banner/conflict-banner';
+import { BisectBanner } from '../../features/bisect/bisect-banner/bisect-banner';
 import { DiffViewer } from '../../features/diff/diff-viewer/diff-viewer';
 import { FileHistoryPanel } from '../../features/file-history/file-history-panel/file-history-panel';
 import { ReflogPanel } from '../../features/reflog/reflog-panel/reflog-panel';
@@ -21,6 +22,7 @@ import { FileTreePanel } from '../../features/files/file-tree-panel/file-tree-pa
     CommitPanel,
     DiffViewer,
     ConflictBanner,
+    BisectBanner,
     GitConsole,
     BlameView,
     FileHistoryPanel,

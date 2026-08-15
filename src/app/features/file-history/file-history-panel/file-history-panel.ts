@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -11,6 +11,7 @@ import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
   imports: [HelpTip, LoadingBlock],
   templateUrl: './file-history-panel.html',
   styleUrl: './file-history-panel.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FileHistoryPanel {
   private readonly tauri = inject(TauriService);
@@ -49,6 +50,12 @@ export class FileHistoryPanel {
   select(entry: FileHistoryEntry): void {
     this.store.selectCommit(entry.sha);
     this.store.setBrowseTab('diff');
+  }
+
+  restore(entry: FileHistoryEntry): void {
+    const file = this.displayPath;
+    if (!file) return;
+    void this.store.restoreFileFromRevision(file, entry.sha);
   }
 
   hasFile(): boolean {

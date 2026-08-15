@@ -48,6 +48,26 @@
         </p>
       }
 
+      <details class="opts">
+        <summary>Options</summary>
+        <label class="check">
+          <input type="checkbox" [ngModel]="shallow()" (ngModelChange)="shallow.set($event)" />
+          <span>Shallow clone (faster, history limited)</span>
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            [ngModel]="recurseSubmodules()"
+            (ngModelChange)="recurseSubmodules.set($event)"
+          />
+          <span>Include submodules</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" [ngModel]="sparse()" (ngModelChange)="sparse.set($event)" />
+          <span>Sparse clone (partial history)</span>
+        </label>
+      </details>
+
       <footer>
         <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
         <button

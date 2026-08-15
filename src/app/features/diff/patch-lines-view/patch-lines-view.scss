@@ -201,6 +201,20 @@
   font-weight: 600;
 }
 
+.wd-gutter {
+  opacity: 0.7;
+}
+
+.wd-del {
+  background: color-mix(in srgb, var(--git-deleted) 26%, transparent);
+  border-radius: 2px;
+}
+
+.wd-add {
+  background: color-mix(in srgb, var(--git-added) 26%, transparent);
+  border-radius: 2px;
+}
+
 .pline.spacer {
   min-height: 1.4em;
   opacity: 0;

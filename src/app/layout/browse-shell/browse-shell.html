@@ -37,10 +37,27 @@
     <app-conflict-banner />
   }
 
+  @if (store.bisectStatus()?.active) {
+    <app-bisect-banner />
+  }
+
   @if (store.compareSha(); as compare) {
     <div class="compare-bar">
-      Comparing selection ↔ <span class="mono">{{ compare.slice(0, 7) }}</span>
+      Comparing
+      <span class="mono">{{ (store.selectedSha() ?? '').slice(0, 7) || '…' }}</span>
+      →
+      <span class="mono">{{ compare.slice(0, 7) }}</span>
       <button type="button" class="bl-btn" title="Stop comparing commits" (click)="store.compareSha.set(null)">Clear</button>
+      @if (store.selectedSha(); as selected) {
+        <button
+          type="button"
+          class="bl-btn quiet"
+          title="Open this comparison on GitHub or GitLab"
+          (click)="store.openCompareOnHost(selected, compare)"
+        >
+          Open on host
+        </button>
+      }
     </div>
   }
 

@@ -34,11 +34,21 @@
     <ul>
       @for (entry of entries(); track entry.sha) {
         <li>
-          <button type="button" class="row" (click)="select(entry)">
-            <span class="sha mono">{{ entry.shortSha }}</span>
-            <span class="subject">{{ entry.subject }}</span>
-            <span class="meta">{{ entry.author }} · {{ time(entry.timestamp) }}</span>
-          </button>
+          <div class="entry">
+            <button type="button" class="row" (click)="select(entry)">
+              <span class="sha mono">{{ entry.shortSha }}</span>
+              <span class="subject">{{ entry.subject }}</span>
+              <span class="meta">{{ entry.author }} · {{ time(entry.timestamp) }}</span>
+            </button>
+            <button
+              type="button"
+              class="restore"
+              title="Restore this version of the file"
+              (click)="restore(entry)"
+            >
+              Restore
+            </button>
+          </div>
         </li>
       }
     </ul>

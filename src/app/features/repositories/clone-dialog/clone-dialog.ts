@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
@@ -10,6 +10,7 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
   imports: [FormsModule, NgIcon],
   templateUrl: './clone-dialog.html',
   styleUrl: './clone-dialog.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CloneDialog {
   readonly store = inject(AppStore);
@@ -17,6 +18,9 @@ export class CloneDialog {
   readonly url = signal('');
   readonly parentDir = signal('');
   readonly busy = signal(false);
+  readonly shallow = signal(false);
+  readonly recurseSubmodules = signal(false);
+  readonly sparse = signal(false);
 
   constructor() {
     effect(() => {
@@ -45,8 +49,15 @@ export class CloneDialog {
   close(): void {
     if (this.busy()) return;
     this.store.closeCloneDialog();
+    this.resetForm();
+  }
+
+  private resetForm(): void {
     this.url.set('');
     this.parentDir.set('');
+    this.shallow.set(false);
+    this.recurseSubmodules.set(false);
+    this.sparse.set(false);
   }
 
   private isTauri(): boolean {
@@ -80,10 +91,13 @@ export class CloneDialog {
     if (!this.canClone()) return;
     this.busy.set(true);
     try {
-      await this.store.cloneRepo(this.url().trim(), this.destination());
+      await this.store.cloneRepo(this.url().trim(), this.destination(), {
+        shallow: this.shallow(),
+        recurseSubmodules: this.recurseSubmodules(),
+        sparse: this.sparse(),
+      });
       this.store.closeCloneDialog();
-      this.url.set('');
-      this.parentDir.set('');
+      this.resetForm();
     } finally {
       this.busy.set(false);
     }

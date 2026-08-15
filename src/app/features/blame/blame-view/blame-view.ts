@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { AppStore } from '../../../core/app.store';
@@ -12,6 +12,7 @@ import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
   imports: [FormsModule, HelpTip, LoadingBlock, CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
   templateUrl: './blame-view.html',
   styleUrl: './blame-view.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BlameView {
   private readonly tauri = inject(TauriService);

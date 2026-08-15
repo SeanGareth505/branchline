@@ -469,6 +469,21 @@ button.sync-chip:hover {
   background: color-mix(in srgb, var(--git-deleted) 10%, transparent);
 }
 
+.ref-viewport {
+  display: block;
+  width: 100%;
+}
+
+.ref-viewport .ref-row {
+  content-visibility: visible;
+}
+
+.ref-viewport .ref-row.folder {
+  margin-top: 0;
+  min-height: 28px;
+  height: 28px;
+}
+
 .ref-list {
   --tree-indent: 15px;
   --tree-gutter: 6px;
@@ -481,7 +496,9 @@ button.sync-chip:hover {
   min-width: 0;
 }
 
-.ref-list > li {
+.ref-row {
+  --tree-indent: 15px;
+  --tree-gutter: 6px;
   --depth: 0;
   position: relative;
   display: flex;
@@ -510,7 +527,7 @@ button.sync-chip:hover {
   z-index: 0;
 }
 
-.ref-list > li[data-depth='0'] .tree-guides {
+.ref-row[data-depth='0'] .tree-guides {
   display: none;
 }
 
@@ -543,23 +560,23 @@ button.sync-chip:hover {
   box-sizing: border-box;
 }
 
-.ref-list > li > :not(.tree-guides) {
+.ref-row > :not(.tree-guides) {
   position: relative;
   z-index: 1;
 }
 
-.ref-list > li.folder {
+.ref-row.folder {
   border: 0;
   min-height: 30px;
   height: 30px;
   margin-top: 0.22rem;
 }
 
-.ref-list > li.folder:first-child {
+.ref-row.folder:first-child {
   margin-top: 0.08rem;
 }
 
-.ref-list > li.folder:hover {
+.ref-row.folder:hover {
   background: transparent;
 }
 
@@ -628,55 +645,55 @@ button.sync-chip:hover {
   opacity: 0.85;
 }
 
-.ref-list > li.current .leaf-icon {
+.ref-row.current .leaf-icon {
   color: var(--accent);
   opacity: 1;
 }
 
-.ref-list > li.mainline .leaf-icon {
+.ref-row.mainline .leaf-icon {
   color: color-mix(in srgb, var(--git-modified) 88%, var(--text-primary));
   opacity: 1;
 }
 
-.ref-list > li.mainline .label {
+.ref-row.mainline .label {
   font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 
-.ref-list > li.mainline:not(.current) {
+.ref-row.mainline:not(.current) {
   background: transparent;
 }
 
-.ref-list > li.mainline.current .leaf-icon {
+.ref-row.mainline.current .leaf-icon {
   color: var(--accent);
 }
 
-.ref-list > li:hover {
+.ref-row:hover {
   background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
 }
 
-.ref-list > li.mainline:not(.current):hover {
+.ref-row.mainline:not(.current):hover {
   background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
 }
 
-.ref-list > li.tip-selected:not(.current) {
+.ref-row.tip-selected:not(.current) {
   background: transparent;
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
-.ref-list > li.current {
+.ref-row.current {
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
   border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.ref-list > li.current .label {
+.ref-row.current .label {
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.ref-list > li.current:hover {
+.ref-row.current:hover {
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
 }
 
@@ -685,7 +702,7 @@ button.sync-chip:hover {
   outline: none;
 }
 
-.ref-list > li:focus-within:not(.current):not(.folder) {
+.ref-row:focus-within:not(.current):not(.folder) {
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
 
@@ -702,7 +719,7 @@ button.sync-chip:hover {
   background: var(--accent);
 }
 
-.ref-list > li.flash {
+.ref-row.flash {
   animation: branch-flash 1.2s var(--ease-out);
 }
 
@@ -725,7 +742,7 @@ button.sync-chip:hover {
   flex-shrink: 0;
 }
 
-.ref-list > li.locked .label {
+.ref-row.locked .label {
   color: var(--text-secondary);
 }
 
@@ -781,8 +798,8 @@ button.sync-chip:hover {
   opacity: 0.5;
 }
 
-.ref-list > li:hover .icon,
-.ref-list > li:focus-within .icon,
+.ref-row:hover .icon,
+.ref-row:focus-within .icon,
 .group-head-row:hover .icon,
 .group-head-row:focus-within .icon {
   opacity: 1;

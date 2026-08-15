@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideIcons } from '@ng-icons/core';
 import {
@@ -60,6 +60,7 @@ import {
   lucideTicket,
   lucideTrash2,
   lucideUndo2,
+  lucideUnlock,
   lucideUnplug,
   lucideUpload,
   lucideUser,
@@ -74,7 +75,7 @@ import { routes } from './app.routes';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideZoneChangeDetection({ eventCoalescing: true, runCoalescing: true }),
+    provideZonelessChangeDetection(),
     provideRouter(routes),
     provideIcons({
       lucideArchive,
@@ -135,6 +136,7 @@ export const appConfig: ApplicationConfig = {
       lucideTicket,
       lucideTrash2,
       lucideUndo2,
+      lucideUnlock,
       lucideUnplug,
       lucideUpload,
       lucideUser,

@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
@@ -14,6 +14,7 @@ type ConfirmPart = { kind: 'text' | 'target'; value: string };
   imports: [FormsModule, NgIcon],
   templateUrl: './safety-dialog.html',
   styleUrl: './safety-dialog.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SafetyDialog {
   readonly store = inject(AppStore);

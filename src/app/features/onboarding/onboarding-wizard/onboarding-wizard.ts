@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -11,6 +11,7 @@ import { SshSetupPanel } from '../ssh-setup-panel/ssh-setup-panel';
   imports: [FormsModule, BrandMark, SshSetupPanel],
   templateUrl: './onboarding-wizard.html',
   styleUrl: './onboarding-wizard.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OnboardingWizard implements OnInit {
   private readonly tauri = inject(TauriService);

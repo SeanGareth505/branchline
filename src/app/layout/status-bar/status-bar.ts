@@ -53,6 +53,14 @@ export class StatusBar {
     return status.branch;
   }
 
+  onAheadOrPublish(kind: string): void {
+    if (kind === 'publish') {
+      void this.store.pushRemote();
+      return;
+    }
+    this.store.openSyncPreview('outgoing');
+  }
+
   onSyncAction(): void {
     const sync = this.syncStatus();
     if (!sync) return;
@@ -61,11 +69,11 @@ export class StatusBar {
       return;
     }
     if (sync.kind === 'ahead') {
-      void this.store.pushRemote();
+      this.store.openSyncPreview('outgoing');
       return;
     }
     if (sync.kind === 'behind') {
-      void this.store.pullRemote();
+      this.store.openSyncPreview('incoming');
       return;
     }
     void this.store.syncRemote();

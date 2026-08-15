@@ -3,4 +3,5 @@ pub mod git_cli;
 pub mod diagnostics;
 pub mod mock_providers;
 pub mod repo_watch;
+pub mod secrets;
 pub mod sqlite;

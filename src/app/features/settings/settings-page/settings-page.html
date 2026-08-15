@@ -123,6 +123,29 @@
               </div>
             </div>
           </article>
+
+          <article class="bl-panel block">
+            <div class="block-head">
+              <div>
+                <h2 class="block-title">Shortcuts</h2>
+                <p class="block-hint">Click a row, then press the new keys.</p>
+              </div>
+              <button type="button" class="bl-btn quiet" (click)="resetShortcuts()">Reset</button>
+            </div>
+            <div class="shortcut-list">
+              @for (row of shortcutRows; track row.id) {
+                <button
+                  type="button"
+                  class="shortcut-row"
+                  [class.capturing]="capturingShortcut() === row.id"
+                  (click)="startCapture(row.id)"
+                >
+                  <span>{{ row.label }}</span>
+                  <kbd>{{ capturingShortcut() === row.id ? 'Press keys…' : formatShortcut(shortcutAccel(row.id)) }}</kbd>
+                </button>
+              }
+            </div>
+          </article>
         }
 
         @case ('git') {
@@ -197,6 +220,32 @@
             } @else {
               <p class="block-hint">Open Git settings to load signing status.</p>
             }
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Git Flow</h2>
+            <p class="block-hint">
+              Used by Start / Finish in the toolbar and command palette. Feature and release start
+              from develop; hotfix starts from main.
+            </p>
+            <div class="inline-fields">
+              <label>
+                Main
+                <input
+                  [ngModel]="store.settings().gitFlowMain"
+                  (change)="onGitFlowMain($event)"
+                  placeholder="main"
+                />
+              </label>
+              <label>
+                Develop
+                <input
+                  [ngModel]="store.settings().gitFlowDevelop"
+                  (change)="onGitFlowDevelop($event)"
+                  placeholder="develop"
+                />
+              </label>
+            </div>
           </article>
 
           <article class="bl-panel block">

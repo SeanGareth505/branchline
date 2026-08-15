@@ -10,7 +10,24 @@
   @if (loading()) {
     <app-loading-block message="Loading reflog…" [compact]="true" />
   } @else {
-    <ul>
+    @if (store.danglingCommits().length) {
+      <div class="lost">
+        <p class="lost-head">Lost commits</p>
+        <ul class="lost-list">
+          @for (entry of store.danglingCommits(); track entry.sha) {
+            <li>
+              <button type="button" class="row lost-row" (click)="selectDangling(entry)">
+                <span class="sha mono">{{ entry.shortSha }}</span>
+                <span class="subject">{{ entry.subject }}</span>
+                <span class="meta">{{ time(entry.timestamp) }}</span>
+              </button>
+              <button type="button" class="link" (click)="recover(entry)">Branch here</button>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+    <ul class="entries">
       @for (entry of entries(); track entry.selector + entry.sha) {
         <li>
           <button type="button" class="row" (click)="select(entry)">
