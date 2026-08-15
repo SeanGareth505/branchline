@@ -78,21 +78,29 @@ main,
   z-index: 2;
 }
 
-.nav {
+.nav-shell {
   position: sticky;
   top: 0;
   z-index: 20;
+  padding: 0.75rem 0 1rem;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 8, 13, 0.98) 0%,
+    rgba(5, 8, 13, 0.94) 58%,
+    rgba(5, 8, 13, 0) 100%
+  );
+}
+
+.nav {
   display: flex;
   align-items: center;
   gap: 1.25rem;
   width: min(var(--max), calc(100% - 2rem));
-  margin: 0.85rem auto 0;
+  margin: 0 auto;
   padding: 0.55rem 0.7rem 0.55rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(8, 14, 24, 0.62);
-  backdrop-filter: blur(22px) saturate(1.35);
-  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  background: rgba(8, 14, 24, 0.96);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
 }
 

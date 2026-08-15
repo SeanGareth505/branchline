@@ -209,7 +209,7 @@ export class RevisionGrid {
 
   readonly columns = computed(() => {
     const w = this.store.revisionGridColumns();
-    const graph = Math.max(this.graphWidth(), w.graph ?? this.graphWidth());
+    const graph = this.graphWidth();
     if (w.message != null) {
       return `${graph}px ${w.message}px ${w.author}px ${w.date}px ${w.sha}px minmax(0, 1fr)`;
     }
@@ -218,7 +218,7 @@ export class RevisionGrid {
 
   readonly gridMinWidth = computed(() => {
     const w = this.store.revisionGridColumns();
-    const graph = Math.max(this.graphWidth(), w.graph ?? this.graphWidth());
+    const graph = this.graphWidth();
     return graph + (w.message ?? 200) + w.author + w.date + w.sha;
   });
 

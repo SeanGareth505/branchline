@@ -264,7 +264,7 @@ export function laneX(lane: number, pitch = LANE_WIDTH): number {
 }
 
 export function nodeRadiusForPitch(pitch: number): number {
-  return Math.min(NODE_RADIUS, pitch * 0.38);
+  return Math.min(NODE_RADIUS, Math.max(4.75, pitch * 0.36));
 }
 
 export function linkPath(
@@ -312,10 +312,10 @@ export function assertGraphContinuity(layout: GraphLayout): string[] {
 }
 
 export const ROW_HEIGHT = 30;
-export const LANE_WIDTH = 11;
-export const MIN_LANE_WIDTH = 6;
-export const GRAPH_PAD = 7;
-export const NODE_RADIUS = 4;
-export const NODE_RADIUS_SELECTED = 5.25;
+export const LANE_WIDTH = 14;
+export const MIN_LANE_WIDTH = 12;
+export const GRAPH_PAD = 10;
+export const NODE_RADIUS = 5;
+export const NODE_RADIUS_SELECTED = 6.5;
 export const MIN_GRAPH_WIDTH = 48;
-export const MAX_GRAPH_WIDTH = 140;
+export const MAX_GRAPH_WIDTH = 260;
