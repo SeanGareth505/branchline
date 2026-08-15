@@ -6,7 +6,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
 import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
@@ -19,7 +18,6 @@ import type {
 } from '../../../core/models';
 import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
 
-type JobFilter = 'in_progress' | 'completed' | 'failed' | 'all';
 type JobChipStatus = 'success' | 'failure' | 'pending' | 'unknown';
 
 interface ReleaseLinkCard {
@@ -28,12 +26,6 @@ interface ReleaseLinkCard {
   hint: string;
   url: string;
   icon: string;
-}
-
-interface JobFilterTab {
-  id: JobFilter;
-  label: string;
-  count: number;
 }
 
 interface JobStepView {
@@ -60,7 +52,7 @@ interface JobView {
 
 @Component({
   selector: 'app-release-panel',
-  imports: [NgIcon, NgTemplateOutlet, ReleaseNotesEditor],
+  imports: [NgIcon, ReleaseNotesEditor],
   templateUrl: './release-panel.html',
   styleUrl: './release-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -89,11 +81,6 @@ export class ReleasePanel {
   readonly trackingPaused = computed(() => {
     const activity = this.activity();
     return !!activity?.needsRefresh && !this.busy();
-  });
-
-  readonly canRefresh = computed(() => {
-    const activity = this.activity();
-    return !!activity?.willPush && !activity.needsPush && !this.busy();
   });
 
   readonly githubLinked = computed(() => this.store.hasGithubConnection());
@@ -151,9 +138,7 @@ export class ReleasePanel {
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
-  readonly jobFilter = signal<JobFilter>('in_progress');
   readonly stepsOpen = signal(true);
-  readonly deployOpen = signal(true);
   private readonly jobOpen = signal<Record<string, boolean>>({});
   private lastActivityStart = 0;
   private stepsCollapsedForStart = 0;
@@ -177,34 +162,10 @@ export class ReleasePanel {
     };
   });
 
-  readonly jobFilterTabs = computed((): JobFilterTab[] => {
-    const counts = this.jobCounts();
-    const bucket = activityBucket(this.activity());
-    const countFor = (id: JobFilter, jobs: number): number =>
-      jobs || (bucket === id && this.activity() ? 1 : 0);
-    return [
-      { id: 'in_progress', label: 'In progress', count: countFor('in_progress', counts.in_progress) },
-      { id: 'completed', label: 'History', count: countFor('completed', counts.completed) },
-      { id: 'failed', label: 'Failed', count: countFor('failed', counts.failed) },
-      { id: 'all', label: 'All', count: counts.all || (this.activity() ? 1 : 0) },
-    ];
-  });
-
-  readonly filteredJobs = computed(() => {
-    const filter = this.jobFilter();
-    return this.deployJobs().filter((job) => {
-      const chip = chipStatus(job);
-      if (filter === 'in_progress') return chip === 'pending' || chip === 'unknown';
-      if (filter === 'completed') return chip === 'success';
-      if (filter === 'failed') return chip === 'failure';
-      return true;
-    });
-  });
-
   readonly jobViews = computed((): JobView[] => {
     const now = this.now();
     const openState = this.jobOpen();
-    const jobs = this.filteredJobs();
+    const jobs = this.deployJobs();
     const failedName = jobs.find(
       (job) => (job.steps?.length ?? 0) > 0 && chipStatus(job) === 'failure',
     )?.name;
@@ -232,55 +193,7 @@ export class ReleasePanel {
     });
   });
 
-  readonly jobEmptyLabel = computed(() => {
-    const counts = this.jobCounts();
-    const bucket = activityBucket(this.activity());
-    switch (this.jobFilter()) {
-      case 'in_progress':
-        if (counts.failed) return `No jobs in progress · ${counts.failed} failed`;
-        if (counts.completed || bucket === 'completed') {
-          return counts.completed
-            ? `No jobs in progress · ${counts.completed} finished`
-            : 'No release in progress';
-        }
-        if (bucket === 'failed') return 'No jobs in progress · last release failed';
-        return 'No jobs in progress';
-      case 'completed':
-        return 'No finished jobs yet';
-      case 'failed':
-        return 'No failed jobs';
-      default:
-        return 'No jobs loaded yet';
-    }
-  });
-
-  readonly emptyTabAction = computed((): { filter: JobFilter; label: string } | null => {
-    const filter = this.jobFilter();
-    const counts = this.jobCounts();
-    const bucket = activityBucket(this.activity());
-    if (filter === 'in_progress') {
-      if (counts.failed || bucket === 'failed') return { filter: 'failed', label: 'Show failed' };
-      if (counts.completed || bucket === 'completed') {
-        return { filter: 'completed', label: 'Show history' };
-      }
-    }
-    if (filter !== 'all' && (counts.all || this.activity())) {
-      return { filter: 'all', label: 'Show all' };
-    }
-    return null;
-  });
-
-  readonly showReleaseDetails = computed(() => {
-    const activity = this.activity();
-    if (!activity) return false;
-    const filter = this.jobFilter();
-    if (filter === 'all') return true;
-    const bucket = activityBucket(activity);
-    if (filter === bucket) return true;
-    if (filter === 'failed' && this.jobCounts().failed > 0) return true;
-    if (filter === 'in_progress' && this.jobCounts().in_progress > 0) return true;
-    return false;
-  });
+  readonly showReleaseDetails = computed(() => !!this.activity());
 
   readonly stepsSummary = computed(() => {
     const steps = this.activity()?.steps ?? [];
@@ -372,17 +285,44 @@ export class ReleasePanel {
     );
   });
 
+  readonly statusDetail = computed(() => {
+    const activity = this.activity();
+    if (!activity) return '';
+    if (this.finalStatus()) return this.finalStatus();
+    if (activity.currentVersion !== activity.nextVersion) {
+      return `${activity.currentVersion} → ${activity.nextVersion}`;
+    }
+    return activity.message || '';
+  });
+
+  readonly primaryActions = computed((): { id: string; label: string; primary: boolean }[] => {
+    const actions: { id: string; label: string; primary: boolean }[] = [];
+    if (this.showPushFallback()) {
+      actions.push({ id: 'push', label: 'Push release', primary: true });
+    }
+    if (this.trackingPaused()) {
+      actions.push({ id: 'refresh', label: 'Refresh status', primary: true });
+      if (!this.githubLinked()) {
+        actions.push({ id: 'github', label: 'Link GitHub', primary: false });
+      }
+    }
+    if (this.shippedLive()) {
+      actions.push({ id: 'updates', label: 'Check for updates', primary: true });
+    }
+    return actions;
+  });
+
   readonly finalStatus = computed(() => {
     const activity = this.activity();
     if (!activity) return '';
     if (this.shippedLive()) {
-      return 'Waiting for users to get the update banner (next app launch/check)';
+      return 'On GitHub. Users pick it up the next time they open the app.';
     }
     if (activity.needsRefresh) {
-      return activity.message || 'Refresh to keep tracking GitHub Actions.';
+      return activity.message || 'Refresh to keep watching GitHub Actions.';
     }
     if (activity.phase === 'done' && activity.needsPush) {
-      return 'Tagged locally — push to origin to publish and notify users';
+      return 'Tagged locally. Push to origin to publish.';
     }
     if (activity.phase === 'error') {
       return activity.message;
@@ -412,9 +352,7 @@ export class ReleasePanel {
       const started = activity?.startedAt ?? 0;
       if (started === this.lastActivityStart) return;
       this.lastActivityStart = started;
-      this.jobFilter.set(activityBucket(activity));
       this.stepsOpen.set(true);
-      this.deployOpen.set(true);
     });
     effect(() => {
       const activity = this.activity();
@@ -427,7 +365,6 @@ export class ReleasePanel {
       if (!deploying || this.stepsCollapsedForDeploy === activity.startedAt) return;
       this.stepsCollapsedForDeploy = activity.startedAt;
       this.stepsOpen.set(false);
-      this.deployOpen.set(true);
     });
     effect(() => {
       const activity = this.activity();
@@ -448,10 +385,6 @@ export class ReleasePanel {
     void this.store.startReleaseFlow();
   }
 
-  trackLatest(): void {
-    void this.store.attachLatestRelease({ force: true });
-  }
-
   pushRelease(): void {
     void this.store.pushReleaseTags();
   }
@@ -466,6 +399,13 @@ export class ReleasePanel {
 
   checkForUpdates(): void {
     void this.updates.checkForUpdates({ silent: false });
+  }
+
+  runAction(id: string): void {
+    if (id === 'push') this.pushRelease();
+    else if (id === 'refresh') this.refreshDeploy();
+    else if (id === 'github') this.openGithubSettings();
+    else if (id === 'updates') this.checkForUpdates();
   }
 
   async copyTag(): Promise<void> {
@@ -492,14 +432,6 @@ export class ReleasePanel {
     this.stepsOpen.update((open) => !open);
   }
 
-  toggleDeploy(): void {
-    this.deployOpen.update((open) => !open);
-  }
-
-  setJobFilter(filter: JobFilter): void {
-    this.jobFilter.set(filter);
-  }
-
   toggleJob(view: JobView, event?: Event): void {
     event?.stopPropagation();
     if (!view.hasSteps) {
@@ -508,13 +440,6 @@ export class ReleasePanel {
     }
     this.jobOpen.update((state) => ({ ...state, [view.name]: !view.open }));
   }
-}
-
-function activityBucket(activity: { phase: ReleasePhase; ok?: boolean | null; needsRefresh?: boolean } | null): JobFilter {
-  if (!activity) return 'in_progress';
-  if (activity.phase === 'error' || activity.ok === false) return 'failed';
-  if (activity.phase === 'done' && !activity.needsRefresh) return 'completed';
-  return 'in_progress';
 }
 
 function chipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {

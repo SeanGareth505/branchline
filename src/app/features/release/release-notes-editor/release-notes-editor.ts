@@ -13,7 +13,7 @@ import { AppStore } from '../../../core/app.store';
 })
 export class ReleaseNotesEditor {
   readonly store = inject(AppStore);
-  readonly open = signal(true);
+  readonly open = signal(false);
 
   readonly statusLabel = computed(() => {
     const text = this.store.releaseNotesText().trim();
@@ -36,7 +36,7 @@ export class ReleaseNotesEditor {
     if (activity?.tag) {
       return `Draft for ${activity.tag}. Saved locally until the GitHub release exists.`;
     }
-    return 'Draft notes for the next release. Generate from commits, or write them here.';
+    return 'Draft for the next release.';
   });
 
   readonly saveLabel = computed(() => {
@@ -69,6 +69,7 @@ export class ReleaseNotesEditor {
   }
 
   generate(): void {
+    this.open.set(true);
     void this.store.generateReleaseNotes();
   }
 

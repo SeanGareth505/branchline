@@ -68,32 +68,6 @@ export class ReleaseDialog {
     ];
   });
 
-  readonly summaryDetails = computed(() => {
-    const req = this.dialog.request();
-    if (!req) return [] as string[];
-    const cfg = req.config;
-    const next = this.nextVersion();
-    const lines = [
-      `Branch: ${this.branch().trim() || cfg.branch}`,
-      next ? `Next: ${req.currentVersion} → ${next}` : `Current: ${req.currentVersion}`,
-      `Tag: ${cfg.tagPrefix}${next || 'x.y.z'}`,
-      `Files: ${cfg.files.join(', ')}`,
-      this.push()
-        ? 'Will push & deploy via GitHub Actions'
-        : 'Local tag only — push later from Release screen',
-    ];
-    if (this.allowDirty()) {
-      lines.push('Allows dirty working tree');
-    }
-    if (this.preid().trim()) {
-      lines.push(`Pre-release id: ${this.preid().trim()}`);
-    }
-    if (this.tagMessage().trim()) {
-      lines.push('Custom tag message');
-    }
-    return lines;
-  });
-
   readonly dirtyBlocked = computed(() => {
     const req = this.dialog.request();
     if (!req) return false;

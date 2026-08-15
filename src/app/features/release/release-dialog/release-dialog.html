@@ -17,21 +17,16 @@
             />
           </div>
           <p>
-            Current version {{ prompt.currentVersion }}.
-            @if (prompt.dirty && !allowDirty()) {
-              Working tree has uncommitted changes.
+            {{ prompt.currentVersion }}
+            @if (nextVersion()) {
+              → {{ nextVersion() }}
+            }
+            @if (push()) {
+              · push & deploy
             } @else {
-              Choose a bump, then confirm.
+              · tag only
             }
           </p>
-          <div class="details" [class.warn]="dirtyBlocked()">
-            <span class="details-label">Release settings</span>
-            <ul>
-              @for (item of summaryDetails(); track item) {
-                <li [title]="item">{{ item }}</li>
-              }
-            </ul>
-          </div>
         </div>
         <div class="header-actions">
           <button
@@ -122,7 +117,7 @@
         </section>
       }
 
-      <p class="field-label">Bump</p>
+      <p class="field-label">Version bump</p>
       <ul class="options" role="listbox" aria-label="Version bump">
         @for (option of bumpOptions(); track option.kind) {
           <li>
@@ -159,10 +154,10 @@
         </label>
       }
 
-      <label class="field">
-        <span>Release notes / commit message</span>
+      <label class="field notes-field">
+        <span>Notes <span class="optional">optional</span></span>
         <textarea
-          rows="3"
+          rows="2"
           [placeholder]="prompt.config.commitMessage"
           [ngModel]="notes()"
           (ngModelChange)="notes.set($event)"

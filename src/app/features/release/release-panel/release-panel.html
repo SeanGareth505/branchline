@@ -1,344 +1,217 @@
 <div class="release">
-  <header>
-    <span class="title">Release</span>
-    @if (activity(); as activity) {
-      @if (showReleaseDetails()) {
-        <span class="meta mono">
-          @if (activity.currentVersion !== activity.nextVersion) {
-            {{ activity.currentVersion }} → {{ activity.nextVersion }}
-          } @else {
-            {{ activity.nextVersion }}
-          }
-        </span>
-        <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
-          {{ activity.tag }}
-          <ng-icon name="lucideCopy" size="11" />
-        </button>
-        @if (elapsed(); as time) {
-          <span class="elapsed">{{ time }}</span>
-        }
-      }
-    } @else {
-      <span class="meta">Bump, commit, tag, push, and track deploy</span>
-    }
-    @if (canRefresh() && showReleaseDetails()) {
-      <button
-        type="button"
-        class="bl-btn quiet refresh-btn"
-        (click)="refreshDeploy()"
-        title="Refresh GitHub Actions status"
-      >
-        <ng-icon name="lucideRefreshCw" size="13" />
-        Refresh
-      </button>
-    }
-  </header>
-
   @if (busy()) {
     <div class="busy-strip" role="status" aria-live="polite">
       <span class="busy-track" aria-hidden="true"></span>
       <span class="busy-label">{{ statusLabel() }}</span>
     </div>
-  } @else if (trackingPaused()) {
-    <div class="busy-strip paused" role="status">
-      <span class="busy-label">{{ statusLabel() }}</span>
-    </div>
   }
 
   @if (activity(); as activity) {
-    <div class="status-tabs">
-      <div class="job-tabs" role="tablist" aria-label="Release status">
-        @for (tab of jobFilterTabs(); track tab.id) {
-          <button
-            type="button"
-            role="tab"
-            [class.on]="jobFilter() === tab.id"
-            [class.fail]="tab.id === 'failed' && tab.count > 0"
-            [class.live]="tab.id === 'in_progress' && tab.count > 0"
-            [attr.aria-selected]="jobFilter() === tab.id"
-            (click)="setJobFilter(tab.id)"
-          >
-            {{ tab.label }}
-            <strong>{{ tab.count }}</strong>
-          </button>
-        }
+    <article class="status" [attr.data-state]="workflowStatus()">
+      <div class="status-top">
+        <div class="status-copy">
+          <h2>{{ headline() }}</h2>
+          <p>{{ statusDetail() }}</p>
+        </div>
+        <div class="status-meta">
+          @if (showReleaseDetails()) {
+            <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
+              {{ activity.tag }}
+              <ng-icon name="lucideCopy" size="11" />
+            </button>
+            @if (elapsed(); as time) {
+              <span class="elapsed">{{ time }}</span>
+            }
+          }
+        </div>
       </div>
-    </div>
 
-    <app-release-notes-editor />
-
-    @if (showReleaseDetails() || showDeploySection() || jobViews().length) {
-      <div class="details">
-        @if (showReleaseDetails() && (finalStatus() || (activity.message && activity.message !== finalStatus()))) {
-          <div class="summary">
-            @if (finalStatus(); as statusLine) {
-              <p class="final-status" [class.warn]="trackingPaused() || activity.phase === 'error'" role="status">
-                {{ statusLine }}
-              </p>
-            }
-            @if (activity.message && activity.message !== finalStatus() && !showDeploySection()) {
-              <p class="message">{{ activity.message }}</p>
-            }
-            @if (shippedLive()) {
-              <p class="hint">Update banner appears when users open or check for updates in a built app.</p>
-            } @else if (activity.needsPush) {
-              <p class="hint">Tagged locally — push to origin to trigger deploy and the update banner.</p>
-            } @else if (trackingPaused() && !githubLinked()) {
-              <p class="hint">Link GitHub in Settings to track jobs here, or open Actions to watch the workflow.</p>
-            }
-          </div>
-        }
-
-        <div class="progress-stack">
-          @if (activity.steps.length) {
-            <section
-              class="fold"
-              [class.open]="stepsOpen()"
-              [class.has-jobs]="showDeploySection()"
-            >
+      @if (linkCards().length) {
+        <div class="link-chips">
+          @for (card of linkCards(); track card.id) {
             <button
               type="button"
-              class="fold-toggle"
-              (click)="toggleSteps()"
-              [attr.aria-expanded]="stepsOpen()"
+              class="link-chip"
+              (click)="openLink(card.url)"
+              [title]="card.hint"
             >
-              <ng-icon
-                class="fold-chev"
-                [name]="stepsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
-                size="13"
-              />
-              <span>Local steps</span>
-              @if (stepsSummary(); as summary) {
-                <span class="fold-meta">{{ summary }}</span>
-              }
+              <ng-icon [name]="card.icon" size="12" />
+              <span>{{ card.label }}</span>
             </button>
-            @if (stepsOpen()) {
-              <ol class="steps">
-                @for (step of activity.steps; track trackStep($index, step)) {
-                  <li [class]="step.status">
-                    <div class="step-main">
-                      <span class="marker" aria-hidden="true">
-                        @if (step.status === 'done') {
-                          <ng-icon name="lucideCheck" size="10" />
-                        } @else if (step.status === 'error') {
-                          <ng-icon name="lucideX" size="10" />
+          }
+        </div>
+      }
+
+      @if (primaryActions().length) {
+        <div class="status-actions">
+          @for (action of primaryActions(); track action.id) {
+            <button
+              type="button"
+              class="bl-btn"
+              [class.bl-btn-primary]="action.primary"
+              (click)="runAction(action.id)"
+            >
+              {{ action.label }}
+            </button>
+          }
+        </div>
+      }
+    </article>
+
+    @if (showDeploySection() || jobViews().length) {
+      <section class="jobs">
+        <header class="section-head">
+          <h3>Deploy</h3>
+          @if (jobSummary(); as summary) {
+            <span>{{ summary }}</span>
+          } @else if (busy()) {
+            <span>Waiting for jobs…</span>
+          }
+        </header>
+        @if (deployJobs().length) {
+          <ul class="job-list">
+            @for (view of jobViews(); track view.name) {
+              <li [class.open]="view.open">
+                <div class="job-row-wrap">
+                  <button
+                    type="button"
+                    class="job-row"
+                    [title]="view.job.name"
+                    [attr.aria-expanded]="view.hasSteps ? view.open : null"
+                    (click)="toggleJob(view, $event)"
+                  >
+                    @if (view.hasSteps) {
+                      <ng-icon
+                        class="job-chev"
+                        [name]="view.open ? 'lucideChevronDown' : 'lucideChevronRight'"
+                        size="12"
+                      />
+                    } @else {
+                      <span class="job-chev-spacer" aria-hidden="true"></span>
+                    }
+                    <span class="job-marker" [attr.data-status]="view.chip" aria-hidden="true">
+                      @if (view.chip === 'success') {
+                        <ng-icon name="lucideCheck" size="10" />
+                      } @else if (view.chip === 'failure') {
+                        <ng-icon name="lucideX" size="10" />
+                      }
+                    </span>
+                    <span class="job-copy">
+                      <span class="job-name">{{ view.label }}</span>
+                      <span class="job-status">
+                        {{ view.statusLabel }}
+                        @if (view.duration) {
+                          <span class="job-time">{{ view.duration }}</span>
                         }
                       </span>
-                      <div class="step-body">
-                        <span class="step-label">{{ step.label }}</span>
-                        <span class="step-message">{{ step.message }}</span>
-                      </div>
-                    </div>
-                  </li>
-                }
-              </ol>
-            }
-          </section>
-          }
-
-          @if (showDeploySection() || jobViews().length) {
-            <section class="fold deploy-fold" [class.open]="deployOpen()">
-              <button
-                type="button"
-                class="fold-toggle"
-                (click)="toggleDeploy()"
-                [attr.aria-expanded]="deployOpen()"
-              >
-                <ng-icon
-                  class="fold-chev"
-                  [name]="deployOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
-                  size="13"
-                />
-                <span>Deploy</span>
-                @if (jobSummary(); as summary) {
-                  <span class="fold-meta">{{ summary }}</span>
-                } @else if (busy()) {
-                  <span class="fold-meta">Waiting for jobs…</span>
-                }
-                <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
-              </button>
-              @if (deployOpen()) {
-                <div class="deploy-body">
-                  @if (linkCards().length) {
-                    <div class="link-chips">
-                      @for (card of linkCards(); track card.id) {
-                        <button
-                          type="button"
-                          class="link-chip"
-                          (click)="openLink(card.url)"
-                          [title]="card.hint + ' — ' + card.url"
-                        >
-                          <ng-icon [name]="card.icon" size="12" />
-                          <span>{{ card.label }}</span>
-                        </button>
-                      }
-                    </div>
+                    </span>
+                  </button>
+                  @if (view.url) {
+                    <button
+                      type="button"
+                      class="job-open"
+                      title="Open job on GitHub"
+                      (click)="openLink(view.url)"
+                    >
+                      <ng-icon name="lucideExternalLink" size="11" />
+                    </button>
                   }
-                  <ng-container *ngTemplateOutlet="actionsJobs" />
                 </div>
-              }
-            </section>
-          }
-        </div>
-
-        <div class="actions">
-          @if (showPushFallback()) {
-            <button type="button" class="bl-btn bl-btn-primary" (click)="pushRelease()">
-              Push release
-            </button>
-          }
-          @if (trackingPaused()) {
-            <button type="button" class="bl-btn bl-btn-primary" (click)="refreshDeploy()">
-              Refresh status
-            </button>
-            @if (!githubLinked()) {
-              <button type="button" class="bl-btn" (click)="openGithubSettings()">
-                Link GitHub
-              </button>
+                @if (view.open) {
+                  <ul class="step-list">
+                    @for (step of view.steps; track step.key) {
+                      <li [class.active]="step.active">
+                        <span class="job-marker" [attr.data-status]="step.chip" aria-hidden="true">
+                          @if (step.chip === 'success') {
+                            <ng-icon name="lucideCheck" size="9" />
+                          } @else if (step.chip === 'failure') {
+                            <ng-icon name="lucideX" size="9" />
+                          }
+                        </span>
+                        <span class="step-name">{{ step.name }}</span>
+                        <span class="step-status">
+                          {{ step.statusLabel }}
+                          @if (step.duration) {
+                            <span class="job-time">{{ step.duration }}</span>
+                          }
+                        </span>
+                      </li>
+                    }
+                  </ul>
+                }
+              </li>
             }
-          }
-          @if (shippedLive()) {
-            <button type="button" class="bl-btn bl-btn-primary" (click)="checkForUpdates()">
-              Check for updates
-            </button>
-          }
-          @if (!busy() && (activity.phase === 'done' || activity.phase === 'error' || trackingPaused())) {
-            <button type="button" class="bl-btn" (click)="clear()">Clear</button>
-            @if (activity.phase === 'done' || activity.phase === 'error') {
-              <button
-                type="button"
-                class="bl-btn"
-                [class.bl-btn-primary]="!shippedLive() && activity.phase !== 'error'"
-                (click)="startRelease()"
-              >
-                Release again
-              </button>
+          </ul>
+        } @else {
+          <p class="deploy-wait">
+            @if (busy()) {
+              Waiting for GitHub Actions to start…
+            } @else if (trackingPaused()) {
+              No jobs loaded. Refresh to try again.
+            } @else {
+              Jobs appear here once the workflow starts.
             }
-          }
-        </div>
-      </div>
-    } @else {
-      <div class="tab-empty">
-        <p>{{ jobEmptyLabel() }}</p>
-        @if (emptyTabAction(); as action) {
-          <button type="button" class="job-empty-link" (click)="setJobFilter(action.filter)">
-            {{ action.label }}
-          </button>
+          </p>
         }
-      </div>
+      </section>
     }
 
-    <ng-template #actionsJobs>
-      @if (deployJobs().length) {
-        <ul class="job-list">
-          @for (view of jobViews(); track view.name) {
-            <li [class.open]="view.open">
-              <div class="job-row-wrap">
-                <button
-                  type="button"
-                  class="job-row"
-                  [title]="view.job.name"
-                  [attr.aria-expanded]="view.hasSteps ? view.open : null"
-                  (click)="toggleJob(view, $event)"
-                >
-                  @if (view.hasSteps) {
-                    <ng-icon
-                      class="job-chev"
-                      [name]="view.open ? 'lucideChevronDown' : 'lucideChevronRight'"
-                      size="12"
-                    />
-                  } @else {
-                    <span class="job-chev-spacer" aria-hidden="true"></span>
-                  }
-                  <span class="job-marker" [attr.data-status]="view.chip" aria-hidden="true">
-                    @if (view.chip === 'success') {
+    @if (activity.steps.length) {
+      <section class="fold" [class.open]="stepsOpen()">
+        <button
+          type="button"
+          class="fold-toggle"
+          (click)="toggleSteps()"
+          [attr.aria-expanded]="stepsOpen()"
+        >
+          <ng-icon
+            class="fold-chev"
+            [name]="stepsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
+            size="13"
+          />
+          <span>Local steps</span>
+          @if (stepsSummary(); as summary) {
+            <span class="fold-meta">{{ summary }}</span>
+          }
+        </button>
+        @if (stepsOpen()) {
+          <ol class="steps">
+            @for (step of activity.steps; track trackStep($index, step)) {
+              <li [class]="step.status">
+                <div class="step-main">
+                  <span class="marker" aria-hidden="true">
+                    @if (step.status === 'done') {
                       <ng-icon name="lucideCheck" size="10" />
-                    } @else if (view.chip === 'failure') {
+                    } @else if (step.status === 'error') {
                       <ng-icon name="lucideX" size="10" />
                     }
                   </span>
-                  <span class="job-copy">
-                    <span class="job-name">{{ view.label }}</span>
-                    <span class="job-status">
-                      {{ view.statusLabel }}
-                      @if (view.duration) {
-                        <span class="job-time">{{ view.duration }}</span>
-                      }
-                    </span>
-                  </span>
-                </button>
-                @if (view.url) {
-                  <button
-                    type="button"
-                    class="job-open"
-                    title="Open job on GitHub"
-                    (click)="openLink(view.url)"
-                  >
-                    <ng-icon name="lucideExternalLink" size="11" />
-                  </button>
-                }
-              </div>
-              @if (view.open) {
-                <ul class="step-list">
-                  @for (step of view.steps; track step.key) {
-                    <li [class.active]="step.active">
-                      <span class="job-marker" [attr.data-status]="step.chip" aria-hidden="true">
-                        @if (step.chip === 'success') {
-                          <ng-icon name="lucideCheck" size="9" />
-                        } @else if (step.chip === 'failure') {
-                          <ng-icon name="lucideX" size="9" />
-                        }
-                      </span>
-                      <span class="step-name">{{ step.name }}</span>
-                      <span class="step-status">
-                        {{ step.statusLabel }}
-                        @if (step.duration) {
-                          <span class="job-time">{{ step.duration }}</span>
-                        }
-                      </span>
-                    </li>
-                  }
-                </ul>
-              }
-            </li>
-          } @empty {
-            <li class="job-empty">
-              <span>{{ jobEmptyLabel() }}</span>
-              @if (emptyTabAction(); as action) {
-                <button type="button" class="job-empty-link" (click)="setJobFilter(action.filter)">
-                  {{ action.label }}
-                </button>
-              }
-            </li>
-          }
-        </ul>
-      } @else if (busy()) {
-        <p class="deploy-wait">Waiting for workflow jobs to appear…</p>
-      } @else if (trackingPaused()) {
-        <p class="deploy-wait">No jobs loaded yet. Refresh or open Actions.</p>
-      } @else {
-        <p class="deploy-wait">GitHub Actions jobs show up here once the workflow starts.</p>
-      }
-    </ng-template>
-  } @else {
+                  <div class="step-body">
+                    <span class="step-label">{{ step.label }}</span>
+                    <span class="step-message">{{ step.message }}</span>
+                  </div>
+                </div>
+              </li>
+            }
+          </ol>
+        }
+      </section>
+    }
+
     <app-release-notes-editor />
-    <div class="state">
-      <p class="state-title">No release activity yet</p>
-      <p class="state-hint">
-        This screen tracks GitHub Actions for the current version, including releases started
-        here, from the CLI, or from a pushed tag. Start a new release, or attach the latest deploy.
-      </p>
-      <div class="state-actions">
-        <button
-          type="button"
-          class="bl-btn"
-          [disabled]="store.releaseAttaching()"
-          (click)="trackLatest()"
-        >
-          {{ store.releaseAttaching() ? 'Looking…' : 'Track latest deploy' }}
-        </button>
-        <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>
+
+    @if (!busy() && (activity.phase === 'done' || activity.phase === 'error' || trackingPaused())) {
+      <div class="footer-actions">
+        <button type="button" class="bl-btn" (click)="clear()">Clear</button>
+        @if (activity.phase === 'done' || activity.phase === 'error') {
+          <button type="button" class="bl-btn" (click)="startRelease()">Release again</button>
+        }
       </div>
+    }
+  } @else {
+    <div class="idle">
+      <p>Nothing in flight. Start a release when you are ready to bump, tag, and ship.</p>
     </div>
+    <app-release-notes-editor />
   }
 </div>

@@ -10,29 +10,112 @@
   min-height: 0;
 }
 
-header {
+.status {
   display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  padding: 0.55rem 0.75rem;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem 0.85rem;
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 12px;
   flex-shrink: 0;
 }
 
-.title {
+.status-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.status-copy {
+  min-width: 0;
+}
+
+.status-copy h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.status-copy p {
+  margin: 0.3rem 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.status-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.status[data-state='running'] .status-copy h2 {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
+}
+
+.status[data-state='failure'] .status-copy h2 {
+  color: var(--danger, #ef4444);
+}
+
+.status[data-state='success'] .status-copy h2 {
+  color: color-mix(in srgb, #22c55e 55%, var(--text-primary));
+}
+
+.idle {
+  padding: 1.25rem 1rem 0.35rem;
+}
+
+.idle p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.jobs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem 0.25rem;
+}
+
+.section-head h3 {
+  margin: 0;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.meta,
-.tag {
+.section-head span {
+  font-size: 11px;
   color: var(--text-muted);
 }
 
-.tag {
-  color: var(--accent);
+.footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .tag-btn {
@@ -163,8 +246,6 @@ header {
   display: flex;
   flex-wrap: wrap;
   gap: 0.28rem;
-  padding: 0.1rem 0.65rem 0.35rem;
-  flex-shrink: 0;
 }
 
 .link-chip {
@@ -202,17 +283,12 @@ header {
   flex-direction: column;
   flex: 0 0 auto;
   min-height: 0;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.fold.open:not(.deploy-fold) {
+.fold.open {
   flex: 0 1 auto;
   max-height: 9.5rem;
-}
-
-.fold.deploy-fold {
-  flex: 1 1 auto;
-  min-height: 0;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .fold-toggle {
@@ -223,17 +299,12 @@ header {
   margin: 0;
   padding: 0.32rem 0.75rem;
   border: 0;
-  border-top: 1px solid var(--border-subtle);
   background: transparent;
   color: inherit;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
-}
-
-.deploy-fold > .fold-toggle {
-  border-top: 0;
 }
 
 .fold-toggle:hover {
@@ -249,144 +320,6 @@ header {
   font-size: 10.5px;
   font-weight: 550;
   color: var(--text-muted);
-}
-
-.fold-toggle .workflow-badge {
-  margin-left: 0.2rem;
-}
-
-.deploy-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.status-tabs {
-  flex-shrink: 0;
-  padding: 0.55rem 0.75rem 0.2rem;
-}
-
-.tab-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.45rem;
-  flex: 1;
-  min-height: 0;
-  margin: 0.35rem 0.75rem 0.75rem;
-  padding: 1.15rem 1rem;
-  border: 1px dashed var(--glass-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--glass-bg-soft) 70%, transparent);
-}
-
-.tab-empty p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.job-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.15rem;
-  padding: 0.18rem;
-  border-radius: 9px;
-  border: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--bg-base) 42%, transparent);
-}
-
-.job-tabs button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.32rem;
-  min-height: 1.85rem;
-  padding: 0.22rem 0.4rem;
-  border-radius: 7px;
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  font-weight: 650;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-}
-
-.job-tabs button strong {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
-.job-tabs button:hover {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-  color: var(--text-primary);
-}
-
-.job-tabs button.on {
-  background: var(--glass-bg-strong);
-  color: var(--text-primary);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-subtle) 70%, transparent);
-}
-
-.job-tabs button.on strong {
-  color: var(--accent);
-}
-
-.job-tabs button.fail {
-  color: var(--danger, #ef4444);
-}
-
-.job-tabs button.fail strong {
-  color: var(--danger, #ef4444);
-}
-
-.job-tabs button.fail.on {
-  background: color-mix(in srgb, var(--danger, #ef4444) 10%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger, #ef4444) 32%, transparent);
-}
-
-.job-tabs button.live strong {
-  color: var(--accent);
-}
-
-.workflow-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 0.12rem 0.38rem;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  color: var(--text-muted);
-}
-
-.workflow-badge[data-status='running'] {
-  color: color-mix(in srgb, var(--accent) 80%, var(--text-primary));
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.workflow-badge[data-status='success'] {
-  color: #15803d;
-  border-color: color-mix(in srgb, #22c55e 35%, var(--glass-border));
-  background: color-mix(in srgb, #22c55e 10%, transparent);
-}
-
-.workflow-badge[data-status='paused'] {
-  color: var(--git-modified);
-  border-color: color-mix(in srgb, var(--git-modified) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--git-modified) 10%, transparent);
-}
-
-.workflow-badge[data-status='failure'] {
-  color: var(--danger, #ef4444);
-  border-color: color-mix(in srgb, var(--danger, #ef4444) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--danger, #ef4444) 10%, transparent);
 }
 
 .job-list {

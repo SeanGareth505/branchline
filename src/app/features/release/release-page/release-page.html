@@ -5,38 +5,30 @@
         <h1>Release</h1>
         <app-help-tip
           heading="Release"
-          body="Bump the version, commit, tag, and push from one place. After tagging, Branchline can track GitHub Actions until the release is live."
+          body="Bump the version, commit, and tag from one place. After tagging, Branchline can watch GitHub Actions until the release is live."
         />
         @if (busy()) {
           <span class="live-badge">In progress</span>
         } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
-          <span class="done-badge">Complete</span>
+          <span class="done-badge">Live</span>
         } @else if (activity()?.needsRefresh) {
-          <span class="live-badge">Tracking paused</span>
+          <span class="live-badge">Paused</span>
         } @else if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
         }
       </div>
       <p>{{ subtitle() }}</p>
     </div>
-    <div class="hero-actions">
-      @if (hasRepo() && configured()) {
-        @if (!activity()) {
-          <button
-            type="button"
-            class="bl-btn"
-            [disabled]="store.releaseAttaching()"
-            (click)="trackLatest()"
-          >
-            <ng-icon name="lucideRefreshCw" size="14" />
-            {{ store.releaseAttaching() ? 'Looking…' : 'Track latest' }}
-          </button>
-        } @else if (activity()?.needsRefresh) {
-          <button type="button" class="bl-btn" (click)="refreshDeploy()">
-            <ng-icon name="lucideRefreshCw" size="14" />
-            Refresh status
-          </button>
-        }
+    @if (hasRepo() && configured() && !activity()) {
+      <div class="hero-actions">
+        <button
+          type="button"
+          class="bl-btn"
+          [disabled]="store.releaseAttaching()"
+          (click)="trackLatest()"
+        >
+          {{ store.releaseAttaching() ? 'Looking…' : 'Find latest' }}
+        </button>
         <button
           type="button"
           class="bl-btn bl-btn-primary"
@@ -44,26 +36,33 @@
           (click)="startRelease()"
         >
           <ng-icon name="lucideRocket" size="14" />
-          {{ busy() ? 'Releasing…' : 'Start release' }}
+          Start release
         </button>
-      }
-    </div>
+      </div>
+    } @else if (hasRepo() && configured() && activity()?.needsRefresh) {
+      <div class="hero-actions">
+        <button type="button" class="bl-btn bl-btn-primary" (click)="refreshDeploy()">
+          <ng-icon name="lucideRefreshCw" size="14" />
+          Refresh
+        </button>
+      </div>
+    }
   </header>
 
   @if (!hasRepo()) {
     <div class="empty bl-glass">
-      <p class="empty-title">No repository open</p>
-      <p class="empty-hint">Open a repo from the project switcher, then return here to track releases.</p>
+      <p class="empty-title">Open a repository</p>
+      <p class="empty-hint">Pick a repo, then come back here to ship a version.</p>
     </div>
   } @else if (loading()) {
     <app-loading-block message="Loading release settings…" />
   } @else if (!configured()) {
     <div class="setup bl-glass">
       <div class="setup-copy">
-        <h2>Release setup</h2>
+        <h2>Set up once</h2>
         <p>
-          This repo does not have <code>release.config.json</code> yet. Configure it once, then
-          Branchline can bump versions, commit, tag, push, and track GitHub Actions for you.
+          Branchline needs <code>release.config.json</code> so it knows which files to bump and
+          which branch to tag.
         </p>
       </div>
 
@@ -121,7 +120,7 @@
           </div>
 
           @if (hints.currentVersion) {
-            <p class="hint">Current version: {{ hints.currentVersion }}</p>
+            <p class="hint">Current version {{ hints.currentVersion }}</p>
           }
 
           <div class="setup-actions">
@@ -131,26 +130,14 @@
               [disabled]="!canSaveSetup() || setupBusy()"
               (click)="saveSetup()"
             >
-              {{ setupBusy() ? 'Saving…' : 'Save & enable release' }}
+              {{ setupBusy() ? 'Saving…' : 'Save & enable' }}
             </button>
           </div>
         </div>
       }
     </div>
-  } @else if (status(); as releaseStatus) {
-    @if (releaseStatus.config; as cfg) {
-      <div class="meta bl-glass">
-        <span><strong>Product</strong> {{ cfg.productName }}</span>
-        <span><strong>Branch</strong> {{ cfg.branch }}</span>
-        <span><strong>Tag</strong> {{ cfg.tagPrefix }}{{ releaseStatus.currentVersion || 'x.y.z' }}</span>
-        <span><strong>Push</strong> {{ cfg.pushDefault ? 'on' : 'off' }}</span>
-        @if (releaseStatus.currentVersion) {
-          <span><strong>Current</strong> {{ releaseStatus.currentVersion }}</span>
-        }
-      </div>
-    }
-
-    <div class="panel bl-glass">
+  } @else {
+    <div class="panel">
       <app-release-panel />
     </div>
   }

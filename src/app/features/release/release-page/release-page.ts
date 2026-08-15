@@ -10,7 +10,6 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type {
-  ReleaseSetupFileHint,
   ReleaseSetupHintsOutput,
   ReleaseStatusOutput,
 } from '../../../core/models';
@@ -46,14 +45,6 @@ export class ReleasePage {
 
   readonly configured = computed(() => !!this.status()?.available);
 
-  readonly headline = computed(() => {
-    const status = this.status();
-    if (!status?.available) return 'Set up release for this repo';
-    const version = status.currentVersion;
-    const name = status.config?.productName ?? 'App';
-    return version ? `${name} · v${version}` : name;
-  });
-
   readonly subtitle = computed(() => {
     const activity = this.activity();
     if (
@@ -63,21 +54,28 @@ export class ReleasePage {
       !activity.needsRefresh &&
       (activity.willPush || !!activity.releaseUrl)
     ) {
-      return 'Waiting for users to get the update banner (next app launch/check)';
+      return `${activity.productName} ${activity.nextVersion} is on GitHub. Users see the update on next launch.`;
     }
     if (activity?.needsRefresh) {
-      return activity.message || 'Refresh to keep tracking GitHub Actions.';
+      return activity.message || 'Refresh to keep watching GitHub Actions.';
+    }
+    if (activity?.phase === 'error') {
+      return activity.message || 'The last release failed.';
+    }
+    if (activity && this.busy()) {
+      return `${activity.productName} ${activity.currentVersion} → ${activity.nextVersion}`;
     }
     const status = this.status();
     if (!this.hasRepo()) return 'Open a repository to ship a version.';
-    if (!status) return 'Loading release configuration…';
+    if (!status) return 'Loading…';
     if (!status.available) {
-      return 'Configure release once for this project, then bump, commit, tag, push, and track CI from here.';
+      return 'Tell Branchline which files hold the version, then you can ship from here.';
     }
+    const name = status.config?.productName ?? 'App';
+    const version = status.currentVersion ? `v${status.currentVersion}` : 'no version yet';
     const branch = status.currentBranch ?? status.config?.branch ?? 'main';
     const dirty = status.dirty ? ' · uncommitted changes' : '';
-    const push = status.config?.pushDefault ? ' · auto push & deploy' : '';
-    return `Configured for branch ${branch}${dirty}${push}.`;
+    return `${name} · ${version} on ${branch}${dirty}`;
   });
 
   readonly selectedFileList = computed(() => {
