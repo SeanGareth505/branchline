@@ -64,8 +64,12 @@
             >
               <ng-icon name="lucideRocket" size="14" />
               <span>Release</span>
-              @if (store.releaseBusy() || store.releaseActivity()) {
-                <span class="nav-dot" aria-hidden="true"></span>
+              @if (store.releaseBusy() || store.releaseAttaching() || store.releaseActivity()) {
+                <span
+                  class="nav-dot"
+                  [class.live]="store.releaseBusy() || store.releaseAttaching()"
+                  aria-hidden="true"
+                ></span>
               }
             </button>
             <button

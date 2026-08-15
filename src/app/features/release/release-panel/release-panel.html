@@ -2,7 +2,13 @@
   <header>
     <span class="title">Release</span>
     @if (activity(); as activity) {
-      <span class="meta mono">{{ activity.currentVersion }} → {{ activity.nextVersion }}</span>
+      <span class="meta mono">
+        @if (activity.currentVersion !== activity.nextVersion) {
+          {{ activity.currentVersion }} → {{ activity.nextVersion }}
+        } @else {
+          {{ activity.nextVersion }}
+        }
+      </span>
       <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
         {{ activity.tag }}
         <ng-icon name="lucideCopy" size="11" />
@@ -80,6 +86,9 @@
       <section class="deploy-section">
         <div class="deploy-head">
           <span class="deploy-title">GitHub Actions</span>
+          @if (jobSummary(); as summary) {
+            <span class="job-summary">{{ summary }}</span>
+          }
           <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
         </div>
         @if (deployJobs().length) {
@@ -90,6 +99,7 @@
                   type="button"
                   class="job-row"
                   [disabled]="!job.url"
+                  [title]="job.name"
                   (click)="openLink(job.url)"
                 >
                   <span class="job-marker" [attr.data-status]="jobChipStatus(job)" aria-hidden="true">
@@ -100,7 +110,7 @@
                     }
                   </span>
                   <span class="job-copy">
-                    <span class="job-name">{{ job.name }}</span>
+                    <span class="job-name">{{ jobLabel(job) }}</span>
                     <span class="job-status">{{ jobStatusLabel(job) }}</span>
                   </span>
                   @if (job.url) {
@@ -179,7 +189,14 @@
         here, from the CLI, or from a pushed tag. Start a new release, or attach the latest deploy.
       </p>
       <div class="state-actions">
-        <button type="button" class="bl-btn" (click)="trackLatest()">Track latest deploy</button>
+        <button
+          type="button"
+          class="bl-btn"
+          [disabled]="store.releaseAttaching()"
+          (click)="trackLatest()"
+        >
+          {{ store.releaseAttaching() ? 'Looking…' : 'Track latest deploy' }}
+        </button>
         <button type="button" class="bl-btn bl-btn-primary" (click)="startRelease()">Start release</button>
       </div>
     </div>

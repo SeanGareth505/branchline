@@ -17,7 +17,17 @@
     </div>
     <div class="hero-actions">
       @if (hasRepo() && configured()) {
-        @if (activity()?.needsRefresh) {
+        @if (!activity()) {
+          <button
+            type="button"
+            class="bl-btn"
+            [disabled]="store.releaseAttaching()"
+            (click)="trackLatest()"
+          >
+            <ng-icon name="lucideRefreshCw" size="14" />
+            {{ store.releaseAttaching() ? 'Looking…' : 'Track latest' }}
+          </button>
+        } @else if (activity()?.needsRefresh) {
           <button type="button" class="bl-btn" (click)="refreshDeploy()">
             <ng-icon name="lucideRefreshCw" size="14" />
             Refresh status
@@ -128,7 +138,7 @@
       <div class="meta bl-glass">
         <span><strong>Product</strong> {{ cfg.productName }}</span>
         <span><strong>Branch</strong> {{ cfg.branch }}</span>
-        <span><strong>Tag</strong> {{ cfg.tagPrefix }}x.y.z</span>
+        <span><strong>Tag</strong> {{ cfg.tagPrefix }}{{ releaseStatus.currentVersion || 'x.y.z' }}</span>
         <span><strong>Push</strong> {{ cfg.pushDefault ? 'on' : 'off' }}</span>
         @if (releaseStatus.currentVersion) {
           <span><strong>Current</strong> {{ releaseStatus.currentVersion }}</span>

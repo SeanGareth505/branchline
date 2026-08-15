@@ -168,6 +168,28 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+.nav-dot.live {
+  animation: bl-nav-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes bl-nav-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-dot.live {
+    animation: none;
+  }
+}
+
 .chrome-right {
   display: inline-flex;
   align-items: center;

@@ -292,7 +292,9 @@ export class AppStore {
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly releaseBusy = signal(false);
+  readonly releaseAttaching = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
+  private releaseAttachInFlight: Promise<boolean> | null = null;
   readonly releasingLocally = computed(() => {
     if (!this.releaseBusy()) return false;
     const phase = this.releaseActivity()?.phase;
@@ -1229,7 +1231,6 @@ export class AppStore {
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistRepoCache(normalized);
       this.persistOpenRepos();
-      void this.attachLatestRelease();
       if (restoreView) {
         this.setView('browse');
       } else {
@@ -2060,6 +2061,16 @@ export class AppStore {
   }
 
   async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
+    if (this.releaseAttachInFlight) return this.releaseAttachInFlight;
+    this.releaseAttaching.set(true);
+    this.releaseAttachInFlight = this.runAttachLatestRelease(options).finally(() => {
+      this.releaseAttachInFlight = null;
+      this.releaseAttaching.set(false);
+    });
+    return this.releaseAttachInFlight;
+  }
+
+  private async runAttachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
     if (this.isDummyBackend) return false;
     const path = this.currentRepo()?.path;
     if (!path) return false;
@@ -2069,7 +2080,10 @@ export class AppStore {
       const status = await this.tauri.getReleaseStatus(path);
       const version = status.currentVersion?.trim();
       const cfg = status.config;
-      if (!status.available || !version || !cfg) return false;
+      if (!status.available || !version || !cfg) {
+        if (force) this.showWarning('Release is not configured for this repository.');
+        return false;
+      }
       const tag = `${cfg.tagPrefix}${version}`;
       const current = this.releaseActivity();
       if (
@@ -2103,7 +2117,8 @@ export class AppStore {
       this.releaseBusy.set(true);
       void this.watchReleaseDeploy(path, tag);
       return true;
-    } catch {
+    } catch (err) {
+      if (force) this.showError(err);
       return false;
     }
   }
@@ -5487,6 +5502,12 @@ export class AppStore {
             deployExtras,
           );
           this.showSuccess(doneMessage);
+          this.notifyEvent(
+            'updates',
+            `${current.productName} ${current.nextVersion} is live`,
+            'Users get the update banner the next time they open the app.',
+            { toast: false, desktop: true },
+          );
           this.stopReleaseDeployPoll();
           return;
         }

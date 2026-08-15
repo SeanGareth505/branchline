@@ -255,6 +255,12 @@ header {
   margin-bottom: 0.35rem;
 }
 
+.job-summary {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
 .deploy-title {
   font-size: 11.5px;
   font-weight: 700;
@@ -344,6 +350,23 @@ header {
 .job-marker[data-status='pending'] {
   background: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
+  animation: bl-job-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes bl-job-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-marker[data-status='pending'] {
+    animation: none;
+  }
 }
 
 .job-marker[data-status='success'] {

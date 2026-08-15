@@ -175,4 +175,8 @@ export class ReleasePage {
   refreshDeploy(): void {
     void this.store.refreshReleaseDeploy();
   }
+
+  trackLatest(): void {
+    void this.store.attachLatestRelease({ force: true });
+  }
 }

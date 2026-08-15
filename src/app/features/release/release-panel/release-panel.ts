@@ -23,6 +23,7 @@ export class ReleasePanel {
   readonly store = inject(AppStore);
   private readonly updates = inject(UpdateService);
   private readonly now = signal(Date.now());
+  private promptedUpdate = false;
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
@@ -104,6 +105,23 @@ export class ReleasePanel {
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
+
+  readonly jobSummary = computed(() => {
+    const jobs = this.deployJobs();
+    if (!jobs.length) return '';
+    let passed = 0;
+    let failed = 0;
+    let running = 0;
+    for (const job of jobs) {
+      const chip = this.jobChipStatus(job);
+      if (chip === 'success') passed += 1;
+      else if (chip === 'failure') failed += 1;
+      else if (chip === 'pending') running += 1;
+    }
+    if (failed) return `${passed}/${jobs.length} passed · ${failed} failed`;
+    if (running) return `${passed}/${jobs.length} passed · ${running} running`;
+    return `${passed}/${jobs.length} passed`;
+  });
 
   readonly showDeploySection = computed(() => {
     const activity = this.activity();
@@ -203,6 +221,11 @@ export class ReleasePanel {
       const id = window.setInterval(() => this.now.set(Date.now()), 1000);
       onCleanup(() => window.clearInterval(id));
     });
+    effect(() => {
+      if (!this.shippedLive() || this.promptedUpdate) return;
+      this.promptedUpdate = true;
+      void this.updates.checkForUpdates({ silent: true });
+    });
   }
 
   clear(): void {
@@ -257,6 +280,10 @@ export class ReleasePanel {
     return `${job.name}:${job.status}:${job.conclusion ?? ''}`;
   }
 
+  jobLabel(job: ReleaseDeployJob): string {
+    return formatDeployJobName(job.name);
+  }
+
   jobChipStatus(job: ReleaseDeployJob): string {
     const conclusion = job.conclusion?.trim();
     if (conclusion === 'success') return 'success';
@@ -279,7 +306,12 @@ export class ReleasePanel {
     const chip = this.jobChipStatus(job);
     if (chip === 'success') return 'Passed';
     if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
-    if (chip === 'pending') return 'Running';
+    if (chip === 'pending') {
+      if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
+        return 'Queued';
+      }
+      return 'Running';
+    }
     return job.status || 'Pending';
   }
 }
@@ -321,4 +353,24 @@ function formatElapsed(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+function formatDeployJobName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.includes('stabilize')) return 'Stable download names';
+  if (lower.includes('aarch64-apple-darwin')) return 'macOS arm64';
+  if (lower.includes('x86_64-apple-darwin')) return 'macOS Intel';
+  if (lower.includes('android')) return 'Android';
+  if (lower.includes('windows')) return 'Windows';
+  if (lower.includes('ubuntu') || lower.includes('linux')) return 'Linux';
+  if (lower.includes('macos') && lower.includes('aarch64')) return 'macOS arm64';
+  if (lower.includes('macos') && (lower.includes('x64') || lower.includes('x86'))) return 'macOS Intel';
+  if (lower.includes('macos')) return 'macOS';
+  const trimmed = name
+    .replace(/^publish-tauri\s*/i, '')
+    .replace(/[()]/g, ' ')
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return trimmed || name;
 }
