@@ -2,6 +2,12 @@ const OWNER = 'SeanGareth505';
 const REPO = 'branchline';
 const API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`;
 const LATEST = `https://github.com/${OWNER}/${REPO}/releases/latest`;
+const STABLE = {
+  macArm: `${LATEST}/download/Branchline-mac-arm64.dmg`,
+  macIntel: `${LATEST}/download/Branchline-mac-x64.dmg`,
+  windows: `${LATEST}/download/Branchline-windows-setup.exe`,
+  linux: `${LATEST}/download/Branchline-linux.AppImage`,
+};
 
 function pickAsset(assets, tests) {
   for (const test of tests) {
@@ -27,19 +33,17 @@ function detectPlatform() {
     else arch = 'arm';
   }
 
-  if (isAndroid) return { id: 'android', label: 'Android', arch };
   if (isMac) return { id: 'mac', label: 'macOS', arch };
   if (isWin) return { id: 'windows', label: 'Windows', arch };
   if (isLinux) return { id: 'linux', label: 'Linux', arch };
   return { id: 'mac', label: 'macOS', arch: 'arm' };
 }
 
-function wire(el, asset, fallbackLabel) {
+function wire(el, asset, fallbackHref, fallbackLabel) {
   if (!el) return;
   if (!asset) {
-    el.href = LATEST;
+    el.href = fallbackHref || LATEST;
     if (fallbackLabel) el.textContent = fallbackLabel;
-    el.classList.add('missing');
     return;
   }
   el.href = asset.browser_download_url;
@@ -80,14 +84,6 @@ function renderHowto(platform) {
         'Click <strong>Download for Windows</strong> and run the <code>.exe</code> installer.',
         'Launch Branchline from the Start menu. This is a public beta — SmartScreen may warn until the app is widely used.',
         'If SmartScreen appears, choose <strong>More info</strong> → <strong>Run anyway</strong>.',
-      ],
-      actions: [],
-    },
-    android: {
-      steps: [
-        'Download the <strong>APK</strong> on your phone.',
-        'Allow install from this source when Android asks.',
-        'Open the APK and install Branchline.',
       ],
       actions: [],
     },
@@ -172,17 +168,11 @@ async function loadLatest() {
       (n) => n.endsWith('.deb'),
       (n) => n.endsWith('.rpm'),
     ]);
-    const apk = pickAsset(assets, [
-      (n) => n === 'branchline-android.apk',
-      (n) => n.endsWith('-android.apk'),
-      (n) => n.endsWith('.apk'),
-    ]);
 
-    wire(document.getElementById('mac-arm-btn'), macArm, 'Apple Silicon');
-    wire(document.getElementById('mac-intel-btn'), macIntel, 'Intel');
-    wire(document.getElementById('win-btn'), win, 'Download Windows');
-    wire(document.getElementById('linux-btn'), linux, 'Download Linux');
-    wire(document.getElementById('apk-btn'), apk, 'Download APK');
+    wire(document.getElementById('mac-arm-btn'), macArm, STABLE.macArm, 'Apple Silicon');
+    wire(document.getElementById('mac-intel-btn'), macIntel, STABLE.macIntel, 'Intel');
+    wire(document.getElementById('win-btn'), win, STABLE.windows, 'Download Windows');
+    wire(document.getElementById('linux-btn'), linux, STABLE.linux, 'Download Linux');
 
     let primary = null;
     let primaryLabel = 'Download';
@@ -194,9 +184,6 @@ async function loadLatest() {
     } else if (platform.id === 'windows') {
       primary = win;
       primaryLabel = 'Download for Windows';
-    } else if (platform.id === 'android') {
-      primary = apk;
-      primaryLabel = 'Download Android APK';
     } else {
       primary = linux;
       primaryLabel = 'Download for Linux';
@@ -217,9 +204,24 @@ async function loadLatest() {
       primaryMeta.textContent = `Latest ${release.tag_name} — open release assets`;
     }
   } catch (err) {
-    primaryBtn.href = LATEST;
-    primaryBtn.textContent = 'Open latest release';
-    primaryMeta.textContent = 'Could not auto-detect assets — open GitHub Releases.';
+    const fallback =
+      platform.id === 'windows'
+        ? STABLE.windows
+        : platform.id === 'linux'
+          ? STABLE.linux
+          : platform.arch === 'intel'
+            ? STABLE.macIntel
+            : STABLE.macArm;
+    primaryBtn.href = fallback;
+    primaryBtn.textContent =
+      platform.id === 'windows'
+        ? 'Download for Windows'
+        : platform.id === 'linux'
+          ? 'Download for Linux'
+          : platform.arch === 'intel'
+            ? 'Download for Mac (Intel)'
+            : 'Download for Mac (Apple Silicon)';
+    primaryMeta.textContent = 'Latest release · direct installer';
     console.error(err);
   }
 }
