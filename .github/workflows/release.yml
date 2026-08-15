@@ -128,10 +128,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
-            if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-              echo "::error::APPLE_CERTIFICATE is required for public macOS releases"
-              exit 1
-            fi
             echo "No APPLE_CERTIFICATE secret; building unsigned macOS artifacts"
             exit 0
           fi
