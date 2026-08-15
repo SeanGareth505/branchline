@@ -1,7 +1,7 @@
-use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
+use crate::commands::settings::{load_settings_with_tokens, AppSettings, ConnectionConfig};
 use crate::infrastructure::git_cli;
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -96,7 +96,7 @@ struct GitLabProject {
 }
 
 #[command]
-pub fn list_host_repositories(
+pub async fn list_host_repositories(
     state: State<'_, AppState>,
     input: Option<ListHostReposInput>,
 ) -> AppResult<Vec<HostRepository>> {
@@ -104,6 +104,13 @@ pub fn list_host_repositories(
     let connection_id = input
         .and_then(|v| v.connection_id)
         .filter(|s| !s.trim().is_empty());
+    run_blocking(move || list_host_repositories_inner(settings, connection_id)).await
+}
+
+fn list_host_repositories_inner(
+    settings: AppSettings,
+    connection_id: Option<String>,
+) -> AppResult<Vec<HostRepository>> {
 
     let connections: Vec<&ConnectionConfig> = settings
         .connections

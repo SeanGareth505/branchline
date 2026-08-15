@@ -277,42 +277,44 @@
     </button>
   </div>
 
-  <div class="group secondary">
-    <button
-      type="button"
-      class="tool icon-only"
-      title="Ship a version release (bump, tag, optional push)"
-      aria-label="Release"
-      (click)="store.startReleaseFlow()"
-    >
-      <ng-icon name="lucideRocket" size="15" />
-    </button>
-    <button
-      type="button"
-      class="tool icon-only"
-      title="Create a pull request"
-      aria-label="Create pull request"
-      (click)="createPullRequest()"
-    >
-      <ng-icon name="lucideGitPullRequest" size="15" />
-    </button>
-    <button
-      type="button"
-      class="tool icon-only"
-      title="Build a changelog from recent commits"
-      aria-label="Extract changelog"
-      (click)="store.openChangelogModal()"
-    >
-      <ng-icon name="lucideScrollText" size="15" />
-    </button>
-    <button
-      type="button"
-      class="tool icon-only"
-      title="Open the Git command console"
-      aria-label="Git console"
-      (click)="openConsole()"
-    >
-      <ng-icon name="lucideTerminal" size="15" />
-    </button>
-  </div>
+    @if (!store.settings().simpleMode) {
+      <div class="group secondary">
+        <button
+          type="button"
+          class="tool icon-only"
+          title="Ship a version release (bump, tag, optional push)"
+          aria-label="Release"
+          (click)="store.startReleaseFlow()"
+        >
+          <ng-icon name="lucideRocket" size="15" />
+        </button>
+        <button
+          type="button"
+          class="tool icon-only"
+          title="Create a pull request"
+          aria-label="Create pull request"
+          (click)="createPullRequest()"
+        >
+          <ng-icon name="lucideGitPullRequest" size="15" />
+        </button>
+        <button
+          type="button"
+          class="tool icon-only"
+          title="Build a changelog from recent commits"
+          aria-label="Extract changelog"
+          (click)="store.openChangelogModal()"
+        >
+          <ng-icon name="lucideScrollText" size="15" />
+        </button>
+        <button
+          type="button"
+          class="tool icon-only"
+          title="Open the Git command console"
+          aria-label="Git console"
+          (click)="openConsole()"
+        >
+          <ng-icon name="lucideTerminal" size="15" />
+        </button>
+      </div>
+    }
 </div>

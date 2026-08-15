@@ -72,7 +72,7 @@
                 title="Details for the selected commit"
                 (click)="setTab('commit')"
               >
-                Commit info
+                Commit
               </button>
               <button
                 type="button"
@@ -88,40 +88,48 @@
                 title="Browse changed files in a tree"
                 (click)="setTab('files')"
               >
-                File tree
+                Files
               </button>
-              <button
-                type="button"
-                [class.active]="store.browseTab() === 'blame'"
-                title="Line-by-line authorship for the selected file"
-                (click)="setTab('blame')"
-              >
-                Blame
-              </button>
-              <button
-                type="button"
-                [class.active]="store.browseTab() === 'history'"
-                title="Commits that changed the selected file"
-                (click)="setTab('history')"
-              >
-                File history
-              </button>
-              <button
-                type="button"
-                [class.active]="store.browseTab() === 'reflog'"
-                title="Recent HEAD moves (checkouts, resets, amends)"
-                (click)="setTab('reflog')"
-              >
-                Reflog
-              </button>
-              <button
-                type="button"
-                [class.active]="store.browseTab() === 'console'"
-                title="Run raw Git commands"
-                (click)="setTab('console')"
-              >
-                Console
-              </button>
+              @if (showInspectTab('blame')) {
+                <button
+                  type="button"
+                  [class.active]="store.browseTab() === 'blame'"
+                  title="Line-by-line authorship for the selected file"
+                  (click)="setTab('blame')"
+                >
+                  Blame
+                </button>
+              }
+              @if (showInspectTab('history')) {
+                <button
+                  type="button"
+                  [class.active]="store.browseTab() === 'history'"
+                  title="Commits that changed the selected file"
+                  (click)="setTab('history')"
+                >
+                  History
+                </button>
+              }
+              @if (showInspectTab('reflog')) {
+                <button
+                  type="button"
+                  [class.active]="store.browseTab() === 'reflog'"
+                  title="Recent HEAD moves (checkouts, resets, amends)"
+                  (click)="setTab('reflog')"
+                >
+                  Reflog
+                </button>
+              }
+              @if (showInspectTab('console')) {
+                <button
+                  type="button"
+                  [class.active]="store.browseTab() === 'console'"
+                  title="Run raw Git commands"
+                  (click)="setTab('console')"
+                >
+                  Console
+                </button>
+              }
             </div>
             <div class="tab-body">
               @switch (store.browseTab()) {

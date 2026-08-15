@@ -38,6 +38,11 @@ export class BrowseShell {
     this.store.setBrowseTab(tab);
   }
 
+  showInspectTab(tab: BrowseTab): boolean {
+    if (!this.store.settings().simpleMode) return true;
+    return this.store.browseTab() === tab;
+  }
+
   onMainSplit(sizes: Array<number | '*'>): void {
     const nums = sizes.filter((s): s is number => typeof s === 'number');
     if (nums.length >= 2) this.store.setSplitSizes('main', nums);

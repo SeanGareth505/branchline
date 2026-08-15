@@ -2,7 +2,7 @@ use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
 use crate::infrastructure::git_cli;
 use crate::infrastructure::mock_providers::MockPullRequest;
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -292,11 +292,18 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
 }
 
 #[command]
-pub fn list_pull_requests(
+pub async fn list_pull_requests(
     state: State<'_, AppState>,
     input: ListPullRequestsInput,
 ) -> AppResult<Vec<MockPullRequest>> {
     let connection = github_connection(&state, input.connection_id.as_deref())?;
+    run_blocking(move || list_pull_requests_inner(connection, input)).await
+}
+
+fn list_pull_requests_inner(
+    connection: ConnectionConfig,
+    input: ListPullRequestsInput,
+) -> AppResult<Vec<MockPullRequest>> {
     let path = PathBuf::from(&input.path);
     let (owner, repo) = resolve_github_repo(&path)?;
     let full = format!("{owner}/{repo}");

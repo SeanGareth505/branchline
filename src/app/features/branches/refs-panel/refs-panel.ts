@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -131,6 +132,20 @@ export class RefsPanel {
     lfs: false,
   });
   private suppressMenuCloseUntil = 0;
+
+  constructor() {
+    effect(() => {
+      const group = this.store.pendingRefsReveal();
+      if (group !== 'remotes' && group !== 'local' && group !== 'tags' && group !== 'stash' && group !== 'worktrees' && group !== 'submodules' && group !== 'lfs') {
+        return;
+      }
+      if (this.store.hiddenRefsGroups().includes(group)) {
+        this.store.setHiddenRefsGroups(this.store.hiddenRefsGroups().filter((id) => id !== group));
+      }
+      this.setExpanded(group as RefsGroup, true);
+      this.store.pendingRefsReveal.set(null);
+    });
+  }
 
   readonly menuOrigin = computed(() => {
     const menu = this.branchMenu() ?? this.tagMenu();
@@ -872,10 +887,6 @@ export class RefsPanel {
   menuUpstreamShort(name: string): string | null {
     const upstream = this.menuUpstream(name);
     return upstream ? shortUpstream(upstream) : null;
-  }
-
-  currentBranchName(): string | null {
-    return this.currentBranch()?.name ?? this.store.status()?.branch ?? null;
   }
 
   remoteNameOf(ref: string): string | null {

@@ -1,6 +1,6 @@
 use crate::infrastructure::git2_repo::{self, ArtificialCommit, CommitInfo};
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -59,10 +59,13 @@ pub struct CommitRangeInput {
 }
 
 #[command]
-pub fn get_commit_log(input: CommitLogInput) -> AppResult<Vec<CommitInfo>> {
-    let path = PathBuf::from(&input.path);
-    let limit = input.limit.unwrap_or(200).clamp(1, 5000);
-    git2_repo::commit_log(&path, limit)
+pub async fn get_commit_log(input: CommitLogInput) -> AppResult<Vec<CommitInfo>> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        let limit = input.limit.unwrap_or(200).clamp(1, 5000);
+        git2_repo::commit_log(&path, limit)
+    })
+    .await
 }
 
 #[command]

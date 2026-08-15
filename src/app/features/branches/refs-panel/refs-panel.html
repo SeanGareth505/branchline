@@ -1,7 +1,7 @@
 <aside class="refs" (click)="(branchMenu() || tagMenu()) && onBranchMenuDismiss()">
   <div class="toolbar">
     <label class="filter" cdkOverlayOrigin #filterOrigin="cdkOverlayOrigin">
-      <ng-icon name="lucideSearch" size="13" />
+      <ng-icon name="lucideSearch" size="14" />
       <input
         type="search"
         placeholder="Filter…"
@@ -74,70 +74,72 @@
       </ul>
     </ng-template>
     <div class="toolbar-actions">
-      <button
-        type="button"
-        class="fold"
-        (click)="expandAll($event)"
-        title="Expand all"
-        aria-label="Expand all"
-      >
-        <ng-icon name="lucideChevronsDown" size="13" />
-      </button>
-      <button
-        type="button"
-        class="fold"
-        (click)="collapseAll($event)"
-        title="Collapse all"
-        aria-label="Collapse all"
-      >
-        <ng-icon name="lucideChevronsUp" size="13" />
-      </button>
-      <button
-        type="button"
-        class="fold"
-        [class.on]="hasHiddenSections()"
-        cdkOverlayOrigin
-        #sectionsOrigin="cdkOverlayOrigin"
-        (click)="toggleSectionsMenu($event)"
-        title="Show or hide sidebar sections"
-        aria-label="Show or hide sidebar sections"
-        [attr.aria-expanded]="sectionsMenuOpen()"
-      >
-        <ng-icon name="lucideLayers" size="13" />
-      </button>
-      <ng-template
-        cdkConnectedOverlay
-        [cdkConnectedOverlayOrigin]="sectionsOrigin"
-        [cdkConnectedOverlayOpen]="sectionsMenuOpen()"
-        [cdkConnectedOverlayPositions]="sectionsMenuPositions"
-        [cdkConnectedOverlayHasBackdrop]="true"
-        [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
-        [cdkConnectedOverlayPush]="true"
-        (backdropClick)="closeSectionsMenu()"
-        (overlayOutsideClick)="closeSectionsMenu()"
-      >
-        <div class="bl-menu sections-menu" role="menu" (click)="$event.stopPropagation()">
-          <div class="bl-menu-label">Sections</div>
-          @for (item of sectionOptions(); track item.id) {
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              [attr.aria-checked]="!isSectionHidden(item.id)"
-              (click)="toggleSectionHidden(item.id, $event)"
-            >
-              <span class="check">
-                @if (!isSectionHidden(item.id)) {
-                  <ng-icon name="lucideCheck" size="14" />
-                }
-              </span>
-              {{ item.label }}
-            </button>
-          }
-          @if (hasHiddenSections()) {
-            <button type="button" (click)="showAllSections($event)">Show all</button>
-          }
-        </div>
-      </ng-template>
+      <div class="action-group">
+        <button
+          type="button"
+          class="icon-btn"
+          (click)="expandAll($event)"
+          title="Expand all"
+          aria-label="Expand all"
+        >
+          <ng-icon name="lucideChevronsDown" size="14" />
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          (click)="collapseAll($event)"
+          title="Collapse all"
+          aria-label="Collapse all"
+        >
+          <ng-icon name="lucideChevronsUp" size="14" />
+        </button>
+        <button
+          type="button"
+          class="icon-btn"
+          [class.on]="hasHiddenSections()"
+          cdkOverlayOrigin
+          #sectionsOrigin="cdkOverlayOrigin"
+          (click)="toggleSectionsMenu($event)"
+          title="Show or hide sidebar sections"
+          aria-label="Show or hide sidebar sections"
+          [attr.aria-expanded]="sectionsMenuOpen()"
+        >
+          <ng-icon name="lucideLayers" size="14" />
+        </button>
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="sectionsOrigin"
+          [cdkConnectedOverlayOpen]="sectionsMenuOpen()"
+          [cdkConnectedOverlayPositions]="sectionsMenuPositions"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+          [cdkConnectedOverlayPush]="true"
+          (backdropClick)="closeSectionsMenu()"
+          (overlayOutsideClick)="closeSectionsMenu()"
+        >
+          <div class="bl-menu sections-menu" role="menu" (click)="$event.stopPropagation()">
+            <div class="bl-menu-label">Sections</div>
+            @for (item of sectionOptions(); track item.id) {
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                [attr.aria-checked]="!isSectionHidden(item.id)"
+                (click)="toggleSectionHidden(item.id, $event)"
+              >
+                <span class="check">
+                  @if (!isSectionHidden(item.id)) {
+                    <ng-icon name="lucideCheck" size="14" />
+                  }
+                </span>
+                {{ item.label }}
+              </button>
+            }
+            @if (hasHiddenSections()) {
+              <button type="button" (click)="showAllSections($event)">Show all</button>
+            }
+          </div>
+        </ng-template>
+      </div>
       <button
         type="button"
         class="mine"
@@ -146,28 +148,31 @@
         [attr.aria-pressed]="store.myBranchesOnly()"
         title="Show only branches whose tip commit was authored by you"
       >
+        <ng-icon name="lucideUser" size="12" />
         Mine
       </button>
-      @if (currentBranch(); as current) {
+      <div class="action-group trailing">
+        @if (currentBranch(); as current) {
+          <button
+            type="button"
+            class="icon-btn"
+            (click)="revealCurrentBranch($event)"
+            [title]="`Jump to current branch in the list: ${current.name}`"
+            aria-label="Show current branch"
+          >
+            <ng-icon name="lucideLocateFixed" size="14" />
+          </button>
+        }
         <button
           type="button"
-          class="locate"
-          (click)="revealCurrentBranch($event)"
-          [title]="`Jump to current branch in the list: ${current.name}`"
-          aria-label="Show current branch"
+          class="icon-btn add"
+          (click)="store.openCreateBranchDialog()"
+          aria-label="Create branch"
+          title="Create a new local branch"
         >
-          <ng-icon name="lucideLocateFixed" size="13" />
+          <ng-icon name="lucidePlus" size="14" />
         </button>
-      }
-      <button
-        type="button"
-        class="add"
-        (click)="store.openCreateBranchDialog()"
-        aria-label="Create branch"
-        title="Create a new local branch"
-      >
-        <ng-icon name="lucidePlus" size="13" />
-      </button>
+      </div>
     </div>
   </div>
 
@@ -295,8 +300,6 @@
                     <ng-icon name="lucideCloud" size="10" />
                     <span class="upstream-label">{{ up }}</span>
                   </button>
-                } @else if (!row.branch.isCurrent) {
-                  <span class="upstream-missing" title="No upstream set">local</span>
                 }
                 @if (!row.branch.isCurrent && !row.branch.locked) {
                   <button
@@ -569,13 +572,56 @@
 >
   @if (tagMenu(); as menu) {
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
-      <button type="button" title="Copy tag name" (click)="copyRefName(menu.name)">Copy name</button>
+      <button
+        type="button"
+        title="Check out this tag (detached HEAD)"
+        (click)="checkoutTag(menu.name)"
+      >
+        Checkout
+      </button>
       <button
         type="button"
         title="Show this tag in the graph"
         (click)="locateTagFromMenu(menu.name)"
       >
         Show in graph
+      </button>
+      <button type="button" title="Copy tag name" (click)="copyRefName(menu.name)">Copy name</button>
+      <button type="button" title="Copy this tag’s commit SHA" (click)="copySha(menu.name)">
+        Copy SHA
+      </button>
+      <div class="bl-menu-sep"></div>
+      <button
+        type="button"
+        title="Bring this tag’s commit into your current branch"
+        (click)="mergeTag(menu.name)"
+      >
+        Merge into current
+      </button>
+      <button
+        type="button"
+        title="Diff this tag against the branch you have checked out"
+        (click)="compareThis(menu.name)"
+      >
+        Compare with current
+      </button>
+      <button
+        type="button"
+        title="Create and check out a new branch pointing at this tag"
+        (click)="newBranchFrom(menu.name)"
+      >
+        New branch from here…
+      </button>
+      <button
+        type="button"
+        title="Copy this tag’s commit onto your current branch"
+        (click)="cherryPickTip(menu.name)"
+      >
+        Cherry-pick onto current
+      </button>
+      <div class="bl-menu-sep"></div>
+      <button type="button" title="Push this tag to a remote" (click)="pushTag(menu.name)">
+        Push tag…
       </button>
       <button
         type="button"
@@ -588,15 +634,99 @@
     </div>
   } @else if (branchMenu(); as menu) {
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
-      <button type="button" title="Copy branch name" (click)="copyRefName(menu.name)">Copy name</button>
-      <button
-        type="button"
-        title="Switch your working tree to this branch"
-        (click)="store.checkoutBranch(menu.name); closeBranchMenu()"
-      >
-        Checkout
-      </button>
       @if (menuLocalBranch(menu.name); as local) {
+        @if (!local.isCurrent) {
+          <button
+            type="button"
+            title="Switch your working tree to this branch"
+            (click)="store.checkoutBranch(menu.name); closeBranchMenu()"
+          >
+            Checkout
+          </button>
+        }
+        <button
+          type="button"
+          title="Show this branch’s tip in the graph"
+          (click)="showInGraph(menu.name)"
+        >
+          Show in graph
+        </button>
+        <button type="button" title="Copy branch name" (click)="copyRefName(menu.name)">
+          Copy name
+        </button>
+        <button type="button" title="Copy this branch’s tip SHA" (click)="copySha(menu.name)">
+          Copy SHA
+        </button>
+
+        <div class="bl-menu-label">Remote</div>
+        @if (local.isCurrent && menuUpstream(menu.name)) {
+          <button
+            type="button"
+            title="Fetch and merge (or rebase) this branch’s upstream"
+            (click)="pullCurrent(false)"
+          >
+            Pull
+          </button>
+          <button
+            type="button"
+            title="Fetch, then rebase this branch onto its upstream"
+            (click)="pullCurrent(true)"
+          >
+            Pull with rebase
+          </button>
+        }
+        @if (menuUpstream(menu.name); as upstream) {
+          <button
+            type="button"
+            [title]="'Merge ' + upstream + ' into your current branch'"
+            (click)="mergeUpstream(menu.name)"
+          >
+            Merge {{ menuUpstreamShort(menu.name) }}
+          </button>
+          @if (local.isCurrent) {
+            <button
+              type="button"
+              [title]="'Replay this branch on top of ' + upstream"
+              (click)="rebaseOntoUpstream(menu.name)"
+            >
+              Rebase onto {{ menuUpstreamShort(menu.name) }}
+            </button>
+          }
+          <button
+            type="button"
+            [title]="'Fast-forward to ' + upstream + ' (refuses if histories diverged)'"
+            (click)="fastForwardThis(menu.name)"
+          >
+            Fast-forward to {{ menuUpstreamShort(menu.name) }}
+          </button>
+        }
+        <button
+          type="button"
+          [title]="
+            menuUpstream(menu.name)
+              ? 'Push this branch to its upstream'
+              : 'Publish this branch to the remote and set upstream'
+          "
+          (click)="pushThis(menu.name)"
+        >
+          {{ menuUpstream(menu.name) ? 'Push' : 'Publish…' }}
+        </button>
+        @if (menuUpstream(menu.name)) {
+          <button
+            type="button"
+            title="Force push with lease (refuses if the remote moved)"
+            (click)="forcePushThis(menu.name)"
+          >
+            Force push with lease…
+          </button>
+        }
+        <button
+          type="button"
+          title="Fetch updates from this branch’s remote"
+          (click)="fetchThis(menu.name)"
+        >
+          Fetch
+        </button>
         <button
           type="button"
           [title]="
@@ -608,39 +738,119 @@
         >
           {{ local.upstream || relatedRemote(local) ? 'Show upstream' : 'Find on remote…' }}
         </button>
-        @if (local.isCurrent) {
+        <button
+          type="button"
+          title="Choose which remote-tracking branch this local tracks"
+          (click)="setUpstream(menu.name)"
+        >
+          {{ menuUpstream(menu.name) ? 'Change upstream…' : 'Set upstream…' }}
+        </button>
+        @if (local.upstream) {
           <button
             type="button"
-            title="Push this branch to its upstream"
-            (click)="store.pushRemote(); closeBranchMenu()"
+            title="Stop tracking a remote branch"
+            (click)="unsetUpstream(menu.name)"
           >
-            Push
-          </button>
-          <button
-            type="button"
-            title="Force push with lease (refuses if the remote moved)"
-            (click)="store.forcePush(); closeBranchMenu()"
-          >
-            Force push with lease…
+            Unset upstream
           </button>
         }
-      }
-      <button
-        type="button"
-        title="Bring this branch’s commits into your current branch"
-        (click)="mergeBranch(menu.name)"
-      >
-        Merge into current
-      </button>
-      <button
-        type="button"
-        title="Replay your current branch’s commits on top of this branch"
-        (click)="rebaseOnto(menu.name)"
-      >
-        Rebase current onto…
-      </button>
-      @if (menuLocalBranch(menu.name)) {
-        <button type="button" title="Rename this local branch" (click)="rename(menu.name)">Rename…</button>
+
+        @if (!local.isCurrent) {
+          <div class="bl-menu-label">Current branch</div>
+          <button
+            type="button"
+            title="Bring this branch’s commits into your current branch"
+            (click)="mergeBranch(menu.name)"
+          >
+            Merge into current
+          </button>
+          <button
+            type="button"
+            title="Replay your current branch’s commits on top of this branch"
+            (click)="rebaseOnto(menu.name)"
+          >
+            Rebase current onto this
+          </button>
+          @if (menuUpstream(menu.name); as upstream) {
+            <button
+              type="button"
+              [title]="'Replay your current branch on top of ' + upstream"
+              (click)="rebaseOntoUpstream(menu.name)"
+            >
+              Rebase current onto {{ menuUpstreamShort(menu.name) }}
+            </button>
+          }
+          <button
+            type="button"
+            title="Move current branch tip here; keep all file changes staged"
+            (click)="resetCurrent(menu.name, 'soft')"
+          >
+            Reset current (soft)
+          </button>
+          <button
+            type="button"
+            title="Move current branch tip here; keep file changes unstaged"
+            (click)="resetCurrent(menu.name, 'mixed')"
+          >
+            Reset current (mixed)
+          </button>
+          <button
+            type="button"
+            title="Move current branch tip here and discard later changes — destructive"
+            (click)="resetCurrent(menu.name, 'hard')"
+          >
+            Hard reset current…
+          </button>
+          <button
+            type="button"
+            title="Copy this branch’s tip onto your current branch as a new commit"
+            (click)="cherryPickTip(menu.name)"
+          >
+            Cherry-pick tip onto current
+          </button>
+          <button
+            type="button"
+            title="Diff this branch against the branch you have checked out"
+            (click)="compareThis(menu.name)"
+          >
+            Compare with current
+          </button>
+        }
+
+        <div class="bl-menu-label">Create</div>
+        <button
+          type="button"
+          title="Create a new local branch starting at this tip"
+          (click)="newBranchFrom(menu.name)"
+        >
+          New branch from here…
+        </button>
+        <button
+          type="button"
+          title="Check out this branch in a separate working directory"
+          (click)="newWorktreeFrom(menu.name)"
+        >
+          New worktree from here…
+        </button>
+        <button
+          type="button"
+          title="Create a tag pointing at this branch’s tip"
+          (click)="createTagHere(menu.name)"
+        >
+          Create tag here…
+        </button>
+        <button
+          type="button"
+          title="Open a pull request from this branch"
+          (click)="openPr(menu.name)"
+        >
+          Open pull request…
+        </button>
+
+        <div class="bl-menu-label">This branch</div>
+        <button type="button" title="Rename this local branch" (click)="rename(menu.name)">
+          Rename…
+        </button>
         @if (store.isBranchLocked(menu.name)) {
           <button
             type="button"
@@ -666,7 +876,99 @@
         >
           Delete…
         </button>
-      } @else if (menuRemoteBranch(menu.name)) {
+      } @else if (menuRemoteBranch(menu.name); as remote) {
+        <button
+          type="button"
+          title="Check out a local branch tracking this remote branch"
+          (click)="store.checkoutBranch(menu.name); closeBranchMenu()"
+        >
+          Checkout
+        </button>
+        <button
+          type="button"
+          title="Show this branch’s tip in the graph"
+          (click)="showInGraph(menu.name)"
+        >
+          Show in graph
+        </button>
+        <button type="button" title="Copy branch name" (click)="copyRefName(menu.name)">
+          Copy name
+        </button>
+        <button type="button" title="Copy this branch’s tip SHA" (click)="copySha(menu.name)">
+          Copy SHA
+        </button>
+        <div class="bl-menu-sep"></div>
+        <button
+          type="button"
+          title="Fetch updates from this remote"
+          (click)="fetchThis(menu.name)"
+        >
+          Fetch {{ remoteNameOf(menu.name) || 'remote' }}
+        </button>
+        <button
+          type="button"
+          title="Bring this remote branch’s commits into your current branch"
+          (click)="mergeBranch(menu.name)"
+        >
+          Merge into current
+        </button>
+        <button
+          type="button"
+          title="Replay your current branch’s commits on top of this remote branch"
+          (click)="rebaseOnto(menu.name)"
+        >
+          Rebase current onto this
+        </button>
+        <button
+          type="button"
+          title="Fast-forward your current branch to this remote tip (refuses if histories diverged)"
+          (click)="fastForwardThis(menu.name)"
+        >
+          Fast-forward current to this
+        </button>
+        <button
+          type="button"
+          title="Diff this remote branch against the branch you have checked out"
+          (click)="compareThis(menu.name)"
+        >
+          Compare with current
+        </button>
+        <button
+          type="button"
+          title="Move current branch tip here; keep all file changes staged"
+          (click)="resetCurrent(menu.name, 'soft')"
+        >
+          Reset current (soft)
+        </button>
+        <button
+          type="button"
+          title="Move current branch tip here; keep file changes unstaged"
+          (click)="resetCurrent(menu.name, 'mixed')"
+        >
+          Reset current (mixed)
+        </button>
+        <button
+          type="button"
+          title="Move current branch tip here and discard later changes — destructive"
+          (click)="resetCurrent(menu.name, 'hard')"
+        >
+          Hard reset current…
+        </button>
+        <button
+          type="button"
+          title="Copy this branch’s tip onto your current branch as a new commit"
+          (click)="cherryPickTip(menu.name)"
+        >
+          Cherry-pick tip onto current
+        </button>
+        <div class="bl-menu-sep"></div>
+        <button
+          type="button"
+          title="Create a new local branch starting at this remote tip"
+          (click)="newBranchFrom(menu.name)"
+        >
+          New local branch from here…
+        </button>
         <button
           type="button"
           class="danger"

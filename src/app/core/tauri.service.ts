@@ -33,6 +33,7 @@ import type {
   RebaseStep,
   ReflogEntry,
   RemoteInfo,
+  ProbeRemoteOutput,
   RepoStatus,
   RepoSummary,
   ResetMode,
@@ -794,6 +795,16 @@ export class TauriService {
     return this.invoke<MutationOutput>('add_remote', { input: { path, name, url } });
   }
 
+  setRemoteUrl(path: string, name: string, url: string) {
+    return this.invoke<MutationOutput>('set_remote_url', { input: { path, name, url } });
+  }
+
+  probeRemote(path: string, opts?: { url?: string; remote?: string }) {
+    return this.invoke<ProbeRemoteOutput>('probe_remote', {
+      input: { path, url: opts?.url ?? null, remote: opts?.remote ?? null },
+    });
+  }
+
   removeRemote(path: string, name: string) {
     return this.invoke<MutationOutput>('remove_remote', { input: { path, name } });
   }
@@ -1422,6 +1433,14 @@ export class TauriService {
         },
       ],
       add_remote: { ok: true, message: 'Added remote' },
+      set_remote_url: { ok: true, message: 'Updated origin to git@github.com:example/navigo.git' },
+      probe_remote: {
+        ok: false,
+        url: 'https://github.com/example/navigo.git',
+        protocol: 'https',
+        message:
+          "remote: Repository not found.\nfatal: repository 'https://github.com/example/navigo.git' not found",
+      },
       remove_remote: { ok: true, message: 'Removed remote' },
       prune_remote: { ok: true, message: 'Pruned stale remote-tracking branches' },
       pull_with_options: { ok: true, message: 'Pulled with rebase' },

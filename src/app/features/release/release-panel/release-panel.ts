@@ -1,4 +1,12 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
@@ -27,11 +35,34 @@ interface JobFilterTab {
   count: number;
 }
 
+interface JobStepView {
+  key: string;
+  name: string;
+  chip: JobChipStatus;
+  statusLabel: string;
+  duration: string;
+  active: boolean;
+}
+
+interface JobView {
+  job: ReleaseDeployJob;
+  name: string;
+  label: string;
+  chip: JobChipStatus;
+  statusLabel: string;
+  duration: string;
+  open: boolean;
+  hasSteps: boolean;
+  url: string | null;
+  steps: JobStepView[];
+}
+
 @Component({
   selector: 'app-release-panel',
-  imports: [NgIcon],
+  imports: [NgIcon, NgTemplateOutlet],
   templateUrl: './release-panel.html',
   styleUrl: './release-panel.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ReleasePanel {
   readonly store = inject(AppStore);
@@ -119,10 +150,10 @@ export class ReleasePanel {
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
-  readonly jobsExpanded = signal(true);
   readonly jobFilter = signal<JobFilter>('in_progress');
+  readonly timelineView = signal<'steps' | 'actions'>('steps');
   private readonly jobOpen = signal<Record<string, boolean>>({});
-  private readonly stepsOpenOverride = signal<boolean | null>(null);
+  private readonly nestedActionsOverride = signal<boolean | null>(null);
   private jobFilterTouched = false;
   private lastInProgressCount = -1;
 
@@ -131,7 +162,7 @@ export class ReleasePanel {
     let completed = 0;
     let failed = 0;
     for (const job of this.deployJobs()) {
-      const chip = this.jobChipStatus(job);
+      const chip = chipStatus(job);
       if (chip === 'success') completed += 1;
       else if (chip === 'failure') failed += 1;
       else inProgress += 1;
@@ -148,7 +179,7 @@ export class ReleasePanel {
     const counts = this.jobCounts();
     return [
       { id: 'in_progress', label: 'In progress', count: counts.in_progress },
-      { id: 'completed', label: 'Completed', count: counts.completed },
+      { id: 'completed', label: 'History', count: counts.completed },
       { id: 'failed', label: 'Failed', count: counts.failed },
       { id: 'all', label: 'All', count: counts.all },
     ];
@@ -157,11 +188,42 @@ export class ReleasePanel {
   readonly filteredJobs = computed(() => {
     const filter = this.jobFilter();
     return this.deployJobs().filter((job) => {
-      const chip = this.jobChipStatus(job);
+      const chip = chipStatus(job);
       if (filter === 'in_progress') return chip === 'pending' || chip === 'unknown';
       if (filter === 'completed') return chip === 'success';
       if (filter === 'failed') return chip === 'failure';
       return true;
+    });
+  });
+
+  readonly jobViews = computed((): JobView[] => {
+    const now = this.now();
+    const openState = this.jobOpen();
+    const jobs = this.filteredJobs();
+    const failedName = jobs.find(
+      (job) => (job.steps?.length ?? 0) > 0 && chipStatus(job) === 'failure',
+    )?.name;
+    const runningName = jobs.find(
+      (job) => (job.steps?.length ?? 0) > 0 && job.status === 'in_progress',
+    )?.name;
+    return jobs.map((job) => {
+      const chip = chipStatus(job);
+      const hasSteps = (job.steps?.length ?? 0) > 0;
+      const open =
+        openState[job.name] ??
+        (hasSteps && (job.name === failedName || job.name === runningName));
+      return {
+        job,
+        name: job.name,
+        label: formatDeployJobName(job.name),
+        chip,
+        statusLabel: statusLabelOf(job, chip),
+        duration: durationOf(job, now),
+        open,
+        hasSteps,
+        url: job.url ?? null,
+        steps: open && hasSteps ? job.steps!.map((step, index) => toStepView(step, index, now)) : [],
+      };
     });
   });
 
@@ -171,10 +233,10 @@ export class ReleasePanel {
       case 'in_progress':
         if (counts.failed) return `No jobs in progress · ${counts.failed} failed`;
         return counts.completed
-          ? `No jobs in progress · ${counts.completed} completed`
+          ? `No jobs in progress · ${counts.completed} finished`
           : 'No jobs in progress';
       case 'completed':
-        return 'No completed jobs yet';
+        return 'No finished jobs yet';
       case 'failed':
         return 'No failed jobs';
       default:
@@ -182,10 +244,26 @@ export class ReleasePanel {
     }
   });
 
-  readonly stepsOpen = computed(() => {
-    const override = this.stepsOpenOverride();
-    if (override !== null) return override;
-    return this.deployJobs().length === 0;
+  readonly actionsHostStep = computed(() => {
+    const steps = this.activity()?.steps ?? [];
+    const gha = steps.filter((step) => isActionsPhase(step.phase));
+    if (!gha.length) return null;
+    return (
+      gha.find((step) => step.status === 'active' || step.status === 'error') ??
+      [...gha].reverse().find((step) => step.status === 'done') ??
+      gha[0]
+    );
+  });
+
+  readonly nestedActionsOpen = computed(() => {
+    if (this.nestedActionsOverride() !== null) return this.nestedActionsOverride()!;
+    const host = this.actionsHostStep();
+    if (!host) return false;
+    return (
+      host.status === 'active' ||
+      host.status === 'error' ||
+      this.deployJobs().length > 0
+    );
   });
 
   readonly jobSummary = computed(() => {
@@ -294,7 +372,7 @@ export class ReleasePanel {
         activity.phase !== 'error' &&
         !activity.needsRefresh;
       if (!live) return;
-      const id = window.setInterval(() => this.now.set(Date.now()), 1000);
+      const id = window.setInterval(() => this.now.set(Date.now()), 2000);
       onCleanup(() => window.clearInterval(id));
     });
     effect(() => {
@@ -361,97 +439,92 @@ export class ReleasePanel {
     return step.id;
   }
 
-  trackJob(_index: number, job: ReleaseDeployJob): string {
-    return `${job.name}:${job.status}:${job.conclusion ?? ''}`;
+  setTimelineView(view: 'steps' | 'actions'): void {
+    this.timelineView.set(view);
   }
 
-  jobLabel(job: ReleaseDeployJob): string {
-    return formatDeployJobName(job.name);
+  nestsActions(step: ReleaseActivityStep): boolean {
+    return this.actionsHostStep()?.id === step.id;
   }
 
-  jobSteps(job: ReleaseDeployJob): ReleaseDeployJobStep[] {
-    return job.steps ?? [];
-  }
-
-  hasSteps(job: ReleaseDeployJob): boolean {
-    return this.jobSteps(job).length > 0;
-  }
-
-  isJobOpen(job: ReleaseDeployJob): boolean {
-    const override = this.jobOpen()[job.name];
-    if (override !== undefined) return override;
-    const chip = this.jobChipStatus(job);
-    return this.hasSteps(job) && (chip === 'pending' || chip === 'failure');
-  }
-
-  toggleJobsExpanded(): void {
-    this.jobsExpanded.update((open) => !open);
-  }
-
-  toggleStepsExpanded(): void {
-    this.stepsOpenOverride.set(!this.stepsOpen());
+  toggleNestedActions(event?: Event): void {
+    event?.stopPropagation();
+    this.nestedActionsOverride.set(!this.nestedActionsOpen());
   }
 
   setJobFilter(filter: JobFilter): void {
     this.jobFilterTouched = true;
     this.jobFilter.set(filter);
-    this.jobsExpanded.set(true);
   }
 
-  toggleJob(job: ReleaseDeployJob, event?: Event): void {
+  toggleJob(view: JobView, event?: Event): void {
     event?.stopPropagation();
-    if (!this.hasSteps(job)) {
-      this.openLink(job.url);
+    if (!view.hasSteps) {
+      this.openLink(view.url);
       return;
     }
-    const next = !this.isJobOpen(job);
-    this.jobOpen.update((state) => ({ ...state, [job.name]: next }));
+    this.jobOpen.update((state) => ({ ...state, [view.name]: !view.open }));
   }
+}
 
-  jobChipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {
-    const conclusion = job.conclusion?.trim();
-    if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
-      return 'failure';
-    }
-    if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
-      return 'success';
-    }
-    const status = job.status.trim();
-    if (status === 'completed') return 'success';
-    if (
-      status === 'queued' ||
-      status === 'in_progress' ||
-      status === 'waiting' ||
-      status === 'requested'
-    ) {
-      return 'pending';
-    }
-    return 'unknown';
+function chipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {
+  const conclusion = job.conclusion?.trim();
+  if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
+    return 'failure';
   }
+  if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
+    return 'success';
+  }
+  const status = job.status.trim();
+  if (status === 'completed') return 'success';
+  if (
+    status === 'queued' ||
+    status === 'in_progress' ||
+    status === 'waiting' ||
+    status === 'requested'
+  ) {
+    return 'pending';
+  }
+  return 'unknown';
+}
 
-  jobStatusLabel(job: ReleaseDeployJob | ReleaseDeployJobStep): string {
-    const chip = this.jobChipStatus(job);
-    if (chip === 'success') {
-      if (job.conclusion === 'skipped') return 'Skipped';
-      return 'Passed';
-    }
-    if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
-    if (chip === 'pending') {
-      if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
-        return 'Queued';
-      }
-      return 'Running';
-    }
-    return job.status || 'Pending';
+function statusLabelOf(job: ReleaseDeployJob | ReleaseDeployJobStep, chip: JobChipStatus): string {
+  if (chip === 'success') {
+    if (job.conclusion === 'skipped') return 'Skipped';
+    return 'Passed';
   }
+  if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
+  if (chip === 'pending') {
+    if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
+      return 'Queued';
+    }
+    return 'Running';
+  }
+  return job.status || 'Pending';
+}
 
-  durationLabel(item: ReleaseDeployJob | ReleaseDeployJobStep): string {
-    const start = Date.parse(item.startedAt ?? '');
-    if (Number.isNaN(start)) return '';
-    const endRaw = item.completedAt ? Date.parse(item.completedAt) : this.now();
-    const end = Number.isNaN(endRaw) ? this.now() : endRaw;
-    return formatElapsed(Math.max(0, end - start));
-  }
+function durationOf(item: ReleaseDeployJob | ReleaseDeployJobStep, now: number): string {
+  const start = Date.parse(item.startedAt ?? '');
+  if (Number.isNaN(start)) return '';
+  const endRaw = item.completedAt ? Date.parse(item.completedAt) : now;
+  const end = Number.isNaN(endRaw) ? now : endRaw;
+  return formatElapsed(Math.max(0, end - start));
+}
+
+function toStepView(step: ReleaseDeployJobStep, index: number, now: number): JobStepView {
+  const chip = chipStatus(step);
+  return {
+    key: `${step.number ?? index}:${step.name}`,
+    name: step.name,
+    chip,
+    statusLabel: statusLabelOf(step, chip),
+    duration: durationOf(step, now),
+    active: chip === 'pending',
+  };
+}
+
+function isActionsPhase(phase: ReleasePhase): boolean {
+  return phase === 'deploying' || phase === 'ci' || phase === 'publishing';
 }
 
 function phaseLabel(phase: ReleasePhase): string {

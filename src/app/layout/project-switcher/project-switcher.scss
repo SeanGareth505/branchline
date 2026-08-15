@@ -12,16 +12,13 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  height: 1.85rem;
+  height: 1.7rem;
   max-width: 9.5rem;
   min-width: 0;
-  padding: 0 0.4rem 0 0.45rem;
-  border-radius: 7px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  backdrop-filter: blur(14px) saturate(1.45);
-  -webkit-backdrop-filter: blur(14px) saturate(1.45);
-  box-shadow: 0 1px 0 var(--glass-highlight) inset;
+  padding: 0 0.35rem 0 0.4rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-secondary);
   text-align: left;
   transition:
@@ -33,7 +30,6 @@
 .trigger:hover,
 .trigger[aria-expanded='true'] {
   background: var(--bg-hover);
-  border-color: var(--glass-border-strong);
   color: var(--text-primary);
 }
 

@@ -200,6 +200,14 @@ export class CommandPalette {
       },
       { id: 'sync', label: 'Sync with remote', group: 'Git', run: () => void store.syncRemote() },
       {
+        id: 'troubleshoot-remote',
+        label: 'Troubleshoot remote access',
+        group: 'Git',
+        run: () => {
+          if (store.currentRepo()) store.openRemoteTroubleshoot();
+        },
+      },
+      {
         id: 'stash',
         label: 'Stash working changes',
         group: 'Git',

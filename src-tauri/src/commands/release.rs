@@ -4,9 +4,11 @@ use crate::state::AppState;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle, Emitter, State};
 
 use super::branch::MutationOutput;
@@ -1507,17 +1509,21 @@ fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
 }
 
 fn gh_command() -> Option<String> {
-    for candidate in ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"] {
-        if Command::new(candidate)
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-        {
-            return Some(candidate.to_string());
+    static GH: OnceLock<Option<String>> = OnceLock::new();
+    GH.get_or_init(|| {
+        for candidate in ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"] {
+            if Command::new(candidate)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return Some(candidate.to_string());
+            }
         }
-    }
-    None
+        None
+    })
+    .clone()
 }
 
 fn parse_gh_runs(output: std::process::Output) -> Option<Vec<GhWorkflowRun>> {
@@ -1584,11 +1590,8 @@ fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
     }
 }
 
-fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
-    let gh = gh_command()?;
-    let (owner, repo_name) = repo.split_once('/')?;
-    let urls = DeployUrls::for_repo(owner, repo_name);
-    let release_url = Command::new(&gh)
+fn fetch_gh_release_url(gh: &str, repo: &str, tag: &str) -> Option<String> {
+    Command::new(gh)
         .args(["release", "view", tag, "-R", repo, "--json", "url,isDraft"])
         .output()
         .ok()
@@ -1601,7 +1604,132 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             } else {
                 r.url
             }
-        });
+        })
+}
+
+#[derive(Clone)]
+struct CachedDeployRun {
+    run_id: u64,
+    release_url: Option<String>,
+}
+
+fn deploy_run_cache() -> &'static Mutex<HashMap<String, CachedDeployRun>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedDeployRun>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn deploy_cache_key(repo: &str, tag: &str) -> String {
+    format!("{repo}\n{tag}")
+}
+
+fn cached_deploy_run(repo: &str, tag: &str) -> Option<CachedDeployRun> {
+    deploy_run_cache()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get(&deploy_cache_key(repo, tag)).cloned())
+}
+
+fn remember_deploy_run(repo: &str, tag: &str, run_id: u64, release_url: Option<String>) {
+    let Ok(mut guard) = deploy_run_cache().lock() else {
+        return;
+    };
+    let key = deploy_cache_key(repo, tag);
+    let release_url = release_url.or_else(|| {
+        guard
+            .get(&key)
+            .and_then(|cached| cached.release_url.clone())
+    });
+    guard.insert(key, CachedDeployRun { run_id, release_url });
+}
+
+fn fetch_run_snapshot_with_gh(gh: &str, repo: &str, run_id: u64) -> Option<WorkflowSnapshot> {
+    let run_path = format!("repos/{repo}/actions/runs/{run_id}");
+    let output = Command::new(gh).args(["api", &run_path]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let payload: Value = serde_json::from_slice(&output.stdout).ok()?;
+    let status = payload
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if status.is_empty() {
+        return None;
+    }
+    Some(WorkflowSnapshot {
+        status,
+        conclusion: payload
+            .get("conclusion")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        run_url: payload
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        jobs: fetch_run_jobs_with_gh(gh, repo, run_id),
+    })
+}
+
+fn fetch_run_snapshot_with_api(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    run_id: u64,
+) -> Option<WorkflowSnapshot> {
+    let resp = client
+        .get(format!("{base}/repos/{owner}/{repo}/actions/runs/{run_id}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let payload = resp.json::<Value>().ok()?;
+    let status = payload
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if status.is_empty() {
+        return None;
+    }
+    Some(WorkflowSnapshot {
+        status,
+        conclusion: payload
+            .get("conclusion")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        run_url: payload
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        jobs: fetch_run_jobs_with_api(client, base, token, owner, repo, run_id),
+    })
+}
+
+fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
+    let gh = gh_command()?;
+    let (owner, repo_name) = repo.split_once('/')?;
+    let urls = DeployUrls::for_repo(owner, repo_name);
+    let cached = cached_deploy_run(repo, tag);
+    let release_url = cached
+        .as_ref()
+        .and_then(|entry| entry.release_url.clone())
+        .or_else(|| fetch_gh_release_url(&gh, repo, tag));
+    if let Some(cached) = &cached {
+        if let Some(snapshot) = fetch_run_snapshot_with_gh(&gh, repo, cached.run_id) {
+            remember_deploy_run(repo, tag, cached.run_id, release_url.clone());
+            return Some(evaluate_deploy(&urls, tag, release_url, Some(snapshot)));
+        }
+    }
     let runs = gh_list_runs(&gh, repo, tag)?;
     let matched = runs.into_iter().find(|run| {
         tag_matches_run(
@@ -1610,6 +1738,9 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             run.display_title.as_deref(),
         )
     });
+    if let Some(id) = matched.as_ref().and_then(|run| run.database_id) {
+        remember_deploy_run(repo, tag, id, release_url.clone());
+    }
     let snapshot = matched.map(|run| WorkflowSnapshot {
         status: run.status.unwrap_or_default(),
         conclusion: run.conclusion.unwrap_or_default(),
@@ -1726,7 +1857,19 @@ fn poll_deploy_with_api(
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
     let client = reqwest::blocking::Client::new();
-    let release_url = fetch_release_url(&client, base, token, &full, tag);
+    let cached = cached_deploy_run(&full, tag);
+    let release_url = cached
+        .as_ref()
+        .and_then(|entry| entry.release_url.clone())
+        .or_else(|| fetch_release_url(&client, base, token, &full, tag));
+    if let Some(cached) = &cached {
+        if let Some(snapshot) =
+            fetch_run_snapshot_with_api(&client, base, token, owner, repo, cached.run_id)
+        {
+            remember_deploy_run(&full, tag, cached.run_id, release_url.clone());
+            return Ok(evaluate_deploy(&urls, tag, release_url, Some(snapshot)));
+        }
+    }
     let runs = match fetch_workflow_runs(&client, base, token, &full, tag) {
         Ok(runs) => runs,
         Err(_) => {
@@ -1747,6 +1890,9 @@ fn poll_deploy_with_api(
             run.get("display_title").and_then(|v| v.as_str()),
         )
     });
+    if let Some(id) = matched.as_ref().and_then(|run| run.get("id").and_then(|v| v.as_u64())) {
+        remember_deploy_run(&full, tag, id, release_url.clone());
+    }
     let snapshot = matched.map(|run| {
         let run_id = run.get("id").and_then(|v| v.as_u64());
         WorkflowSnapshot {
@@ -1772,25 +1918,20 @@ fn poll_deploy_with_api(
     Ok(evaluate_deploy(&urls, tag, release_url, snapshot))
 }
 
-#[command]
-pub fn poll_release_deploy(
-    state: State<'_, AppState>,
-    input: PollReleaseDeployInput,
+fn poll_release_deploy_blocking(
+    path: PathBuf,
+    tag: String,
+    connection: Option<ConnectionConfig>,
 ) -> AppResult<PollReleaseDeployOutput> {
-    let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
-    let tag = input.tag.trim();
-    if tag.is_empty() {
-        return Err(crate::AppError::msg("Tag is required"));
-    }
     let (owner, repo) = resolve_github_repo(&path)?;
     let full = format!("{owner}/{repo}");
-    if let Some(result) = poll_deploy_with_gh(&full, tag) {
+    if let Some(result) = poll_deploy_with_gh(&full, &tag) {
         return Ok(result);
     }
-    match github_connection(&state) {
-        Ok(connection) => poll_deploy_with_api(&connection, &owner, &repo, tag),
-        Err(_) => Ok(DeployUrls::for_repo(&owner, &repo).output(
+    match connection {
+        Some(connection) => poll_deploy_with_api(&connection, &owner, &repo, &tag),
+        None => Ok(DeployUrls::for_repo(&owner, &repo).output(
             "unavailable",
             "deploying",
             "Tag pushed. Link GitHub in Settings → Connections or install gh to track CI here.",
@@ -1799,6 +1940,24 @@ pub fn poll_release_deploy(
             Vec::new(),
         )),
     }
+}
+
+#[command]
+pub async fn poll_release_deploy(
+    state: State<'_, AppState>,
+    input: PollReleaseDeployInput,
+) -> AppResult<PollReleaseDeployOutput> {
+    let path = PathBuf::from(&input.path);
+    let tag = input.tag.trim().to_string();
+    if tag.is_empty() {
+        return Err(crate::AppError::msg("Tag is required"));
+    }
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        poll_release_deploy_blocking(path, tag, connection)
+    })
+    .await
+    .map_err(|e| crate::AppError::msg(format!("Deploy poll interrupted: {e}")))?
 }
 
 #[cfg(test)]

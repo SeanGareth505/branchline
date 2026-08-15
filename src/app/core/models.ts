@@ -527,6 +527,13 @@ export interface RemoteInfo {
   pushUrl: string;
 }
 
+export interface ProbeRemoteOutput {
+  ok: boolean;
+  url: string;
+  protocol: string;
+  message: string;
+}
+
 export interface ReflogEntry {
   index: number;
   sha: string;

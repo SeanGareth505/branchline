@@ -1,6 +1,6 @@
 use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::command;
 use tauri::State;
@@ -95,7 +95,7 @@ struct RawTransition {
 }
 
 #[command]
-pub fn list_jira_issues(
+pub async fn list_jira_issues(
     state: State<'_, AppState>,
     input: Option<ListJiraIssuesInput>,
 ) -> AppResult<Vec<JiraIssue>> {
@@ -104,6 +104,13 @@ pub fn list_jira_issues(
         jql: None,
         max_results: None,
     });
+    run_blocking(move || list_jira_issues_inner(connection, input)).await
+}
+
+fn list_jira_issues_inner(
+    connection: ConnectionConfig,
+    input: ListJiraIssuesInput,
+) -> AppResult<Vec<JiraIssue>> {
     let jql = input
         .jql
         .as_deref()
@@ -281,6 +288,12 @@ fn browse_base(connection: &ConnectionConfig) -> String {
         .to_string()
 }
 
-fn client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::new()
+fn client() -> &'static reqwest::blocking::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
 }

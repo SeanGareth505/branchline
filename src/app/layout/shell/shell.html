@@ -47,15 +47,17 @@
               <ng-icon name="lucideGitPullRequest" size="14" />
               <span>PRs</span>
             </button>
-            <button
-              type="button"
-              [class.active]="isActive('jira')"
-              (click)="nav('jira')"
-              title="Linked Jira issues for this repository"
-            >
-              <ng-icon name="lucideTicket" size="14" />
-              <span>Jira</span>
-            </button>
+            @if (store.hasLinkedJira()) {
+              <button
+                type="button"
+                [class.active]="isActive('jira')"
+                (click)="nav('jira')"
+                title="Linked Jira issues for this repository"
+              >
+                <ng-icon name="lucideTicket" size="14" />
+                <span>Jira</span>
+              </button>
+            }
             <button
               type="button"
               [class.active]="isActive('release')"
@@ -72,16 +74,16 @@
                 ></span>
               }
             </button>
-            <button
-              type="button"
-              [class.active]="isActive('profiles')"
-              (click)="nav('profiles')"
-              title="Git author name and email used for commits"
-            >
-              <ng-icon name="lucideUser" size="14" />
-              <span>Identity</span>
-            </button>
             @if (!store.settings().simpleMode) {
+              <button
+                type="button"
+                [class.active]="isActive('profiles')"
+                (click)="nav('profiles')"
+                title="Git author name and email used for commits"
+              >
+                <ng-icon name="lucideUser" size="14" />
+                <span>Identity</span>
+              </button>
               <button
                 type="button"
                 [class.active]="isActive('automation')"
@@ -122,8 +124,8 @@
             [attr.aria-pressed]="store.settings().simpleMode"
             [title]="
               store.settings().simpleMode
-                ? 'Simple mode: fewer views. Click for Advanced (Automation & Templates)'
-                : 'Advanced mode: more views. Click for Simple'
+                ? 'Simple mode on. Click for Advanced (Identity, Automation, Templates, extra inspect tabs)'
+                : 'Advanced mode on. Click for Simple'
             "
           >
             {{ store.settings().simpleMode ? 'Simple' : 'Advanced' }}
@@ -219,4 +221,5 @@
   <app-publish-github-dialog />
   <app-create-pr-dialog />
   <app-github-device-login-dialog />
+  <app-remote-troubleshoot-dialog />
 </div>

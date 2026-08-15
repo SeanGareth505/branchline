@@ -4,7 +4,7 @@ mod error;
 mod infrastructure;
 mod state;
 
-pub use error::{AppError, AppResult};
+pub use error::{run_blocking, AppError, AppResult};
 pub use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -143,6 +143,8 @@ pub fn run() {
             commands::remotes::add_remote,
             commands::remotes::remove_remote,
             commands::remotes::prune_remote,
+            commands::remotes::set_remote_url,
+            commands::remotes::probe_remote,
             commands::remotes::pull_with_options,
             commands::advanced::list_reflog,
             commands::advanced::squash_commits,

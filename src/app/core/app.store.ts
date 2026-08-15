@@ -45,6 +45,7 @@ import type {
   RepoCheck,
   RepoChecksOutput,
   CheckRunState,
+  ProbeRemoteOutput,
 } from './models';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
@@ -60,6 +61,11 @@ import {
 import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
 import { parseRemoteWebBase } from '../shared/git/repo-links';
+import {
+  humanizeGitError,
+  isRemoteAccessError,
+  rawErrorMessage,
+} from '../shared/git/git-error';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
@@ -315,6 +321,8 @@ export class AppStore {
   });
   private releaseProgressUnlisten: UnlistenFn | null = null;
   private releaseDeployPollTimer: number | null = null;
+  private persistReleaseTimer: number | null = null;
+  private lastReleaseFingerprint = '';
   readonly paletteOpen = signal(false);
   readonly cherryPreviewOpen = signal(false);
   readonly cherryPreview = signal<CherryPickPreview | null>(null);
@@ -340,6 +348,9 @@ export class AppStore {
   readonly createPrPreferredHead = signal<string | null>(null);
   readonly publishGithubDialogOpen = signal(false);
   readonly githubDeviceLoginOpen = signal(false);
+  readonly remoteTroubleshootOpen = signal(false);
+  readonly remoteTroubleshootError = signal('');
+  readonly pendingRefsReveal = signal<string | null>(null);
   readonly createBranchStartPoint = signal<string | null>(null);
   readonly createBranchSuggestedName = signal('');
   readonly activeJiraKey = signal<string | null>(null);
@@ -684,7 +695,7 @@ export class AppStore {
       return;
     }
     if (
-      (view === 'automation' || view === 'templates') &&
+      (view === 'automation' || view === 'templates' || view === 'profiles') &&
       this.settings().simpleMode
     ) {
       if (hasRepo) this.view.set('browse');
@@ -942,25 +953,14 @@ export class AppStore {
   }
 
   formatError(err: unknown): string {
-    if (typeof err === 'string') {
-      return this.humanizeError(err);
-    }
-    if (err && typeof err === 'object' && 'message' in err) {
-      return this.humanizeError(String((err as { message: unknown }).message));
-    }
-    return 'Something went wrong';
+    return this.humanizeError(rawErrorMessage(err) || err);
   }
 
-  private humanizeError(message: string): string {
-    const m = message.trim();
-    if (!m) return 'Something went wrong';
-    if (/failed to fetch|networkerror|net::err_|econnrefused|enotfound|timed out|timeout/i.test(m)) {
-      return 'Network unavailable — Branchline will keep working with local Git. Try again when you are online.';
+  private humanizeError(message: unknown): string {
+    if (typeof message !== 'string') {
+      return humanizeGitError(rawErrorMessage(message));
     }
-    if (/403|401|unauthorized|bad credentials/i.test(m)) {
-      return `${m} — check your GitHub or host connection in Settings.`;
-    }
-    return m;
+    return humanizeGitError(message);
   }
 
   private statusFetchOpts(): { hideUntracked?: boolean } {
@@ -1991,7 +1991,7 @@ export class AppStore {
     const tag = payload.tag?.trim() || current.tag;
     const steps = advanceReleaseSteps(current.steps, phase, message);
     const finished = phase === 'done' || phase === 'error';
-    this.releaseActivity.set({
+    const next: ReleaseActivity = {
       ...current,
       ...extras,
       phase,
@@ -2001,15 +2001,36 @@ export class AppStore {
       steps,
       finishedAt: finished ? Date.now() : current.finishedAt ?? null,
       ok: phase === 'done' ? true : phase === 'error' ? false : current.ok ?? null,
-    });
-    this.persistReleaseActivity();
+    };
+    const fingerprint = releaseActivityFingerprint(next);
+    if (fingerprint === this.lastReleaseFingerprint) return;
+    this.lastReleaseFingerprint = fingerprint;
+    this.releaseActivity.set(next);
+    this.persistReleaseActivity(finished);
   }
 
-  private persistReleaseActivity(): void {
+  private persistReleaseActivity(immediate = false): void {
     if (typeof window === 'undefined') return;
+    if (!immediate) {
+      if (this.persistReleaseTimer !== null) return;
+      this.persistReleaseTimer = window.setTimeout(() => {
+        this.persistReleaseTimer = null;
+        this.flushReleaseActivityPersist();
+      }, 10_000);
+      return;
+    }
+    if (this.persistReleaseTimer !== null) {
+      window.clearTimeout(this.persistReleaseTimer);
+      this.persistReleaseTimer = null;
+    }
+    this.flushReleaseActivityPersist();
+  }
+
+  private flushReleaseActivityPersist(): void {
     const activity = this.releaseActivity();
     if (!activity) {
       localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
+      this.lastReleaseFingerprint = '';
       return;
     }
     try {
@@ -2026,6 +2047,7 @@ export class AppStore {
       if (!raw) return;
       const activity = hydrateReleaseActivity(JSON.parse(raw) as ReleaseActivity);
       if (!activity?.path || !activity.tag) return;
+      this.lastReleaseFingerprint = releaseActivityFingerprint(activity);
       this.releaseActivity.set(activity);
       const resumeDeploy =
         activity.willPush &&
@@ -2049,6 +2071,11 @@ export class AppStore {
     if (this.releaseBusy()) return;
     const tag = this.releaseActivity()?.tag;
     this.stopReleaseDeployPoll();
+    if (this.persistReleaseTimer !== null) {
+      window.clearTimeout(this.persistReleaseTimer);
+      this.persistReleaseTimer = null;
+    }
+    this.lastReleaseFingerprint = '';
     this.releaseActivity.set(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem(RELEASE_ACTIVITY_STORAGE_KEY);
@@ -2149,7 +2176,7 @@ export class AppStore {
     const phase = normalizeReleasePhase(input.result.phase);
     const trackingPhase = phase === 'idle' ? 'deploying' : phase;
     const finished = trackingPhase === 'done' || trackingPhase === 'error';
-    this.releaseActivity.set({
+    const activity: ReleaseActivity = {
       path: input.path,
       productName: input.productName,
       currentVersion: input.version,
@@ -2170,8 +2197,10 @@ export class AppStore {
       finishedAt: finished ? Date.now() : null,
       ok: trackingPhase === 'done' ? true : trackingPhase === 'error' ? false : null,
       needsRefresh: input.result.status === 'unavailable',
-    });
-    this.persistReleaseActivity();
+    };
+    this.lastReleaseFingerprint = releaseActivityFingerprint(activity);
+    this.releaseActivity.set(activity);
+    this.persistReleaseActivity(finished);
   }
 
   private readDismissedReleaseTag(): string | null {
@@ -2317,6 +2346,7 @@ export class AppStore {
     this.worktreePollTimer = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       if (!this.currentRepo()) return;
+      if (this.view() !== 'browse') return;
       if (this.mutationDepth > 0 || this.refreshInFlight || this.workingTreeRefreshInFlight) {
         return;
       }
@@ -2467,12 +2497,14 @@ export class AppStore {
       undo: options.undo,
       actionLabel: options.actionLabel,
     });
-    this.toastTimer = window.setTimeout(() => {
-      if (this.toast()?.id === id) {
-        this.toast.set(null);
-      }
-      this.toastTimer = null;
-    }, durationMs);
+    if (durationMs > 0) {
+      this.toastTimer = window.setTimeout(() => {
+        if (this.toast()?.id === id) {
+          this.toast.set(null);
+        }
+        this.toastTimer = null;
+      }, durationMs);
+    }
     if (options.desktop) {
       void this.sendDesktopIfEnabled(category, 'Branchline', message);
     }
@@ -2497,8 +2529,16 @@ export class AppStore {
   }
 
   showError(err: unknown): void {
-    const message = this.formatError(err);
-    this.showToast(message, { kind: 'error', force: true });
+    const raw = rawErrorMessage(err);
+    const message = this.humanizeError(raw || err);
+    const remoteIssue = isRemoteAccessError(raw);
+    this.showToast(message, {
+      kind: 'error',
+      force: true,
+      durationMs: remoteIssue ? 0 : undefined,
+      undo: remoteIssue ? () => this.openRemoteTroubleshoot(raw) : undefined,
+      actionLabel: remoteIssue ? 'Troubleshoot' : undefined,
+    });
     void this.diagnostics.record('ui.error', message);
   }
 
@@ -2621,6 +2661,7 @@ export class AppStore {
   }
 
   async saveSettings(partial: Partial<AppSettings>): Promise<void> {
+    const enablingSimple = partial.simpleMode === true && !this.settings().simpleMode;
     const current = this.settingsWithSession();
     const next = normalizeSettings({
       ...current,
@@ -2633,6 +2674,19 @@ export class AppStore {
     this.sessionOverlay = {};
     this.myBranchesOnly.set(saved.myBranchesOnly);
     this.applyTheme(saved);
+    if (enablingSimple) this.constrainSimpleMode();
+  }
+
+  private constrainSimpleMode(): void {
+    const view = this.view();
+    if (view === 'automation' || view === 'templates' || view === 'profiles') {
+      if (this.currentRepo()) this.setView('browse');
+      else this.openSettings('repos');
+    }
+    const tab = this.browseTab();
+    if (tab !== 'commit' && tab !== 'diff' && tab !== 'files') {
+      this.setBrowseTab('diff');
+    }
   }
 
   private async migratePushAfterCommitDefault(): Promise<void> {
@@ -3998,6 +4052,52 @@ export class AppStore {
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    }
+  }
+
+  openRemoteTroubleshoot(err?: unknown): void {
+    const raw = rawErrorMessage(err) || this.remoteTroubleshootError();
+    this.remoteTroubleshootError.set(raw);
+    this.remoteTroubleshootOpen.set(true);
+    this.dismissToast();
+  }
+
+  closeRemoteTroubleshoot(): void {
+    this.remoteTroubleshootOpen.set(false);
+    this.remoteTroubleshootError.set('');
+  }
+
+  revealRefsGroup(group: string): void {
+    this.setView('browse');
+    this.pendingRefsReveal.set(group);
+  }
+
+  async setRemoteUrl(name: string, url: string, opts?: { silent?: boolean }): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    try {
+      const result = await this.tauri.setRemoteUrl(path, name, url);
+      await this.refreshRepo();
+      if (!opts?.silent) this.showToast(result.message);
+      return result.ok;
+    } catch (err) {
+      if (!opts?.silent) this.showError(err);
+      return false;
+    }
+  }
+
+  async probeRemote(opts?: { url?: string; remote?: string }): Promise<ProbeRemoteOutput | null> {
+    const path = this.currentRepo()?.path;
+    if (!path) return null;
+    try {
+      return await this.tauri.probeRemote(path, opts);
+    } catch (err) {
+      return {
+        ok: false,
+        url: opts?.url?.trim() || '',
+        protocol: 'other',
+        message: this.formatError(err),
+      };
     }
   }
 
@@ -5936,7 +6036,14 @@ export class AppStore {
         );
         return;
       }
-      const delay = attempts < 24 ? 5000 : 8000;
+      const delay =
+        this.view() === 'release'
+          ? attempts < 24
+            ? 5000
+            : 8000
+          : attempts < 24
+            ? 12000
+            : 20000;
       this.releaseDeployPollTimer = window.setTimeout(() => {
         void poll();
       }, delay);
@@ -6158,6 +6265,28 @@ export class AppStore {
       this.identity.set(null);
     }
   }
+}
+
+function releaseActivityFingerprint(activity: ReleaseActivity): string {
+  return JSON.stringify({
+    phase: activity.phase,
+    message: activity.message,
+    tag: activity.tag,
+    nextVersion: activity.nextVersion,
+    needsPush: !!activity.needsPush,
+    needsRefresh: !!activity.needsRefresh,
+    deployRunUrl: activity.deployRunUrl ?? '',
+    releaseUrl: activity.releaseUrl ?? '',
+    localSteps: activity.steps.map((step) => `${step.id}:${step.status}:${step.message}`),
+    jobs: (activity.deployJobs ?? []).map((job) => ({
+      n: job.name,
+      s: job.status,
+      c: job.conclusion ?? '',
+      steps: (job.steps ?? []).map(
+        (step) => `${step.number ?? ''}:${step.status}:${step.conclusion ?? ''}`,
+      ),
+    })),
+  });
 }
 
 function hydrateReleaseActivity(activity: ReleaseActivity): ReleaseActivity {

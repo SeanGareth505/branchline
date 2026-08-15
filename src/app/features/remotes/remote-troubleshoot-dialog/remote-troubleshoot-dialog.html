@@ -1,0 +1,116 @@
+@if (store.remoteTroubleshootOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="remote-troubleshoot-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Remote access</span>
+          <h2 id="remote-troubleshoot-title">
+            {{ rawError() ? 'Could not reach the remote' : 'Troubleshoot remote' }}
+          </h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <p class="lead">{{ summary() }}</p>
+
+      @if (remotes().length > 1) {
+        <div class="remote-pills">
+          @for (remote of remotes(); track remote.name) {
+            <button
+              type="button"
+              class="pill"
+              [class.on]="selected()?.name === remote.name"
+              (click)="selectRemote(remote.name)"
+            >
+              {{ remote.name }}
+            </button>
+          }
+        </div>
+      }
+
+      @if (currentUrl()) {
+        <div class="url-card">
+          <div class="url-meta">
+            <span class="proto">{{ protocol() }}</span>
+            @if (selected(); as remote) {
+              <strong>{{ remote.name }}</strong>
+            }
+          </div>
+          <code class="mono">{{ currentUrl() }}</code>
+          <div class="url-actions">
+            <button type="button" class="bl-btn" (click)="copyUrl()" title="Copy remote URL">
+              <ng-icon name="lucideCopy" size="13" />
+              Copy
+            </button>
+            @if (webUrl()) {
+              <button type="button" class="bl-btn" (click)="openInBrowser()" title="Open this repository in the browser">
+                <ng-icon name="lucideExternalLink" size="13" />
+                Open
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      <ul class="hints">
+        @for (hint of hints(); track hint.id) {
+          <li>
+            <strong>{{ hint.title }}</strong>
+            <span>{{ hint.detail }}</span>
+          </li>
+        }
+      </ul>
+
+      @if (probe(); as result) {
+        <div class="probe" [class.ok]="result.ok" [class.bad]="!result.ok">
+          <strong>{{ result.ok ? 'Remote responded' : 'Still unreachable' }}</strong>
+          <pre class="mono">{{ result.message }}</pre>
+        </div>
+      }
+
+      <button type="button" class="linkish" (click)="showRaw.set(!showRaw())">
+        {{ showRaw() ? 'Hide' : 'Show' }} original Git error
+      </button>
+      @if (showRaw() && rawError()) {
+        <pre class="mono raw">{{ rawError() }}</pre>
+      }
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="showRemotes()" [disabled]="busy()">
+          Remotes
+        </button>
+        <button type="button" class="bl-btn" (click)="openSshSettings()" [disabled]="busy()">
+          SSH settings
+        </button>
+        @if (ssoUrl()) {
+          <button type="button" class="bl-btn" (click)="openSso()" [disabled]="busy()">
+            Org SSO
+          </button>
+        }
+        <span class="spacer"></span>
+        @if (canSwitchToSsh()) {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            (click)="switchToSsh()"
+            [disabled]="busy()"
+            title="Rewrite this remote to SSH and test it"
+          >
+            {{ busy() ? 'Working…' : 'Switch to SSH' }}
+          </button>
+        }
+        <button type="button" class="bl-btn" [class.bl-btn-primary]="!canSwitchToSsh()" (click)="testConnection()" [disabled]="busy()">
+          {{ busy() ? 'Testing…' : 'Test connection' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}
