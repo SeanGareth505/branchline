@@ -360,6 +360,13 @@ export interface FileHistoryEntry {
   timestamp: number;
 }
 
+export interface SearchHit {
+  path: string;
+  line: number | null;
+  text: string;
+  kind: 'file' | 'content' | string;
+}
+
 export interface MockPullRequest {
   id: string;
   number: number;

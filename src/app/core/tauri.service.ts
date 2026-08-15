@@ -12,6 +12,7 @@ import type {
   DetectedEditors,
   DiagnosticsSummary,
   FileHistoryEntry,
+  SearchHit,
   GitDetectOutput,
   GitEnvSnapshot,
   GitIdentity,
@@ -324,6 +325,12 @@ export class TauriService {
 
   getCommitLog(path: string, limit = 200) {
     return this.invoke<CommitInfo[]>('get_commit_log', { input: { path, limit } });
+  }
+
+  searchRepo(path: string, query: string, maxResults = 80) {
+    return this.invoke<SearchHit[]>('search_repo', {
+      input: { path, query, maxResults },
+    });
   }
 
   getDiff(
@@ -2489,6 +2496,27 @@ export class TauriService {
         htmlUrl: `https://github.com/example/navigo/releases/tag/${tag}`,
         draft: false,
       } as T;
+    }
+
+    if (cmd === 'search_repo') {
+      const query = String((args?.['input'] as { query?: string } | undefined)?.query ?? '')
+        .trim()
+        .toLowerCase();
+      const hits = [
+        { path: 'src/app.ts', line: null as number | null, text: 'src/app.ts', kind: 'file' },
+        {
+          path: 'README.md',
+          line: 3,
+          text: 'Git Extensions v2 — a dedicated desktop Git GUI.',
+          kind: 'content',
+        },
+      ].filter(
+        (h) =>
+          !query ||
+          h.path.toLowerCase().includes(query) ||
+          h.text.toLowerCase().includes(query),
+      );
+      return hits as T;
     }
 
     if (cmd in mocks) {

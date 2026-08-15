@@ -1,6 +1,17 @@
 <span class="spinner" [attr.data-size]="size()" role="status" [attr.aria-label]="label()">
-  <svg viewBox="0 0 32 32" aria-hidden="true">
-    <circle class="track" cx="16" cy="16" r="12.25" />
-    <circle class="arc" cx="16" cy="16" r="12.25" />
-  </svg>
+  @if (size() === 'lg') {
+    <span class="halo" aria-hidden="true"></span>
+    <svg class="ring" viewBox="0 0 80 80" aria-hidden="true">
+      <circle class="track" cx="40" cy="40" r="36" />
+      <circle class="arc" cx="40" cy="40" r="36" />
+    </svg>
+    <span class="logo" aria-hidden="true">
+      <app-brand-mark [size]="markSize()" title="Branchline" />
+    </span>
+  } @else {
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <circle class="track" cx="16" cy="16" r="12.25" />
+      <circle class="arc" cx="16" cy="16" r="12.25" />
+    </svg>
+  }
 </span>

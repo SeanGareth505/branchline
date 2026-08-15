@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy — Branchline</title>
+    <meta
+      name="description"
+      content="Branchline stores Git data and tokens on your machine. Nothing is sent to Branchline servers."
+    />
+    <link rel="icon" href="brand/branchline-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav-shell">
+      <div class="nav">
+        <a class="logo" href="./">
+          <img src="brand/branchline-mark.svg" width="32" height="32" alt="" />
+          <span>Branchline</span>
+        </a>
+        <nav class="nav-links" aria-label="Page">
+          <a href="./#download">Download</a>
+          <a href="https://github.com/SeanGareth505/branchline" rel="noopener noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main id="top" class="section" style="padding-top: 7rem; max-width: 720px; margin: 0 auto">
+      <header class="section-head">
+        <p class="eyebrow">Legal</p>
+        <h2>Privacy</h2>
+        <p>Branchline is a desktop Git client. Your repositories and credentials stay on your computer.</p>
+      </header>
+      <article class="feature" style="display: block">
+        <h3>What stays on this machine</h3>
+        <p>
+          Recent repos, settings, GitHub / GitLab / Azure / Jira tokens, and local crash reports are
+          stored in Branchline’s app data (SQLite) on your device. Tokens are redacted in the UI.
+          They are not encrypted at rest.
+        </p>
+        <h3>What we do not collect</h3>
+        <p>
+          Branchline does not phone home. There is no analytics, crash-upload, or account on a
+          Branchline server. In-app updates download installer metadata from GitHub Releases.
+        </p>
+        <h3>GitHub sign-in</h3>
+        <p>
+          Device login requests the GitHub OAuth scopes <code>repo</code>, <code>workflow</code>, and
+          <code>read:user</code> so Branchline can list pull requests, publish, and show your login.
+          You can revoke access at
+          <a href="https://github.com/settings/applications" rel="noopener noreferrer">GitHub → Applications</a>.
+        </p>
+        <h3>Other hosts</h3>
+        <p>
+          GitLab, Azure DevOps, and Jira use personal access tokens you paste. They are stored locally
+          and sent only to those hosts when you use clone, PRs, or the Jira panel.
+        </p>
+        <h3>Questions</h3>
+        <p>
+          Open an issue on
+          <a href="https://github.com/SeanGareth505/branchline/issues" rel="noopener noreferrer">GitHub</a>.
+        </p>
+      </article>
+    </main>
+  </body>
+</html>

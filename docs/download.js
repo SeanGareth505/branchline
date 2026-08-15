@@ -61,7 +61,7 @@ function renderHowto(platform) {
       steps: [
         'Click <strong>Download for Mac</strong> above and open the <code>.dmg</code>.',
         'Drag <strong>Branchline</strong> into <strong>Applications</strong>.',
-        'If macOS says it’s damaged, click <strong>Fix &amp; Open</strong> below (or run the command).',
+        'Open it from Applications. This is a public beta — Gatekeeper may ask you to confirm the first launch.',
       ],
       actions: [
         {
@@ -78,8 +78,8 @@ function renderHowto(platform) {
     windows: {
       steps: [
         'Click <strong>Download for Windows</strong> and run the <code>.exe</code> installer.',
+        'Launch Branchline from the Start menu. This is a public beta — SmartScreen may warn until the app is widely used.',
         'If SmartScreen appears, choose <strong>More info</strong> → <strong>Run anyway</strong>.',
-        'Launch Branchline from the Start menu.',
       ],
       actions: [],
     },

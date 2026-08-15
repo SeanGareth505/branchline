@@ -5,10 +5,10 @@
         <h1>Pull requests</h1>
         <app-help-tip
           heading="Pull requests"
-          body="Open and review pull requests for this repository. Connect a Git host in Settings if this list is empty or showing sample data."
+          body="GitHub pull requests for this repository. Link GitHub under Settings → Connections. GitLab and Azure DevOps open in the browser."
         />
         @if (showingDummy()) {
-          <span class="dummy-badge">DUMMY DATA</span>
+          <span class="dummy-badge">PREVIEW</span>
         }
       </div>
       <p>{{ connectionLabel() }}</p>
@@ -53,6 +53,14 @@
     </div>
   </header>
 
+  @if (needsConnect()) {
+    <app-empty-state
+      title="Link GitHub to see pull requests"
+      message="Live PR listing is GitHub-only. You can still create a PR in the browser, or open GitLab / Azure DevOps from Connections."
+      ctaLabel="Connect GitHub"
+      (cta)="connectHosts()"
+    />
+  } @else {
   <div class="stats">
     <span><strong>{{ stats().total }}</strong> matching</span>
     <span><strong>{{ stats().open }}</strong> open</span>
@@ -351,5 +359,6 @@
       </div>
     }
   </div>
+  }
   }
 </section>

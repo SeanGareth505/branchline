@@ -94,15 +94,6 @@
                 <ng-icon name="lucideWorkflow" size="14" />
                 <span>Automation</span>
               </button>
-              <button
-                type="button"
-                [class.active]="isActive('templates')"
-                (click)="nav('templates')"
-                title="Commit message and branch name templates"
-              >
-                <ng-icon name="lucideFileText" size="14" />
-                <span>Templates</span>
-              </button>
             }
           </nav>
         }
@@ -125,7 +116,7 @@
             [attr.aria-pressed]="store.settings().simpleMode"
             [title]="
               store.settings().simpleMode
-                ? 'Simple mode on. Click for Advanced (Identity, Automation, Templates, extra inspect tabs)'
+                ? 'Simple mode on. Click for Advanced (Identity, Automation, extra inspect tabs)'
                 : 'Advanced mode on. Click for Simple'
             "
           >
@@ -206,6 +197,8 @@
   }
 
   <app-command-palette />
+  <app-shortcut-overlay />
+  <app-file-search-dialog />
   <app-toast-host />
   <app-safety-dialog />
   <app-prompt-dialog />

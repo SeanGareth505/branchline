@@ -8,7 +8,11 @@
 .spinner {
   --spin-size: 1.75rem;
   --spin-stroke: 2.25px;
-  display: block;
+  --cyan: #3ecfff;
+  --cyan-hi: #7ae0ff;
+  display: grid;
+  place-items: center;
+  position: relative;
   width: var(--spin-size);
   height: var(--spin-size);
 }
@@ -19,14 +23,17 @@
 }
 
 .spinner[data-size='lg'] {
-  --spin-size: 2.5rem;
-  --spin-stroke: 2.75px;
+  --spin-size: 5.5rem;
+  --spin-stroke: 2.5px;
 }
 
 svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.spinner:not([data-size='lg']) svg {
   transform-origin: 50% 50%;
   animation: bl-spin 0.75s linear infinite;
 }
@@ -38,13 +45,58 @@ svg {
   stroke-linecap: round;
 }
 
-.track {
+.spinner:not([data-size='lg']) .track {
   stroke: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.arc {
+.spinner:not([data-size='lg']) .arc {
   stroke: var(--accent);
   stroke-dasharray: 28 49;
+}
+
+.halo,
+.ring,
+.logo {
+  grid-area: 1 / 1;
+}
+
+.halo {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--cyan) 22%, transparent) 0%,
+    color-mix(in srgb, var(--cyan) 8%, transparent) 46%,
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  animation: bl-spin 0.95s linear infinite;
+}
+
+.spinner[data-size='lg'] .track {
+  stroke: color-mix(in srgb, var(--cyan) 20%, transparent);
+  stroke-width: 2.4;
+}
+
+.spinner[data-size='lg'] .arc {
+  stroke: var(--cyan-hi);
+  stroke-width: 2.6;
+  stroke-dasharray: 56 170;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--cyan) 45%, transparent));
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  pointer-events: none;
 }
 
 @keyframes bl-spin {
@@ -54,13 +106,15 @@ svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  svg {
+  svg,
+  .ring {
     animation: none;
   }
 
-  .arc {
-    stroke-dasharray: 38 39;
+  .spinner:not([data-size='lg']) .arc,
+  .spinner[data-size='lg'] .arc {
+    stroke-dasharray: 90 136;
     transform: rotate(-80deg);
-    transform-origin: 16px 16px;
+    transform-origin: 50% 50%;
   }
 }

@@ -239,6 +239,19 @@
     }
   </cdk-virtual-scroll-viewport>
 
+  @if (store.commitLogHasMore() || store.loadingMoreCommits()) {
+    <div class="load-more">
+      <button
+        type="button"
+        class="bl-btn"
+        [disabled]="store.loadingMoreCommits()"
+        (click)="store.loadMoreCommits()"
+      >
+        {{ store.loadingMoreCommits() ? 'Loading…' : 'Load more history' }}
+      </button>
+    </div>
+  }
+
   <ng-template
     cdkConnectedOverlay
     [cdkConnectedOverlayOrigin]="menuOrigin()"

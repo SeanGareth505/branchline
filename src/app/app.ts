@@ -82,9 +82,14 @@ export class App implements OnInit {
       event.preventDefault();
       this.store.runUndoFromToast();
     }
+    if (meta && event.key.toLowerCase() === 'p' && !typing) {
+      event.preventDefault();
+      this.store.openFileSearch();
+      return;
+    }
     if (event.key === '?' && !typing && !meta && !event.altKey) {
       event.preventDefault();
-      this.store.openShortcutPalette();
+      this.store.openShortcutOverlay();
       return;
     }
     if (event.key === 'Escape') {
@@ -100,7 +105,11 @@ export class App implements OnInit {
         this.releaseDialog.cancel();
         return;
       }
-      if (this.store.paletteOpen()) {
+      if (this.store.fileSearchOpen()) {
+        this.store.closeFileSearch();
+      } else if (this.store.shortcutOverlayOpen()) {
+        this.store.closeShortcutOverlay();
+      } else if (this.store.paletteOpen()) {
         this.store.paletteOpen.set(false);
       } else if (this.store.commitModalOpen()) {
         this.store.closeCommitModal();

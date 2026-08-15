@@ -29,6 +29,8 @@ import { ReleaseDialog } from '../../features/release/release-dialog/release-dia
 import { ReleasePage } from '../../features/release/release-page/release-page';
 import { BrowseShell } from '../browse-shell/browse-shell';
 import { CommandPalette } from '../command-palette/command-palette';
+import { FileSearchDialog } from '../../features/search/file-search-dialog/file-search-dialog';
+import { ShortcutOverlay } from '../shortcut-overlay/shortcut-overlay';
 import { ProjectSwitcher } from '../project-switcher/project-switcher';
 import { RepoTabs } from '../repo-tabs/repo-tabs';
 import { RepoToolbar } from '../repo-toolbar/repo-toolbar';
@@ -59,6 +61,8 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     TemplatesPage,
     StatusBar,
     CommandPalette,
+    ShortcutOverlay,
+    FileSearchDialog,
     ToastHost,
     SafetyDialog,
     PromptDialog,

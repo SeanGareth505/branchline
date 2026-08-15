@@ -1,6 +1,6 @@
 use crate::infrastructure::{git2_repo, git_cli, sqlite};
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -160,19 +160,24 @@ pub fn peek_repository(input: PathInput) -> AppResult<RepoSummary> {
 }
 
 #[command]
-pub fn focus_repository(
+pub async fn focus_repository(
     app: AppHandle,
     state: State<'_, AppState>,
     input: PathInput,
 ) -> AppResult<RepoSummary> {
-    let path = PathBuf::from(&input.path);
-    let summary = light_summary(&path, &input.path)?;
+    let input_path = input.path;
+    let summary = run_blocking(move || {
+        let path = PathBuf::from(&input_path);
+        light_summary(&path, &input_path)
+    })
+    .await?;
     let opened_at = Utc::now().to_rfc3339();
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-        sqlite::upsert_recent_repo(&db, &input.path, &summary.name, &opened_at)?;
-        sqlite::set_last_repo(&db, &input.path)?;
+        sqlite::upsert_recent_repo(&db, &summary.path, &summary.name, &opened_at)?;
+        sqlite::set_last_repo(&db, &summary.path)?;
     }
+    let path = PathBuf::from(&summary.path);
     state.set_current_repo(Some(path.clone()));
     state.repo_watcher.watch(app, path);
     Ok(summary)

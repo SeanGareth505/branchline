@@ -36,6 +36,9 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "merge.tool",
     "user.name",
     "user.email",
+    "commit.gpgsign",
+    "gpg.format",
+    "user.signingkey",
 ];
 
 fn ssh_agent_present() -> bool {

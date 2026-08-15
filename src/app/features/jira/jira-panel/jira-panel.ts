@@ -33,14 +33,16 @@ export class JiraPanel {
   readonly transitionsLoading = signal(false);
   readonly testing = signal(false);
 
-  readonly showingDummy = computed(() => !this.store.hasLinkedJira());
+  readonly showingDummy = computed(
+    () => this.store.isDummyBackend && !this.store.hasLinkedJira(),
+  );
   readonly issues = computed(() => this.store.jiraIssues());
   readonly loading = computed(() => this.store.jiraIssuesLoading());
   readonly error = computed(() => this.store.jiraIssuesError());
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
-      return 'DUMMY DATA — sample issues for UI preview. Sign in below or link Jira under Settings → Connections.';
+      return 'Browser preview — sample issues. Sign in below or link Jira under Settings → Connections.';
     }
     const jira = this.store
       .settings()

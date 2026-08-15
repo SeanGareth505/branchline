@@ -15,12 +15,13 @@ import type { MockPullRequest } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
+import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
 
 type SortKey = 'updated' | 'number' | 'title' | 'additions';
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgIcon, HelpTip, PageSkeleton],
+  imports: [FormsModule, NgIcon, HelpTip, PageSkeleton, EmptyState],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,22 +52,25 @@ export class PrPanel {
   readonly changesText = signal('');
   readonly testing = signal(false);
 
-  readonly showingDummy = computed(() => !this.store.hasLinkedPrHost());
+  readonly showingDummy = computed(
+    () => this.store.isDummyBackend && !this.store.hasLinkedPrHost(),
+  );
   readonly hasGithub = computed(() => this.store.hasGithubConnection());
+  readonly needsConnect = computed(() => !this.showingDummy() && !this.hasGithub());
 
   readonly liveMode = computed(() => !this.showingDummy() && this.hasGithub());
   readonly busy = computed(() => this.loading() || this.store.pullRequestsRefreshing());
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
-      return 'DUMMY DATA — sample PRs for UI preview. Link GitHub under Settings → Connections for live PRs.';
+      return 'Browser preview — sample PRs. Link GitHub under Settings → Connections for live PRs.';
     }
     if (this.hasGithub()) {
       const n = this.prs().length;
       const updating = this.store.pullRequestsRefreshing() ? ' · updating…' : '';
       return `Live GitHub PRs for this repo${n ? ` · ${n} loaded` : ''}${updating}.`;
     }
-    return 'GitHub is not linked. Live PR sync currently supports GitHub; GitLab/Azure listing still uses the browser.';
+    return 'Link GitHub to load pull requests here. GitLab and Azure DevOps open in the browser.';
   });
 
   readonly teams = computed(() => this.unique((p) => p.team));

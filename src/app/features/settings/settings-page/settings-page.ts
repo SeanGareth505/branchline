@@ -87,7 +87,7 @@ export class SettingsPage implements OnInit {
       id: 'appearance',
       label: 'Appearance',
       hint: 'Theme, accent, and UI modes',
-      help: 'Theme, accent, and Simple vs Advanced. Simple hides Identity, Automation, Templates, and extra inspect tabs like Blame and Reflog.',
+      help: 'Theme, accent, and Simple vs Advanced. Simple hides Identity, Automation, and extra inspect tabs like Blame and Reflog.',
     },
     {
       id: 'git',
@@ -246,11 +246,11 @@ export class SettingsPage implements OnInit {
   connectionUses(provider: string): string {
     switch (provider) {
       case 'github':
-        return 'Repo picker, clone from host, pull requests';
+        return 'Repo picker, clone from host, live pull requests';
       case 'gitlab':
-        return 'Repo picker, clone from host, pull requests';
+        return 'Repo picker and clone. Merge requests open in the browser.';
       case 'azureDevOps':
-        return 'Pull requests (repo listing coming soon)';
+        return 'Pull requests open in the browser.';
       case 'jira':
         return 'Issues panel, branch from ticket, commit keys';
       default:
@@ -603,6 +603,48 @@ export class SettingsPage implements OnInit {
 
   async setCredentialHelper(value: string): Promise<void> {
     await this.saveGitConfig('credential.helper', value);
+  }
+
+  async toggleCommitSigning(enabled: boolean): Promise<void> {
+    await this.saveGitConfig('commit.gpgsign', enabled ? 'true' : 'false');
+  }
+
+  async setGpgFormat(value: string): Promise<void> {
+    await this.saveGitConfig('gpg.format', value);
+  }
+
+  async setSigningKey(value: string): Promise<void> {
+    await this.saveGitConfig('user.signingkey', value);
+  }
+
+  onSigningKeyChange(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    void this.setSigningKey(value);
+  }
+
+  async reportProblem(): Promise<void> {
+    try {
+      const text = await this.diagnostics.copyReport();
+      await navigator.clipboard.writeText(text);
+      await this.tauri.openExternalUrl(
+        'https://github.com/SeanGareth505/branchline/issues/new?title=Bug%20report',
+      );
+      this.store.showSuccess('Diagnostics copied — paste them into the GitHub issue');
+    } catch (err) {
+      this.store.showError(err);
+    }
+  }
+
+  openPrivacy(): void {
+    void this.tauri.openExternalUrl('https://seangareth505.github.io/branchline/privacy.html');
+  }
+
+  openLicense(): void {
+    void this.tauri.openExternalUrl('https://github.com/SeanGareth505/branchline/blob/main/LICENSE');
+  }
+
+  openSource(): void {
+    void this.tauri.openExternalUrl('https://github.com/SeanGareth505/branchline');
   }
 
   private async persistCommitTypes(commitTypes: CommitTypeOption[]): Promise<void> {

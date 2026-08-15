@@ -1,0 +1,49 @@
+@if (store.fileSearchOpen()) {
+  <div class="backdrop" (click)="close()">
+    <div
+      class="palette bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search repository"
+    >
+      <div class="search-row">
+        <ng-icon name="lucideSearch" size="16" />
+        <input
+          type="search"
+          placeholder="Search files and file contents…"
+          [ngModel]="query()"
+          (ngModelChange)="onQuery($event)"
+          (keydown)="onQueryKeydown($event)"
+          autofocus
+        />
+      </div>
+      <ul>
+        @if (loading()) {
+          <li class="empty">Searching…</li>
+        } @else if (query().trim().length < 2) {
+          <li class="empty">Type at least two characters</li>
+        } @else if (!hits().length) {
+          <li class="empty">No matches</li>
+        } @else {
+          @for (hit of hits(); track hit.kind + hit.path + (hit.line ?? 0) + hit.text; let i = $index) {
+            <li>
+              <button
+                type="button"
+                [class.active]="activeIndex() === i"
+                (mouseenter)="activeIndex.set(i)"
+                (click)="open(hit)"
+              >
+                <span class="group">{{ hit.kind === 'file' ? 'File' : 'Content' }}</span>
+                <span class="path">{{ hit.path }}@if (hit.line) { :{{ hit.line }} }</span>
+                @if (hit.kind !== 'file') {
+                  <span class="snippet">{{ hit.text }}</span>
+                }
+              </button>
+            </li>
+          }
+        }
+      </ul>
+    </div>
+  </div>
+}

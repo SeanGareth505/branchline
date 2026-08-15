@@ -27,6 +27,7 @@ import type {
   SafetyAction,
   SafetyAnalysis,
   StashEntry,
+  SearchHit,
   SubmoduleInfo,
   LfsFileInfo,
   ConflictSidesOutput,
@@ -345,11 +346,9 @@ export class AppStore {
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly actionBusy = signal<string | null>(null);
-  readonly busyPreview = signal<string | null>(null);
-  private busyPreviewTimer: number | null = null;
   readonly busyMessage = computed(() => {
     if (this.loading()) return this.loadingLabel();
-    return this.busyPreview();
+    return null;
   });
   readonly releaseBusy = signal(false);
   readonly releaseAttaching = signal(false);
@@ -407,6 +406,11 @@ export class AppStore {
   readonly pendingCommitTemplate = signal<TemplateInfo | null>(null);
   readonly paletteSeedQuery = signal<string | null>(null);
   readonly changelogModalOpen = signal(false);
+  readonly shortcutOverlayOpen = signal(false);
+  readonly fileSearchOpen = signal(false);
+  readonly commitLogLimit = signal(1000);
+  readonly commitLogHasMore = signal(false);
+  readonly loadingMoreCommits = signal(false);
   readonly cloneDialogOpen = signal(false);
   readonly cloneDialogUrl = signal('');
   readonly hostRepos = signal<HostRepository[]>([]);
@@ -460,6 +464,7 @@ export class AppStore {
   private restoringSession = false;
   private repoCacheTimer: number | null = null;
   private lastRepoCacheFp = '';
+  private repoDiskCache: Record<string, RepoCacheEntry> | null = null;
   private repoLoadGen = 0;
   private readonly repoSnapshots = new Map<string, RepoWorkingSnapshot>();
   private static readonly SNAPSHOT_MAX = 12;
@@ -908,7 +913,7 @@ export class AppStore {
     opts?: { force?: boolean },
   ): Promise<void> {
     const path = this.currentRepo()?.path ?? '';
-    const dummy = !this.hasLinkedPrHost();
+    const dummy = this.isDummyBackend && !this.hasLinkedPrHost();
     const github = this.hasGithubConnection();
     const key = dummy ? `dummy|${state}` : github ? `${path}|${state}` : `none|${path}|${state}`;
     const cached = this.pullRequestCache.get(key);
@@ -1066,9 +1071,7 @@ export class AppStore {
 
   private hydrateRepoCache(path: string): boolean {
     try {
-      const raw = localStorage.getItem(REPO_CACHE_KEY);
-      if (!raw) return false;
-      const all = JSON.parse(raw) as Record<string, RepoCacheEntry>;
+      const all = this.readRepoDiskCache();
       const entry = all[normalizeCachePath(path)];
       if (!entry?.status) return false;
       if (Date.now() - (entry.savedAt || 0) > 7 * 24 * 60 * 60 * 1000) return false;
@@ -1097,6 +1100,17 @@ export class AppStore {
     }
   }
 
+  private readRepoDiskCache(): Record<string, RepoCacheEntry> {
+    if (this.repoDiskCache) return this.repoDiskCache;
+    try {
+      const raw = localStorage.getItem(REPO_CACHE_KEY);
+      this.repoDiskCache = raw ? (JSON.parse(raw) as Record<string, RepoCacheEntry>) : {};
+    } catch {
+      this.repoDiskCache = {};
+    }
+    return this.repoDiskCache ?? {};
+  }
+
   private persistRepoCache(path: string): void {
     if (this.repoCacheTimer !== null) window.clearTimeout(this.repoCacheTimer);
     this.repoCacheTimer = window.setTimeout(() => {
@@ -1116,8 +1130,7 @@ export class AppStore {
       const fp = `${normalizeCachePath(path)}:${commitsFingerprint(commits)}:${branchesFingerprint(branches)}:${statusFingerprint(status)}`;
       if (fp === this.lastRepoCacheFp) return;
       this.lastRepoCacheFp = fp;
-      const raw = localStorage.getItem(REPO_CACHE_KEY);
-      const all = (raw ? JSON.parse(raw) : {}) as Record<string, RepoCacheEntry>;
+      const all = this.readRepoDiskCache();
       const locals = branches.filter((b) => !b.isRemote);
       const remotes = branches.filter((b) => b.isRemote).slice(0, 80);
       all[normalizeCachePath(path)] = {
@@ -1154,6 +1167,14 @@ export class AppStore {
     if (!path) return false;
     const current = this.currentRepo()?.path;
     return !current || !sameRepoPath(current, path);
+  }
+
+  private yieldToPaint(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        window.setTimeout(() => resolve(), 0);
+      });
+    });
   }
 
   private repoTabStub(path: string): RepoSummary {
@@ -1322,6 +1343,18 @@ export class AppStore {
 
     this.snapshotCurrentRepo();
     this.graphReveal.set(null);
+
+    const stub = this.mergeFocusedSummary(this.repoTabStub(normalized));
+    this.currentRepo.set(stub);
+    this.upsertOpenRepo(stub);
+
+    await this.yieldToPaint();
+    if (this.repoLoadStale(gen, normalized)) return;
+
+    const summaryPromise = switching
+      ? this.tauri.focusRepository(normalized).then((summary) => this.mergeFocusedSummary(summary))
+      : this.tauri.openRepository(normalized);
+
     const hadLive = this.restoreRepoSnapshot(normalized) || this.hydrateRepoCache(normalized);
     if (!hadLive) {
       this.clearWorkingState();
@@ -1331,14 +1364,8 @@ export class AppStore {
       this.syncingRepo.set(true);
     }
 
-    const stub = this.mergeFocusedSummary(this.repoTabStub(normalized));
-    this.currentRepo.set(stub);
-    this.upsertOpenRepo(stub);
-
     try {
-      const summary = switching
-        ? this.mergeFocusedSummary(await this.tauri.focusRepository(normalized))
-        : await this.tauri.openRepository(normalized);
+      const summary = await summaryPromise;
       if (this.repoLoadStale(gen, normalized)) return;
       this.currentRepo.set(summary);
       this.upsertOpenRepo(summary);
@@ -1490,6 +1517,9 @@ export class AppStore {
     this.diffSource.set('commit');
     this.selectedDiffPath.set(null);
     this.fileHistoryPath.set(null);
+    this.commitLogLimit.set(1000);
+    this.commitLogHasMore.set(false);
+    this.loadingMoreCommits.set(false);
     this.cherryPreviewOpen.set(false);
     this.cherryPreview.set(null);
     this.interactiveRebaseOpen.set(false);
@@ -1788,8 +1818,10 @@ export class AppStore {
       if (this.hasLinkedJira()) {
         const issues = await this.tauri.listJiraIssues(jql);
         this.jiraIssues.set(issues);
-      } else {
+      } else if (this.isDummyBackend) {
         this.jiraIssues.set(await this.tauri.listMockJiraIssues());
+      } else {
+        this.jiraIssues.set([]);
       }
     } catch (err) {
       this.jiraIssues.set([]);
@@ -1982,7 +2014,7 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, 1000),
+      this.tauri.getCommitLog(path, this.commitLogLimit()),
       this.tauri.listBranches(path),
       this.tauri.listStashes(path),
       this.tauri.listTags(path),
@@ -1991,6 +2023,7 @@ export class AppStore {
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
     this.status.set(status);
     this.setCommitsIfChanged(commits);
+    this.commitLogHasMore.set(commits.length >= this.commitLogLimit() && this.commitLogLimit() < 5000);
     this.artificial.set(artificialFromStatus(status));
     this.setBranchesIfChanged(branches);
     this.stashes.set(stashes);
@@ -2052,7 +2085,7 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, 1000),
+      this.tauri.getCommitLog(path, this.commitLogLimit()),
       this.tauri.listBranches(path),
     ]);
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
@@ -2065,6 +2098,7 @@ export class AppStore {
     }
     this.status.set(status);
     this.setCommitsIfChanged(commits);
+    this.commitLogHasMore.set(commits.length >= this.commitLogLimit() && this.commitLogLimit() < 5000);
     this.artificial.set(artificialFromStatus(status));
     this.setBranchesIfChanged(branches);
     this.lastWorkingTreeRefreshAt = Date.now();
@@ -2151,19 +2185,6 @@ export class AppStore {
     this.remoteBusy.set(kind);
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     return this.remoteBusy() === kind;
-  }
-
-  previewBusyOverlay(message = 'Working…', durationMs = 2800): void {
-    if (this.loading() || this.remoteBusy() || this.actionBusy()) return;
-    if (this.busyPreviewTimer !== null) {
-      window.clearTimeout(this.busyPreviewTimer);
-      this.busyPreviewTimer = null;
-    }
-    this.busyPreview.set(message);
-    this.busyPreviewTimer = window.setTimeout(() => {
-      this.busyPreviewTimer = null;
-      this.busyPreview.set(null);
-    }, durationMs);
   }
 
   private async bindReleaseProgressListener(): Promise<void> {
@@ -4881,8 +4902,60 @@ export class AppStore {
   }
 
   openShortcutPalette(): void {
-    this.paletteSeedQuery.set('shortcut');
-    this.paletteOpen.set(true);
+    this.openShortcutOverlay();
+  }
+
+  openShortcutOverlay(): void {
+    this.shortcutOverlayOpen.set(true);
+  }
+
+  closeShortcutOverlay(): void {
+    this.shortcutOverlayOpen.set(false);
+  }
+
+  openFileSearch(): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    this.fileSearchOpen.set(true);
+  }
+
+  closeFileSearch(): void {
+    this.fileSearchOpen.set(false);
+  }
+
+  openSearchHit(hit: SearchHit): void {
+    this.closeFileSearch();
+    this.setView('browse');
+    this.openFileBlame(hit.path);
+  }
+
+  async loadMoreCommits(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || this.loadingMoreCommits()) return;
+    const next = Math.min(this.commitLogLimit() + 1000, 5000);
+    if (next === this.commitLogLimit()) {
+      this.commitLogHasMore.set(false);
+      return;
+    }
+    this.loadingMoreCommits.set(true);
+    try {
+      const commits = await this.tauri.getCommitLog(path, next);
+      this.commitLogLimit.set(next);
+      this.commitLogHasMore.set(commits.length >= next && next < 5000);
+      this.setCommitsIfChanged(commits);
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.loadingMoreCommits.set(false);
+    }
+  }
+
+  async searchRepo(query: string): Promise<SearchHit[]> {
+    const path = this.currentRepo()?.path;
+    if (!path) return [];
+    return this.tauri.searchRepo(path, query);
   }
 
   applyCommitTemplate(template: TemplateInfo): void {

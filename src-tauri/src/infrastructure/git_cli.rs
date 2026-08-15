@@ -95,8 +95,12 @@ fn capture_git(
     Ok((status.success(), stdout, stderr))
 }
 
+pub fn run_git_capture(cwd: &Path, args: &[&str]) -> AppResult<(bool, String, String)> {
+    capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES)
+}
+
 pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
-    let (ok, stdout, stderr) = capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES)?;
+    let (ok, stdout, stderr) = run_git_capture(cwd, args)?;
     if ok {
         Ok(stdout.trim_end().to_string())
     } else {

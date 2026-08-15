@@ -1,0 +1,34 @@
+@if (store.shortcutOverlayOpen()) {
+  <div class="backdrop" (click)="close()">
+    <div
+      class="sheet bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcut-title"
+    >
+      <header>
+        <div>
+          <h2 id="shortcut-title">Keyboard shortcuts</h2>
+          <p>⌘ is Ctrl on Windows and Linux.</p>
+        </div>
+        <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close">Esc</button>
+      </header>
+      <div class="groups">
+        @for (group of groups; track group.title) {
+          <section>
+            <h3>{{ group.title }}</h3>
+            <ul>
+              @for (item of group.items; track item.action) {
+                <li>
+                  <kbd>{{ item.keys }}</kbd>
+                  <span>{{ item.action }}</span>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+    </div>
+  </div>
+}

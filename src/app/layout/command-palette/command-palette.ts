@@ -189,10 +189,10 @@ export class CommandPalette {
         run: () => store.setAutomationSection('checks'),
       },
       {
-        id: 'templates',
-        label: 'Open Templates',
+        id: 'search-repo',
+        label: 'Search files in repository…',
         group: 'Navigate',
-        run: () => store.setView('templates'),
+        run: () => store.openFileSearch(),
       },
       {
         id: 'fetch',
@@ -434,10 +434,16 @@ export class CommandPalette {
         run: () => void store.fetchRemote(),
       },
       {
+        id: 'shortcut-search',
+        label: 'Shortcut · ⌘P / Ctrl+P — Search files',
+        group: 'Shortcuts',
+        run: () => store.openFileSearch(),
+      },
+      {
         id: 'shortcut-help',
         label: 'Shortcut · ? — Show shortcuts',
         group: 'Shortcuts',
-        run: () => store.openShortcutPalette(),
+        run: () => store.openShortcutOverlay(),
       },
       {
         id: 'shortcut-undo',
@@ -589,12 +595,6 @@ export class CommandPalette {
         label: 'Clone repository…',
         group: 'Repositories',
         run: () => store.openCloneDialog(),
-      },
-      {
-        id: 'preview-loader',
-        label: 'Preview loading overlay',
-        group: 'Preferences',
-        run: () => store.previewBusyOverlay('Pulling from remote…'),
       },
       {
         id: 'theme',

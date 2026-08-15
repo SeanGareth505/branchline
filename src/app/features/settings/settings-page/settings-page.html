@@ -151,27 +151,48 @@
           <article class="bl-panel block">
             <h2 class="block-title">Commit signing</h2>
             <p class="block-hint">
-              Read from your Git config (<code>commit.gpgsign</code> / <code>gpg.format</code>).
+              Writes <code>commit.gpgsign</code>, <code>gpg.format</code>, and
+              <code>user.signingkey</code> to your global Git config.
             </p>
             @if (gitEnv(); as env) {
               <div class="setting">
                 <div class="setting-label">
-                  <strong>Status</strong>
+                  <strong>Sign commits</strong>
                   <span>
-                    @if (env.commitGpgsign) {
-                      Signing enabled
-                      @if (env.gpgFormat) {
-                        · {{ env.gpgFormat }}
-                      }
-                      @if (env.userSigningKey) {
-                        · {{ env.userSigningKey }}
-                      }
+                    @if (env.gpgFormat) {
+                      Format: {{ env.gpgFormat }}
                     } @else {
-                      Signing off — enable with
-                      <code>git config --global commit.gpgsign true</code>
+                      Uses your Git GPG or SSH signing setup
                     }
                   </span>
                 </div>
+                <div class="setting-control">
+                  <label class="switch">
+                    <input
+                      type="checkbox"
+                      [ngModel]="env.commitGpgsign"
+                      (ngModelChange)="toggleCommitSigning($event)"
+                    />
+                    <span></span>
+                  </label>
+                </div>
+              </div>
+              <div class="fields compact">
+                <label>
+                  Format
+                  <select [ngModel]="env.gpgFormat || 'openpgp'" (ngModelChange)="setGpgFormat($event)">
+                    <option value="openpgp">OpenPGP</option>
+                    <option value="ssh">SSH</option>
+                  </select>
+                </label>
+                <label>
+                  Signing key
+                  <input
+                    [ngModel]="env.userSigningKey"
+                    (change)="onSigningKeyChange($event)"
+                    placeholder="key id or ~/.ssh/id_ed25519.pub"
+                  />
+                </label>
               </div>
             } @else {
               <p class="block-hint">Open Git settings to load signing status.</p>
@@ -979,7 +1000,8 @@
               <div class="setting-control">
                 <div class="seg wrap">
                   <button type="button" class="seg-btn" (click)="setCredentialHelper('osxkeychain')">osxkeychain</button>
-                  <button type="button" class="seg-btn" (click)="setCredentialHelper('store')">store</button>
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('wincred')">wincred</button>
+                  <button type="button" class="seg-btn" (click)="setCredentialHelper('libsecret')">libsecret</button>
                   <button type="button" class="seg-btn" (click)="setCredentialHelper('cache')">cache</button>
                   <button type="button" class="seg-btn" (click)="setCredentialHelper('')">Clear</button>
                 </div>
@@ -991,11 +1013,11 @@
         @case ('about') {
           <article class="bl-panel block">
             <h2 class="block-title">Branchline</h2>
-            <p class="block-hint">Desktop Git client — version and updates</p>
+            <p class="block-hint">Desktop Git client — version, license, and updates</p>
             <div class="setting">
               <div class="setting-label">
                 <strong>Version</strong>
-                <span class="mono">{{ updates.currentVersion() || '—' }}</span>
+                <span class="mono">{{ updates.currentVersion() || '—' }} (beta)</span>
               </div>
               <div class="setting-control">
                 <button
@@ -1054,6 +1076,22 @@
                 </button>
               </div>
             }
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Legal &amp; support</h2>
+            <p class="block-hint">
+              MIT licensed. Tokens and Git data stay on this machine. Nothing is sent to Branchline
+              servers.
+            </p>
+            <div class="setting-control update-actions">
+              <button type="button" class="bl-btn" (click)="openLicense()">License</button>
+              <button type="button" class="bl-btn" (click)="openPrivacy()">Privacy</button>
+              <button type="button" class="bl-btn" (click)="openSource()">Source</button>
+              <button type="button" class="bl-btn bl-btn-primary" (click)="reportProblem()">
+                Report a problem
+              </button>
+            </div>
           </article>
 
           <article class="bl-panel block">

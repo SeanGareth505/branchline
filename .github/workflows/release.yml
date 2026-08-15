@@ -28,15 +28,19 @@ env:
     ## Download
     Easy download page: https://seangareth505.github.io/branchline/
 
+    Public beta. Signed desktop builds when release secrets are configured.
+
     ### macOS
     1. Open the `.dmg` and drag Branchline to Applications
-    2. If macOS says the app is damaged, download **Fix & Open** from the download page, or run:
+    2. Open it from Applications. Gatekeeper may ask you to confirm the first launch.
+    3. If macOS says the app is damaged, use **Fix & Open** on the download page, or:
        `xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app`
 
     ### Windows
-    Run the setup `.exe`. If SmartScreen appears: More info → Run anyway.
+    Run the setup `.exe`. SmartScreen may warn on early releases; choose More info → Run anyway if needed.
 
     ### Android
+    Sideload preview only. Install `Branchline-android.apk` (enable install from this source if asked). Local Git on phone is limited.
     Install `Branchline-android.apk` (enable install from this source if asked).
 
 jobs:
@@ -124,6 +128,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+              echo "::error::APPLE_CERTIFICATE is required for public macOS releases"
+              exit 1
+            fi
             echo "No APPLE_CERTIFICATE secret; building unsigned macOS artifacts"
             exit 0
           fi

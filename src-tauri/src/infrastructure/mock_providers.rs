@@ -29,6 +29,7 @@ pub struct MockPullRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct MockJiraIssue {
     pub key: String,
     pub summary: String,
@@ -107,6 +108,7 @@ pub struct TemplateInfo {
     pub description: String,
 }
 
+#[allow(dead_code)]
 pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
     vec![
         MockPullRequest {
@@ -304,6 +306,7 @@ pub fn list_mock_pull_requests() -> Vec<MockPullRequest> {
     ]
 }
 
+#[allow(dead_code)]
 pub fn list_mock_jira_issues() -> Vec<MockJiraIssue> {
     vec![
         MockJiraIssue {
