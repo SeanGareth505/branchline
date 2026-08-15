@@ -9,7 +9,13 @@
     >
       <header>
         <div class="title-block">
-          <h2 id="conflict-resolve-title">Resolve conflict</h2>
+          <div class="bl-heading-row">
+            <h2 id="conflict-resolve-title">Resolve conflict</h2>
+            <app-help-tip
+              heading="Resolve conflict"
+              body="This file has overlapping changes from both sides. Choose ours, theirs, or edit the markers, then stage when the file is clean."
+            />
+          </div>
           <p class="mono path" [title]="store.conflictResolverPath()">
             {{ store.conflictResolverPath() }}
           </p>

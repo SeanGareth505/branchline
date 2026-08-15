@@ -17,6 +17,7 @@ import type {
   ReleaseDeployJobStep,
   ReleasePhase,
 } from '../../../core/models';
+import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
 
 type JobFilter = 'in_progress' | 'completed' | 'failed' | 'all';
 type JobChipStatus = 'success' | 'failure' | 'pending' | 'unknown';
@@ -59,7 +60,7 @@ interface JobView {
 
 @Component({
   selector: 'app-release-panel',
-  imports: [NgIcon, NgTemplateOutlet],
+  imports: [NgIcon, NgTemplateOutlet, ReleaseNotesEditor],
   templateUrl: './release-panel.html',
   styleUrl: './release-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -9,12 +9,13 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import type { StashEntry } from '../../../core/models';
 
 @Component({
   selector: 'app-stash-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './stash-panel.html',
   styleUrl: './stash-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

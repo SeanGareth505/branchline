@@ -1,0 +1,66 @@
+<section class="notes" [class.open]="open()">
+  <div class="notes-head">
+    <button
+      type="button"
+      class="notes-toggle"
+      (click)="toggle()"
+      [attr.aria-expanded]="open()"
+    >
+      <ng-icon
+        class="chev"
+        [name]="open() ? 'lucideChevronDown' : 'lucideChevronRight'"
+        size="13"
+      />
+      <ng-icon name="lucideScrollText" size="13" />
+      <span>Release notes</span>
+      <span class="meta">{{ statusLabel() }}</span>
+    </button>
+    <app-help-tip
+      compact
+      heading="Release notes"
+      body="Notes for the GitHub release. Generate from commits, edit, then save a local draft or publish to the release."
+    />
+  </div>
+
+  @if (open()) {
+    <div class="body">
+      <textarea
+        rows="8"
+        [ngModel]="store.releaseNotesText()"
+        (ngModelChange)="onChange($event)"
+        [placeholder]="placeholder()"
+        spellcheck="true"
+      ></textarea>
+      <div class="actions">
+        <button
+          type="button"
+          class="bl-btn"
+          [disabled]="store.releaseNotesGenerating()"
+          (click)="generate()"
+        >
+          <ng-icon name="lucideSparkles" size="13" />
+          {{ store.releaseNotesGenerating() ? 'Generating…' : 'Generate from commits' }}
+        </button>
+        @if (store.releaseActivity()?.releaseUrl) {
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="store.releaseNotesBusy()"
+            (click)="reload()"
+          >
+            Reload from GitHub
+          </button>
+        }
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="store.releaseNotesBusy() || (store.releaseNotesCanPublish() && store.releaseNotesSynced())"
+          (click)="save()"
+        >
+          {{ saveLabel() }}
+        </button>
+      </div>
+      <p class="hint">{{ hint() }}</p>
+    </div>
+  }
+</section>

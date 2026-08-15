@@ -1,6 +1,13 @@
 <div class="console mono">
   <header>
-    <span>Git console · {{ store.currentRepo()?.name ?? 'no repo' }}</span>
+    <span class="bl-heading-row">
+      <span>Git console · {{ store.currentRepo()?.name ?? 'no repo' }}</span>
+      <app-help-tip
+        compact
+        heading="Git console"
+        body="Run raw git commands in this repository. Quick buttons cover status, log, diff, and branch. Output stays in this panel."
+      />
+    </span>
     <div class="quick">
       <button
         type="button"

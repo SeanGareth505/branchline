@@ -9,7 +9,13 @@
     >
       <header>
         <div class="copy">
-          <h2 id="release-title">Release {{ prompt.productName }}</h2>
+          <div class="bl-heading-row">
+            <h2 id="release-title">Release {{ prompt.productName }}</h2>
+            <app-help-tip
+              heading="Release"
+              body="Choose how far to bump the version. Branchline updates version files, commits, and tags — then can push so GitHub Actions deploy."
+            />
+          </div>
           <p>
             Current version {{ prompt.currentVersion }}.
             @if (prompt.dirty && !allowDirty()) {

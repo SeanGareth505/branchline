@@ -248,8 +248,23 @@ export function laneColor(index: number, styles?: CSSStyleDeclaration | null): s
   return fallback[i];
 }
 
-export function laneX(lane: number): number {
-  return GRAPH_PAD + lane * LANE_WIDTH + LANE_WIDTH / 2;
+export function lanePitch(laneCount: number): number {
+  const count = Math.max(1, laneCount);
+  const natural = GRAPH_PAD * 2 + count * LANE_WIDTH;
+  if (natural <= MAX_GRAPH_WIDTH) return LANE_WIDTH;
+  return Math.max(MIN_LANE_WIDTH, (MAX_GRAPH_WIDTH - GRAPH_PAD * 2) / count);
+}
+
+export function graphWidthForLanes(laneCount: number, pitch = lanePitch(laneCount)): number {
+  return Math.max(MIN_GRAPH_WIDTH, GRAPH_PAD * 2 + Math.max(1, laneCount) * pitch);
+}
+
+export function laneX(lane: number, pitch = LANE_WIDTH): number {
+  return GRAPH_PAD + lane * pitch + pitch / 2;
+}
+
+export function nodeRadiusForPitch(pitch: number): number {
+  return Math.min(NODE_RADIUS, pitch * 0.38);
 }
 
 export function linkPath(
@@ -257,9 +272,10 @@ export function linkPath(
   to: number,
   half: 'top' | 'bottom',
   height = ROW_HEIGHT,
+  pitch = LANE_WIDTH,
 ): string {
-  const x0 = laneX(from);
-  const x1 = laneX(to);
+  const x0 = laneX(from, pitch);
+  const x1 = laneX(to, pitch);
   const mid = height / 2;
 
   if (from === to) {
@@ -296,7 +312,10 @@ export function assertGraphContinuity(layout: GraphLayout): string[] {
 }
 
 export const ROW_HEIGHT = 30;
-export const LANE_WIDTH = 18;
-export const GRAPH_PAD = 16;
-export const NODE_RADIUS = 5;
-export const NODE_RADIUS_SELECTED = 6.5;
+export const LANE_WIDTH = 11;
+export const MIN_LANE_WIDTH = 6;
+export const GRAPH_PAD = 7;
+export const NODE_RADIUS = 4;
+export const NODE_RADIUS_SELECTED = 5.25;
+export const MIN_GRAPH_WIDTH = 48;
+export const MAX_GRAPH_WIDTH = 140;

@@ -3,95 +3,397 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Branchline — Download</title>
+    <title>Branchline — A calm Git GUI</title>
     <meta
       name="description"
-      content="Download Branchline for macOS, Windows, Linux, and Android. Simple install steps included."
+      content="Branchline is a dedicated desktop Git client for macOS, Windows, and Linux. Focus-mode graph, plain-language safety, and undo you can trust. Not an IDE. Not an AI tool."
     />
+    <meta name="theme-color" content="#070b12" />
+    <meta property="og:title" content="Branchline — A calm Git GUI" />
+    <meta
+      property="og:description"
+      content="A dedicated Git client. Browse history, commit, branch, and ship — without the noise of an IDE."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://seangareth505.github.io/branchline/" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="brand/branchline-mark.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true"></div>
-    <main class="shell">
-      <header class="brand">
-        <img class="mark" src="brand/branchline-mark.svg" width="72" height="72" alt="" />
-        <img class="wordmark" src="brand/branchline-wordmark.svg" alt="Branchline" />
-      </header>
+    <div class="grain" aria-hidden="true"></div>
 
-      <p class="lede">
-        Dedicated Git GUI for <strong>macOS</strong> and <strong>Windows</strong>.
-        Android and Linux builds included.
-      </p>
-
-      <section class="cta" aria-labelledby="download-title">
-        <h1 id="download-title" class="visually-hidden">Download</h1>
+    <header class="nav">
+      <a class="logo" href="#top">
+        <img src="brand/branchline-mark.svg" width="32" height="32" alt="" />
+        <span>Branchline</span>
+      </a>
+      <nav class="nav-links" aria-label="Page">
+        <a href="#features">Features</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#download">Download</a>
+      </nav>
+      <div class="nav-end">
+        <span class="version-badge" id="version-badge"></span>
         <a
-          class="btn primary"
-          id="primary-btn"
-          href="https://github.com/SeanGareth505/branchline/releases/latest"
+          class="nav-ghost"
+          href="https://github.com/SeanGareth505/branchline"
+          rel="noopener noreferrer"
         >
-          Download for your device
+          GitHub
         </a>
-        <p class="meta" id="primary-meta">Detecting your platform…</p>
-      </section>
+        <a class="btn compact" href="#download">Download</a>
+      </div>
+    </header>
 
-      <section class="howto" id="howto" aria-labelledby="howto-title">
-        <div class="howto-head">
-          <h2 id="howto-title">Install in 3 steps</h2>
-          <span class="pill" id="platform-pill">…</span>
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Dedicated Git GUI · Desktop first</p>
+          <h1>Every branch.<br />One calm view.</h1>
+          <p class="lede">
+            Branchline is a Git client for people who live in history, not in an IDE.
+            A focus-mode graph, plain-language safety, and undo you can actually use.
+            <strong>Not an IDE. Not an AI tool.</strong>
+          </p>
+          <div class="hero-cta">
+            <a
+              class="btn primary"
+              id="primary-btn"
+              href="https://github.com/SeanGareth505/branchline/releases/latest"
+            >
+              Download for your device
+            </a>
+            <a class="btn ghost" href="#features">See what’s inside</a>
+          </div>
+          <p class="meta" id="primary-meta">Detecting your platform…</p>
+          <ul class="os-row">
+            <li>macOS</li>
+            <li>Windows</li>
+            <li>Linux</li>
+            <li>Android</li>
+          </ul>
         </div>
-        <ol class="steps" id="steps"></ol>
-        <div class="howto-actions" id="howto-actions"></div>
+
+        <figure class="product" aria-hidden="true">
+          <div class="product-glow"></div>
+          <div class="window">
+            <div class="titlebar">
+              <span class="traffic"><i></i><i></i><i></i></span>
+              <span class="title-brand">
+                <img src="brand/branchline-mark.svg" width="16" height="16" alt="" />
+                Branchline
+              </span>
+              <span class="title-repo">acme-web</span>
+            </div>
+            <div class="chrome-views">
+              <span class="active">Repo</span>
+              <span>PRs</span>
+              <span>Release</span>
+            </div>
+            <div class="workspace">
+              <aside class="refs">
+                <p>Branches</p>
+                <ul>
+                  <li class="on"><i class="dot cyan"></i>main</li>
+                  <li><i class="dot violet"></i>feature/auth</li>
+                  <li><i class="dot gold"></i>hotfix/graph</li>
+                </ul>
+                <p>Remotes</p>
+                <ul>
+                  <li><i class="dot muted"></i>origin/main</li>
+                </ul>
+              </aside>
+              <div class="graph-pane">
+                <svg class="graph" viewBox="0 0 420 268" fill="none">
+                  <defs>
+                    <linearGradient id="lane-a" x1="28" y1="24" x2="28" y2="244">
+                      <stop stop-color="#7ae0ff" />
+                      <stop offset="1" stop-color="#3ecfff" />
+                    </linearGradient>
+                    <linearGradient id="lane-b" x1="56" y1="24" x2="92" y2="140">
+                      <stop stop-color="#b8c4ff" />
+                      <stop offset="1" stop-color="#7c9cff" />
+                    </linearGradient>
+                    <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="1.6" result="b" />
+                      <feMerge>
+                        <feMergeNode in="b" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+                  <path
+                    class="draw"
+                    d="M28 244V92c0-14 10-22 22-22h36"
+                    stroke="url(#lane-a)"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    class="draw delay"
+                    d="M86 70V36"
+                    stroke="url(#lane-b)"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    class="draw late"
+                    d="M28 188h40c12 0 20-8 20-18V140"
+                    stroke="#f0b429"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    opacity="0.85"
+                  />
+                  <circle class="node n1" cx="86" cy="36" r="4.2" fill="#b8c4ff" filter="url(#node-glow)" />
+                  <circle class="node n2" cx="86" cy="70" r="4.2" fill="#7c9cff" filter="url(#node-glow)" />
+                  <circle class="node n3" cx="88" cy="140" r="4.2" fill="#f0b429" filter="url(#node-glow)" />
+                  <circle class="node n4" cx="28" cy="188" r="4.2" fill="#3ecfff" filter="url(#node-glow)" />
+                  <circle class="node n5" cx="28" cy="244" r="4.2" fill="#3ecfff" filter="url(#node-glow)" />
+                  <text x="112" y="40" fill="#e8eef7" font-size="12" font-family="Sora, sans-serif">
+                    feat(auth): GitHub device login
+                  </text>
+                  <text x="112" y="56" fill="#8b9bb0" font-size="10" font-family="Sora, sans-serif">
+                    sean · 2 hours ago
+                  </text>
+                  <text x="112" y="74" fill="#e8eef7" font-size="12" font-family="Sora, sans-serif">
+                    fix(graph): keep selection on filter
+                  </text>
+                  <text x="112" y="90" fill="#8b9bb0" font-size="10" font-family="Sora, sans-serif">
+                    sean · 5 hours ago
+                  </text>
+                  <text x="112" y="144" fill="#e8eef7" font-size="12" font-family="Sora, sans-serif">
+                    hotfix: graph lane contrast
+                  </text>
+                  <text x="112" y="160" fill="#8b9bb0" font-size="10" font-family="Sora, sans-serif">
+                    alex · yesterday
+                  </text>
+                  <text x="112" y="192" fill="#e8eef7" font-size="12" font-family="Sora, sans-serif">
+                    merge branch ‘develop’
+                  </text>
+                  <text x="112" y="208" fill="#8b9bb0" font-size="10" font-family="Sora, sans-serif">
+                    sean · 2 days ago
+                  </text>
+                  <text x="112" y="248" fill="#c5d0de" font-size="12" font-family="Sora, sans-serif">
+                    chore: bump Tauri to 2.1
+                  </text>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </figure>
       </section>
 
-      <section class="grid" aria-label="All platforms">
-        <article class="card" data-platform="mac">
-          <h2>macOS</h2>
-          <p>Apple Silicon · Intel</p>
-          <div class="card-actions">
-            <a class="btn solid" id="mac-arm-btn" href="#">Apple Silicon</a>
-            <a class="btn solid" id="mac-intel-btn" href="#">Intel</a>
-          </div>
-        </article>
-
-        <article class="card" data-platform="windows">
-          <h2>Windows</h2>
-          <p>64-bit installer</p>
-          <div class="card-actions">
-            <a class="btn solid" id="win-btn" href="#">Download Windows</a>
-          </div>
-        </article>
-
-        <article class="card" data-platform="android">
-          <h2>Android</h2>
-          <p>APK sideload</p>
-          <div class="card-actions">
-            <a class="btn solid" id="apk-btn" href="#">Download APK</a>
-          </div>
-        </article>
-
-        <article class="card" data-platform="linux">
-          <h2>Linux</h2>
-          <p>AppImage · deb · rpm</p>
-          <div class="card-actions">
-            <a class="btn solid" id="linux-btn" href="#">Download Linux</a>
-          </div>
-        </article>
+      <section class="strip" aria-label="Positioning">
+        <p>A dedicated Git GUI. Not an editor. Not a chatbot. Just Git, composed.</p>
       </section>
 
-      <p class="meta center">
-        <a href="https://github.com/SeanGareth505/branchline/releases/latest">All release files</a>
-        ·
-        <a href="https://github.com/SeanGareth505/branchline">Source</a>
-      </p>
+      <section class="section" id="features">
+        <header class="section-head">
+          <p class="eyebrow">Product</p>
+          <h2>Built to feel expensive.<br />Designed to stay quiet.</h2>
+          <p>
+            Everything you need to browse, commit, branch, and ship — with the volume turned down.
+          </p>
+        </header>
+        <div class="feature-grid">
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M10 6v8c0 2.2 1.6 3.6 3.6 3.6H22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <path d="M10 14v12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="10" cy="6" r="2.2" fill="currentColor" />
+                <circle cx="22" cy="17.6" r="2.2" fill="currentColor" />
+                <circle cx="10" cy="26" r="2.2" fill="currentColor" />
+              </svg>
+            </div>
+            <h3>Focus-mode graph</h3>
+            <p>
+              A revision graph you can actually read. Filter by author, path, or branch — then stay
+              in flow.
+            </p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <rect x="7" y="6" width="18" height="20" rx="3" stroke="currentColor" stroke-width="1.8" />
+                <path d="M11 12h10M11 16h7M11 20h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+            </div>
+            <h3>Commit with intent</h3>
+            <p>
+              Stage precisely, amend safely, and open blame or file history without leaving the
+              client.
+            </p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M16 7l9 16H7L16 7z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                <path d="M16 14v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="16" cy="22.2" r="1.1" fill="currentColor" />
+              </svg>
+            </div>
+            <h3>Plain-language safety</h3>
+            <p>
+              Destructive Git, explained. Reset, rebase, and force-push offer the safer path first.
+            </p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M11 16H8a6 6 0 1 0 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <path d="M21 16h3a6 6 0 1 0-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <path d="M13 12l-3 4 3 4M19 20l3-4-3-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3>Undo that works</h3>
+            <p>
+              One shortcut reverses the last Branchline action. No archaeology in the reflog.
+            </p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <circle cx="11" cy="16" r="4" stroke="currentColor" stroke-width="1.8" />
+                <circle cx="21" cy="11" r="3" stroke="currentColor" stroke-width="1.8" />
+                <circle cx="21" cy="21" r="3" stroke="currentColor" stroke-width="1.8" />
+                <path d="M14.6 14.2l3.2-2.1M14.6 17.8l3.2 2.1" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+            </div>
+            <h3>Remotes &amp; accounts</h3>
+            <p>
+              Connect GitHub and GitLab, set up SSH, then pull and push — including force-with-lease.
+            </p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M8 22V10l8-4 8 4v12l-8 4-8-4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+                <path d="M16 14v12M8 10l8 4 8-4" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+            </div>
+            <h3>PRs, Jira, releases</h3>
+            <p>
+              Review pull requests, linked tickets, and ship versions from the same window.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section workflow" id="workflow">
+        <header class="section-head">
+          <p class="eyebrow">The whole workflow</p>
+          <h2>Every Git move, in one place.</h2>
+          <p>From first clone to tagged release — without switching tools mid-thought.</p>
+        </header>
+        <div class="spec-grid">
+          <article>
+            <h3>Graph &amp; history</h3>
+            <p>Focus-mode revision graph, filters, blame, file history, reflog, and console.</p>
+          </article>
+          <article>
+            <h3>Everyday Git</h3>
+            <p>Open, clone, init, staging, commit, amend, stash, and worktrees.</p>
+          </article>
+          <article>
+            <h3>Branches</h3>
+            <p>Create, checkout, merge, rebase, rename, delete, cherry-pick, and squash.</p>
+          </article>
+          <article>
+            <h3>Sync</h3>
+            <p>Fetch, pull, pull --rebase, push, force-with-lease, SSH, and HTTPS.</p>
+          </article>
+          <article>
+            <h3>Conflicts</h3>
+            <p>Continue or abort merge, rebase, and cherry-pick with a clear resolver.</p>
+          </article>
+          <article>
+            <h3>Safety</h3>
+            <p>Recommended safe path, identity onboarding, and one-click undo.</p>
+          </article>
+          <article>
+            <h3>Ship</h3>
+            <p>Pull requests, Jira, version bump, tags, and GitHub Actions.</p>
+          </article>
+          <article>
+            <h3>Command palette</h3>
+            <p>⌘K / Ctrl+K for every action. Stay on the keyboard when you want to.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section download" id="download">
+        <header class="section-head">
+          <p class="eyebrow">Get Branchline</p>
+          <h2>Install in three steps.</h2>
+          <p>Desktop is the real product. Android is a sideload preview of the same UI.</p>
+        </header>
+
+        <div class="howto" id="howto" aria-labelledby="howto-title">
+          <div class="howto-head">
+            <h3 id="howto-title">Your platform</h3>
+            <span class="pill" id="platform-pill">…</span>
+          </div>
+          <ol class="steps" id="steps"></ol>
+          <div class="howto-actions" id="howto-actions"></div>
+        </div>
+
+        <div class="grid" aria-label="All platforms">
+          <article class="card" data-platform="mac">
+            <h3>macOS</h3>
+            <p>Apple Silicon and Intel. Drag into Applications.</p>
+            <div class="card-actions">
+              <a class="btn solid" id="mac-arm-btn" href="#">Apple Silicon</a>
+              <a class="btn solid" id="mac-intel-btn" href="#">Intel</a>
+            </div>
+          </article>
+          <article class="card" data-platform="windows">
+            <h3>Windows</h3>
+            <p>64-bit installer. Start menu ready.</p>
+            <div class="card-actions">
+              <a class="btn solid" id="win-btn" href="#">Download Windows</a>
+            </div>
+          </article>
+          <article class="card" data-platform="linux">
+            <h3>Linux</h3>
+            <p>AppImage, deb, and rpm.</p>
+            <div class="card-actions">
+              <a class="btn solid" id="linux-btn" href="#">Download Linux</a>
+            </div>
+          </article>
+          <article class="card" data-platform="android">
+            <h3>Android</h3>
+            <p>Sideload APK. Local Git on phone is limited.</p>
+            <div class="card-actions">
+              <a class="btn solid" id="apk-btn" href="#">Download APK</a>
+            </div>
+          </article>
+        </div>
+      </section>
     </main>
+
+    <footer class="footer">
+      <a class="logo" href="#top">
+        <img src="brand/branchline-mark.svg" width="28" height="28" alt="" />
+        <span>Branchline</span>
+      </a>
+      <p>A dedicated Git GUI. Not an IDE. Not an AI tool.</p>
+      <p class="meta center">
+        <a href="https://github.com/SeanGareth505/branchline/releases/latest" rel="noopener noreferrer"
+          >All release files</a
+        >
+        ·
+        <a href="https://github.com/SeanGareth505/branchline" rel="noopener noreferrer">Source</a>
+      </p>
+    </footer>
     <script src="download.js"></script>
   </body>
 </html>

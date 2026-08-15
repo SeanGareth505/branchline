@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import type { CommitInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
@@ -19,7 +20,7 @@ import {
 
 @Component({
   selector: 'app-changelog-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './changelog-dialog.html',
   styleUrl: './changelog-dialog.scss',
 })

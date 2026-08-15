@@ -1,7 +1,10 @@
 <section class="page" [class.repos-mode]="section() === 'repos'">
   @if (section() !== 'repos') {
     <header class="hero">
-      <h1>{{ sectionMeta().label }}</h1>
+      <div class="bl-heading-row">
+        <h1>{{ sectionMeta().label }}</h1>
+        <app-help-tip [heading]="sectionMeta().label" [body]="sectionMeta().help" />
+      </div>
       <p>{{ sectionMeta().hint }}</p>
     </header>
   }
@@ -912,8 +915,8 @@
           <article id="settings-github-git" class="bl-panel block">
             <h2 class="block-title">GitHub accounts</h2>
             <p class="block-hint">
-              Work and personal GitHub logins. HTTPS Git uses GitHub CLI. SSH uses the keys below.
-              GitHub Connected above is only the API — it does not fetch or push.
+              Work and personal GitHub logins are remembered per GitHub org. HTTPS Git uses GitHub CLI.
+              SSH uses the keys below. GitHub Connected above is only the API — it does not fetch or push.
             </p>
             <app-git-account-bar variant="settings" />
           </article>

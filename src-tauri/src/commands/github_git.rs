@@ -100,9 +100,9 @@ pub fn switch_github_cli_user(input: SwitchGithubCliUserInput) -> AppResult<Muta
             message: "Pick a GitHub account".into(),
         });
     }
-    let gh = match which::which("gh") {
-        Ok(path) => path,
-        Err(_) => {
+    let gh = match gh_command() {
+        Some(path) => path,
+        None => {
             return Ok(MutationOutput {
                 ok: false,
                 message: "GitHub CLI (gh) is not installed".into(),
@@ -171,6 +171,22 @@ fn list_remote_urls(path: &Path) -> Vec<(String, String)> {
     seen
 }
 
+fn gh_command() -> Option<std::path::PathBuf> {
+    for candidate in ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"] {
+        let path = std::path::PathBuf::from(candidate);
+        if candidate == "gh" {
+            if let Ok(found) = which::which("gh") {
+                return Some(found);
+            }
+            continue;
+        }
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
 fn uses_gh_credential_helper() -> bool {
     let Ok(value) = git_cli::run_git_global(&["config", "--get-regexp", r"credential\..*helper"]) else {
         return false;
@@ -179,7 +195,7 @@ fn uses_gh_credential_helper() -> bool {
 }
 
 fn gh_accounts() -> Vec<GithubCliAccount> {
-    let Ok(gh) = which::which("gh") else {
+    let Some(gh) = gh_command() else {
         return vec![];
     };
     let output = Command::new(gh)

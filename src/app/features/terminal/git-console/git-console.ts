@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 
 @Component({
   selector: 'app-git-console',
-  imports: [FormsModule],
+  imports: [FormsModule, HelpTip],
   templateUrl: './git-console.html',
   styleUrl: './git-console.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

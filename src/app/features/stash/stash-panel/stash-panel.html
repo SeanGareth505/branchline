@@ -10,6 +10,11 @@
       <span class="kind" title="Temporarily shelved uncommitted changes">Stash</span>
       <span class="count">{{ filtered().length }}</span>
     </button>
+    <app-help-tip
+      compact
+      heading="Stash"
+      body="Temporarily shelves uncommitted changes so you can switch branches with a clean working tree. Apply brings them back; drop deletes them for good."
+    />
     @if (store.stashes().length > 0) {
       <button
         type="button"

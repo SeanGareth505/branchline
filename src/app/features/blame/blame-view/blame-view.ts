@@ -4,11 +4,12 @@ import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } 
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { BlameLine } from '../../../core/models';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-blame-view',
-  imports: [FormsModule, LoadingBlock, CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
+  imports: [FormsModule, HelpTip, LoadingBlock, CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
   templateUrl: './blame-view.html',
   styleUrl: './blame-view.scss',
 })

@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import type { WorkflowInfo, WorkflowStep, WorkflowStepConfig } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
@@ -23,7 +24,7 @@ import {
 
 @Component({
   selector: 'app-workflow-editor-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './workflow-editor-dialog.html',
   styleUrl: './workflow-editor-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

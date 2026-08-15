@@ -10,7 +10,13 @@
       <header>
         <div class="copy">
           <p class="eyebrow">Automation</p>
-          <h2 id="workflow-editor-title">{{ title() }}</h2>
+          <div class="bl-heading-row">
+            <h2 id="workflow-editor-title">{{ title() }}</h2>
+            <app-help-tip
+              heading="Workflow"
+              body="Name the workflow, add Git steps in order, and configure create-branch with placeholders so it can run without asking."
+            />
+          </div>
           <p>
             Add steps, then configure create-branch names with placeholders like
             <code>{{ '{' }}date{{ '}' }}</code> so runs stay hands-off.

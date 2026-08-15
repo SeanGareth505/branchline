@@ -1,0 +1,36 @@
+<button
+  type="button"
+  class="tip-btn"
+  [class.compact]="compact()"
+  [class.open]="open()"
+  cdkOverlayOrigin
+  #origin="cdkOverlayOrigin"
+  (click)="toggle($event)"
+  [attr.aria-expanded]="open()"
+  [attr.aria-label]="label()"
+>
+  <ng-icon name="lucideInfo" [size]="iconSize()" />
+</button>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="origin"
+  [cdkConnectedOverlayOpen]="open()"
+  [cdkConnectedOverlayPositions]="positions"
+  [cdkConnectedOverlayPush]="true"
+  [cdkConnectedOverlayPanelClass]="'bl-help-overlay'"
+  (overlayOutsideClick)="onOutside($event)"
+  (detach)="close()"
+>
+  <div class="panel" role="note" [attr.aria-label]="label()">
+    @if (heading()) {
+      <h3>{{ heading() }}</h3>
+    }
+    <div class="body">
+      @if (body()) {
+        <p>{{ body() }}</p>
+      }
+      <ng-content />
+    </div>
+  </div>
+</ng-template>

@@ -9,13 +9,14 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import { GitAccountBar } from '../git-account-bar/git-account-bar';
 import { remoteProtocol } from '../../../shared/git/repo-links';
 
 @Component({
   selector: 'app-remotes-panel',
-  imports: [FormsModule, NgIcon, GitAccountBar],
+  imports: [FormsModule, NgIcon, HelpTip, GitAccountBar],
   templateUrl: './remotes-panel.html',
   styleUrl: './remotes-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

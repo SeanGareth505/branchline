@@ -353,7 +353,7 @@
 
 .graph-svg .edge {
   fill: none;
-  stroke-width: 2.75;
+  stroke-width: 1.85;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -361,20 +361,20 @@
 }
 
 .graph-svg .edge.merge-parent {
-  stroke-width: 2.25;
-  stroke-dasharray: 4 3;
+  stroke-width: 1.55;
+  stroke-dasharray: 3.5 2.5;
   opacity: 1;
 }
 
 .graph-svg .edge.lineage {
-  stroke-width: 3.25;
+  stroke-width: 2.25;
   opacity: 1;
   filter: brightness(1.15);
 }
 
 .graph-svg.dashed .edge {
-  stroke-dasharray: 3.5 3;
-  stroke-width: 2;
+  stroke-dasharray: 3 2.5;
+  stroke-width: 1.5;
 }
 
 .graph-svg .node {

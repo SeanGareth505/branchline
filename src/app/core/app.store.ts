@@ -48,6 +48,7 @@ import type {
   CheckRunState,
   ProbeRemoteOutput,
   GithubGitStatus,
+  GithubRepoAccountPref,
   TestConnectionInput,
   TestConnectionOutput,
 } from './models';
@@ -57,6 +58,7 @@ import { NotificationService } from './notification.service';
 import { PromptService } from '../shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from '../shared/ui/select-dialog/select.service';
 import { ReleaseDialogService } from '../features/release/release-dialog/release-dialog.service';
+import { ChangelogService } from '../features/changelog/changelog.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 import {
   DEFAULT_TICKET_FROM_BRANCH,
@@ -69,7 +71,7 @@ import {
 } from '../shared/git/open-in-editor';
 import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
-import { parseRemoteWebBase } from '../shared/git/repo-links';
+import { parseRemoteWebBase, primaryGithubOwner, remoteProtocol } from '../shared/git/repo-links';
 import {
   humanizeGitError,
   isRemoteAccessError,
@@ -168,7 +170,13 @@ export interface ToastOptions {
 
 const RELEASE_ACTIVITY_STORAGE_KEY = 'branchline.releaseActivity';
 const RELEASE_DISMISSED_TAG_KEY = 'branchline.releaseDismissedTag';
+const RELEASE_NOTES_DRAFT_KEY = 'branchline.releaseNotesDraft';
 const REPO_CACHE_KEY = 'branchline.repoCache.v1';
+
+interface ReleaseNotesDraft {
+  path: string;
+  body: string;
+}
 
 interface RepoCacheEntry {
   savedAt: number;
@@ -210,6 +218,7 @@ export class AppStore {
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
   private readonly releaseDialog = inject(ReleaseDialogService);
+  private readonly changelog = inject(ChangelogService);
 
   readonly isDummyBackend = this.tauri.isDummyBackend;
   readonly view = signal<AppView>('settings');
@@ -317,6 +326,7 @@ export class AppStore {
     uiDensity: 'comfortable',
     prTemplates: [],
     prCreateMethod: 'browser',
+    githubRepoAccounts: {},
   });
   readonly hiddenRefsGroups = computed((): string[] => {
     const raw = this.settings().layout?.['hiddenRefsGroups'];
@@ -351,6 +361,22 @@ export class AppStore {
   readonly releaseBusy = signal(false);
   readonly releaseAttaching = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
+  readonly releaseNotesDraft = signal<ReleaseNotesDraft | null>(null);
+  readonly releaseNotesBusy = signal(false);
+  readonly releaseNotesGenerating = signal(false);
+  readonly releaseNotesText = computed(() => {
+    const activity = this.releaseActivity();
+    if (activity) return activity.notes ?? '';
+    const draft = this.releaseNotesDraft();
+    const path = this.currentRepo()?.path;
+    if (draft && path && sameRepoPath(draft.path, path)) return draft.body;
+    return '';
+  });
+  readonly releaseNotesCanPublish = computed(() => {
+    const activity = this.releaseActivity();
+    return !!activity?.tag && (!!activity.releaseUrl || this.hasGithubConnection());
+  });
+  readonly releaseNotesSynced = computed(() => !!this.releaseActivity()?.notesSynced);
   private releaseAttachInFlight: Promise<boolean> | null = null;
   readonly releasingLocally = computed(() => {
     if (!this.releaseBusy()) return false;
@@ -790,6 +816,7 @@ export class AppStore {
       void this.bindRepoFsWatcher();
       void this.bindReleaseProgressListener();
       this.restoreReleaseActivity();
+      this.restoreReleaseNotesDraft();
       this.startWorktreePoll();
       try {
         this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
@@ -1300,9 +1327,11 @@ export class AppStore {
         if (this.repoLoadStale(gen, normalized)) return;
       }
       if (hadLive) {
+        void this.applyGithubRepoAccount({ silent: true });
         void this.refreshRepo();
       } else {
         await this.refreshRepo();
+        await this.applyGithubRepoAccount({ silent: true });
       }
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistRepoCache(normalized);
@@ -1318,7 +1347,9 @@ export class AppStore {
         );
       }
       if (!switching && this.settings().autoFetchOnOpen && !this.isDummyBackend) {
-        void this.tauri.fetch(normalized, this.pushRemoteName()).then(
+        void this.runRemoteWithAccountRetry(() =>
+          this.tauri.fetch(normalized, this.pushRemoteName()),
+        ).then(
           () => {
             if (this.repoLoadStale(gen, normalized)) return;
             void this.refreshRepo();
@@ -1924,7 +1955,7 @@ export class AppStore {
     this.stashes.set(stashes);
     this.tags.set(tags);
     this.remotes.set(remotes);
-    void this.refreshGithubGitStatus();
+    void this.applyGithubRepoAccount({ silent: true });
     this.lastWorkingTreeRefreshAt = Date.now();
     void this.refreshIdentity();
     if (!this.selectedSha() && commits[0]) {
@@ -2168,6 +2199,9 @@ export class AppStore {
       if (!activity?.path || !activity.tag) return;
       this.lastReleaseFingerprint = releaseActivityFingerprint(activity);
       this.releaseActivity.set(activity);
+      if (activity.releaseUrl && !(activity.notes ?? '').trim()) {
+        void this.loadGitHubReleaseNotes();
+      }
       const resumeDeploy =
         activity.willPush &&
         !activity.needsPush &&
@@ -2206,6 +2240,166 @@ export class AppStore {
           /* ignore quota errors */
         }
       }
+    }
+  }
+
+  private restoreReleaseNotesDraft(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(RELEASE_NOTES_DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as ReleaseNotesDraft;
+      if (!draft?.path || typeof draft.body !== 'string') return;
+      this.releaseNotesDraft.set(draft);
+    } catch {
+      localStorage.removeItem(RELEASE_NOTES_DRAFT_KEY);
+    }
+  }
+
+  private persistReleaseNotesDraft(): void {
+    if (typeof window === 'undefined') return;
+    const draft = this.releaseNotesDraft();
+    try {
+      if (!draft || !draft.body.trim()) {
+        localStorage.removeItem(RELEASE_NOTES_DRAFT_KEY);
+        return;
+      }
+      localStorage.setItem(RELEASE_NOTES_DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      /* ignore quota errors */
+    }
+  }
+
+  private patchReleaseActivity(patch: Partial<ReleaseActivity>, persistImmediate = true): void {
+    const current = this.releaseActivity();
+    if (!current) return;
+    const next: ReleaseActivity = { ...current, ...patch };
+    this.releaseActivity.set(next);
+    this.persistReleaseActivity(persistImmediate);
+  }
+
+  setReleaseNotes(body: string): void {
+    const activity = this.releaseActivity();
+    if (activity) {
+      this.patchReleaseActivity({ notes: body, notesSynced: false });
+      return;
+    }
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    this.releaseNotesDraft.set({ path, body });
+    this.persistReleaseNotesDraft();
+  }
+
+  async saveReleaseNotes(): Promise<void> {
+    const activity = this.releaseActivity();
+    const path = activity?.path || this.currentRepo()?.path;
+    if (!path || this.releaseNotesBusy()) return;
+    const body = this.releaseNotesText();
+    this.setReleaseNotes(body);
+    const tag = activity?.tag?.trim();
+    if (!tag || !this.releaseNotesCanPublish()) {
+      this.showSuccess('Saved local release notes draft');
+      return;
+    }
+    this.releaseNotesBusy.set(true);
+    try {
+      const result = await this.tauri.updateGithubReleaseNotes(path, tag, body);
+      if (result.ok && result.found) {
+        this.patchReleaseActivity({
+          notes: result.body,
+          notesSynced: true,
+          releaseUrl: result.htmlUrl ?? activity?.releaseUrl ?? null,
+        });
+        this.showSuccess(result.message || 'Updated GitHub release notes');
+        return;
+      }
+      this.showSuccess(result.message || 'Saved local draft — GitHub release is not published yet');
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.releaseNotesBusy.set(false);
+    }
+  }
+
+  async loadGitHubReleaseNotes(opts?: { overwrite?: boolean }): Promise<void> {
+    const activity = this.releaseActivity();
+    const path = activity?.path || this.currentRepo()?.path;
+    const tag = activity?.tag?.trim();
+    if (!path || !tag || this.releaseNotesBusy()) return;
+    const local = (activity?.notes ?? '').trim();
+    if (local && !opts?.overwrite) return;
+    this.releaseNotesBusy.set(true);
+    try {
+      const result = await this.tauri.getGithubReleaseNotes(path, tag);
+      if (!result.found) return;
+      const remote = result.body ?? '';
+      if (!opts?.overwrite && local && local !== remote.trim()) return;
+      this.patchReleaseActivity({
+        notes: remote,
+        notesSynced: true,
+        releaseUrl: result.htmlUrl ?? activity?.releaseUrl ?? null,
+      });
+    } catch {
+    } finally {
+      this.releaseNotesBusy.set(false);
+    }
+  }
+
+  async generateReleaseNotes(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path || this.releaseNotesGenerating()) return;
+    const activity = this.releaseActivity();
+    const currentTag = activity?.tag?.trim() || null;
+    const previous = this.changelog.previousReleaseTag(this.tags(), this.commits(), currentTag);
+    const current = currentTag
+      ? this.tags().find((tag) => tag.name === currentTag) ?? null
+      : null;
+    const fromSha = previous?.sha ?? null;
+    const toSha = current?.sha ?? null;
+    const version = activity?.nextVersion || this.changelog.suggestVersion(this.tags(), this.commits());
+    this.releaseNotesGenerating.set(true);
+    try {
+      let commits = this.changelog.commitsBetween(this.commits(), fromSha, toSha);
+      try {
+        commits = await this.tauri.getCommitRange(path, fromSha, toSha || 'HEAD', 500);
+      } catch {
+      }
+      const markdown = this.changelog.githubReleaseBody(
+        commits,
+        version,
+        previous?.name ?? 'root',
+        currentTag || 'HEAD',
+      );
+      this.setReleaseNotes(markdown);
+      this.showSuccess('Generated notes from commits');
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.releaseNotesGenerating.set(false);
+    }
+  }
+
+  private async publishReleaseNotesIfPossible(): Promise<void> {
+    const activity = this.releaseActivity();
+    const path = activity?.path || this.currentRepo()?.path;
+    const body = (activity?.notes ?? '').trim();
+    const tag = activity?.tag?.trim();
+    if (!path || !activity || !tag || !body || activity.notesSynced || this.releaseNotesBusy()) {
+      return;
+    }
+    this.releaseNotesBusy.set(true);
+    try {
+      const result = await this.tauri.updateGithubReleaseNotes(path, tag, body);
+      if (result.ok && result.found) {
+        this.patchReleaseActivity({
+          notes: result.body || body,
+          notesSynced: true,
+          releaseUrl: result.htmlUrl ?? activity.releaseUrl ?? null,
+        });
+      }
+    } catch {
+    } finally {
+      this.releaseNotesBusy.set(false);
     }
   }
 
@@ -2351,6 +2545,14 @@ export class AppStore {
     const phase = normalizeReleasePhase(input.result.phase);
     const trackingPhase = phase === 'idle' ? 'deploying' : phase;
     const finished = trackingPhase === 'done' || trackingPhase === 'error';
+    const current = this.releaseActivity();
+    const existing =
+      current && sameRepoPath(current.path, input.path) && current.tag === input.tag
+        ? current
+        : null;
+    const draft = this.releaseNotesDraft();
+    const draftBody =
+      draft && sameRepoPath(draft.path, input.path) ? draft.body : '';
     const activity: ReleaseActivity = {
       path: input.path,
       productName: input.productName,
@@ -2367,8 +2569,10 @@ export class AppStore {
       deployJobs: input.result.jobs ?? [],
       phase: trackingPhase,
       message: input.result.message,
+      notes: existing?.notes ?? draftBody,
+      notesSynced: existing?.notesSynced ?? false,
       steps: advanceReleaseSteps(buildReleaseSteps(true), trackingPhase, input.result.message),
-      startedAt: Date.now(),
+      startedAt: existing?.startedAt ?? Date.now(),
       finishedAt: finished ? Date.now() : null,
       ok: trackingPhase === 'done' ? true : trackingPhase === 'error' ? false : null,
       needsRefresh: input.result.status === 'unavailable',
@@ -2376,6 +2580,9 @@ export class AppStore {
     this.lastReleaseFingerprint = releaseActivityFingerprint(activity);
     this.releaseActivity.set(activity);
     this.persistReleaseActivity(finished);
+    if (activity.releaseUrl && !(activity.notes ?? '').trim()) {
+      void this.loadGitHubReleaseNotes();
+    }
   }
 
   private readDismissedReleaseTag(): string | null {
@@ -2406,6 +2613,9 @@ export class AppStore {
     tag: string;
     willPush: boolean;
   }): void {
+    const draft = this.releaseNotesDraft();
+    const draftBody =
+      draft && sameRepoPath(draft.path, input.path) ? draft.body : '';
     const steps = buildReleaseSteps(input.willPush);
     this.releaseActivity.set({
       path: input.path,
@@ -2416,6 +2626,8 @@ export class AppStore {
       willPush: input.willPush,
       phase: 'preparing',
       message: `Releasing ${input.productName} ${input.currentVersion} → ${input.nextVersion}`,
+      notes: draftBody,
+      notesSynced: false,
       steps: advanceReleaseSteps(steps, 'preparing', 'Checking release preconditions…'),
       startedAt: Date.now(),
       finishedAt: null,
@@ -3851,8 +4063,10 @@ export class AppStore {
     if (this.remoteBusy()) return;
     this.remoteBusy.set('fetch');
     try {
-      const result = await this.withRepoMutation(() =>
-        this.tauri.fetch(path, remote?.trim() || this.pushRemoteName()),
+      const result = await this.runRemoteWithAccountRetry(() =>
+        this.withRepoMutation(() =>
+          this.tauri.fetch(path, remote?.trim() || this.pushRemoteName()),
+        ),
       );
       await this.refreshRepo();
       this.showToast(result.message || 'Fetched from remote', {
@@ -3924,10 +4138,12 @@ export class AppStore {
     this.remoteBusy.set('pull');
     try {
       const remote = this.pushRemoteName();
-      const result = await this.withRepoMutation(() =>
-        rebase
-          ? this.tauri.pullWithOptions(path, { rebase: true, remote })
-          : this.tauri.pull(path, remote),
+      const result = await this.runRemoteWithAccountRetry(() =>
+        this.withRepoMutation(() =>
+          rebase
+            ? this.tauri.pullWithOptions(path, { rebase: true, remote })
+            : this.tauri.pull(path, remote),
+        ),
       );
       if (!result.ok) {
         await this.handleConflictResult(result);
@@ -4002,11 +4218,13 @@ export class AppStore {
       }
       const skipHooks =
         !!opts?.skipHooks || this.hasDetectedChecks(['pre-push']);
-      const result = await this.tauri.push(path, {
-        ...pushOpts,
-        remote: this.pushRemoteName(),
-        skipHooks,
-      });
+      const result = await this.runRemoteWithAccountRetry(() =>
+        this.tauri.push(path, {
+          ...pushOpts,
+          remote: this.pushRemoteName(),
+          skipHooks,
+        }),
+      );
       await this.refreshRepo();
       if (opts?.toast !== false) {
         this.showToast(result.message || 'Pushed to remote', {
@@ -4261,38 +4479,140 @@ export class AppStore {
     }
   }
 
-  async setRepoRemoteProtocol(protocol: 'https' | 'ssh'): Promise<boolean> {
+  async setRepoRemoteProtocol(
+    protocol: 'https' | 'ssh',
+    opts?: { silent?: boolean },
+  ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) return false;
     this.githubGitBusy.set(true);
     try {
       const result = await this.tauri.setRepoRemoteProtocol(path, protocol);
       await this.refreshRepo();
-      if (result.ok) this.showSuccess(result.message);
-      else this.showWarning(result.message);
+      if (result.ok) {
+        this.rememberGithubRepoAccount({ protocol });
+        if (!opts?.silent) this.showSuccess(result.message);
+      } else if (!opts?.silent) {
+        this.showWarning(result.message);
+      }
       return result.ok;
     } catch (err) {
-      this.showError(err);
+      if (!opts?.silent) this.showError(err);
       return false;
     } finally {
       this.githubGitBusy.set(false);
     }
   }
 
-  async switchGithubCliUser(login: string): Promise<boolean> {
+  async switchGithubCliUser(login: string, opts?: { silent?: boolean }): Promise<boolean> {
     this.githubGitBusy.set(true);
     try {
       const result = await this.tauri.switchGithubCliUser(login);
       await this.refreshGithubGitStatus();
-      if (result.ok) this.showSuccess(result.message);
-      else this.showWarning(result.message);
+      if (result.ok) {
+        this.rememberGithubRepoAccount({ login });
+        if (!opts?.silent) this.showSuccess(result.message);
+      } else if (!opts?.silent) {
+        this.showWarning(result.message);
+      }
       return result.ok;
     } catch (err) {
-      this.showError(err);
+      if (!opts?.silent) this.showError(err);
       return false;
     } finally {
       this.githubGitBusy.set(false);
     }
+  }
+
+  private githubOwnerForCurrentRepo(): string {
+    return primaryGithubOwner(this.remotes());
+  }
+
+  private rememberGithubRepoAccount(partial?: {
+    login?: string;
+    protocol?: 'https' | 'ssh';
+  }): void {
+    const owner = this.githubOwnerForCurrentRepo();
+    if (!owner) return;
+    const current = this.settings().githubRepoAccounts[owner];
+    const login = (partial?.login || current?.login || this.githubGitStatus()?.activeLogin || '').trim();
+    const protocol =
+      partial?.protocol ||
+      current?.protocol ||
+      (this.remotes().some((remote) => remoteProtocol(remote.fetchUrl) === 'ssh') &&
+      !this.remotes().some((remote) => remoteProtocol(remote.fetchUrl) === 'https')
+        ? 'ssh'
+        : 'https');
+    if (!login) return;
+    if (current?.login === login && current.protocol === protocol) return;
+    void this.saveSettings({
+      githubRepoAccounts: {
+        ...this.settings().githubRepoAccounts,
+        [owner]: { login, protocol },
+      },
+    });
+  }
+
+  private async applyGithubRepoAccount(opts?: { silent?: boolean }): Promise<void> {
+    if (this.githubGitBusy()) return;
+    await this.refreshGithubGitStatus();
+    const owner = this.githubOwnerForCurrentRepo();
+    if (!owner) return;
+    const accounts = this.githubGitStatus()?.accounts ?? [];
+    const saved = this.settings().githubRepoAccounts[owner];
+    const inferred = accounts.find((account) => account.login.toLowerCase() === owner);
+    const login = saved?.login || inferred?.login || '';
+    const protocol = saved?.protocol;
+    if (login && login !== this.githubGitStatus()?.activeLogin) {
+      const ok = await this.switchGithubCliUser(login, { silent: true });
+      if (ok && !opts?.silent) {
+        this.showInfo(`Using ${login} for ${owner}`);
+      }
+    }
+    if (protocol !== 'https' && protocol !== 'ssh') return;
+    const github = this.remotes().filter((remote) => /github\.com/i.test(remote.fetchUrl));
+    const current =
+      github.length && github.every((remote) => remoteProtocol(remote.fetchUrl) === protocol)
+        ? protocol
+        : github.some((remote) => remoteProtocol(remote.fetchUrl) === 'https') &&
+            github.some((remote) => remoteProtocol(remote.fetchUrl) === 'ssh')
+          ? 'mixed'
+          : github.some((remote) => remoteProtocol(remote.fetchUrl) === 'ssh')
+            ? 'ssh'
+            : 'https';
+    if (current !== protocol) {
+      await this.setRepoRemoteProtocol(protocol, { silent: true });
+    }
+  }
+
+  private async runRemoteWithAccountRetry<T>(action: () => Promise<T>): Promise<T> {
+    try {
+      const result = await action();
+      this.rememberGithubRepoAccount();
+      return result;
+    } catch (err) {
+      if (!isRemoteAccessError(rawErrorMessage(err))) throw err;
+      const recovered = await this.recoverGithubRemoteAccess(rawErrorMessage(err));
+      if (!recovered) throw err;
+      const result = await action();
+      this.rememberGithubRepoAccount();
+      return result;
+    }
+  }
+
+  private async recoverGithubRemoteAccess(raw: string): Promise<boolean> {
+    await this.refreshGithubGitStatus();
+    const github = this.remotes().filter((remote) => /github\.com/i.test(remote.fetchUrl));
+    const ssh = github.some((remote) => remoteProtocol(remote.fetchUrl) === 'ssh');
+    if (ssh && /repository not found|could not read from remote/i.test(raw)) {
+      return this.setRepoRemoteProtocol('https', { silent: true });
+    }
+    const active = this.githubGitStatus()?.activeLogin ?? '';
+    const next = (this.githubGitStatus()?.accounts ?? []).find(
+      (account) => account.login && account.login !== active,
+    );
+    if (!next) return false;
+    return this.switchGithubCliUser(next.login, { silent: true });
   }
 
   revealRefsGroup(group: string): void {
@@ -6006,9 +6326,19 @@ export class AppStore {
           if (this.isDummyBackend) {
             await this.simulateReleaseProgress(preview.willPush);
             if (preview.willPush) {
+              this.notifyReleaseOutcome('started', {
+                productName: preview.productName,
+                version: preview.nextVersion,
+                tag: preview.tag,
+              });
               void this.watchReleaseDeploy(path, preview.tag);
               return;
             }
+            this.notifyReleaseOutcome('tagged', {
+              productName: preview.productName,
+              version: preview.nextVersion,
+              tag: preview.tag,
+            });
             return;
           }
           const result = await this.tauri.runRelease(path, opts);
@@ -6021,7 +6351,12 @@ export class AppStore {
               version: preview.nextVersion,
               tag: preview.tag,
             });
-            this.showWarning(result.message);
+            this.notifyReleaseOutcome('failure', {
+              productName: preview.productName,
+              version: preview.nextVersion,
+              tag: preview.tag,
+              message: result.message,
+            });
             return;
           }
           if (preview.willPush) {
@@ -6032,7 +6367,12 @@ export class AppStore {
               version: preview.nextVersion,
               tag: preview.tag,
             });
-            this.showSuccess(result.message);
+            this.notifyReleaseOutcome('started', {
+              productName: preview.productName,
+              version: preview.nextVersion,
+              tag: preview.tag,
+              message: result.message,
+            });
             this.releaseBusy.set(true);
             void this.watchReleaseDeploy(path, preview.tag);
             return;
@@ -6047,10 +6387,15 @@ export class AppStore {
             },
             { needsPush: true },
           );
-          this.showSuccess(result.message);
+          this.notifyReleaseOutcome('tagged', {
+            productName: preview.productName,
+            version: preview.nextVersion,
+            tag: preview.tag,
+            message: result.message,
+          });
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = this.humanizeError(rawErrorMessage(err) || err);
         this.applyReleaseProgress({
           path,
           phase: 'error',
@@ -6058,7 +6403,12 @@ export class AppStore {
           version: preview.nextVersion,
           tag: preview.tag,
         });
-        this.showError(err);
+        this.notifyReleaseOutcome('failure', {
+          productName: preview.productName,
+          version: preview.nextVersion,
+          tag: preview.tag,
+          message,
+        });
       } finally {
         const activity = this.releaseActivity();
         if (!preview.willPush || activity?.phase === 'error') {
@@ -6183,11 +6533,22 @@ export class AppStore {
         },
         { needsPush: false },
       );
-      this.showSuccess(result.message);
+      this.notifyReleaseOutcome('started', {
+        productName: activity.productName,
+        version: activity.nextVersion,
+        tag: activity.tag,
+        message: result.message,
+      });
       void this.watchReleaseDeploy(path, activity.tag);
       return true;
     } catch (err) {
-      this.showError(err);
+      const message = this.humanizeError(rawErrorMessage(err) || err);
+      this.notifyReleaseOutcome('failure', {
+        productName: activity.productName,
+        version: activity.nextVersion,
+        tag: activity.tag,
+        message,
+      });
       return false;
     } finally {
       if (this.releaseActivity()?.phase !== 'deploying') {
@@ -6236,6 +6597,7 @@ export class AppStore {
       { needsRefresh: false },
     );
     this.releaseBusy.set(true);
+    if (this.lastReleaseNoticeKey.endsWith(':paused')) this.lastReleaseNoticeKey = '';
     this.openReleaseTab();
     void this.watchReleaseDeploy(path, activity.tag);
   }
@@ -6276,6 +6638,12 @@ export class AppStore {
       },
       { ...extras, needsRefresh: true },
     );
+    this.notifyReleaseOutcome('paused', {
+      productName: current?.productName,
+      version,
+      tag,
+      message,
+    });
     this.stopReleaseDeployPoll();
   }
 
@@ -6316,6 +6684,16 @@ export class AppStore {
           },
           deployExtras,
         );
+        const hadReleaseUrl = !!current.releaseUrl;
+        const nextUrl = deployExtras.releaseUrl;
+        if (!hadReleaseUrl && nextUrl) {
+          const notes = (this.releaseActivity()?.notes ?? '').trim();
+          if (notes && !this.releaseActivity()?.notesSynced) {
+            void this.publishReleaseNotesIfPossible();
+          } else if (!notes) {
+            void this.loadGitHubReleaseNotes();
+          }
+        }
         if (result.status === 'success') {
           this.releaseBusy.set(false);
           const doneMessage =
@@ -6331,13 +6709,12 @@ export class AppStore {
             },
             deployExtras,
           );
-          this.showSuccess(doneMessage);
-          this.notifyEvent(
-            'updates',
-            `${current.productName} ${current.nextVersion} is live`,
-            'Users get the update banner the next time they open the app.',
-            { toast: false, desktop: true },
-          );
+          this.notifyReleaseOutcome('success', {
+            productName: current.productName,
+            version: current.nextVersion,
+            tag,
+            message: doneMessage,
+          });
           this.stopReleaseDeployPoll();
           return;
         }
@@ -6353,13 +6730,30 @@ export class AppStore {
             },
             deployExtras,
           );
-          this.showWarning(result.message);
+          this.notifyReleaseOutcome('failure', {
+            productName: current.productName,
+            version: current.nextVersion,
+            tag,
+            message: result.message,
+          });
           this.stopReleaseDeployPoll();
           return;
         }
         if (result.status === 'unavailable') {
           this.pauseReleaseTracking(path, tag, current.nextVersion, result.message, deployExtras);
           return;
+        }
+        const failedJob = (result.jobs ?? []).find((job) => {
+          const conclusion = job.conclusion?.trim() ?? '';
+          return conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out';
+        });
+        if (failedJob) {
+          this.notifyReleaseOutcome('job-failed', {
+            productName: current.productName,
+            version: current.nextVersion,
+            tag,
+            message: `${failedJob.name} failed`,
+          });
         }
       } catch {
         errors += 1;
@@ -7025,7 +7419,23 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
     prTemplates: normalizePrTemplates(raw.prTemplates),
     prCreateMethod: raw.prCreateMethod === 'cli' ? 'cli' : 'browser',
+    githubRepoAccounts: normalizeGithubRepoAccounts(raw.githubRepoAccounts),
   };
+}
+
+function normalizeGithubRepoAccounts(raw: unknown): Record<string, GithubRepoAccountPref> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, GithubRepoAccountPref> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const owner = key.trim().toLowerCase();
+    if (!owner || !value || typeof value !== 'object') continue;
+    const row = value as { login?: unknown; protocol?: unknown };
+    const login = typeof row.login === 'string' ? row.login.trim() : '';
+    const protocol = row.protocol === 'ssh' || row.protocol === 'https' ? row.protocol : 'https';
+    if (!login) continue;
+    out[owner] = { login, protocol };
+  }
+  return out;
 }
 
 function normalizeRevisionGridColumns(raw: unknown): RevisionGridColumns {

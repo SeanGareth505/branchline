@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import {
   acceptAllChoices,
@@ -29,7 +30,7 @@ type OpenMenu = 'tools' | null;
 
 @Component({
   selector: 'app-conflict-resolver-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './conflict-resolver-dialog.html',
   styleUrl: './conflict-resolver-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

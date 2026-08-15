@@ -9,12 +9,13 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 
 @Component({
   selector: 'app-worktrees-panel',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './worktrees-panel.html',
   styleUrl: './worktrees-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -11,13 +11,14 @@ import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { RepoCheck } from '../../../core/models';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { CheckScriptDialog } from '../check-script-dialog/check-script-dialog';
 
 @Component({
   selector: 'app-checks-page',
-  imports: [NgIcon, CheckScriptDialog, PageSkeleton, Spinner],
+  imports: [NgIcon, HelpTip, CheckScriptDialog, PageSkeleton, Spinner],
   templateUrl: './checks-page.html',
   styleUrl: './checks-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

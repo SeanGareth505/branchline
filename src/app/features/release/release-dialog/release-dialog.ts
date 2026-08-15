@@ -9,13 +9,14 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { ReleaseDialogService } from './release-dialog.service';
 
 type BumpKind = 'patch' | 'minor' | 'major' | 'custom';
 
 @Component({
   selector: 'app-release-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './release-dialog.html',
   styleUrl: './release-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

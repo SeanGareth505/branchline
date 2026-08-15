@@ -10,7 +10,13 @@
       <header class="dialog-head">
         <div>
           <p class="kicker">Changelog</p>
-          <h2 id="changelog-dialog-title">Extract changelog</h2>
+          <div class="bl-heading-row">
+            <h2 id="changelog-dialog-title">Extract changelog</h2>
+            <app-help-tip
+              heading="Extract changelog"
+              body="Build release notes from commits in a range. Pick a format, then copy or save."
+            />
+          </div>
           <p class="sub">
             {{ resolvedRange().fromLabel }}
             <span class="arrow">→</span>

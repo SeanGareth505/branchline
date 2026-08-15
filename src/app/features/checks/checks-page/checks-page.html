@@ -1,7 +1,13 @@
 <header class="hero">
     <div>
       <p class="kicker">Checks</p>
-      <h1>Commit checks</h1>
+      <div class="bl-heading-row">
+        <h1>Commit checks</h1>
+        <app-help-tip
+          heading="Commit checks"
+          body="Scripts that run before a commit or push. Husky, Lefthook, and Git hooks are detected automatically. Add your own for lint, tests, or anything else you want to gate."
+        />
+      </div>
       <p>
         Husky, Lefthook, and Git hooks are picked up automatically. Add your own scripts to run
         before commit or push.

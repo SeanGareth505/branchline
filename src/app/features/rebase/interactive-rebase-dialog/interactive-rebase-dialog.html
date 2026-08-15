@@ -3,7 +3,13 @@
     <div class="dialog bl-glass-dialog" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
       <header>
         <div>
-          <h2>Interactive rebase</h2>
+          <div class="bl-heading-row">
+            <h2>Interactive rebase</h2>
+            <app-help-tip
+              heading="Interactive rebase"
+              body="Rewrite a range of commits: reorder, reword, squash, fixup, edit, or drop. Same as git rebase -i. Avoid rebasing commits already shared unless you mean to rewrite published history."
+            />
+          </div>
           <p>
             Onto <span class="mono">{{ preview.ontoShort }}</span>
             · {{ store.interactiveRebaseSteps().length }} commits

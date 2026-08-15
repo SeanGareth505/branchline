@@ -52,12 +52,12 @@ export class GitAccountBar {
       if (protocol === 'mixed') return 'This repo mixes SSH and HTTPS. Pick one protocol below.';
       if (protocol === 'https') {
         return httpsUser
-          ? `HTTPS Git uses ${httpsUser}. Click another account to switch.`
+          ? `HTTPS Git uses ${httpsUser} for this GitHub org. Branchline remembers it when you switch repos.`
           : 'HTTPS Git uses saved credentials. Sign in with GitHub CLI if Pull cannot see this repo.';
       }
       if (protocol === 'ssh') {
         return sshUser
-          ? `SSH is ${sshUser}. Switch to HTTPS to use the account buttons.`
+          ? `SSH is ${sshUser}. Switch to HTTPS to use a different GitHub CLI account for this org.`
           : 'SSH uses ~/.ssh. Switch to HTTPS to pick a GitHub CLI account.';
       }
       return 'No GitHub remotes on this repo.';
@@ -68,7 +68,7 @@ export class GitAccountBar {
     if (protocol === 'https') {
       if (httpsUser) {
         return this.usesGh()
-          ? `HTTPS uses GitHub CLI as ${httpsUser}. Keep personal repos on SSH if they belong to a different account.`
+          ? `HTTPS uses GitHub CLI as ${httpsUser}. Branchline remembers this account for this GitHub org when you switch between work and personal repos.`
           : `HTTPS remotes use saved Git credentials as ${httpsUser}.`;
       }
       return 'HTTPS remotes use saved GitHub credentials. Sign in with GitHub CLI if Pull cannot see a private repo.';

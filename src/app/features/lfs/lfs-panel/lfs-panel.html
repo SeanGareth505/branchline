@@ -10,6 +10,11 @@
       <span class="kind" title="Git LFS tracked files (requires git-lfs)">LFS</span>
       <span class="count">{{ filtered().length }}</span>
     </button>
+    <app-help-tip
+      compact
+      heading="LFS"
+      body="Git Large File Storage tracks big binaries as pointers in Git. Pull downloads the real files. Needs git-lfs installed."
+    />
     <button
       type="button"
       class="icon always"

@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle, Emitter, State};
@@ -898,6 +899,27 @@ pub struct PollReleaseDeployInput {
     pub tag: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubReleaseNotesInput {
+    pub path: String,
+    pub tag: String,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubReleaseNotesOutput {
+    pub ok: bool,
+    pub found: bool,
+    pub message: String,
+    pub tag: String,
+    pub body: String,
+    pub html_url: Option<String>,
+    pub draft: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseDeployJobStep {
@@ -1350,6 +1372,8 @@ struct GhReleaseView {
     url: Option<String>,
     #[serde(default)]
     is_draft: Option<bool>,
+    #[serde(default)]
+    body: Option<String>,
 }
 
 fn github_pages_url(owner: &str, repo: &str) -> String {
@@ -1960,6 +1984,256 @@ pub async fn poll_release_deploy(
     .map_err(|e| crate::AppError::msg(format!("Deploy poll interrupted: {e}")))?
 }
 
+fn empty_release_notes(tag: &str, message: impl Into<String>) -> GithubReleaseNotesOutput {
+    GithubReleaseNotesOutput {
+        ok: true,
+        found: false,
+        message: message.into(),
+        tag: tag.to_string(),
+        body: String::new(),
+        html_url: None,
+        draft: false,
+    }
+}
+
+fn notes_from_api_value(tag: &str, value: &Value) -> GithubReleaseNotesOutput {
+    GithubReleaseNotesOutput {
+        ok: true,
+        found: true,
+        message: "Loaded GitHub release notes".into(),
+        tag: tag.to_string(),
+        body: value
+            .get("body")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        html_url: value
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        draft: value.get("draft").and_then(|v| v.as_bool()).unwrap_or(false),
+    }
+}
+
+fn notes_from_gh_view(tag: &str, view: GhReleaseView) -> GithubReleaseNotesOutput {
+    GithubReleaseNotesOutput {
+        ok: true,
+        found: true,
+        message: "Loaded GitHub release notes".into(),
+        tag: tag.to_string(),
+        body: view.body.unwrap_or_default(),
+        html_url: view.url,
+        draft: view.is_draft.unwrap_or(false),
+    }
+}
+
+fn fetch_gh_release_notes(gh: &str, repo: &str, tag: &str) -> Option<GithubReleaseNotesOutput> {
+    Command::new(gh)
+        .args(["release", "view", tag, "-R", repo, "--json", "url,isDraft,body"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|raw| serde_json::from_str::<GhReleaseView>(&raw).ok())
+        .map(|view| notes_from_gh_view(tag, view))
+}
+
+fn update_gh_release_notes(
+    gh: &str,
+    repo: &str,
+    tag: &str,
+    body: &str,
+) -> Option<GithubReleaseNotesOutput> {
+    let mut child = Command::new(gh)
+        .args(["release", "edit", tag, "-R", repo, "--notes-file", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(body.as_bytes()).ok()?;
+    }
+    let output = child.wait_with_output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    fetch_gh_release_notes(gh, repo, tag).map(|mut notes| {
+        notes.body = body.to_string();
+        notes.message = "Updated GitHub release notes".into();
+        notes
+    })
+}
+
+fn fetch_api_release_notes(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    tag: &str,
+) -> AppResult<GithubReleaseNotesOutput> {
+    let resp = client
+        .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| crate::AppError::msg(format!("GitHub release request failed: {e}")))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(empty_release_notes(
+            tag,
+            "GitHub release is not published yet",
+        ));
+    }
+    if !resp.status().is_success() {
+        return Err(crate::AppError::msg(format!(
+            "GitHub release request returned {}",
+            resp.status()
+        )));
+    }
+    let value: Value = resp
+        .json()
+        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub release response: {e}")))?;
+    Ok(notes_from_api_value(tag, &value))
+}
+
+fn update_api_release_notes(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    tag: &str,
+    body: &str,
+) -> AppResult<GithubReleaseNotesOutput> {
+    let resp = client
+        .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| crate::AppError::msg(format!("GitHub release request failed: {e}")))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(empty_release_notes(
+            tag,
+            "GitHub release is not published yet",
+        ));
+    }
+    if !resp.status().is_success() {
+        return Err(crate::AppError::msg(format!(
+            "GitHub release request returned {}",
+            resp.status()
+        )));
+    }
+    let value: Value = resp
+        .json()
+        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub release response: {e}")))?;
+    let id = value.get("id").and_then(|v| v.as_u64()).ok_or_else(|| {
+        crate::AppError::msg("GitHub release response did not include an id")
+    })?;
+    let patch = client
+        .patch(format!("{base}/repos/{full}/releases/{id}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .json(&serde_json::json!({ "body": body }))
+        .send()
+        .map_err(|e| crate::AppError::msg(format!("GitHub release update failed: {e}")))?;
+    if !patch.status().is_success() {
+        return Err(crate::AppError::msg(format!(
+            "GitHub release update returned {}",
+            patch.status()
+        )));
+    }
+    let updated: Value = patch
+        .json()
+        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub release response: {e}")))?;
+    let mut notes = notes_from_api_value(tag, &updated);
+    notes.body = body.to_string();
+    notes.message = "Updated GitHub release notes".into();
+    Ok(notes)
+}
+
+fn github_release_notes_blocking(
+    path: PathBuf,
+    tag: String,
+    body: Option<String>,
+    connection: Option<ConnectionConfig>,
+) -> AppResult<GithubReleaseNotesOutput> {
+    git_cli::ensure_repo(&path)?;
+    let (owner, repo) = resolve_github_repo(&path)?;
+    let full = format!("{owner}/{repo}");
+    if let Some(gh) = gh_command() {
+        if let Some(body) = body.as_deref() {
+            if let Some(notes) = update_gh_release_notes(&gh, &full, &tag, body) {
+                return Ok(notes);
+            }
+        } else if let Some(notes) = fetch_gh_release_notes(&gh, &full, &tag) {
+            return Ok(notes);
+        }
+    }
+    let Some(connection) = connection else {
+        return Ok(empty_release_notes(
+            &tag,
+            "Link GitHub in Settings → Connections or install gh to edit release notes.",
+        ));
+    };
+    let base = {
+        let trimmed = connection.base_url.trim().trim_end_matches('/');
+        if trimmed.is_empty() {
+            "https://api.github.com".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let token = connection.token.trim();
+    let client = reqwest::blocking::Client::new();
+    if let Some(body) = body.as_deref() {
+        update_api_release_notes(&client, &base, token, &full, &tag, body)
+    } else {
+        fetch_api_release_notes(&client, &base, token, &full, &tag)
+    }
+}
+
+#[command]
+pub async fn get_github_release_notes(
+    state: State<'_, AppState>,
+    input: GithubReleaseNotesInput,
+) -> AppResult<GithubReleaseNotesOutput> {
+    let path = PathBuf::from(&input.path);
+    let tag = input.tag.trim().to_string();
+    if tag.is_empty() {
+        return Err(crate::AppError::msg("Tag is required"));
+    }
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        github_release_notes_blocking(path, tag, None, connection)
+    })
+    .await
+    .map_err(|e| crate::AppError::msg(format!("Release notes request interrupted: {e}")))?
+}
+
+#[command]
+pub async fn update_github_release_notes(
+    state: State<'_, AppState>,
+    input: GithubReleaseNotesInput,
+) -> AppResult<GithubReleaseNotesOutput> {
+    let path = PathBuf::from(&input.path);
+    let tag = input.tag.trim().to_string();
+    if tag.is_empty() {
+        return Err(crate::AppError::msg("Tag is required"));
+    }
+    let body = input.body.unwrap_or_default();
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        github_release_notes_blocking(path, tag, Some(body), connection)
+    })
+    .await
+    .map_err(|e| crate::AppError::msg(format!("Release notes update interrupted: {e}")))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2143,5 +2417,22 @@ mod tests {
         assert_eq!(jobs[0].steps[1].name, "Build");
         assert_eq!(jobs[0].steps[1].status, "in_progress");
         assert_eq!(jobs[0].started_at.as_deref(), None);
+    }
+
+    #[test]
+    fn notes_from_api_value_reads_body_and_url() {
+        let value = serde_json::json!({
+            "body": "## 0.7.15\n\n- Notes",
+            "html_url": "https://github.com/acme/branchline/releases/tag/v0.7.15",
+            "draft": false
+        });
+        let notes = notes_from_api_value("v0.7.15", &value);
+        assert!(notes.found);
+        assert_eq!(notes.body, "## 0.7.15\n\n- Notes");
+        assert_eq!(
+            notes.html_url.as_deref(),
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.15")
+        );
+        assert!(!notes.draft);
     }
 }

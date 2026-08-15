@@ -1,6 +1,13 @@
 <div class="history">
   <header>
-    <span class="title">File history</span>
+    <span class="bl-heading-row">
+      <span class="title">File history</span>
+      <app-help-tip
+        compact
+        heading="File history"
+        body="Commits that changed the selected file, newest first. Click a commit to inspect it."
+      />
+    </span>
     @if (hasFile()) {
       <span class="path mono" [title]="displayPath">{{ displayPath }}</span>
     } @else {

@@ -17,6 +17,7 @@ import { AppStore } from '../../../core/app.store';
 import type { BranchInfo } from '../../../core/models';
 import { describeBranchSync, shortUpstream } from '../../../shared/git/branch-sync';
 import { isMainlineBranch } from '../../../shared/git/mainline-branch';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from '../../../shared/ui/select-dialog/select.service';
 import { parseRemoteRef } from '../../../shared/git/remote-ref';
@@ -103,6 +104,7 @@ type TagFlatRow =
     WorktreesPanel,
     SubmodulesPanel,
     LfsPanel,
+    HelpTip,
   ],
   templateUrl: './refs-panel.html',
   styleUrl: './refs-panel.scss',

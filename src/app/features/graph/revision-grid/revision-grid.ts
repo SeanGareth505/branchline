@@ -18,14 +18,13 @@ import { AppStore } from '../../../core/app.store';
 import type { ArtificialCommit, CommitInfo, RevisionGridColumns } from '../../../core/models';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import {
-  GRAPH_PAD,
-  LANE_WIDTH,
-  NODE_RADIUS,
-  NODE_RADIUS_SELECTED,
   ROW_HEIGHT,
   buildGraphLayout,
+  graphWidthForLanes,
+  lanePitch,
   laneX,
   linkPath,
+  nodeRadiusForPitch,
   type GraphLink,
   type GraphNode,
 } from '../graph-layout';
@@ -110,8 +109,6 @@ export class RevisionGrid {
   private readonly headerRef = viewChild<ElementRef<HTMLElement>>('header');
 
   readonly rowHeight = ROW_HEIGHT;
-  readonly nodeR = NODE_RADIUS;
-  readonly nodeRSel = NODE_RADIUS_SELECTED;
   readonly queryDraft = signal(this.store.historyFilter().query);
   readonly authorDraft = signal(this.store.historyFilter().author);
   private filterTimer: number | null = null;
@@ -190,10 +187,12 @@ export class RevisionGrid {
     return names;
   });
 
-  readonly graphWidth = computed(() => {
-    const lanes = this.layout().laneCount;
-    return Math.max(64, GRAPH_PAD * 2 + lanes * LANE_WIDTH);
-  });
+  readonly lanePitch = computed(() => lanePitch(this.layout().laneCount));
+  readonly nodeR = computed(() => nodeRadiusForPitch(this.lanePitch()));
+  readonly nodeRSel = computed(() => this.nodeR() + 1.25);
+  readonly graphWidth = computed(() =>
+    graphWidthForLanes(this.layout().laneCount, this.lanePitch()),
+  );
 
   readonly headerCols: { id: GridColId; label: string; className: string }[] = [
     { id: 'graph', label: '', className: 'h-graph' },
@@ -226,6 +225,7 @@ export class RevisionGrid {
   readonly staticRows = computed((): StaticRowView[] => {
     const nodes = this.layout().nodes;
     const remotes = this.remoteRefNames();
+    const pitch = this.lanePitch();
 
     return nodes.map((node, i) => {
       const commit = node.commit;
@@ -236,10 +236,10 @@ export class RevisionGrid {
         alt: i % 2 === 1,
         artificial: node.kind === 'artificial',
         head: !!commit?.refs.includes('HEAD'),
-        cx: laneX(node.lane),
+        cx: laneX(node.lane, pitch),
         nodeFill: fill,
-        baseTopLinks: mapLinks(node.topLinks, 'top'),
-        baseBottomLinks: mapLinks(node.bottomLinks, 'bottom'),
+        baseTopLinks: mapLinks(node.topLinks, 'top', pitch),
+        baseBottomLinks: mapLinks(node.bottomLinks, 'bottom', pitch),
         art: node.artificial,
         commit,
         timeLabel: commit ? formatTime(commit.timestamp) : '',
@@ -685,10 +685,10 @@ function chipClass(ref: string, remotes: Set<string>): string {
   return 'bl-chip bl-chip-local';
 }
 
-function mapLinks(links: GraphLink[], half: 'top' | 'bottom'): LinkView[] {
+function mapLinks(links: GraphLink[], half: 'top' | 'bottom', pitch: number): LinkView[] {
   return links.map((link) => ({
     key: `${half}-${link.from}-${link.to}-${link.colorIndex}-${link.mergeParent ? 1 : 0}`,
-    d: linkPath(link.from, link.to, half, ROW_HEIGHT),
+    d: linkPath(link.from, link.to, half, ROW_HEIGHT, pitch),
     stroke: laneColor(link.colorIndex),
     mergeParent: !!link.mergeParent,
     lineage: false,

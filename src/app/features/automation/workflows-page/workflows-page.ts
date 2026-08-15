@@ -13,6 +13,7 @@ import type { BranchInfo, WorkflowInfo, WorkflowStep, WorkflowStepConfig } from 
 import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { SelectService, type SelectOption } from '../../../shared/ui/select-dialog/select.service';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { WorkflowEditorDialog } from '../workflow-editor-dialog/workflow-editor-dialog';
@@ -28,7 +29,7 @@ class WorkflowCancelled extends Error {
 
 @Component({
   selector: 'app-workflows-page',
-  imports: [NgIcon, WorkflowEditorDialog, PageSkeleton, Spinner, ChecksPage],
+  imports: [NgIcon, HelpTip, WorkflowEditorDialog, PageSkeleton, Spinner, ChecksPage],
   templateUrl: './workflows-page.html',
   styleUrl: './workflows-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

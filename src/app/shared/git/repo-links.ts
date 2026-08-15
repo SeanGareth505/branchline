@@ -78,6 +78,13 @@ export function githubOrgFromRemote(url: string): string | null {
   return org?.trim() || null;
 }
 
+export function primaryGithubOwner(remotes: { name: string; fetchUrl: string }[]): string {
+  const origin = remotes.find((remote) => remote.name === 'origin');
+  const github = remotes.find((remote) => /github\.com/i.test(remote.fetchUrl));
+  const url = origin?.fetchUrl || github?.fetchUrl || '';
+  return (githubOrgFromRemote(url) || '').toLowerCase();
+}
+
 export function githubSsoUrl(url: string): string | null {
   const org = githubOrgFromRemote(url);
   if (!org) return null;

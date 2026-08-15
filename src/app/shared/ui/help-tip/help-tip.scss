@@ -1,0 +1,65 @@
+:host {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.tip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tip-btn:hover,
+.tip-btn.open {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.tip-btn.compact {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.panel {
+  width: min(22rem, calc(100vw - 1.5rem));
+  padding: 0.7rem 0.85rem 0.75rem;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 10px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  box-shadow: var(--shadow-float);
+}
+
+h3 {
+  margin: 0 0 0.3rem;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.body {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.body p {
+  margin: 0;
+}
+
+.body p + p {
+  margin-top: 0.4rem;
+}

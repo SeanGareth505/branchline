@@ -4,11 +4,12 @@ import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { GitIdentity, IdentityCandidate, IdentityContexts } from '../../../core/models';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-profiles-page',
-  imports: [FormsModule, NgIcon, LoadingBlock],
+  imports: [FormsModule, NgIcon, HelpTip, LoadingBlock],
   templateUrl: './profiles-page.html',
   styleUrl: './profiles-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

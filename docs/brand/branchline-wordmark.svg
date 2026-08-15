@@ -25,8 +25,8 @@
   <text
     x="42"
     y="22"
-    fill="currentColor"
-    font-family="Geist, IBM Plex Sans, ui-sans-serif, system-ui, sans-serif"
+    fill="#e8eef7"
+    font-family="Sora, IBM Plex Sans, ui-sans-serif, system-ui, sans-serif"
     font-size="18"
     font-weight="700"
     letter-spacing="-0.04em"

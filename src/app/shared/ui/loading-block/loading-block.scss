@@ -25,11 +25,11 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--accent) 20%, transparent),
+    color-mix(in srgb, #3ecfff 22%, transparent),
     transparent 68%
   );
   pointer-events: none;
-  animation: bl-load-glow 3s ease-in-out infinite;
+  animation: bl-load-glow 3.4s ease-in-out infinite;
 }
 
 .loading.compact {
@@ -62,12 +62,12 @@
 @keyframes bl-load-glow {
   0%,
   100% {
-    opacity: 0.45;
-    transform: scale(0.9);
+    opacity: 0.4;
+    transform: scale(0.94);
   }
   50% {
-    opacity: 1;
-    transform: scale(1.08);
+    opacity: 0.85;
+    transform: scale(1.04);
   }
 }
 

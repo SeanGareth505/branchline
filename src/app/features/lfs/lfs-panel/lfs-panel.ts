@@ -7,11 +7,12 @@ import {
   output,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 
 @Component({
   selector: 'app-lfs-panel',
-  imports: [NgIcon],
+  imports: [NgIcon, HelpTip],
   templateUrl: './lfs-panel.html',
   styleUrl: './lfs-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

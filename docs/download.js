@@ -202,6 +202,11 @@ async function loadLatest() {
       primaryLabel = 'Download for Linux';
     }
 
+    const versionBadge = document.getElementById('version-badge');
+    if (versionBadge && release.tag_name) {
+      versionBadge.textContent = release.tag_name;
+    }
+
     if (primary) {
       primaryBtn.href = primary.browser_download_url;
       primaryBtn.textContent = primaryLabel;

@@ -2,126 +2,101 @@
   display: inline-grid;
   place-items: center;
   line-height: 0;
-  color: var(--accent);
   flex-shrink: 0;
 }
 
-:host-context(.bl-btn-primary),
-:host-context(.tool.primary) {
-  color: var(--btn-primary-fg, #ffffff);
-}
-
 .spinner {
-  --stroke: 2.25px;
+  --ring: 1.6px;
+  --cyan: #3ecfff;
+  --cyan-hi: #7ae0ff;
+  --cyan-node: #b8f0ff;
   display: grid;
   place-items: center;
   position: relative;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2.35rem;
+  height: 2.35rem;
 }
 
 .spinner[data-size='sm'] {
-  --stroke: 2px;
-  width: 1rem;
-  height: 1rem;
+  --ring: 1.35px;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .spinner[data-size='lg'] {
-  --stroke: 2.5px;
-  width: 3.25rem;
-  height: 3.25rem;
+  --ring: 2px;
+  width: 5.25rem;
+  height: 5.25rem;
 }
 
+.halo,
+.ring,
 .track,
-.orbit {
+.arc {
   position: absolute;
   inset: 0;
-  border-radius: 50%;
   pointer-events: none;
 }
 
-.track {
-  border: var(--stroke) solid color-mix(in srgb, currentColor 16%, transparent);
+.halo {
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--cyan) 28%, transparent) 0%,
+    color-mix(in srgb, var(--cyan) 10%, transparent) 42%,
+    transparent 70%
+  );
+  transform: scale(1.12);
 }
 
-.orbit {
+.spinner[data-size='lg'] .halo {
+  animation: bl-halo 2.8s ease-in-out infinite;
+}
+
+.track,
+.arc {
+  border-radius: 50%;
+}
+
+.track {
+  border: var(--ring) solid color-mix(in srgb, var(--cyan) 16%, transparent);
+}
+
+.arc {
   background: conic-gradient(
     from 0deg,
-    transparent 0%,
-    transparent 18%,
-    color-mix(in srgb, currentColor 22%, transparent) 48%,
-    currentColor 86%,
-    color-mix(in srgb, currentColor 40%, #fff) 100%
+    transparent 0 58%,
+    color-mix(in srgb, var(--cyan) 18%, transparent) 72%,
+    var(--cyan-hi) 88%,
+    var(--cyan-node) 100%
   );
   -webkit-mask: radial-gradient(
     farthest-side,
-    transparent calc(100% - var(--stroke) - 0.4px),
-    #000 calc(100% - var(--stroke))
+    transparent calc(100% - var(--ring) - 0.45px),
+    #000 calc(100% - var(--ring))
   );
   mask: radial-gradient(
     farthest-side,
-    transparent calc(100% - var(--stroke) - 0.4px),
-    #000 calc(100% - var(--stroke))
+    transparent calc(100% - var(--ring) - 0.45px),
+    #000 calc(100% - var(--ring))
   );
-  animation: bl-orbit 0.82s linear infinite;
+  animation: bl-orbit 1.15s linear infinite;
 }
 
-.spinner[data-size='lg'] .orbit {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 45%, transparent));
+.spinner[data-size='lg'] .arc {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--cyan) 40%, transparent));
 }
 
-.mark {
-  display: block;
-  width: 54%;
-  height: 54%;
-  overflow: visible;
+.logo {
   position: relative;
   z-index: 1;
-  animation: bl-breathe 2.6s ease-in-out infinite;
+  display: grid;
+  place-items: center;
+  line-height: 0;
 }
 
-.spinner[data-size='sm'] .mark {
-  display: none;
-}
-
-.branch {
-  stroke: currentColor;
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.28;
-}
-
-.flow {
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.flow-a {
-  stroke-dasharray: 8 22;
-  animation: bl-flow-a 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-.flow-b {
-  stroke-dasharray: 5 16;
-  animation: bl-flow-b 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-.node {
-  fill: currentColor;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: bl-node 1.8s ease-in-out infinite;
-}
-
-.n2 {
-  animation-delay: 0.22s;
-}
-
-.n3 {
-  animation-delay: 0.44s;
+.logo app-brand-mark {
+  display: block;
 }
 
 @keyframes bl-orbit {
@@ -130,66 +105,30 @@
   }
 }
 
-@keyframes bl-breathe {
+@keyframes bl-halo {
   0%,
   100% {
-    opacity: 0.88;
-    transform: scale(0.96);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes bl-flow-a {
-  to {
-    stroke-dashoffset: -30;
-  }
-}
-
-@keyframes bl-flow-b {
-  to {
-    stroke-dashoffset: -21;
-  }
-}
-
-@keyframes bl-node {
-  0%,
-  100% {
-    opacity: 0.42;
-    transform: scale(0.86);
-  }
-  50% {
-    opacity: 1;
+    opacity: 0.55;
     transform: scale(1.08);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orbit,
-  .mark,
-  .flow,
-  .node {
+  .arc,
+  .halo {
     animation: none;
   }
 
-  .orbit {
-    transform: rotate(-70deg);
+  .arc {
+    transform: rotate(-80deg);
   }
 
-  .mark {
-    opacity: 1;
-    transform: none;
-  }
-
-  .flow {
-    stroke-dasharray: none;
-    opacity: 0.9;
-  }
-
-  .node {
-    opacity: 1;
-    transform: none;
+  .halo {
+    opacity: 0.7;
+    transform: scale(1.1);
   }
 }

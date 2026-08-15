@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { AppStore } from '../../../core/app.store';
 import type { RebaseAction } from '../../../core/models';
 
@@ -15,7 +16,7 @@ const ACTIONS: { id: RebaseAction; label: string }[] = [
 
 @Component({
   selector: 'app-interactive-rebase-dialog',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, HelpTip],
   templateUrl: './interactive-rebase-dialog.html',
   styleUrl: './interactive-rebase-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

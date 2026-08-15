@@ -3,11 +3,12 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { FileHistoryEntry } from '../../../core/models';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-file-history-panel',
-  imports: [LoadingBlock],
+  imports: [HelpTip, LoadingBlock],
   templateUrl: './file-history-panel.html',
   styleUrl: './file-history-panel.scss',
 })

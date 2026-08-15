@@ -65,6 +65,7 @@ import type {
   ReleaseSetupHintsOutput,
   ReleaseSetupFileHint,
   PollReleaseDeployOutput,
+  GithubReleaseNotesOutput,
 } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
 
@@ -77,6 +78,7 @@ export class TauriService {
   private mockCustomWorkflows: WorkflowInfo[] = [];
   private mockDisabledBuiltinWorkflows = new Set<string>();
   private mockCustomChecks: RepoCheck[] = [];
+  private mockGithubReleaseNotes = new Map<string, string>();
   private mockDisabledCheckIds = new Set<string>();
   private mockAnnouncedManagers = false;
 
@@ -698,6 +700,18 @@ export class TauriService {
   pollReleaseDeploy(path: string, tag: string) {
     return this.invoke<PollReleaseDeployOutput>('poll_release_deploy', {
       input: { path, tag },
+    });
+  }
+
+  getGithubReleaseNotes(path: string, tag: string) {
+    return this.invoke<GithubReleaseNotesOutput>('get_github_release_notes', {
+      input: { path, tag },
+    });
+  }
+
+  updateGithubReleaseNotes(path: string, tag: string, body: string) {
+    return this.invoke<GithubReleaseNotesOutput>('update_github_release_notes', {
+      input: { path, tag, body },
     });
   }
 
@@ -1722,6 +1736,7 @@ export class TauriService {
         notifyRelease: true,
         hideUntracked: false,
         uiDensity: 'comfortable',
+        githubRepoAccounts: {},
       },
       save_settings: args?.['input'] ?? {},
       get_git_env: {
@@ -2453,6 +2468,29 @@ export class TauriService {
       } as T;
     }
 
+    if (cmd === 'get_github_release_notes' || cmd === 'update_github_release_notes') {
+      const input = (args?.['input'] as { tag?: string; body?: string } | undefined) ?? {};
+      const tag = input.tag?.trim() || 'v0.1.1';
+      if (cmd === 'update_github_release_notes') {
+        this.mockGithubReleaseNotes.set(tag, input.body ?? '');
+      }
+      const body =
+        this.mockGithubReleaseNotes.get(tag) ??
+        `## Demo App ${tag.replace(/^v/, '')}\n\n- Mock release notes`;
+      return {
+        ok: true,
+        found: true,
+        message:
+          cmd === 'update_github_release_notes'
+            ? 'Updated GitHub release notes'
+            : 'Loaded GitHub release notes',
+        tag,
+        body,
+        htmlUrl: `https://github.com/example/navigo/releases/tag/${tag}`,
+        draft: false,
+      } as T;
+    }
+
     if (cmd in mocks) {
       return mocks[cmd] as T;
     }
@@ -3083,6 +3121,7 @@ export class TauriService {
       uiDensity: 'comfortable' as const,
       prTemplates: [],
       prCreateMethod: 'browser' as const,
+      githubRepoAccounts: {},
     };
 
     try {

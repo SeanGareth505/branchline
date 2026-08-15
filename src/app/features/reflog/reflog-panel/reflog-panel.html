@@ -1,5 +1,12 @@
 <div class="reflog">
-  <header>Reflog · HEAD movements</header>
+  <header class="bl-heading-row">
+    <span>Reflog · HEAD movements</span>
+    <app-help-tip
+      compact
+      heading="Reflog"
+      body="A diary of where HEAD has been — checkouts, commits, resets, amends. Use it to find a commit you thought was lost, then branch from it."
+    />
+  </header>
   @if (loading()) {
     <app-loading-block message="Loading reflog…" [compact]="true" />
   } @else {

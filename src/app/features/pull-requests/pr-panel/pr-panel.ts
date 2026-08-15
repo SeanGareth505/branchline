@@ -13,13 +13,14 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { MockPullRequest } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 
 type SortKey = 'updated' | 'number' | 'title' | 'additions';
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgIcon, PageSkeleton],
+  imports: [FormsModule, NgIcon, HelpTip, PageSkeleton],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

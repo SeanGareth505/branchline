@@ -294,16 +294,16 @@
 .boot-card::before {
   content: '';
   position: absolute;
-  width: 7.25rem;
-  height: 7.25rem;
+  width: 9.5rem;
+  height: 9.5rem;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--accent) 26%, transparent),
+    color-mix(in srgb, #3ecfff 28%, transparent),
     transparent 70%
   );
   pointer-events: none;
-  animation: bl-boot-glow 3s ease-in-out infinite;
+  animation: bl-boot-glow 3.4s ease-in-out infinite;
 }
 
 .boot-card app-spinner {
@@ -325,12 +325,12 @@
 @keyframes bl-boot-glow {
   0%,
   100% {
-    opacity: 0.42;
-    transform: scale(0.92);
+    opacity: 0.4;
+    transform: scale(0.94);
   }
   50% {
-    opacity: 1;
-    transform: scale(1.1);
+    opacity: 0.88;
+    transform: scale(1.06);
   }
 }
 

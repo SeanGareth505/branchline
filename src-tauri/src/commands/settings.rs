@@ -132,6 +132,15 @@ pub struct AppSettings {
     pub pr_templates: Vec<SavedPrTemplate>,
     #[serde(default = "default_pr_create_method")]
     pub pr_create_method: String,
+    #[serde(default)]
+    pub github_repo_accounts: std::collections::HashMap<String, GithubRepoAccountPref>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRepoAccountPref {
+    pub login: String,
+    pub protocol: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -388,6 +397,7 @@ impl Default for AppSettings {
             ui_density: default_density(),
             pr_templates: Vec::new(),
             pr_create_method: default_pr_create_method(),
+            github_repo_accounts: std::collections::HashMap::new(),
         }
     }
 }

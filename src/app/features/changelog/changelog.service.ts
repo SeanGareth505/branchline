@@ -114,6 +114,44 @@ export class ChangelogService {
     return sorted[0] ?? null;
   }
 
+  previousReleaseTag(
+    tags: TagInfo[],
+    commits: CommitInfo[],
+    currentName: string | null,
+  ): TagInfo | null {
+    const sorted = this.sortTagsNewestFirst(tags, commits);
+    const current = currentName?.trim() ?? '';
+    const idx = current ? sorted.findIndex((tag) => tag.name === current) : -1;
+    if (idx >= 0) return sorted[idx + 1] ?? null;
+    return sorted[0] ?? null;
+  }
+
+  githubReleaseBody(
+    commits: CommitInfo[],
+    version: string,
+    fromLabel: string,
+    toLabel: string,
+  ): string {
+    return this.generate(
+      commits,
+      {
+        format: 'release',
+        version,
+        title: '',
+        team: '',
+        preparedBy: '',
+        includeAuthors: false,
+        includeShas: true,
+        includeContributors: false,
+        excludeMerges: true,
+        excludeChores: false,
+        date: this.todayIso(),
+      },
+      fromLabel,
+      toLabel,
+    ).markdown.trim();
+  }
+
   suggestVersion(tags: TagInfo[], commits: CommitInfo[]): string {
     const latest = this.latestTag(tags, commits)?.name ?? '';
     const match = latest.match(/(\d+)\.(\d+)\.(\d+)/);

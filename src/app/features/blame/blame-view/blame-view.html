@@ -1,7 +1,14 @@
 <div class="blame">
   <header>
     <div class="head-text">
-      <span class="title">Blame</span>
+      <span class="bl-heading-row">
+        <span class="title">Blame</span>
+        <app-help-tip
+          compact
+          heading="Blame"
+          body="Each line of the selected file, annotated with who last changed it and in which commit. Click a line to open that commit in Diff."
+        />
+      </span>
       @if (store.selectedDiffPath(); as file) {
         <span class="path mono" [title]="file">{{ fileName(file) }}</span>
         <span class="meta">{{ visibleLines().length }}{{ mineOnly() ? ' of ' + lines().length : '' }} lines</span>

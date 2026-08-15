@@ -3,6 +3,10 @@
     <div>
       <div class="title-row">
         <h1>Pull requests</h1>
+        <app-help-tip
+          heading="Pull requests"
+          body="Open and review pull requests for this repository. Connect a Git host in Settings if this list is empty or showing sample data."
+        />
         @if (showingDummy()) {
           <span class="dummy-badge">DUMMY DATA</span>
         }

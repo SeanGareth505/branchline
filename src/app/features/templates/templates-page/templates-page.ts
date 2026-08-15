@@ -3,11 +3,12 @@ import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
 import type { TemplateInfo } from '../../../core/models';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 
 @Component({
   selector: 'app-templates-page',
-  imports: [NgIcon, PageSkeleton],
+  imports: [NgIcon, HelpTip, PageSkeleton],
   templateUrl: './templates-page.html',
   styleUrl: './templates-page.scss',
 })

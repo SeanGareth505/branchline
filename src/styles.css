@@ -732,8 +732,22 @@ code,
   z-index: 2000;
 }
 
-.patch-line-menu-panel {
+.patch-line-menu-panel,
+.bl-help-overlay {
   pointer-events: auto;
+}
+
+.bl-heading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.bl-heading-row h1,
+.bl-heading-row h2 {
+  margin: 0;
 }
 
 .bl-tooltip {

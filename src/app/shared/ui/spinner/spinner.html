@@ -1,13 +1,10 @@
 <span class="spinner" [attr.data-size]="size()" role="status" [attr.aria-label]="label()">
-  <span class="track" aria-hidden="true"></span>
-  <span class="orbit" aria-hidden="true"></span>
-  <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-    <path class="branch" d="M11.5 7.5v7.2c0 1.7 1.2 2.8 2.8 2.8H21" />
-    <path class="branch" d="M11.5 14.7V24.5" />
-    <path class="flow flow-a" d="M11.5 7.5v7.2c0 1.7 1.2 2.8 2.8 2.8H21" />
-    <path class="flow flow-b" d="M11.5 14.7V24.5" />
-    <circle class="node n1" cx="11.5" cy="7.5" r="2.4" />
-    <circle class="node n2" cx="21" cy="17.5" r="2.4" />
-    <circle class="node n3" cx="11.5" cy="24.5" r="2.4" />
-  </svg>
+  <span class="halo" aria-hidden="true"></span>
+  <span class="ring" aria-hidden="true">
+    <span class="track"></span>
+    <span class="arc"></span>
+  </span>
+  <span class="logo" aria-hidden="true">
+    <app-brand-mark [size]="markSize()" title="Branchline" />
+  </span>
 </span>

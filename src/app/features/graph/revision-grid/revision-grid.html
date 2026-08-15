@@ -153,7 +153,7 @@
               [class.lineage]="isRowLineageNode(row)"
               [attr.cx]="row.cx"
               [attr.cy]="rowHeight / 2"
-              [attr.r]="isRowSelected(row) ? nodeRSel : nodeR"
+              [attr.r]="isRowSelected(row) ? nodeRSel() : nodeR()"
               [attr.fill]="row.nodeFill"
               [attr.stroke]="isRowSelected(row) ? 'var(--text-primary)' : row.nodeFill"
             />
@@ -162,7 +162,7 @@
                 class="merge-ring"
                 [attr.cx]="row.cx"
                 [attr.cy]="rowHeight / 2"
-                [attr.r]="nodeR + 3.5"
+                [attr.r]="nodeR() + 2.4"
                 [attr.stroke]="row.nodeFill"
               />
               <circle

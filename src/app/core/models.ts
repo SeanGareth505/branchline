@@ -326,6 +326,7 @@ export interface AppSettings {
   uiDensity: 'comfortable' | 'compact';
   prTemplates: SavedPrTemplate[];
   prCreateMethod: PrCreateMethod;
+  githubRepoAccounts: Record<string, GithubRepoAccountPref>;
 }
 
 export interface GitEnvSnapshot {
@@ -562,6 +563,11 @@ export interface GithubGitStatus {
   usesGhHelper: boolean;
   accounts: GithubCliAccount[];
   activeLogin: string;
+}
+
+export interface GithubRepoAccountPref {
+  login: string;
+  protocol: 'https' | 'ssh';
 }
 
 export interface TestConnectionInput {
@@ -842,10 +848,22 @@ export interface ReleaseActivity {
   needsRefresh?: boolean;
   phase: ReleasePhase;
   message: string;
+  notes?: string | null;
+  notesSynced?: boolean;
   steps: ReleaseActivityStep[];
   startedAt: number;
   finishedAt?: number | null;
   ok?: boolean | null;
+}
+
+export interface GithubReleaseNotesOutput {
+  ok: boolean;
+  found: boolean;
+  message: string;
+  tag: string;
+  body: string;
+  htmlUrl?: string | null;
+  draft: boolean;
 }
 
 export interface CreatePullRequestOutput {

@@ -13,6 +13,7 @@ import type {
   GitEnvSnapshot,
   TestConnectionOutput,
 } from '../../../core/models';
+import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { Dashboard } from '../../../layout/dashboard/dashboard';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
@@ -35,7 +36,7 @@ type ConfirmationKey =
 
 @Component({
   selector: 'app-settings-page',
-  imports: [FormsModule, NgIcon, Dashboard, TicketFromBranch, GitAccountBar],
+  imports: [FormsModule, NgIcon, HelpTip, Dashboard, TicketFromBranch, GitAccountBar],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
 })
@@ -75,17 +76,43 @@ export class SettingsPage implements OnInit {
     { key: 'confirmRemoveRemote', label: 'Remove remote', hint: 'Confirm before deleting a remote entry' },
   ];
 
-  readonly sections: { id: SettingsSection; label: string; hint: string }[] = [
-    { id: 'repos', label: 'Repos', hint: 'Open, clone, and manage local repositories' },
-    { id: 'appearance', label: 'Appearance', hint: 'Theme, accent, and UI modes' },
-    { id: 'git', label: 'Git', hint: 'Identity, pull/push, commits, and external tools' },
+  readonly sections: { id: SettingsSection; label: string; hint: string; help: string }[] = [
+    {
+      id: 'repos',
+      label: 'Repos',
+      hint: 'Open, clone, and manage local repositories',
+      help: 'Open a folder, clone from a URL, or pin repos you use often. The last repo you opened is offered first.',
+    },
+    {
+      id: 'appearance',
+      label: 'Appearance',
+      hint: 'Theme, accent, and UI modes',
+      help: 'Theme, accent, and Simple vs Advanced. Simple hides Identity, Automation, Templates, and extra inspect tabs like Blame and Reflog.',
+    },
+    {
+      id: 'git',
+      label: 'Git',
+      hint: 'Identity, pull/push, commits, and external tools',
+      help: 'Author identity, commit signing, pull and push defaults, safety confirmations, commit types, and which editor or diff tool to open.',
+    },
     {
       id: 'notifications',
       label: 'Notifications',
       hint: 'Toasts, desktop alerts, Git and pull request events',
+      help: 'In-app toasts and optional desktop alerts for Git and pull request events.',
     },
-    { id: 'connections', label: 'Connections', hint: 'Git hosts, Jira, SSH keys, and credentials' },
-    { id: 'about', label: 'About', hint: 'Version, updates, and crash diagnostics' },
+    {
+      id: 'connections',
+      label: 'Connections',
+      hint: 'Git hosts, Jira, SSH keys, and credentials',
+      help: 'GitHub accounts, Jira, SSH keys, and credentials used to talk to remotes and issue trackers.',
+    },
+    {
+      id: 'about',
+      label: 'About',
+      hint: 'Version, updates, and crash diagnostics',
+      help: 'App version, updates, and crash diagnostics if something goes wrong.',
+    },
   ];
 
   readonly sectionMeta = computed(

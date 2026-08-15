@@ -3,7 +3,7 @@ import {
   humanizeGitError,
   isRemoteAccessError,
 } from './git-error';
-import { githubSshKeysUrl, githubSsoUrl, normalizeRemoteUrl, remoteProtocol, remoteRepoSlug, toHttpsRemoteUrl, toSshRemoteUrl } from './repo-links';
+import { githubSshKeysUrl, githubSsoUrl, normalizeRemoteUrl, primaryGithubOwner, remoteProtocol, remoteRepoSlug, toHttpsRemoteUrl, toSshRemoteUrl } from './repo-links';
 
 describe('git remote errors', () => {
   const notFound =
@@ -77,5 +77,10 @@ describe('git remote errors', () => {
     expect(remoteRepoSlug('git@github.com:Dis-Chem/dischem-sap-commerce.git')).toBe(
       'Dis-Chem/dischem-sap-commerce',
     );
+    expect(
+      primaryGithubOwner([
+        { name: 'origin', fetchUrl: 'https://github.com/Dis-Chem/dischem-web.git' },
+      ]),
+    ).toBe('dis-chem');
   });
 });
