@@ -104,13 +104,13 @@ https://seangareth505.github.io/branchline/
 
 > Note: Branchline is primarily a desktop Git GUI. The Android build packages the UI as an APK for sideloading; local Git workflows on phone will be limited compared to desktop.
 
-Workflow: `.github/workflows/release-android.yml`
+Workflow: `.github/workflows/release.yml` (same tag push as desktop).
 
 After the workflow finishes, open **Releases** on GitHub. The APK download URL looks like:
 
 `https://github.com/<you>/<repo>/releases/download/v0.1.0/Branchline-0.1.0-android.apk`
 
-You can also run **Actions → Release Android APK → Run workflow** without a tag (uploads an artifact; tagged pushes publish a Release).
+You can also run **Actions → Release → Run workflow** without a tag (uploads an APK artifact and draft desktop installers).
 
 Optional permanent signing (recommended before sharing widely):
 
@@ -123,7 +123,7 @@ Then add GitHub secrets: `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_K
 
 ### Desktop (macOS / Windows / Linux)
 
-Workflow: `.github/workflows/release-desktop.yml` — same tag push also builds desktop installers onto the Release.
+Workflow: `.github/workflows/release.yml` — a tag push creates the GitHub Release, then builds desktop installers and the Android APK onto it.
 
 In-app updates (desktop) need a signing key in GitHub Actions. Generate once (already done locally under `.keys/`, gitignored):
 

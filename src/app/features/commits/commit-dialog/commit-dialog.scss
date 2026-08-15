@@ -92,11 +92,6 @@
   justify-content: center;
 }
 
-.commit-btn ::ng-deep .spinner {
-  border-color: rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-}
-
 .files-column.is-busy {
   opacity: 0.72;
   pointer-events: none;
@@ -702,6 +697,12 @@
   justify-content: flex-end;
   gap: 0.7rem;
   min-width: 0;
+}
+
+app-commit-checks {
+  margin-bottom: auto;
+  max-height: min(46%, 22rem);
+  overflow: auto;
 }
 
 .options {

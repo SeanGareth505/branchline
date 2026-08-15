@@ -46,6 +46,9 @@ import type {
   UndoEntry,
   WorkflowInfo,
   WorktreeInfo,
+  RepoCheck,
+  RepoChecksOutput,
+  RunCheckOutput,
   FileStatusEntry,
   SubmoduleInfo,
   LfsFileInfo,
@@ -68,6 +71,9 @@ export class TauriService {
   private readonly mockLocks = new Map<string, { reason: string | null; lockedAt: string }>();
   private mockCustomWorkflows: WorkflowInfo[] = [];
   private mockDisabledBuiltinWorkflows = new Set<string>();
+  private mockCustomChecks: RepoCheck[] = [];
+  private mockDisabledCheckIds = new Set<string>();
+  private mockAnnouncedManagers = false;
 
   private mockBuiltinWorkflows(): WorkflowInfo[] {
     return [
@@ -141,6 +147,58 @@ export class TauriService {
       enabled: !this.mockDisabledBuiltinWorkflows.has(w.id),
     }));
     return [...builtins, ...this.mockCustomWorkflows.map((w) => ({ ...w }))];
+  }
+
+  private mockDetectedChecks(): RepoCheck[] {
+    return [
+      {
+        id: 'husky:pre-commit:lint-staged-files',
+        name: 'Lint staged files',
+        command: 'npx lint-staged',
+        trigger: 'pre-commit',
+        source: 'husky',
+        sourceLabel: 'Husky',
+        enabled: !this.mockDisabledCheckIds.has('husky:pre-commit:lint-staged-files'),
+        builtin: true,
+      },
+      {
+        id: 'husky:pre-commit:typecheck',
+        name: 'Typecheck',
+        command: 'npm run typecheck',
+        trigger: 'pre-commit',
+        source: 'husky',
+        sourceLabel: 'Husky',
+        enabled: !this.mockDisabledCheckIds.has('husky:pre-commit:typecheck'),
+        builtin: true,
+      },
+      {
+        id: 'husky:commit-msg:commit-message',
+        name: 'Commit message',
+        command: 'npx --no -- commitlint --edit $1',
+        trigger: 'commit-msg',
+        source: 'husky',
+        sourceLabel: 'Husky',
+        enabled: !this.mockDisabledCheckIds.has('husky:commit-msg:commit-message'),
+        builtin: true,
+      },
+    ];
+  }
+
+  private mockRepoChecks(): RepoChecksOutput {
+    const newlyDetected = this.mockAnnouncedManagers ? [] : ['Husky'];
+    this.mockAnnouncedManagers = true;
+    return {
+      path: '/Users/demo/projects/navigo',
+      managers: [{ id: 'husky', label: 'Husky', detail: '.husky/' }],
+      checks: [
+        ...this.mockDetectedChecks(),
+        ...this.mockCustomChecks.map((c) => ({
+          ...c,
+          enabled: c.enabled && !this.mockDisabledCheckIds.has(c.id),
+        })),
+      ],
+      newlyDetected,
+    };
   }
 
   async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -307,9 +365,15 @@ export class TauriService {
     });
   }
 
-  createCommit(path: string, message: string, amend = false, allowEmpty = false) {
+  createCommit(
+    path: string,
+    message: string,
+    amend = false,
+    allowEmpty = false,
+    skipHooks = false,
+  ) {
     return this.invoke<{ sha: string; shortSha?: string; message: string }>('create_commit', {
-      input: { path, message, amend, allowEmpty },
+      input: { path, message, amend, allowEmpty, skipHooks },
     });
   }
 
@@ -703,6 +767,7 @@ export class TauriService {
           setUpstream?: boolean;
           remote?: string;
           branch?: string;
+          skipHooks?: boolean;
         } = false,
   ) {
     const options =
@@ -716,6 +781,7 @@ export class TauriService {
         setUpstream: options.setUpstream ?? null,
         remote: options.remote ?? null,
         branch: options.branch ?? null,
+        skipHooks: options.skipHooks ?? false,
       },
     });
   }
@@ -949,6 +1015,40 @@ export class TauriService {
 
   setWorkflowEnabled(id: string, enabled: boolean) {
     return this.invoke<WorkflowInfo[]>('set_workflow_enabled', { input: { id, enabled } });
+  }
+
+  listRepoChecks(path: string) {
+    return this.invoke<RepoChecksOutput>('list_repo_checks', { input: { path } });
+  }
+
+  saveCheckScript(input: {
+    path: string;
+    id?: string;
+    name: string;
+    command: string;
+    trigger: string;
+    enabled?: boolean;
+  }) {
+    return this.invoke<RepoChecksOutput>('save_check_script', { input });
+  }
+
+  deleteCheckScript(path: string, id: string) {
+    return this.invoke<RepoChecksOutput>('delete_check_script', { input: { path, id } });
+  }
+
+  setCheckEnabled(path: string, id: string, enabled: boolean) {
+    return this.invoke<RepoChecksOutput>('set_check_enabled', { input: { path, id, enabled } });
+  }
+
+  runRepoCheck(
+    path: string,
+    command: string,
+    trigger?: string,
+    commitMessage?: string,
+  ) {
+    return this.invoke<RunCheckOutput>('run_repo_check', {
+      input: { path, command, trigger: trigger ?? null, commitMessage: commitMessage ?? null },
+    });
   }
 
   listTemplates() {
@@ -1279,7 +1379,7 @@ export class TauriService {
         runUrl: 'https://github.com/example/navigo/actions/runs/123456789',
         releaseUrl: 'https://github.com/example/navigo/releases/tag/v0.1.1',
         websiteUrl: 'https://example.github.io/navigo/',
-        actionsPageUrl: 'https://github.com/example/navigo/actions/workflows/release-desktop.yml',
+        actionsPageUrl: 'https://github.com/example/navigo/actions/workflows/release.yml',
         repoUrl: 'https://github.com/example/navigo',
         jobs: [
           {
@@ -1287,18 +1387,30 @@ export class TauriService {
             status: 'completed',
             conclusion: 'success',
             url: 'https://github.com/example/navigo/actions/runs/123456789/job/1',
+            steps: [
+              { name: 'Set up job', status: 'completed', conclusion: 'success', number: 1 },
+              { name: 'Build', status: 'completed', conclusion: 'success', number: 2 },
+            ],
           },
           {
             name: 'Build (ubuntu-latest)',
             status: 'completed',
             conclusion: 'success',
             url: 'https://github.com/example/navigo/actions/runs/123456789/job/2',
+            steps: [
+              { name: 'Set up job', status: 'completed', conclusion: 'success', number: 1 },
+              { name: 'Build', status: 'completed', conclusion: 'success', number: 2 },
+            ],
           },
           {
             name: 'Build (windows-latest)',
             status: 'completed',
             conclusion: 'success',
             url: 'https://github.com/example/navigo/actions/runs/123456789/job/3',
+            steps: [
+              { name: 'Set up job', status: 'completed', conclusion: 'success', number: 1 },
+              { name: 'Build', status: 'completed', conclusion: 'success', number: 2 },
+            ],
           },
         ],
       },
@@ -2059,6 +2171,91 @@ export class TauriService {
         wf.enabled = enabled;
       }
       return this.mockMergedWorkflows() as T;
+    }
+
+    if (cmd === 'list_repo_checks') {
+      return this.mockRepoChecks() as T;
+    }
+
+    if (cmd === 'save_check_script') {
+      const input = args?.['input'] as {
+        id?: string;
+        name?: string;
+        command?: string;
+        trigger?: string;
+        enabled?: boolean;
+      };
+      const name = (input?.name ?? '').trim();
+      const command = (input?.command ?? '').trim();
+      if (!name) throw new Error('Check name is required');
+      if (!command) throw new Error('Command is required');
+      if (input.id) {
+        const idx = this.mockCustomChecks.findIndex((c) => c.id === input.id);
+        if (idx < 0) throw new Error('Script not found');
+        this.mockCustomChecks[idx] = {
+          ...this.mockCustomChecks[idx],
+          name,
+          command,
+          trigger: input.trigger || 'pre-commit',
+          enabled: input.enabled ?? this.mockCustomChecks[idx].enabled,
+        };
+      } else {
+        this.mockCustomChecks.push({
+          id: `custom-${Date.now().toString(16)}`,
+          name,
+          command,
+          trigger: input.trigger || 'pre-commit',
+          source: 'custom',
+          sourceLabel: 'Branchline',
+          enabled: input.enabled ?? true,
+          builtin: false,
+        });
+      }
+      return this.mockRepoChecks() as T;
+    }
+
+    if (cmd === 'delete_check_script') {
+      const id = (args?.['input'] as { id?: string } | undefined)?.id;
+      if (!id) throw new Error('Script id required');
+      if (!id.startsWith('custom-')) {
+        throw new Error('Detected checks cannot be deleted — disable them instead');
+      }
+      const before = this.mockCustomChecks.length;
+      this.mockCustomChecks = this.mockCustomChecks.filter((c) => c.id !== id);
+      if (this.mockCustomChecks.length === before) throw new Error('Script not found');
+      return this.mockRepoChecks() as T;
+    }
+
+    if (cmd === 'set_check_enabled') {
+      const input = args?.['input'] as { id?: string; enabled?: boolean } | undefined;
+      const id = input?.id;
+      if (!id) throw new Error('Check id required');
+      const enabled = !!input?.enabled;
+      const custom = this.mockCustomChecks.find((c) => c.id === id);
+      if (custom) custom.enabled = enabled;
+      else if (enabled) this.mockDisabledCheckIds.delete(id);
+      else this.mockDisabledCheckIds.add(id);
+      return this.mockRepoChecks() as T;
+    }
+
+    if (cmd === 'run_repo_check') {
+      const input = args?.['input'] as { command?: string } | undefined;
+      await new Promise((r) => setTimeout(r, 420));
+      const command = (input?.command ?? '').toLowerCase();
+      if (command.includes('fail') || command.includes('false')) {
+        return {
+          ok: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: `Command failed: ${input?.command ?? 'check'}\n`,
+        } as T;
+      }
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: `✔ ${input?.command ?? 'check'}\n`,
+        stderr: '',
+      } as T;
     }
 
     if (cmd === 'analyze_safety') {

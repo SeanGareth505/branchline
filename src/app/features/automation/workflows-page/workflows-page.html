@@ -1,4 +1,26 @@
 <section class="page">
+  <div class="filters section-tabs">
+    <button
+      type="button"
+      class="chip"
+      [class.active]="store.automationSection() === 'workflows'"
+      (click)="store.setAutomationSection('workflows')"
+    >
+      Workflows
+    </button>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="store.automationSection() === 'checks'"
+      (click)="store.setAutomationSection('checks')"
+    >
+      Checks
+    </button>
+  </div>
+
+  @if (store.automationSection() === 'checks') {
+    <app-checks-page />
+  } @else {
   <header class="hero">
     <div>
       <p class="kicker">Workflows</p>
@@ -159,6 +181,7 @@
         </article>
       }
     </div>
+  }
   }
 </section>
 

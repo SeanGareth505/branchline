@@ -6,6 +6,7 @@ import {
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
@@ -24,13 +25,14 @@ import {
   type PatchLinesLayout,
   type PatchLinesMode,
 } from '../../diff/patch-lines-view/patch-lines-view';
+import { CommitChecks } from '../commit-checks/commit-checks';
 
 type FileKey = `${'s' | 'u' | 'c'}:${string}`;
-type CommitPhase = 'staging' | 'committing' | 'pushing';
+type CommitPhase = 'checking' | 'staging' | 'committing' | 'pushing';
 
 @Component({
   selector: 'app-commit-dialog',
-  imports: [FormsModule, NgIcon, PatchLinesView, Spinner],
+  imports: [FormsModule, NgIcon, PatchLinesView, Spinner, CommitChecks],
   templateUrl: './commit-dialog.html',
   styleUrl: './commit-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,6 +41,7 @@ export class CommitDialog {
   readonly store = inject(AppStore);
   private readonly tauri = inject(TauriService);
   private readonly prompts = inject(PromptService);
+  private readonly commitChecks = viewChild(CommitChecks);
 
   readonly subject = signal('');
   readonly body = signal('');
@@ -146,8 +149,15 @@ export class CommitDialog {
 
   readonly isBusy = computed(() => this.committing() || this.filesBusy());
 
+  readonly checkTriggers = computed(() => {
+    const triggers = ['pre-commit', 'commit-msg'];
+    if (this.pushAfter()) triggers.push('pre-push');
+    return triggers;
+  });
+
   readonly busyLabel = computed(() => {
     const phase = this.commitPhase();
+    if (phase === 'checking') return 'Running checks…';
     if (phase === 'staging') return 'Staging files…';
     if (phase === 'committing') return this.amend() ? 'Amending commit…' : 'Creating commit…';
     if (phase === 'pushing') return 'Pushing to remote…';
@@ -157,6 +167,7 @@ export class CommitDialog {
 
   readonly commitButtonLabel = computed(() => {
     const phase = this.commitPhase();
+    if (phase === 'checking') return 'Checking…';
     if (phase === 'staging') return 'Staging…';
     if (phase === 'committing') return this.amend() ? 'Amending…' : 'Committing…';
     if (phase === 'pushing') return 'Pushing…';
@@ -770,18 +781,41 @@ export class CommitDialog {
           return;
         }
       }
-      this.commitPhase.set('committing');
+
+      const skipChecks = this.commitChecks()?.skip() ?? false;
       const willPush = this.pushAfter();
+      const checkTriggers = willPush
+        ? ['pre-commit', 'commit-msg', 'pre-push']
+        : ['pre-commit', 'commit-msg'];
+      if (!skipChecks && this.store.enabledChecks(checkTriggers).length) {
+        this.commitPhase.set('checking');
+        const ok = await this.store.runRepoChecks(checkTriggers, {
+          commitMessage: this.messagePreview(),
+          silent: true,
+        });
+        if (!ok) {
+          this.store.showError('Checks failed — fix them or skip checks to commit');
+          return;
+        }
+      }
+
+      this.commitPhase.set('committing');
+      const skipGitHooks =
+        skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']);
       const commit = await this.store.createCommit(
         this.messagePreview(),
         this.amend(),
         this.allowEmpty(),
-        { toast: !willPush },
+        { toast: !willPush, skipHooks: skipGitHooks },
       );
       if (!commit.ok) return;
       if (willPush) {
         this.commitPhase.set('pushing');
-        const pushed = await this.store.pushRemote({ toast: false });
+        const pushed = await this.store.pushRemote({
+          toast: false,
+          runChecks: false,
+          skipHooks: skipChecks || this.store.hasDetectedChecks(['pre-push']),
+        });
         const short = commit.shortSha ?? 'commit';
         if (pushed) {
           this.store.showToast(`Committed ${short} and pushed`, {
@@ -918,6 +952,7 @@ export class CommitDialog {
     this.allowEmpty.set(false);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
+    void this.store.loadRepoChecks();
 
     const status = this.store.status();
     const firstConflict = status?.conflicted[0]?.path ?? null;

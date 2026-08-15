@@ -1,0 +1,131 @@
+<header class="hero">
+    <div>
+      <p class="kicker">Checks</p>
+      <h1>Commit checks</h1>
+      <p>
+        Husky, Lefthook, and Git hooks are picked up automatically. Add your own scripts to run
+        before commit or push.
+      </p>
+    </div>
+    <div class="hero-actions">
+      @if (managers().length) {
+        <div class="count">
+          <strong>{{ managers().length }}</strong>
+          detected
+        </div>
+      }
+      <div class="count">
+        <strong>{{ customCount() }}</strong>
+        custom
+      </div>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="create()" title="Create a check script">
+        <ng-icon name="lucidePlus" size="15" />
+        New script
+      </button>
+    </div>
+  </header>
+
+  @if (managers().length) {
+    <div class="managers">
+      @for (m of managers(); track m.id) {
+        <span class="bl-chip">{{ m.label }} · {{ m.detail }}</span>
+      }
+    </div>
+  }
+
+  @if (loading()) {
+    <app-page-skeleton [cards]="4" />
+  } @else if (!store.currentRepo()) {
+    <div class="empty-panel">
+      <ng-icon name="lucideListChecks" size="28" />
+      <h2>Open a repository</h2>
+      <p>Checks are detected per repo — Husky, Lefthook, pre-commit, and your own scripts.</p>
+    </div>
+  } @else if (checks().length === 0) {
+    <div class="empty-panel">
+      <ng-icon name="lucideListChecks" size="28" />
+      <h2>No checks yet</h2>
+      <p>Add a script, or open a repo that already uses Husky or Lefthook — Branchline will import it.</p>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="create()">
+        <ng-icon name="lucidePlus" size="15" />
+        New script
+      </button>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (c of checks(); track c.id) {
+        <article class="card" [class.disabled]="!c.enabled" [attr.data-status]="statusFor(c)">
+          <div class="card-top">
+            <div class="identity">
+              <span class="icon" [class.custom]="!c.builtin">
+                <ng-icon [name]="iconFor(c)" size="18" />
+              </span>
+              <div>
+                <div class="title-row">
+                  <h2>{{ c.name }}</h2>
+                  <span class="bl-chip">{{ c.sourceLabel }}</span>
+                  @if (!c.enabled) {
+                    <span class="bl-chip muted">off</span>
+                  }
+                </div>
+                <p>{{ triggerLabel(c.trigger) }}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary run"
+              [disabled]="runningId() === c.id || !c.enabled"
+              title="Run this check now"
+              (click)="run(c)"
+            >
+              @if (runningId() === c.id) {
+                <app-spinner size="sm" label="Running" />
+                Running…
+              } @else {
+                <ng-icon name="lucidePlay" size="14" />
+                Run
+              }
+            </button>
+          </div>
+
+          <pre class="command">{{ c.command }}</pre>
+
+          @if (outputFor(c); as output) {
+            <button type="button" class="output-toggle" (click)="toggleOutput(c)">
+              {{ expandedId() === c.id ? 'Hide output' : 'Show output' }}
+            </button>
+            @if (expandedId() === c.id) {
+              <pre class="output">{{ output }}</pre>
+            }
+          }
+
+          <div class="card-foot">
+            <button
+              type="button"
+              class="bl-btn ghost"
+              (click)="toggleEnabled(c)"
+              [title]="c.enabled ? 'Disable check' : 'Enable check'"
+            >
+              {{ c.enabled ? 'Disable' : 'Enable' }}
+            </button>
+            @if (!c.builtin) {
+              <button type="button" class="bl-btn ghost" (click)="edit(c)" title="Edit this script">
+                <ng-icon name="lucidePencil" size="14" />
+                Edit
+              </button>
+              <button
+                type="button"
+                class="bl-btn ghost danger"
+                (click)="remove(c)"
+                title="Delete this script"
+              >
+                <ng-icon name="lucideTrash2" size="14" />
+                Delete
+              </button>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  }
+<app-check-script-dialog />

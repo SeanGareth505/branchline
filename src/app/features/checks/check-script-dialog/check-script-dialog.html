@@ -1,0 +1,61 @@
+@if (open()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="check-script-title"
+    >
+      <header>
+        <div class="copy">
+          <p class="eyebrow">Checks</p>
+          <h2 id="check-script-title">{{ title() }}</h2>
+          <p>Runs in the repository root. Use the same commands you would in a Husky hook.</p>
+        </div>
+        <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <div class="fields">
+        <label class="field">
+          <span>Name</span>
+          <input
+            type="text"
+            [ngModel]="name()"
+            (ngModelChange)="name.set($event)"
+            placeholder="e.g. Unit tests"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="field">
+          <span>When</span>
+          <select [ngModel]="trigger()" (ngModelChange)="trigger.set($event)">
+            @for (t of triggers; track t.id) {
+              <option [value]="t.id">{{ t.label }}</option>
+            }
+          </select>
+        </label>
+        <label class="field">
+          <span>Command</span>
+          <textarea
+            rows="3"
+            [ngModel]="command()"
+            (ngModelChange)="command.set($event)"
+            placeholder="npm test"
+            spellcheck="false"
+          ></textarea>
+        </label>
+      </div>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="save()" [disabled]="!canSave()">
+          {{ busy() ? 'Saving…' : isEdit() ? 'Save changes' : 'Add script' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

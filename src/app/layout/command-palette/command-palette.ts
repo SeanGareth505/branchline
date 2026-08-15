@@ -147,6 +147,18 @@ export class CommandPalette {
         run: () => store.setView('automation'),
       },
       {
+        id: 'checks',
+        label: 'Open commit checks',
+        group: 'Navigate',
+        run: () => store.setAutomationSection('checks'),
+      },
+      {
+        id: 'new-check-script',
+        label: 'New check script',
+        group: 'Automation',
+        run: () => store.setAutomationSection('checks'),
+      },
+      {
         id: 'templates',
         label: 'Open Templates',
         group: 'Navigate',

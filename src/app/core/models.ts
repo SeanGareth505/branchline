@@ -434,6 +434,45 @@ export interface WorkflowInfo {
   enabled: boolean;
 }
 
+export type CheckTrigger = 'pre-commit' | 'commit-msg' | 'pre-push' | 'manual' | string;
+export type CheckRunStatus = 'idle' | 'running' | 'pass' | 'fail' | 'skipped';
+
+export interface RepoCheck {
+  id: string;
+  name: string;
+  command: string;
+  trigger: CheckTrigger;
+  source: string;
+  sourceLabel: string;
+  enabled: boolean;
+  builtin: boolean;
+}
+
+export interface CheckManager {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+export interface RepoChecksOutput {
+  path: string;
+  managers: CheckManager[];
+  checks: RepoCheck[];
+  newlyDetected: string[];
+}
+
+export interface RunCheckOutput {
+  ok: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface CheckRunState {
+  status: CheckRunStatus;
+  output: string;
+}
+
 export interface TemplateInfo {
   id: string;
   kind: string;
@@ -674,11 +713,23 @@ export interface ReleaseSetupHintsOutput {
   suggestedFiles: ReleaseSetupFileHint[];
 }
 
+export interface ReleaseDeployJobStep {
+  name: string;
+  status: string;
+  conclusion?: string | null;
+  number?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
 export interface ReleaseDeployJob {
   name: string;
   status: string;
   conclusion?: string | null;
   url?: string | null;
+  steps?: ReleaseDeployJobStep[];
+  startedAt?: string | null;
+  completedAt?: string | null;
 }
 
 export interface PollReleaseDeployOutput {

@@ -1,15 +1,17 @@
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
-import type { IdentityCandidate, IdentityContexts } from '../../../core/models';
+import type { GitIdentity, IdentityCandidate, IdentityContexts } from '../../../core/models';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 
 @Component({
   selector: 'app-profiles-page',
-  imports: [FormsModule, LoadingBlock],
+  imports: [FormsModule, NgIcon, LoadingBlock],
   templateUrl: './profiles-page.html',
   styleUrl: './profiles-page.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfilesPage implements OnInit {
   private readonly tauri = inject(TauriService);
@@ -24,6 +26,15 @@ export class ProfilesPage implements OnInit {
 
   readonly hasRepo = computed(() => !!this.contexts()?.hasRepo);
   readonly hasOverride = computed(() => this.contexts()?.effectiveScope === 'local');
+  readonly repoName = computed(() => this.store.currentRepo()?.name ?? 'This repo');
+  readonly dirty = computed(() => {
+    const ctx = this.contexts();
+    if (!ctx) return false;
+    return !this.sameIdentity(
+      { name: this.name(), email: this.email() },
+      ctx.effective,
+    );
+  });
   readonly canSave = computed(
     () => !!this.name().trim() && !!this.email().trim() && !this.saving(),
   );
@@ -97,9 +108,22 @@ export class ProfilesPage implements OnInit {
     this.email.set(candidate.email || '');
   }
 
-  isSelected(candidate: IdentityCandidate): boolean {
+  resetForm(): void {
+    const effective = this.contexts()?.effective;
+    this.name.set(effective?.name || '');
+    this.email.set(effective?.email || '');
+  }
+
+  isInUse(candidate: IdentityCandidate): boolean {
+    const effective = this.contexts()?.effective;
+    if (!effective?.email) return false;
+    return this.sameEmail(candidate.email, effective.email);
+  }
+
+  isInForm(candidate: IdentityCandidate): boolean {
+    if (!this.dirty()) return false;
     return (
-      this.email().trim().toLowerCase() === candidate.email.trim().toLowerCase() &&
+      this.sameEmail(this.email(), candidate.email) &&
       this.name().trim().toLowerCase() === candidate.name.trim().toLowerCase()
     );
   }
@@ -127,6 +151,17 @@ export class ProfilesPage implements OnInit {
     await this.apply('global');
   }
 
+  private sameEmail(a: string, b: string): boolean {
+    return a.trim().toLowerCase() === b.trim().toLowerCase();
+  }
+
+  private sameIdentity(a: GitIdentity, b: GitIdentity): boolean {
+    return (
+      a.name.trim() === b.name.trim() &&
+      this.sameEmail(a.email, b.email)
+    );
+  }
+
   private async apply(scope: 'global' | 'local'): Promise<void> {
     const name = this.name().trim();
     const email = this.email().trim();
@@ -139,7 +174,7 @@ export class ProfilesPage implements OnInit {
       await this.reload();
       this.store.showSuccess(
         scope === 'local'
-          ? `This repo commits as ${name} <${email}>`
+          ? `${this.repoName()} commits as ${name} <${email}>`
           : `Default for all repos: ${name} <${email}>`,
       );
     } catch (err) {

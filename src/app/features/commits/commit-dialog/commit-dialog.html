@@ -399,6 +399,7 @@
         </div>
 
         <div class="composer-side">
+          <app-commit-checks [triggers]="checkTriggers()" />
           <div class="options">
             <label title="Replace the latest commit instead of creating a new one">
               <input type="checkbox" [ngModel]="amend()" (ngModelChange)="toggleAmend($event)" />

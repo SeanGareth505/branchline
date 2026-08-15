@@ -3,7 +3,15 @@ import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
 import { UpdateService, UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
-import type { ReleaseActivityStep, ReleaseDeployJob, ReleasePhase } from '../../../core/models';
+import type {
+  ReleaseActivityStep,
+  ReleaseDeployJob,
+  ReleaseDeployJobStep,
+  ReleasePhase,
+} from '../../../core/models';
+
+type JobFilter = 'in_progress' | 'completed' | 'failed' | 'all';
+type JobChipStatus = 'success' | 'failure' | 'pending' | 'unknown';
 
 interface ReleaseLinkCard {
   id: string;
@@ -11,6 +19,12 @@ interface ReleaseLinkCard {
   hint: string;
   url: string;
   icon: string;
+}
+
+interface JobFilterTab {
+  id: JobFilter;
+  label: string;
+  count: number;
 }
 
 @Component({
@@ -77,7 +91,7 @@ export class ReleasePanel {
       cards.push({
         id: 'actions',
         label: 'Actions',
-        hint: 'release-desktop.yml',
+        hint: 'release.yml',
         url: activity.actionsPageUrl,
         icon: 'lucideWorkflow',
       });
@@ -105,22 +119,84 @@ export class ReleasePanel {
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
+  readonly jobsExpanded = signal(true);
+  readonly jobFilter = signal<JobFilter>('in_progress');
+  private readonly jobOpen = signal<Record<string, boolean>>({});
+  private readonly stepsOpenOverride = signal<boolean | null>(null);
+  private jobFilterTouched = false;
+  private lastInProgressCount = -1;
+
+  readonly jobCounts = computed(() => {
+    let inProgress = 0;
+    let completed = 0;
+    let failed = 0;
+    for (const job of this.deployJobs()) {
+      const chip = this.jobChipStatus(job);
+      if (chip === 'success') completed += 1;
+      else if (chip === 'failure') failed += 1;
+      else inProgress += 1;
+    }
+    return {
+      in_progress: inProgress,
+      completed,
+      failed,
+      all: this.deployJobs().length,
+    };
+  });
+
+  readonly jobFilterTabs = computed((): JobFilterTab[] => {
+    const counts = this.jobCounts();
+    return [
+      { id: 'in_progress', label: 'In progress', count: counts.in_progress },
+      { id: 'completed', label: 'Completed', count: counts.completed },
+      { id: 'failed', label: 'Failed', count: counts.failed },
+      { id: 'all', label: 'All', count: counts.all },
+    ];
+  });
+
+  readonly filteredJobs = computed(() => {
+    const filter = this.jobFilter();
+    return this.deployJobs().filter((job) => {
+      const chip = this.jobChipStatus(job);
+      if (filter === 'in_progress') return chip === 'pending' || chip === 'unknown';
+      if (filter === 'completed') return chip === 'success';
+      if (filter === 'failed') return chip === 'failure';
+      return true;
+    });
+  });
+
+  readonly jobEmptyLabel = computed(() => {
+    const counts = this.jobCounts();
+    switch (this.jobFilter()) {
+      case 'in_progress':
+        if (counts.failed) return `No jobs in progress · ${counts.failed} failed`;
+        return counts.completed
+          ? `No jobs in progress · ${counts.completed} completed`
+          : 'No jobs in progress';
+      case 'completed':
+        return 'No completed jobs yet';
+      case 'failed':
+        return 'No failed jobs';
+      default:
+        return 'No jobs loaded yet';
+    }
+  });
+
+  readonly stepsOpen = computed(() => {
+    const override = this.stepsOpenOverride();
+    if (override !== null) return override;
+    return this.deployJobs().length === 0;
+  });
 
   readonly jobSummary = computed(() => {
     const jobs = this.deployJobs();
     if (!jobs.length) return '';
-    let passed = 0;
-    let failed = 0;
-    let running = 0;
-    for (const job of jobs) {
-      const chip = this.jobChipStatus(job);
-      if (chip === 'success') passed += 1;
-      else if (chip === 'failure') failed += 1;
-      else if (chip === 'pending') running += 1;
+    const counts = this.jobCounts();
+    if (counts.failed) return `${counts.completed}/${jobs.length} passed · ${counts.failed} failed`;
+    if (counts.in_progress) {
+      return `${counts.completed}/${jobs.length} passed · ${counts.in_progress} running`;
     }
-    if (failed) return `${passed}/${jobs.length} passed · ${failed} failed`;
-    if (running) return `${passed}/${jobs.length} passed · ${running} running`;
-    return `${passed}/${jobs.length} passed`;
+    return `${counts.completed}/${jobs.length} passed`;
   });
 
   readonly showDeploySection = computed(() => {
@@ -226,6 +302,15 @@ export class ReleasePanel {
       this.promptedUpdate = true;
       void this.updates.checkForUpdates({ silent: true });
     });
+    effect(() => {
+      const counts = this.jobCounts();
+      const prev = this.lastInProgressCount;
+      this.lastInProgressCount = counts.in_progress;
+      if (this.jobFilterTouched || this.jobFilter() !== 'in_progress') return;
+      if (prev > 0 && counts.in_progress === 0) {
+        this.jobFilter.set(counts.failed > 0 ? 'failed' : 'all');
+      }
+    });
   }
 
   clear(): void {
@@ -284,13 +369,55 @@ export class ReleasePanel {
     return formatDeployJobName(job.name);
   }
 
-  jobChipStatus(job: ReleaseDeployJob): string {
+  jobSteps(job: ReleaseDeployJob): ReleaseDeployJobStep[] {
+    return job.steps ?? [];
+  }
+
+  hasSteps(job: ReleaseDeployJob): boolean {
+    return this.jobSteps(job).length > 0;
+  }
+
+  isJobOpen(job: ReleaseDeployJob): boolean {
+    const override = this.jobOpen()[job.name];
+    if (override !== undefined) return override;
+    const chip = this.jobChipStatus(job);
+    return this.hasSteps(job) && (chip === 'pending' || chip === 'failure');
+  }
+
+  toggleJobsExpanded(): void {
+    this.jobsExpanded.update((open) => !open);
+  }
+
+  toggleStepsExpanded(): void {
+    this.stepsOpenOverride.set(!this.stepsOpen());
+  }
+
+  setJobFilter(filter: JobFilter): void {
+    this.jobFilterTouched = true;
+    this.jobFilter.set(filter);
+    this.jobsExpanded.set(true);
+  }
+
+  toggleJob(job: ReleaseDeployJob, event?: Event): void {
+    event?.stopPropagation();
+    if (!this.hasSteps(job)) {
+      this.openLink(job.url);
+      return;
+    }
+    const next = !this.isJobOpen(job);
+    this.jobOpen.update((state) => ({ ...state, [job.name]: next }));
+  }
+
+  jobChipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {
     const conclusion = job.conclusion?.trim();
-    if (conclusion === 'success') return 'success';
     if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
       return 'failure';
     }
+    if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
+      return 'success';
+    }
     const status = job.status.trim();
+    if (status === 'completed') return 'success';
     if (
       status === 'queued' ||
       status === 'in_progress' ||
@@ -302,9 +429,12 @@ export class ReleasePanel {
     return 'unknown';
   }
 
-  jobStatusLabel(job: ReleaseDeployJob): string {
+  jobStatusLabel(job: ReleaseDeployJob | ReleaseDeployJobStep): string {
     const chip = this.jobChipStatus(job);
-    if (chip === 'success') return 'Passed';
+    if (chip === 'success') {
+      if (job.conclusion === 'skipped') return 'Skipped';
+      return 'Passed';
+    }
     if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
     if (chip === 'pending') {
       if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
@@ -313,6 +443,14 @@ export class ReleasePanel {
       return 'Running';
     }
     return job.status || 'Pending';
+  }
+
+  durationLabel(item: ReleaseDeployJob | ReleaseDeployJobStep): string {
+    const start = Date.parse(item.startedAt ?? '');
+    if (Number.isNaN(start)) return '';
+    const endRaw = item.completedAt ? Date.parse(item.completedAt) : this.now();
+    const end = Number.isNaN(endRaw) ? this.now() : endRaw;
+    return formatElapsed(Math.max(0, end - start));
   }
 }
 
@@ -357,14 +495,15 @@ function formatElapsed(ms: number): string {
 
 function formatDeployJobName(name: string): string {
   const lower = name.toLowerCase();
-  if (lower.includes('stabilize')) return 'Stable download names';
-  if (lower.includes('aarch64-apple-darwin')) return 'macOS arm64';
-  if (lower.includes('x86_64-apple-darwin')) return 'macOS Intel';
+  if (lower.includes('stabilize') || lower.includes('stable download')) return 'Stable download names';
+  if (lower.includes('create-release') || lower === 'github release') return 'GitHub Release';
   if (lower.includes('android')) return 'Android';
   if (lower.includes('windows')) return 'Windows';
   if (lower.includes('ubuntu') || lower.includes('linux')) return 'Linux';
-  if (lower.includes('macos') && lower.includes('aarch64')) return 'macOS arm64';
-  if (lower.includes('macos') && (lower.includes('x64') || lower.includes('x86'))) return 'macOS Intel';
+  if (lower.includes('macos') && (lower.includes('arm') || lower.includes('aarch64'))) return 'macOS arm64';
+  if (lower.includes('macos') && (lower.includes('intel') || lower.includes('x64') || lower.includes('x86'))) {
+    return 'macOS Intel';
+  }
   if (lower.includes('macos')) return 'macOS';
   const trimmed = name
     .replace(/^publish-tauri\s*/i, '')

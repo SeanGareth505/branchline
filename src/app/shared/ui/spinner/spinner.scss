@@ -3,6 +3,7 @@
   place-items: center;
   line-height: 0;
   color: var(--accent);
+  flex-shrink: 0;
 }
 
 :host-context(.bl-btn-primary),
@@ -11,151 +12,184 @@
 }
 
 .spinner {
-  display: block;
+  --stroke: 2.25px;
+  display: grid;
+  place-items: center;
   position: relative;
-}
-
-.spinner svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .spinner[data-size='sm'] {
+  --stroke: 2px;
   width: 1rem;
   height: 1rem;
 }
 
-.spinner[data-size='sm'] .halo,
-.spinner[data-size='sm'] .comet {
-  display: none;
-}
-
-.spinner[data-size='md'] {
-  width: 1.85rem;
-  height: 1.85rem;
-}
-
 .spinner[data-size='lg'] {
-  width: 3.1rem;
-  height: 3.1rem;
-  filter: drop-shadow(0 0 12px color-mix(in srgb, currentColor 42%, transparent));
+  --stroke: 2.5px;
+  width: 3.25rem;
+  height: 3.25rem;
 }
 
-.halo {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.15;
-  stroke-dasharray: 4.2 6.4;
-  stroke-linecap: round;
-  opacity: 0.28;
-  transform-origin: 16px 16px;
-  transform-box: view-box;
-  animation: bl-halo 6.4s linear infinite;
+.track,
+.orbit {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .track {
+  border: var(--stroke) solid color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.orbit {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 18%,
+    color-mix(in srgb, currentColor 22%, transparent) 48%,
+    currentColor 86%,
+    color-mix(in srgb, currentColor 40%, #fff) 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--stroke) - 0.4px),
+    #000 calc(100% - var(--stroke))
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--stroke) - 0.4px),
+    #000 calc(100% - var(--stroke))
+  );
+  animation: bl-orbit 0.82s linear infinite;
+}
+
+.spinner[data-size='lg'] .orbit {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 45%, transparent));
+}
+
+.mark {
+  display: block;
+  width: 54%;
+  height: 54%;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+  animation: bl-breathe 2.6s ease-in-out infinite;
+}
+
+.spinner[data-size='sm'] .mark {
+  display: none;
+}
+
+.branch {
   stroke: currentColor;
-  stroke-width: 2.35;
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.22;
+  opacity: 0.28;
 }
 
 .flow {
   stroke: currentColor;
-  stroke-width: 2.45;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .flow-a {
-  stroke-dasharray: 7 20;
-  animation: bl-flow-a 1.45s linear infinite;
+  stroke-dasharray: 8 22;
+  animation: bl-flow-a 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .flow-b {
-  stroke-dasharray: 4.5 14;
-  animation: bl-flow-b 1.45s linear infinite;
+  stroke-dasharray: 5 16;
+  animation: bl-flow-b 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .node {
-  fill: color-mix(in srgb, currentColor 42%, white);
+  fill: currentColor;
   transform-box: fill-box;
   transform-origin: center;
-  animation: bl-node 1.35s ease-in-out infinite;
+  animation: bl-node 1.8s ease-in-out infinite;
 }
 
 .n2 {
-  animation-delay: 0.18s;
+  animation-delay: 0.22s;
 }
 
 .n3 {
-  animation-delay: 0.36s;
+  animation-delay: 0.44s;
 }
 
-.comet {
-  fill: color-mix(in srgb, currentColor 28%, white);
-}
-
-.comet-b {
-  opacity: 0.85;
-}
-
-@keyframes bl-halo {
+@keyframes bl-orbit {
   to {
     transform: rotate(360deg);
   }
 }
 
+@keyframes bl-breathe {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes bl-flow-a {
   to {
-    stroke-dashoffset: -27;
+    stroke-dashoffset: -30;
   }
 }
 
 @keyframes bl-flow-b {
   to {
-    stroke-dashoffset: -18.5;
+    stroke-dashoffset: -21;
   }
 }
 
 @keyframes bl-node {
   0%,
   100% {
-    opacity: 0.55;
-    transform: scale(0.84);
+    opacity: 0.42;
+    transform: scale(0.86);
   }
   50% {
     opacity: 1;
-    transform: scale(1.12);
+    transform: scale(1.08);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .halo,
+  .orbit,
+  .mark,
   .flow,
   .node {
     animation: none;
   }
 
-  .halo {
-    opacity: 0.2;
-    stroke-dasharray: none;
+  .orbit {
+    transform: rotate(-70deg);
+  }
+
+  .mark {
+    opacity: 1;
+    transform: none;
   }
 
   .flow {
     stroke-dasharray: none;
-    opacity: 0.85;
+    opacity: 0.9;
   }
 
   .node {
     opacity: 1;
     transform: none;
-  }
-
-  .comet {
-    display: none;
   }
 }

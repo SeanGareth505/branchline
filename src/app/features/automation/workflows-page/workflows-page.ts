@@ -16,6 +16,7 @@ import { SelectService, type SelectOption } from '../../../shared/ui/select-dial
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { WorkflowEditorDialog } from '../workflow-editor-dialog/workflow-editor-dialog';
+import { ChecksPage } from '../../checks/checks-page/checks-page';
 import { asWorkflowStep, createBranchIsAutomatic, stepIdOf, stepSummary } from '../workflow-steps';
 
 class WorkflowCancelled extends Error {
@@ -27,7 +28,7 @@ class WorkflowCancelled extends Error {
 
 @Component({
   selector: 'app-workflows-page',
-  imports: [NgIcon, WorkflowEditorDialog, PageSkeleton, Spinner],
+  imports: [NgIcon, WorkflowEditorDialog, PageSkeleton, Spinner, ChecksPage],
   templateUrl: './workflows-page.html',
   styleUrl: './workflows-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -42,6 +42,9 @@ import type {
   PrCreateMethod,
   UiSession,
   WorktreeInfo,
+  RepoCheck,
+  RepoChecksOutput,
+  CheckRunState,
 } from './models';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
@@ -99,6 +102,7 @@ export type SettingsSection =
   | 'tools'
   | 'about';
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
+export type AutomationSection = 'workflows' | 'checks';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
 export type NotificationCategory =
   | 'general'
@@ -187,6 +191,8 @@ export class AppStore {
   readonly stashes = signal<StashEntry[]>([]);
   readonly tags = signal<TagInfo[]>([]);
   readonly remotes = signal<RemoteInfo[]>([]);
+  readonly repoChecks = signal<RepoChecksOutput | null>(null);
+  readonly checkRuns = signal<Record<string, CheckRunState>>({});
   readonly worktrees = signal<WorktreeInfo[]>([]);
   readonly submodules = signal<SubmoduleInfo[]>([]);
   readonly lfsFiles = signal<LfsFileInfo[]>([]);
@@ -331,6 +337,7 @@ export class AppStore {
   private static readonly HOST_REPOS_TTL_MS = 5 * 60 * 1000;
   readonly createBranchDialogOpen = signal(false);
   readonly createPrDialogOpen = signal(false);
+  readonly createPrPreferredHead = signal<string | null>(null);
   readonly publishGithubDialogOpen = signal(false);
   readonly githubDeviceLoginOpen = signal(false);
   readonly createBranchStartPoint = signal<string | null>(null);
@@ -352,6 +359,7 @@ export class AppStore {
   readonly selectedDiffPath = signal<string | null>(null);
   readonly fileHistoryPath = signal<string | null>(null);
   readonly automationFilter = signal<AutomationFilter>('all');
+  readonly automationSection = signal<AutomationSection>('workflows');
   readonly splitMain = signal<number[]>([16, 84]);
   readonly splitNested = signal<number[]>([62, 38]);
   private sessionSaveTimer: number | null = null;
@@ -562,6 +570,11 @@ export class AppStore {
     if (!this.restoringSession) {
       this.patchSession({ automationFilter: filter });
     }
+  }
+
+  setAutomationSection(section: AutomationSection): void {
+    this.automationSection.set(section);
+    this.setView('automation');
   }
 
   setSplitSizes(kind: 'main' | 'nested', sizes: number[]): void {
@@ -1253,6 +1266,7 @@ export class AppStore {
       if (!switching && this.hasGithubConnection()) {
         void this.refreshPullRequests('open');
       }
+      void this.loadRepoChecks({ toastNew: !switching });
     } catch (err) {
       this.showError(err);
       if (!this.openRepos().length) this.goHome();
@@ -1350,6 +1364,8 @@ export class AppStore {
     this.stashes.set([]);
     this.tags.set([]);
     this.remotes.set([]);
+    this.repoChecks.set(null);
+    this.checkRuns.set({});
     this.worktrees.set([]);
     this.submodules.set([]);
     this.lfsFiles.set([]);
@@ -2403,6 +2419,28 @@ export class AppStore {
     }
   }
 
+  compareWithCurrent(tipSha: string): void {
+    const currentSha = this.localBranches().find((b) => b.isCurrent)?.tipSha;
+    const sha = tipSha.trim();
+    if (!sha) {
+      this.showWarning('No commit to compare');
+      return;
+    }
+    if (!currentSha) {
+      this.showWarning('No current branch tip to compare');
+      return;
+    }
+    if (currentSha === sha || currentSha.startsWith(sha) || sha.startsWith(currentSha.slice(0, 7))) {
+      this.showInfo('Already on this commit');
+      return;
+    }
+    this.selectedSha.set(currentSha);
+    this.selectedShas.set([currentSha]);
+    this.compareSha.set(sha);
+    this.setBrowseTab('diff');
+    this.revealCommit(currentSha);
+  }
+
   showToast(message: string, undoOrOptions?: (() => void) | ToastOptions): void {
     const options =
       typeof undoOrOptions === 'function'
@@ -2743,11 +2781,200 @@ export class AppStore {
     }
   }
 
+  async loadRepoChecks(opts?: { toastNew?: boolean }): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.repoChecks.set(null);
+      this.checkRuns.set({});
+      return;
+    }
+    try {
+      const result = await this.tauri.listRepoChecks(path);
+      this.repoChecks.set(result);
+      this.resetCheckRuns(result.checks);
+      if (opts?.toastNew && result.newlyDetected.length) {
+        const labels = result.newlyDetected.join(', ');
+        const count = result.checks.filter((c) => c.builtin).length;
+        this.showSuccess(
+          `Found ${labels} — ${count} check${count === 1 ? '' : 's'} added to Commit`,
+        );
+      }
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  enabledChecks(triggers?: string[]): RepoCheck[] {
+    const checks = this.repoChecks()?.checks ?? [];
+    return checks.filter((c) => {
+      if (!c.enabled) return false;
+      if (!triggers?.length) return true;
+      return triggers.includes(c.trigger);
+    });
+  }
+
+  hasDetectedChecks(triggers: string[]): boolean {
+    return (this.repoChecks()?.checks ?? []).some(
+      (c) => c.builtin && triggers.includes(c.trigger),
+    );
+  }
+
+  resetCheckRuns(checks: RepoCheck[] = this.repoChecks()?.checks ?? []): void {
+    const next: Record<string, CheckRunState> = {};
+    for (const check of checks) {
+      next[check.id] = { status: 'idle', output: '' };
+    }
+    this.checkRuns.set(next);
+  }
+
+  async runRepoChecks(
+    triggers: string[],
+    opts?: { commitMessage?: string; skip?: boolean; silent?: boolean },
+  ): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return true;
+    if (!this.repoChecks()) {
+      await this.loadRepoChecks();
+    }
+    const checks = this.enabledChecks(triggers);
+    if (opts?.skip || checks.length === 0) {
+      if (opts?.skip) {
+        const skipped: Record<string, CheckRunState> = { ...this.checkRuns() };
+        for (const check of checks) {
+          skipped[check.id] = { status: 'skipped', output: '' };
+        }
+        this.checkRuns.set(skipped);
+      }
+      return true;
+    }
+
+    const runs: Record<string, CheckRunState> = { ...this.checkRuns() };
+    for (const check of checks) {
+      runs[check.id] = { status: 'idle', output: '' };
+    }
+    this.checkRuns.set({ ...runs });
+
+    for (const check of checks) {
+      runs[check.id] = { status: 'running', output: '' };
+      this.checkRuns.set({ ...runs });
+      try {
+        const result = await this.tauri.runRepoCheck(
+          path,
+          check.command,
+          check.trigger,
+          opts?.commitMessage,
+        );
+        const output = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+        runs[check.id] = {
+          status: result.ok ? 'pass' : 'fail',
+          output,
+        };
+        this.checkRuns.set({ ...runs });
+        if (!result.ok) {
+          if (!opts?.silent) {
+            this.showError(`${check.name} failed`);
+          }
+          return false;
+        }
+      } catch (err) {
+        runs[check.id] = {
+          status: 'fail',
+          output: this.formatError(err),
+        };
+        this.checkRuns.set({ ...runs });
+        if (!opts?.silent) this.showError(err);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async runSingleCheck(
+    check: RepoCheck,
+    opts?: { commitMessage?: string; silent?: boolean },
+  ): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    const runs = { ...this.checkRuns() };
+    runs[check.id] = { status: 'running', output: '' };
+    this.checkRuns.set(runs);
+    try {
+      const result = await this.tauri.runRepoCheck(
+        path,
+        check.command,
+        check.trigger,
+        opts?.commitMessage,
+      );
+      const output = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+      this.checkRuns.set({
+        ...this.checkRuns(),
+        [check.id]: { status: result.ok ? 'pass' : 'fail', output },
+      });
+      if (!result.ok && !opts?.silent) {
+        this.showError(`${check.name} failed`);
+      }
+      return result.ok;
+    } catch (err) {
+      this.checkRuns.set({
+        ...this.checkRuns(),
+        [check.id]: { status: 'fail', output: this.formatError(err) },
+      });
+      if (!opts?.silent) this.showError(err);
+      return false;
+    }
+  }
+
+  async saveCheckScript(input: {
+    id?: string;
+    name: string;
+    command: string;
+    trigger: string;
+    enabled?: boolean;
+  }): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showError('Open a repository first');
+      return false;
+    }
+    try {
+      const result = await this.tauri.saveCheckScript({ ...input, path });
+      this.repoChecks.set(result);
+      this.resetCheckRuns(result.checks);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async deleteCheckScript(id: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.deleteCheckScript(path, id);
+      this.repoChecks.set(result);
+      this.resetCheckRuns(result.checks);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
+  async setCheckEnabled(id: string, enabled: boolean): Promise<void> {
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    try {
+      const result = await this.tauri.setCheckEnabled(path, id, enabled);
+      this.repoChecks.set(result);
+    } catch (err) {
+      this.showError(err);
+    }
+  }
+
   async createCommit(
     message: string,
     amend = false,
     allowEmpty = false,
-    opts?: { toast?: boolean },
+    opts?: { toast?: boolean; skipHooks?: boolean },
   ): Promise<{ ok: boolean; shortSha?: string }> {
     const path = this.currentRepo()?.path;
     if (!path) return { ok: false };
@@ -2773,7 +3000,13 @@ export class AppStore {
       return { ok: false };
     }
     try {
-      const result = await this.tauri.createCommit(path, message.trim(), amend, allowEmpty);
+      const result = await this.tauri.createCommit(
+        path,
+        message.trim(),
+        amend,
+        allowEmpty,
+        opts?.skipHooks ?? false,
+      );
       await this.refreshRepo();
       const shortSha = result.sha.slice(0, 7);
       if (opts?.toast !== false) {
@@ -3484,7 +3717,11 @@ export class AppStore {
     }
   }
 
-  async pushRemote(opts?: { toast?: boolean }): Promise<boolean> {
+  async pushRemote(opts?: {
+    toast?: boolean;
+    skipHooks?: boolean;
+    runChecks?: boolean;
+  }): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) return false;
     if (this.currentBranchLocked()) {
@@ -3522,9 +3759,19 @@ export class AppStore {
 
     this.remoteBusy.set('push');
     try {
+      if (opts?.runChecks !== false && !opts?.skipHooks) {
+        const ok = await this.runRepoChecks(['pre-push'], { silent: true });
+        if (!ok) {
+          this.showError('Push checks failed');
+          return false;
+        }
+      }
+      const skipHooks =
+        !!opts?.skipHooks || this.hasDetectedChecks(['pre-push']);
       const result = await this.tauri.push(path, {
         ...pushOpts,
         remote: this.pushRemoteName(),
+        skipHooks,
       });
       await this.refreshRepo();
       if (opts?.toast !== false) {
@@ -3575,11 +3822,13 @@ export class AppStore {
 
   private async preparePushOptions(
     status: RepoStatus | null,
+    branchName?: string,
   ): Promise<{ setUpstream?: boolean } | null> {
-    const branch = status?.branch;
+    const branch = branchName?.trim() || status?.branch;
     if (!branch) return {};
 
-    const hasUpstream = !!status?.upstream;
+    const local = this.localBranches().find((b) => b.name === branch);
+    const hasUpstream = !!local?.upstream;
     if (hasUpstream) return {};
 
     if (!(await this.confirmIfEnabled('confirmPushNewBranch', {
@@ -3620,9 +3869,13 @@ export class AppStore {
   private async runForceWithLease(branch?: string | null): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    const remote = this.pushRemoteName();
+    const remote = this.pushRemoteName(branch);
     try {
-      const result = await this.tauri.push(path, { forceWithLease: true, remote });
+      const result = await this.tauri.push(path, {
+        forceWithLease: true,
+        remote,
+        branch: branch?.trim() || undefined,
+      });
       await this.refreshRepo();
       this.showToast(result.message || `Force-pushed ${branch ?? 'branch'} with lease`, {
         kind: 'success',
@@ -3640,10 +3893,16 @@ export class AppStore {
     }
   }
 
-  private pushRemoteName(): string | undefined {
-    const upstream = this.status()?.upstream?.trim();
-    if (!upstream) return undefined;
-    return parseRemoteRef(upstream)?.remote;
+  private pushRemoteName(branch?: string | null): string | undefined {
+    const local = branch?.trim()
+      ? this.localBranches().find((b) => b.name === branch.trim())
+      : null;
+    const upstream = (local?.upstream ?? this.status()?.upstream)?.trim();
+    if (upstream) {
+      const parsed = parseRemoteRef(upstream);
+      if (parsed) return parsed.remote;
+    }
+    return this.remotes()[0]?.name;
   }
 
   private isForceWithLeaseRejected(err: unknown): boolean {
@@ -3863,20 +4122,23 @@ export class AppStore {
     }
   }
 
-  async openCreatePullRequest(): Promise<void> {
+  async openCreatePullRequest(head?: string): Promise<void> {
     if (!this.currentRepo()) {
       this.showWarning('Open a repository first');
       return;
     }
-    if (!this.status()?.branch || this.status()?.isDetached) {
+    const preferred = head?.trim() || null;
+    if (!preferred && (!this.status()?.branch || this.status()?.isDetached)) {
       this.showWarning('Check out a branch before opening a pull request');
       return;
     }
+    this.createPrPreferredHead.set(preferred);
     this.createPrDialogOpen.set(true);
   }
 
   closeCreatePrDialog(): void {
     this.createPrDialogOpen.set(false);
+    this.createPrPreferredHead.set(null);
   }
 
   async savePrTemplate(input: { name: string; title: string; body: string }): Promise<void> {
@@ -4456,6 +4718,128 @@ export class AppStore {
       this.showToast(result.message);
     } catch (err) {
       this.showError(err);
+    }
+  }
+
+  async pushBranch(name: string): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const branch = name.trim();
+    if (!path || !branch) return false;
+    const local = this.localBranches().find((b) => b.name === branch);
+    if (local?.isCurrent || this.status()?.branch === branch) {
+      return this.pushRemote();
+    }
+    if (this.isBranchLocked(branch)) {
+      const reason = local?.lockReason;
+      this.showWarning(
+        reason
+          ? `Branch '${branch}' is locked: ${reason}`
+          : `Branch '${branch}' is locked. Unlock it before pushing.`,
+      );
+      return false;
+    }
+
+    const pushOpts = await this.preparePushOptions(this.status(), branch);
+    if (!pushOpts) return false;
+    if (this.remoteBusy()) return false;
+    this.remoteBusy.set('push');
+    try {
+      const result = await this.tauri.push(path, {
+        ...pushOpts,
+        remote: this.pushRemoteName(branch),
+        branch,
+      });
+      await this.refreshRepo();
+      this.showToast(result.message || `Pushed ${branch}`, {
+        kind: 'success',
+        durationMs: 3200,
+        category: 'push',
+      });
+      return true;
+    } catch (err) {
+      const message = this.formatError(err);
+      if (/non-fast-forward|rejected|fetch first/i.test(message)) {
+        await this.openForcePushSafety(branch);
+        return false;
+      }
+      this.showError(message);
+      return false;
+    } finally {
+      this.remoteBusy.set(null);
+    }
+  }
+
+  async setBranchUpstream(branch: string, upstream: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const name = branch.trim();
+    const remoteRef = upstream.trim();
+    if (!path || !name || !remoteRef) return;
+    await this.runGitRefresh(
+      ['branch', `--set-upstream-to=${remoteRef}`, name],
+      `Set upstream of ${name} to ${remoteRef}`,
+    );
+  }
+
+  async unsetBranchUpstream(branch: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const name = branch.trim();
+    if (!path || !name) return;
+    await this.runGitRefresh(['branch', '--unset-upstream', name], `Stopped tracking on ${name}`);
+  }
+
+  async fastForwardTo(target: string, branch?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const onto = target.trim();
+    if (!path || !onto) return;
+    const local = branch?.trim();
+    const current = this.status()?.branch;
+    if (local && current && local !== current) {
+      await this.runGitRefresh(
+        ['fetch', '.', `${onto}:${local}`],
+        `Fast-forwarded ${local} to ${onto}`,
+      );
+      return;
+    }
+    await this.runGitRefresh(['merge', '--ff-only', onto], `Fast-forwarded to ${onto}`);
+  }
+
+  async pushTag(name: string, remote?: string): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const tag = name.trim();
+    if (!path || !tag) return;
+    const dest = remote?.trim() || this.pushRemoteName() || this.remotes()[0]?.name;
+    if (!dest) {
+      this.showWarning('No remote configured');
+      return;
+    }
+    await this.runGitRefresh(['push', dest, `refs/tags/${tag}`], `Pushed tag ${tag} to ${dest}`);
+  }
+
+  private async runGitRefresh(args: string[], fallback: string): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) return false;
+    try {
+      const result = await this.withRepoMutation(() => this.tauri.runGitCommand(path, args));
+      const message = result.stdout.trim() || result.stderr.trim() || fallback;
+      if (!result.ok) {
+        if (message.toLowerCase().includes('conflict')) {
+          await this.handleConflictResult({ ok: false, message });
+          return false;
+        }
+        this.showError(message);
+        return false;
+      }
+      await this.refreshRepo();
+      this.showToast(message, { kind: 'success' });
+      return true;
+    } catch (err) {
+      const message = this.formatError(err);
+      if (message.toLowerCase().includes('conflict')) {
+        await this.handleConflictResult({ ok: false, message });
+        return false;
+      }
+      this.showError(err);
+      return false;
     }
   }
 
@@ -5566,10 +5950,10 @@ export class AppStore {
     await this.openSafety('deleteTag', name);
   }
 
-  async forcePush(): Promise<void> {
-    if (this.currentBranchLocked()) {
-      const branch = this.status()?.branch ?? 'branch';
-      const reason = this.currentBranchLockReason();
+  async forcePush(branchName?: string): Promise<void> {
+    const branch = branchName?.trim() || this.status()?.branch || undefined;
+    if (branch && this.isBranchLocked(branch)) {
+      const reason = this.localBranches().find((b) => b.name === branch)?.lockReason;
       this.showWarning(
         reason
           ? `Branch '${branch}' is locked: ${reason}`
@@ -5577,7 +5961,7 @@ export class AppStore {
       );
       return;
     }
-    await this.openForcePushSafety(this.status()?.branch);
+    await this.openForcePushSafety(branch);
   }
 
   private async confirmIfEnabled(

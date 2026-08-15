@@ -16,8 +16,9 @@ import { AppStore } from '../../../core/app.store';
 import type { BranchInfo } from '../../../core/models';
 import { describeBranchSync, shortUpstream } from '../../../shared/git/branch-sync';
 import { isMainlineBranch } from '../../../shared/git/mainline-branch';
-import { identityColor } from '../../../shared/ui/identity-color';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { SelectService } from '../../../shared/ui/select-dialog/select.service';
+import { parseRemoteRef } from '../../../shared/git/remote-ref';
 import { RemotesPanel } from '../../remotes/remotes-panel/remotes-panel';
 import { StashPanel } from '../../stash/stash-panel/stash-panel';
 import { WorktreesPanel } from '../../worktrees/worktrees-panel/worktrees-panel';
@@ -109,7 +110,7 @@ type TagFlatRow =
 export class RefsPanel {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
-  readonly identityColor = identityColor;
+  private readonly selects = inject(SelectService);
   readonly creatingTag = signal(false);
   readonly newTag = signal('');
   readonly query = signal('');
@@ -851,6 +852,285 @@ export class RefsPanel {
 
   canLockBranch(name: string): boolean {
     return this.store.localBranches().some((b) => b.name === name);
+  }
+
+  menuTipSha(name: string): string | null {
+    return (
+      this.menuLocalBranch(name)?.tipSha ??
+      this.menuRemoteBranch(name)?.tipSha ??
+      this.store.tags().find((t) => t.name === name)?.sha ??
+      null
+    );
+  }
+
+  menuUpstream(name: string): string | null {
+    const local = this.menuLocalBranch(name);
+    if (!local) return null;
+    return local.upstream ?? this.relatedRemote(local)?.name ?? null;
+  }
+
+  menuUpstreamShort(name: string): string | null {
+    const upstream = this.menuUpstream(name);
+    return upstream ? shortUpstream(upstream) : null;
+  }
+
+  currentBranchName(): string | null {
+    return this.currentBranch()?.name ?? this.store.status()?.branch ?? null;
+  }
+
+  remoteNameOf(ref: string): string | null {
+    return parseRemoteRef(ref)?.remote ?? null;
+  }
+
+  showInGraph(name: string): void {
+    const local = this.menuLocalBranch(name);
+    const remote = this.menuRemoteBranch(name);
+    this.closeBranchMenu();
+    if (local) {
+      this.locateBranch(local);
+      return;
+    }
+    if (remote) {
+      this.locateBranch(remote);
+      return;
+    }
+    this.locateTagFromMenu(name);
+  }
+
+  async copySha(name: string): Promise<void> {
+    const sha = this.menuTipSha(name);
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    if (!sha) {
+      this.store.showWarning('No commit SHA to copy');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(sha);
+      this.store.showSuccess(`Copied ${sha.slice(0, 7)}`);
+    } catch {
+      this.store.showError('Could not copy SHA');
+    }
+  }
+
+  async mergeUpstream(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const upstream = this.menuUpstream(name);
+    if (!upstream) {
+      this.store.showWarning(`“${name}” has no origin branch to merge`);
+      return;
+    }
+    await this.store.mergeBranch(upstream);
+  }
+
+  async rebaseOntoUpstream(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const upstream = this.menuUpstream(name);
+    if (!upstream) {
+      this.store.showWarning(`“${name}” has no origin branch to rebase onto`);
+      return;
+    }
+    await this.store.rebaseOnto(upstream);
+  }
+
+  async pullCurrent(rebase = false): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.pullRemote(rebase);
+  }
+
+  async pushThis(name: string): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.pushBranch(name);
+  }
+
+  async forcePushThis(name: string): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.forcePush(name);
+  }
+
+  fetchThis(name: string): void {
+    this.closeBranchMenu();
+    const upstream = this.menuUpstream(name) ?? name;
+    const remote = parseRemoteRef(upstream)?.remote;
+    void this.store.fetchRemote(remote ?? undefined);
+  }
+
+  async fastForwardThis(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const local = this.menuLocalBranch(name);
+    const target = local ? this.menuUpstream(name) : name;
+    if (!target) {
+      this.store.showWarning(`“${name}” has no origin branch to fast-forward to`);
+      return;
+    }
+    await this.store.fastForwardTo(target, local && !local.isCurrent ? local.name : undefined);
+  }
+
+  async setUpstream(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const remotes = this.store.remoteBranches();
+    if (remotes.length === 0) {
+      this.store.showWarning('No remote-tracking branches yet — fetch first');
+      return;
+    }
+    const current = this.menuUpstream(name);
+    const guess =
+      current ??
+      remotes.find((r) => this.remoteTracksLocal(r.name, name))?.name ??
+      remotes[0]?.name;
+    const choice = await this.selects.ask({
+      title: current ? `Change upstream for ${name}` : `Set upstream for ${name}`,
+      message: 'Pull, push, and merge origin will use this remote-tracking branch.',
+      label: 'Remote branch',
+      options: remotes.map((r) => ({
+        value: r.name,
+        label: r.name,
+        hint: r.tipShortSha ?? undefined,
+      })),
+      initialValue: guess,
+      confirmLabel: 'Set upstream',
+    });
+    if (!choice) return;
+    await this.store.setBranchUpstream(name, choice);
+  }
+
+  async unsetUpstream(name: string): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.unsetBranchUpstream(name);
+  }
+
+  newBranchFrom(name: string): void {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    void this.store.openCreateBranchDialog(name);
+  }
+
+  async newWorktreeFrom(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const suggested = this.suggestedWorktreePath(name);
+    const path = await this.prompts.ask({
+      title: 'New worktree',
+      message: `Check out “${name}” in a separate working directory.`,
+      label: 'Path',
+      initialValue: suggested,
+      confirmLabel: 'Create',
+      mono: true,
+    });
+    if (!path?.trim()) return;
+    const inUse =
+      this.menuLocalBranch(name)?.isCurrent ||
+      this.store.worktrees().some((w) => w.branch === name);
+    if (inUse) {
+      const branch = await this.prompts.ask({
+        title: 'New branch for worktree',
+        message: `“${name}” is already checked out. Create a new branch from it for this worktree.`,
+        label: 'Branch name',
+        initialValue: name,
+        confirmLabel: 'Create',
+        mono: true,
+      });
+      if (!branch?.trim()) return;
+      await this.store.addWorktree(path.trim(), {
+        branch: branch.trim(),
+        createBranch: true,
+        startPoint: name,
+      });
+      return;
+    }
+    await this.store.addWorktree(path.trim(), { branch: name });
+  }
+
+  async createTagHere(name: string): Promise<void> {
+    this.closeBranchMenu();
+    const sha = this.menuTipSha(name);
+    const tag = await this.prompts.ask({
+      title: 'Create tag',
+      message: `Tag the tip of “${name}”.`,
+      label: 'Tag name',
+      placeholder: 'v1.0.0',
+      confirmLabel: 'Tag',
+      mono: true,
+    });
+    if (!tag?.trim()) return;
+    await this.store.createTag(tag.trim(), sha ?? undefined);
+  }
+
+  compareThis(name: string): void {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    const sha = this.menuTipSha(name);
+    if (!sha) {
+      this.store.showWarning('No commit to compare');
+      return;
+    }
+    this.store.compareWithCurrent(sha);
+  }
+
+  cherryPickTip(name: string): void {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    const sha = this.menuTipSha(name);
+    if (!sha) {
+      this.store.showWarning('No commit to cherry-pick');
+      return;
+    }
+    void this.store.openCherryPickPreview([sha]);
+  }
+
+  openPr(name: string): void {
+    this.closeBranchMenu();
+    void this.store.openCreatePullRequest(name);
+  }
+
+  async resetCurrent(name: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    const sha = this.menuTipSha(name) ?? name;
+    await this.store.resetTo(sha, mode);
+  }
+
+  async pushTag(name: string): Promise<void> {
+    this.closeTagMenu();
+    const remotes = this.store.remotes();
+    if (remotes.length === 0) {
+      this.store.showWarning('No remote configured');
+      return;
+    }
+    let remote = remotes[0]?.name;
+    if (remotes.length > 1) {
+      const choice = await this.selects.ask({
+        title: `Push tag ${name}`,
+        message: 'Choose which remote to push this tag to.',
+        label: 'Remote',
+        options: remotes.map((r) => ({ value: r.name, label: r.name, hint: r.fetchUrl })),
+        initialValue: remote,
+        confirmLabel: 'Push tag',
+      });
+      if (!choice) return;
+      remote = choice;
+    }
+    await this.store.pushTag(name, remote);
+  }
+
+  checkoutTag(name: string): void {
+    this.closeTagMenu();
+    void this.store.checkoutBranch(name);
+  }
+
+  async mergeTag(name: string): Promise<void> {
+    this.closeTagMenu();
+    await this.store.mergeBranch(name);
+  }
+
+  private suggestedWorktreePath(branch: string): string {
+    const repo = this.store.currentRepo()?.path ?? '';
+    const unix = repo.replace(/\\/g, '/').replace(/\/$/, '');
+    const slash = unix.lastIndexOf('/');
+    const parent = slash >= 0 ? unix.slice(0, slash) : unix;
+    const repoName = slash >= 0 ? unix.slice(slash + 1) : unix || 'repo';
+    const leaf = branch.replace(/\//g, '-');
+    const sep = repo.includes('\\') ? '\\' : '/';
+    return `${parent.replace(/\//g, sep)}${sep}${repoName}-${leaf}`;
   }
 
   startCreateTag(event?: Event): void {

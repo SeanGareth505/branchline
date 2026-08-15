@@ -15,6 +15,8 @@ pub struct CreateCommitInput {
     pub message: String,
     pub amend: Option<bool>,
     pub allow_empty: Option<bool>,
+    #[serde(default)]
+    pub skip_hooks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,9 @@ pub fn create_commit(
         }
         if allow_empty {
             args.push("--allow-empty");
+        }
+        if input.skip_hooks.unwrap_or(false) {
+            args.push("--no-verify");
         }
         if message.is_empty() {
             args.push("--allow-empty-message");

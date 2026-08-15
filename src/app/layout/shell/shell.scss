@@ -281,9 +281,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 1.1rem;
   min-width: min(18rem, 100%);
-  padding: 1.55rem 1.7rem 1.4rem;
+  padding: 1.7rem 1.85rem 1.5rem;
   text-align: center;
   position: relative;
 }
@@ -291,16 +291,16 @@
 .boot-card::before {
   content: '';
   position: absolute;
-  width: 6.5rem;
-  height: 6.5rem;
+  width: 7.25rem;
+  height: 7.25rem;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--accent) 28%, transparent),
+    color-mix(in srgb, var(--accent) 26%, transparent),
     transparent 70%
   );
   pointer-events: none;
-  animation: bl-boot-glow 2.2s ease-in-out infinite;
+  animation: bl-boot-glow 3s ease-in-out infinite;
 }
 
 .boot-card app-spinner {
@@ -313,26 +313,46 @@
   position: relative;
   z-index: 1;
   color: var(--text-secondary);
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  animation: bl-boot-label 2.4s ease-in-out infinite;
 }
 
 @keyframes bl-boot-glow {
   0%,
   100% {
-    opacity: 0.55;
-    transform: scale(0.9);
+    opacity: 0.42;
+    transform: scale(0.92);
   }
   50% {
     opacity: 1;
-    transform: scale(1.12);
+    transform: scale(1.1);
+  }
+}
+
+@keyframes bl-boot-label {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .boot-card::before {
+  .boot-card::before,
+  .boot-card p {
     animation: none;
+  }
+
+  .boot-card::before {
     opacity: 0.7;
+  }
+
+  .boot-card p {
+    opacity: 1;
   }
 }
 

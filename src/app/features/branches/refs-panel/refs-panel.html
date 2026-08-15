@@ -1,7 +1,7 @@
 <aside class="refs" (click)="(branchMenu() || tagMenu()) && onBranchMenuDismiss()">
   <div class="toolbar">
     <label class="filter" cdkOverlayOrigin #filterOrigin="cdkOverlayOrigin">
-      <ng-icon name="lucideSearch" size="14" />
+      <ng-icon name="lucideSearch" size="13" />
       <input
         type="search"
         placeholder="Filter…"
@@ -212,7 +212,7 @@
         <ul class="ref-list">
           @for (row of localRows(); track row.path) {
             @if (row.kind === 'dir') {
-              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth" [style.--identity]="identityColor(row.path)">
+              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                 <span class="tree-guides" aria-hidden="true"></span>
                 <button
                   type="button"
@@ -364,7 +364,7 @@
           <ul class="ref-list">
             @for (row of group.rows; track row.path) {
               @if (row.kind === 'dir') {
-                <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth" [style.--identity]="identityColor(row.path)">
+                <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                   <span class="tree-guides" aria-hidden="true"></span>
                   <button
                     type="button"
@@ -468,7 +468,7 @@
         <ul class="ref-list">
           @for (row of tagRows(); track row.path) {
             @if (row.kind === 'dir') {
-              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth" [style.--identity]="identityColor(row.path)">
+              <li class="folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
                 <span class="tree-guides" aria-hidden="true"></span>
                 <button
                   type="button"

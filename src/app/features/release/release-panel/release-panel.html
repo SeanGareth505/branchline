@@ -83,68 +83,177 @@
     </div>
 
     @if (showDeploySection()) {
-      <section class="deploy-section">
+      <section class="deploy-section" [class.collapsed]="!jobsExpanded()">
         <div class="deploy-head">
-          <span class="deploy-title">GitHub Actions</span>
+          <button
+            type="button"
+            class="deploy-toggle"
+            (click)="toggleJobsExpanded()"
+            [attr.aria-expanded]="jobsExpanded()"
+          >
+            <ng-icon
+              class="deploy-chev"
+              [name]="jobsExpanded() ? 'lucideChevronDown' : 'lucideChevronRight'"
+              size="13"
+            />
+            <span class="deploy-title">GitHub Actions</span>
+          </button>
           @if (jobSummary(); as summary) {
             <span class="job-summary">{{ summary }}</span>
           }
           <span class="workflow-badge" [attr.data-status]="workflowStatus()">{{ workflowStatus() }}</span>
         </div>
-        @if (deployJobs().length) {
-          <ul class="job-list">
-            @for (job of deployJobs(); track trackJob($index, job)) {
-              <li>
+        @if (jobsExpanded()) {
+          @if (deployJobs().length) {
+            <div class="job-tabs" role="tablist" aria-label="Job status">
+              @for (tab of jobFilterTabs(); track tab.id) {
                 <button
                   type="button"
-                  class="job-row"
-                  [disabled]="!job.url"
-                  [title]="job.name"
-                  (click)="openLink(job.url)"
+                  role="tab"
+                  [class.on]="jobFilter() === tab.id"
+                  [class.fail]="tab.id === 'failed' && tab.count > 0"
+                  [attr.aria-selected]="jobFilter() === tab.id"
+                  (click)="setJobFilter(tab.id)"
                 >
-                  <span class="job-marker" [attr.data-status]="jobChipStatus(job)" aria-hidden="true">
-                    @if (jobChipStatus(job) === 'success') {
-                      <ng-icon name="lucideCheck" size="10" />
-                    } @else if (jobChipStatus(job) === 'failure') {
-                      <ng-icon name="lucideX" size="10" />
-                    }
-                  </span>
-                  <span class="job-copy">
-                    <span class="job-name">{{ jobLabel(job) }}</span>
-                    <span class="job-status">{{ jobStatusLabel(job) }}</span>
-                  </span>
-                  @if (job.url) {
-                    <ng-icon name="lucideExternalLink" size="11" class="job-link" />
-                  }
+                  {{ tab.label }}
+                  <strong>{{ tab.count }}</strong>
                 </button>
-              </li>
-            }
-          </ul>
-        } @else if (busy()) {
-          <p class="deploy-wait">Waiting for workflow jobs to appear…</p>
-        } @else if (trackingPaused()) {
-          <p class="deploy-wait">No jobs loaded yet. Refresh or open Actions.</p>
+              }
+            </div>
+            <ul class="job-list">
+              @for (job of filteredJobs(); track trackJob($index, job)) {
+                <li [class.open]="isJobOpen(job)">
+                  <div class="job-row-wrap">
+                    <button
+                      type="button"
+                      class="job-row"
+                      [title]="job.name"
+                      [attr.aria-expanded]="hasSteps(job) ? isJobOpen(job) : null"
+                      (click)="toggleJob(job, $event)"
+                    >
+                      @if (hasSteps(job)) {
+                        <ng-icon
+                          class="job-chev"
+                          [name]="isJobOpen(job) ? 'lucideChevronDown' : 'lucideChevronRight'"
+                          size="12"
+                        />
+                      } @else {
+                        <span class="job-chev-spacer" aria-hidden="true"></span>
+                      }
+                      <span class="job-marker" [attr.data-status]="jobChipStatus(job)" aria-hidden="true">
+                        @if (jobChipStatus(job) === 'success') {
+                          <ng-icon name="lucideCheck" size="10" />
+                        } @else if (jobChipStatus(job) === 'failure') {
+                          <ng-icon name="lucideX" size="10" />
+                        }
+                      </span>
+                      <span class="job-copy">
+                        <span class="job-name">{{ jobLabel(job) }}</span>
+                        <span class="job-status">
+                          {{ jobStatusLabel(job) }}
+                          @if (durationLabel(job); as time) {
+                            <span class="job-time">{{ time }}</span>
+                          }
+                        </span>
+                      </span>
+                    </button>
+                    @if (job.url) {
+                      <button
+                        type="button"
+                        class="job-open"
+                        title="Open job on GitHub"
+                        (click)="openLink(job.url)"
+                      >
+                        <ng-icon name="lucideExternalLink" size="11" />
+                      </button>
+                    }
+                  </div>
+                  @if (isJobOpen(job) && hasSteps(job)) {
+                    <ul class="step-list">
+                      @for (step of jobSteps(job); track step.number ?? step.name) {
+                        <li [class.active]="jobChipStatus(step) === 'pending'">
+                          <span class="job-marker" [attr.data-status]="jobChipStatus(step)" aria-hidden="true">
+                            @if (jobChipStatus(step) === 'success') {
+                              <ng-icon name="lucideCheck" size="9" />
+                            } @else if (jobChipStatus(step) === 'failure') {
+                              <ng-icon name="lucideX" size="9" />
+                            }
+                          </span>
+                          <span class="step-name">{{ step.name }}</span>
+                          <span class="step-status">
+                            {{ jobStatusLabel(step) }}
+                            @if (durationLabel(step); as time) {
+                              <span class="job-time">{{ time }}</span>
+                            }
+                          </span>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </li>
+              } @empty {
+                <li class="job-empty">
+                  <span>{{ jobEmptyLabel() }}</span>
+                  @if (jobFilter() === 'in_progress' && jobCounts().failed) {
+                    <button type="button" class="job-empty-link" (click)="setJobFilter('failed')">
+                      Show failed
+                    </button>
+                  } @else if (jobFilter() === 'in_progress' && jobCounts().completed) {
+                    <button type="button" class="job-empty-link" (click)="setJobFilter('completed')">
+                      Show completed
+                    </button>
+                  } @else if (jobFilter() !== 'all' && jobCounts().all) {
+                    <button type="button" class="job-empty-link" (click)="setJobFilter('all')">
+                      Show all
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          } @else if (busy()) {
+            <p class="deploy-wait">Waiting for workflow jobs to appear…</p>
+          } @else if (trackingPaused()) {
+            <p class="deploy-wait">No jobs loaded yet. Refresh or open Actions.</p>
+          }
         }
       </section>
     }
 
-    <ol class="steps">
-      @for (step of activity.steps; track trackStep($index, step)) {
-        <li [class]="step.status">
-          <span class="marker" aria-hidden="true">
-            @if (step.status === 'done') {
-              <ng-icon name="lucideCheck" size="10" />
-            } @else if (step.status === 'error') {
-              <ng-icon name="lucideX" size="10" />
-            }
-          </span>
-          <div class="step-body">
-            <span class="step-label">{{ step.label }}</span>
-            <span class="step-message">{{ step.message }}</span>
-          </div>
-        </li>
+    <section class="steps-section" [class.collapsed]="!stepsOpen()">
+      <button
+        type="button"
+        class="steps-toggle"
+        (click)="toggleStepsExpanded()"
+        [attr.aria-expanded]="stepsOpen()"
+      >
+        <ng-icon
+          class="deploy-chev"
+          [name]="stepsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
+          size="13"
+        />
+        <span class="deploy-title">Local steps</span>
+        <span class="job-summary">{{ activity.steps.length }}</span>
+      </button>
+      @if (stepsOpen()) {
+        <ol class="steps">
+          @for (step of activity.steps; track trackStep($index, step)) {
+            <li [class]="step.status">
+              <span class="marker" aria-hidden="true">
+                @if (step.status === 'done') {
+                  <ng-icon name="lucideCheck" size="10" />
+                } @else if (step.status === 'error') {
+                  <ng-icon name="lucideX" size="10" />
+                }
+              </span>
+              <div class="step-body">
+                <span class="step-label">{{ step.label }}</span>
+                <span class="step-message">{{ step.message }}</span>
+              </div>
+            </li>
+          }
+        </ol>
       }
-    </ol>
+    </section>
 
     <div class="actions">
       @if (showPushFallback()) {

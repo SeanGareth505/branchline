@@ -898,11 +898,26 @@ pub struct PollReleaseDeployInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReleaseDeployJobStep {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub number: Option<i64>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseDeployJob {
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
     pub url: Option<String>,
+    #[serde(default)]
+    pub steps: Vec<ReleaseDeployJobStep>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -976,20 +991,56 @@ fn parse_deploy_jobs(value: &Value) -> Vec<ReleaseDeployJob> {
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string(),
-                        conclusion: job
-                            .get("conclusion")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string),
-                        url: job
-                            .get("html_url")
-                            .or_else(|| job.get("url"))
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string),
+                        conclusion: json_opt_str(job, &["conclusion"]),
+                        url: json_opt_str(job, &["html_url", "url"]),
+                        steps: parse_deploy_job_steps(job),
+                        started_at: json_opt_str(job, &["started_at", "startedAt"]),
+                        completed_at: json_opt_str(job, &["completed_at", "completedAt"]),
                     })
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn parse_deploy_job_steps(job: &Value) -> Vec<ReleaseDeployJobStep> {
+    job.get("steps")
+        .and_then(|v| v.as_array())
+        .map(|steps| {
+            steps
+                .iter()
+                .filter_map(|step| {
+                    let name = step.get("name")?.as_str()?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(ReleaseDeployJobStep {
+                        name: name.to_string(),
+                        status: step
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        conclusion: json_opt_str(step, &["conclusion"]),
+                        number: step.get("number").and_then(|v| v.as_i64()),
+                        started_at: json_opt_str(step, &["started_at", "startedAt"]),
+                        completed_at: json_opt_str(step, &["completed_at", "completedAt"]),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn json_opt_str(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        value
+            .get(*key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    })
 }
 
 fn fetch_run_jobs_with_api(
@@ -1019,6 +1070,20 @@ fn fetch_run_jobs_with_api(
 }
 
 fn fetch_run_jobs_with_gh(gh: &str, repo: &str, run_id: u64) -> Vec<ReleaseDeployJob> {
+    let api_path = format!("repos/{repo}/actions/runs/{run_id}/jobs?per_page=100");
+    let api = Command::new(gh).args(["api", &api_path]).output();
+    if let Ok(output) = api {
+        if output.status.success() {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                if let Ok(payload) = serde_json::from_str::<Value>(&text) {
+                    let jobs = parse_deploy_jobs(&payload);
+                    if !jobs.is_empty() {
+                        return jobs;
+                    }
+                }
+            }
+        }
+    }
     let output = match Command::new(gh)
         .args([
             "run",
@@ -1289,8 +1354,10 @@ fn github_pages_url(owner: &str, repo: &str) -> String {
     format!("https://{owner}.github.io/{repo}/")
 }
 
+const RELEASE_WORKFLOW_FILES: &[&str] = &["release.yml", "release-desktop.yml"];
+
 fn github_actions_page_url(owner: &str, repo: &str) -> String {
-    format!("https://github.com/{owner}/{repo}/actions/workflows/release-desktop.yml")
+    format!("https://github.com/{owner}/{repo}/actions/workflows/release.yml")
 }
 
 fn tag_matches_run(tag: &str, head_branch: Option<&str>, display_title: Option<&str>) -> bool {
@@ -1319,13 +1386,13 @@ fn workflow_is_running(status: &str) -> bool {
 }
 
 fn optional_job_name(name: &str) -> bool {
-    name.to_ascii_lowercase().contains("stabilize")
+    let lower = name.to_ascii_lowercase();
+    lower.contains("stabilize") || lower.contains("stable download")
 }
 
-fn publish_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
+fn required_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
     jobs.iter().any(|job| {
-        let name = job.name.to_ascii_lowercase();
-        name.contains("publish")
+        !optional_job_name(&job.name)
             && job.conclusion.as_deref().is_some_and(|c| {
                 matches!(c, "failure" | "cancelled" | "timed_out")
             })
@@ -1390,9 +1457,7 @@ fn evaluate_deploy(
         "failure" | "cancelled" | "timed_out"
     ) {
         if let Some(url) = release_url.clone() {
-            if !publish_job_failed(&run.jobs)
-                && run.jobs.iter().any(|job| optional_job_name(&job.name))
-            {
+            if !run.jobs.is_empty() && !required_job_failed(&run.jobs) {
                 return urls.output(
                     "success",
                     "done",
@@ -1462,44 +1527,61 @@ fn parse_gh_runs(output: std::process::Output) -> Option<Vec<GhWorkflowRun>> {
     serde_json::from_str(&String::from_utf8(output.stdout).ok()?).ok()
 }
 
-fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
-    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle";
-    let filtered = Command::new(gh)
-        .args([
-            "run",
-            "list",
-            "-R",
-            repo,
-            "--workflow=release-desktop.yml",
-            "--branch",
-            tag,
-            "--limit",
-            "10",
-            "--json",
-            json_fields,
-        ])
-        .output()
-        .ok()
-        .and_then(parse_gh_runs)
-        .unwrap_or_default();
-    if !filtered.is_empty() {
-        return Some(filtered);
+fn gh_list_workflow_runs(
+    gh: &str,
+    repo: &str,
+    workflow: &str,
+    json_fields: &str,
+    branch: Option<&str>,
+) -> Vec<GhWorkflowRun> {
+    let mut args = vec![
+        "run".into(),
+        "list".into(),
+        "-R".into(),
+        repo.into(),
+        format!("--workflow={workflow}"),
+        "--limit".into(),
+        if branch.is_some() { "10" } else { "20" }.into(),
+        "--json".into(),
+        json_fields.into(),
+    ];
+    if let Some(tag) = branch {
+        args.push("--branch".into());
+        args.push(tag.into());
     }
     Command::new(gh)
-        .args([
-            "run",
-            "list",
-            "-R",
-            repo,
-            "--workflow=release-desktop.yml",
-            "--limit",
-            "20",
-            "--json",
-            json_fields,
-        ])
+        .args(&args)
         .output()
         .ok()
         .and_then(parse_gh_runs)
+        .unwrap_or_default()
+}
+
+fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
+    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle";
+    let mut runs = Vec::new();
+    for workflow in RELEASE_WORKFLOW_FILES {
+        runs.extend(gh_list_workflow_runs(
+            gh,
+            repo,
+            workflow,
+            json_fields,
+            Some(tag),
+        ));
+    }
+    if !runs.is_empty() {
+        return Some(runs);
+    }
+    for workflow in RELEASE_WORKFLOW_FILES {
+        runs.extend(gh_list_workflow_runs(
+            gh, repo, workflow, json_fields, None,
+        ));
+    }
+    if runs.is_empty() {
+        None
+    } else {
+        Some(runs)
+    }
 }
 
 fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
@@ -1575,14 +1657,27 @@ fn fetch_workflow_runs(
     full: &str,
     tag: &str,
 ) -> AppResult<Vec<Value>> {
-    let urls = [
-        format!(
-            "{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=10&branch={tag}"
-        ),
-        format!("{base}/repos/{full}/actions/workflows/release-desktop.yml/runs?per_page=20"),
-    ];
     let mut last_error = None;
-    for url in urls {
+    let mut collected = Vec::new();
+    let candidates: Vec<(String, bool)> = RELEASE_WORKFLOW_FILES
+        .iter()
+        .flat_map(|workflow| {
+            [
+                (
+                    format!(
+                        "{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=10&branch={tag}"
+                    ),
+                    true,
+                ),
+                (
+                    format!("{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=20"),
+                    false,
+                ),
+            ]
+        })
+        .collect();
+    let mut fallback = Vec::new();
+    for (url, tag_filtered) in candidates {
         let resp = client
             .get(&url)
             .header("Accept", "application/vnd.github+json")
@@ -1603,9 +1698,17 @@ fn fetch_workflow_runs(
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        if !runs.is_empty() || url.contains("per_page=20") {
-            return Ok(runs);
+        if tag_filtered {
+            collected.extend(runs);
+        } else if collected.is_empty() {
+            fallback.extend(runs);
         }
+    }
+    if !collected.is_empty() {
+        return Ok(collected);
+    }
+    if !fallback.is_empty() {
+        return Ok(fallback);
     }
     Err(crate::AppError::msg(
         last_error.unwrap_or_else(|| "GitHub Actions request failed".into()),
@@ -1720,6 +1823,9 @@ mod tests {
                     Some(conclusion.into())
                 },
                 url: None,
+                steps: vec![],
+                started_at: None,
+                completed_at: None,
             }],
         }
     }
@@ -1728,6 +1834,7 @@ mod tests {
     fn tag_matches_head_branch_and_title() {
         assert!(tag_matches_run("v0.7.4", Some("v0.7.4"), None));
         assert!(tag_matches_run("v0.7.4", None, Some("Release Desktop v0.7.4")));
+        assert!(tag_matches_run("v0.7.4", None, Some("Release 0.7.4")));
         assert!(tag_matches_run("v0.7.4", Some("0.7.4"), None));
         assert!(!tag_matches_run("v0.7.4", Some("main"), Some("chore: docs")));
     }
@@ -1783,12 +1890,18 @@ mod tests {
                     status: "completed".into(),
                     conclusion: Some("success".into()),
                     url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
                 },
                 ReleaseDeployJob {
-                    name: "stabilize-names".into(),
+                    name: "Stable download names".into(),
                     status: "completed".into(),
                     conclusion: Some("failure".into()),
                     url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
                 },
             ],
         };
@@ -1800,5 +1913,76 @@ mod tests {
         );
         assert_eq!(result.status, "success");
         assert_eq!(result.phase, "done");
+    }
+
+    #[test]
+    fn deploy_fails_if_android_job_failed() {
+        let snapshot = WorkflowSnapshot {
+            status: "completed".into(),
+            conclusion: "failure".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![
+                ReleaseDeployJob {
+                    name: "macOS arm64".into(),
+                    status: "completed".into(),
+                    conclusion: Some("success".into()),
+                    url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
+                },
+                ReleaseDeployJob {
+                    name: "Android".into(),
+                    status: "completed".into(),
+                    conclusion: Some("failure".into()),
+                    url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
+                },
+            ],
+        };
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.7.8",
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.8".into()),
+            Some(snapshot),
+        );
+        assert_eq!(result.status, "failure");
+        assert_eq!(result.phase, "error");
+    }
+
+    #[test]
+    fn parse_deploy_jobs_includes_steps() {
+        let payload = serde_json::json!({
+            "jobs": [{
+                "name": "macOS arm64",
+                "status": "in_progress",
+                "conclusion": null,
+                "html_url": "https://github.com/acme/branchline/actions/runs/1/job/2",
+                "steps": [
+                    {
+                        "name": "Set up job",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "number": 1
+                    },
+                    {
+                        "name": "Build",
+                        "status": "in_progress",
+                        "conclusion": null,
+                        "number": 2
+                    }
+                ]
+            }]
+        });
+        let jobs = parse_deploy_jobs(&payload);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].name, "macOS arm64");
+        assert_eq!(jobs[0].status, "in_progress");
+        assert_eq!(jobs[0].steps.len(), 2);
+        assert_eq!(jobs[0].steps[1].name, "Build");
+        assert_eq!(jobs[0].steps[1].status, "in_progress");
+        assert_eq!(jobs[0].started_at.as_deref(), None);
     }
 }

@@ -1,33 +1,90 @@
 <section class="page">
   <header class="hero">
     <div>
+      <p class="kicker">Git author</p>
       <h1>Identity</h1>
-      <p>Who Git attributes commits to.</p>
+      <p>Who Git attributes new commits to.</p>
     </div>
   </header>
 
   @if (loading() && !contexts()) {
     <app-loading-block message="Reading Git identity…" />
   } @else if (contexts(); as ctx) {
-    @if (hasOverride()) {
-      <div class="banner">
-        <div>
-          <strong>This repo has its own identity</strong>
-          <p>Everything else still uses your global default.</p>
-        </div>
-        <button
-          type="button"
-          class="bl-btn"
-          [disabled]="saving()"
-          (click)="clearOverride()"
-          title="Remove the repo override and use the global default here"
-        >
-          Use global default
-        </button>
+    <section class="now" [class.override]="hasOverride()" [class.empty]="!ctx.effective.email">
+      <div class="now-head">
+        <span class="now-label">
+          <ng-icon name="lucideCheck" size="13" />
+          In use now
+        </span>
+        @if (ctx.effective.email) {
+          <span class="scope-chip" [class.local]="hasOverride()">
+            @if (hasOverride()) {
+              {{ repoName() }} only
+            } @else if (hasRepo()) {
+              All repositories
+            } @else {
+              Git default
+            }
+          </span>
+        }
       </div>
-    }
+
+      @if (ctx.effective.email) {
+        <div class="now-who">
+          <strong>{{ ctx.effective.name || 'Unnamed' }}</strong>
+          <span>{{ ctx.effective.email }}</span>
+        </div>
+        <p class="now-hint">
+          @if (hasOverride()) {
+            New commits in <strong>{{ repoName() }}</strong> use this. Other repos still use your default.
+          } @else if (hasRepo()) {
+            New commits in <strong>{{ repoName() }}</strong> and every other repo use this.
+          } @else {
+            This is your Git default for every repository.
+          }
+        </p>
+      } @else {
+        <div class="now-who">
+          <strong>No identity set</strong>
+          <span>Fill the form below, then choose where it should apply.</span>
+        </div>
+      }
+
+      @if (hasOverride() && ctx.global?.email) {
+        <div class="now-global">
+          <div>
+            <span class="now-global-label">Default for other repos</span>
+            <p>
+              {{ ctx.global?.name }}
+              &lt;{{ ctx.global?.email }}&gt;
+            </p>
+          </div>
+          <button
+            type="button"
+            class="bl-btn"
+            [disabled]="saving()"
+            (click)="clearOverride()"
+            title="Remove the repo override and use the global default here"
+          >
+            Use default here
+          </button>
+        </div>
+      }
+    </section>
 
     <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Change to</h2>
+          <p>Edit the name and email, then pick where Git should save it.</p>
+        </div>
+        @if (dirty()) {
+          <span class="status-pill unsaved">Unsaved</span>
+        } @else if (name().trim() && email().trim()) {
+          <span class="status-pill current">Matches current</span>
+        }
+      </div>
+
       <label>
         <span>Name</span>
         <input
@@ -49,57 +106,80 @@
         />
       </label>
 
-      <div class="actions">
-        <button
-          type="button"
-          class="bl-btn bl-btn-primary"
-          [disabled]="!canSave()"
-          (click)="saveDefault()"
-          title="Save as the default for every repository"
-        >
-          Save as default
-        </button>
-        @if (hasRepo()) {
+      <div class="destinations">
+        <p class="dest-label">Save this identity to</p>
+        <div class="dest-grid" [class.single]="!hasRepo()">
           <button
             type="button"
-            class="bl-btn quiet"
+            class="dest"
             [disabled]="!canSave()"
-            (click)="saveRepoOnly()"
-            title="Use this identity only in the current repository"
+            (click)="saveDefault()"
+            title="Save as the default for every repository"
           >
-            Only this repo
+            <ng-icon name="lucideGlobe" size="16" />
+            <span class="dest-copy">
+              <strong>All repositories</strong>
+              <span>Your Git default everywhere</span>
+            </span>
           </button>
-        }
+          @if (hasRepo()) {
+            <button
+              type="button"
+              class="dest"
+              [disabled]="!canSave()"
+              (click)="saveRepoOnly()"
+              title="Use this identity only in the current repository"
+            >
+              <ng-icon name="lucideFolderGit2" size="16" />
+              <span class="dest-copy">
+                <strong>{{ repoName() }} only</strong>
+                <span>Override just this repository</span>
+              </span>
+            </button>
+          }
+        </div>
       </div>
 
-      <p class="hint">
-        @if (hasOverride()) {
-          Commits in this repo use the identity above (repo override).
-        } @else if (ctx.global?.email) {
-          Default for all repos:
-          <strong>{{ ctx.global?.name }}</strong>
-          &lt;{{ ctx.global?.email }}&gt;
-        } @else {
-          No global default yet — save one to start committing.
-        }
-      </p>
+      @if (dirty()) {
+        <button type="button" class="discard" [disabled]="saving()" (click)="resetForm()">
+          <ng-icon name="lucideUndo2" size="13" />
+          Discard unsaved changes
+        </button>
+      }
     </section>
 
     @if (suggestions().length) {
       <section class="suggestions">
         <h2>Your identities</h2>
-        <p class="muted">From your Git config and commits under your name. Click to fill the form.</p>
+        <p class="muted">Click one to fill the form. It is not used until you save it above.</p>
         <ul>
           @for (c of suggestions(); track c.id) {
             <li>
               <button
                 type="button"
                 class="suggest"
-                [class.on]="isSelected(c)"
+                [class.in-use]="isInUse(c)"
+                [class.in-form]="isInForm(c)"
                 (click)="pick(c)"
               >
-                <span class="suggest-name">{{ c.name || 'Unnamed' }}</span>
-                <span class="suggest-email">{{ c.email }}</span>
+                <span class="suggest-body">
+                  <span class="suggest-name">{{ c.name || 'Unnamed' }}</span>
+                  <span class="suggest-email">{{ c.email }}</span>
+                  <span class="suggest-meta">
+                    {{ c.label }}
+                    @if (c.commitCount) {
+                      · {{ c.commitCount }} commits
+                    }
+                  </span>
+                </span>
+                <span class="suggest-flags">
+                  @if (isInUse(c)) {
+                    <span class="flag use">In use</span>
+                  }
+                  @if (isInForm(c)) {
+                    <span class="flag form">In form</span>
+                  }
+                </span>
               </button>
             </li>
           }

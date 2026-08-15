@@ -1,0 +1,55 @@
+<section class="checks" [class.is-empty]="checks().length === 0">
+  <header>
+    <div class="title">
+      <ng-icon name="lucideListChecks" size="14" />
+      <h3>Checks</h3>
+      @if (managers().length) {
+        <span class="src">{{ managers()[0].label }}</span>
+      }
+    </div>
+    <span class="summary">{{ summary() }}</span>
+  </header>
+
+  @if (checks().length === 0) {
+    <p class="empty">No commit checks yet. Add a script, or open a repo with Husky.</p>
+  } @else {
+    <ul>
+      @for (c of checks(); track c.id) {
+        <li [attr.data-status]="statusOf(c)" [class.off]="!c.enabled">
+          <button type="button" class="row" (click)="toggleOutput(c)">
+            <span class="mark" aria-hidden="true">
+              @if (statusOf(c) === 'running') {
+                <app-spinner size="sm" [label]="c.name" />
+              } @else {
+                <ng-icon [name]="iconFor(statusOf(c))" size="14" />
+              }
+            </span>
+            <span class="meta">
+              <span class="name">{{ c.name }}</span>
+              <span class="from">{{ c.sourceLabel }}</span>
+            </span>
+            @if (!c.enabled) {
+              <span class="off-label">off</span>
+            }
+          </button>
+          @if (expandedId() === c.id && (outputOf(c) || c.command)) {
+            <pre class="log">{{ outputOf(c) || c.command }}</pre>
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  <div class="foot">
+    <label class="skip" [class.on]="skip()">
+      <input type="checkbox" [ngModel]="skip()" (ngModelChange)="skip.set($event)" />
+      Skip checks
+    </label>
+    <div class="actions">
+      <button type="button" class="bl-btn quiet" (click)="addScript()">Add script</button>
+      <button type="button" class="bl-btn quiet" (click)="manage()">Manage</button>
+    </div>
+  </div>
+</section>
+
+<app-check-script-dialog />

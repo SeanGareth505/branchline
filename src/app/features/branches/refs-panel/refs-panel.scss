@@ -24,21 +24,23 @@
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  margin: 0.55rem 0.6rem 0;
+  gap: 0.25rem;
+  margin: 0.35rem 0.45rem 0;
   padding: 0;
   background: transparent;
   border: 0;
 }
 
 .filter {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 8rem;
+  min-width: 5rem;
+  max-width: 8.5rem;
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.28rem 0.5rem;
-  border-radius: 7px;
+  gap: 0.22rem;
+  min-height: 1.45rem;
+  padding: 0 0.4rem;
+  border-radius: 6px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-bg-strong) 94%, transparent);
   color: var(--text-muted);
@@ -57,8 +59,9 @@
   outline: none;
   box-shadow: none;
   color: var(--text-primary);
-  font-size: 13px;
-  padding: 0.1rem 0;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 0;
 }
 
 .filter input:focus,
@@ -149,7 +152,7 @@
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.1rem;
   flex-shrink: 0;
 }
 
@@ -158,10 +161,10 @@
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
-  padding: 0.3rem 0.5rem;
-  border-radius: 7px;
+  padding: 0.16rem 0.38rem;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -183,12 +186,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
+  width: 1.45rem;
+  height: 1.45rem;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 7px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -290,7 +293,7 @@
   font-size: 12.5px;
   font-weight: 650;
   letter-spacing: -0.01em;
-  color: var(--section, var(--text-secondary));
+  color: var(--text-secondary);
 }
 
 .sync-chip {
@@ -562,7 +565,7 @@ button.sync-chip:hover {
   height: 100%;
   border: 0;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--identity, var(--bg-hover)) 14%, transparent);
+  background: color-mix(in srgb, var(--bg-hover) 28%, transparent);
   padding: 0 0.4rem 0 0.15rem;
   text-align: left;
   color: var(--text-secondary);
@@ -585,7 +588,7 @@ button.sync-chip:hover {
 
 .folder-btn .folder-icon {
   flex-shrink: 0;
-  color: var(--identity, var(--accent));
+  color: color-mix(in srgb, var(--accent) 72%, var(--text-muted));
 }
 
 .folder-btn .label {
@@ -598,8 +601,7 @@ button.sync-chip:hover {
 
 .folder-btn .count {
   margin-left: auto;
-  color: var(--identity, var(--text-muted));
-  background: color-mix(in srgb, var(--identity, var(--bg-base)) 16%, transparent);
+  background: color-mix(in srgb, var(--bg-base) 45%, transparent);
 }
 
 .leaf-icon {

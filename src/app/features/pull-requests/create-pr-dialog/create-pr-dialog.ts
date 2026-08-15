@@ -76,10 +76,12 @@ export class CreatePrDialog {
       this.primed = true;
       const status = this.store.status();
       const branch = status?.branch ?? '';
+      const preferred = this.store.createPrPreferredHead()?.trim();
+      const head = preferred || branch;
       this.title.set(this.defaultTitle());
       this.body.set('');
-      this.head.set(branch);
-      this.base.set(this.defaultBase(branch));
+      this.head.set(head);
+      this.base.set(this.defaultBase(head));
       this.draft.set(false);
       this.method.set(this.store.settings().prCreateMethod);
       this.selectedId.set('blank');

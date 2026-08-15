@@ -60,6 +60,8 @@ pub struct RemoteActionInput {
     pub set_upstream: Option<bool>,
     #[serde(default)]
     pub branch: Option<String>,
+    #[serde(default)]
+    pub skip_hooks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -294,10 +296,13 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
     let needs_upstream = !git2_repo::branch_has_upstream(&path, &branch);
     let set_upstream = needs_upstream && input.set_upstream.unwrap_or(true);
 
-    let mut args = Vec::with_capacity(6);
+    let mut args = Vec::with_capacity(7);
     args.push("push");
     if input.force_with_lease.unwrap_or(false) {
         args.push("--force-with-lease");
+    }
+    if input.skip_hooks.unwrap_or(false) {
+        args.push("--no-verify");
     }
     if set_upstream {
         args.push("-u");
