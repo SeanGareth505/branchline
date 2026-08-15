@@ -57,7 +57,7 @@ export class ReleasePage {
       return `${activity.productName} ${activity.nextVersion} is on GitHub. Users see the update on next launch.`;
     }
     if (activity?.needsRefresh) {
-      return activity.message || 'Refresh to keep watching GitHub Actions.';
+      return activity.message || 'Refresh to keep watching the installer builds.';
     }
     if (activity?.phase === 'error') {
       return activity.message || 'The last release failed.';

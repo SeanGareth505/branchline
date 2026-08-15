@@ -801,7 +801,7 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
                 );
                 spawn_dev_release_finish(path, &preview.next_version)?;
                 let message = format!(
-                    "Finishing {} in background — Branchline may restart while Tauri files sync, then GitHub Actions will build {}",
+                    "Finishing {} in background — Branchline may restart while Tauri files sync, then installers will build for {}",
                     preview.tag, preview.product_name
                 );
                 emit_release_progress(
@@ -827,7 +827,7 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             );
             git_cli::run_git(path, &["push", "origin", "HEAD", "--tags"])?;
             let message = format!(
-                "Pushed {} — waiting for GitHub Actions to build {}",
+                "Pushed {} — waiting for installer builds for {}",
                 preview.tag, preview.product_name
             );
             emit_release_progress(
@@ -1435,7 +1435,7 @@ fn evaluate_deploy(
         return urls.output(
             "pending",
             "deploying",
-            "Waiting for GitHub Actions to start — open Actions to watch the workflow.",
+            "Waiting for installer builds to start…",
             None,
             release_url,
             Vec::new(),
@@ -1443,9 +1443,9 @@ fn evaluate_deploy(
     };
     if workflow_is_running(&run.status) {
         let message = if release_url.is_some() {
-            "GitHub Actions is still building remaining platform artifacts…"
+            "Still building remaining installers…"
         } else {
-            "GitHub Actions is building release artifacts…"
+            "Building installers…"
         };
         return urls.output(
             "running",
@@ -1499,7 +1499,7 @@ fn evaluate_deploy(
         return urls.output(
             "failure",
             "error",
-            &format!("GitHub Actions {} for {tag}", run.conclusion),
+            &format!("Installer build {} for {tag}", run.conclusion),
             run.run_url,
             release_url,
             run.jobs,
@@ -1508,7 +1508,7 @@ fn evaluate_deploy(
     urls.output(
         "pending",
         "deploying",
-        "Waiting for GitHub Actions…",
+        "Waiting for installer builds…",
         run.run_url,
         release_url,
         run.jobs,
@@ -2349,7 +2349,7 @@ mod tests {
     }
 
     #[test]
-    fn deploy_fails_if_android_job_failed() {
+    fn deploy_fails_if_windows_job_failed() {
         let snapshot = WorkflowSnapshot {
             status: "completed".into(),
             conclusion: "failure".into(),
@@ -2365,7 +2365,7 @@ mod tests {
                     completed_at: None,
                 },
                 ReleaseDeployJob {
-                    name: "Android".into(),
+                    name: "Windows".into(),
                     status: "completed".into(),
                     conclusion: Some("failure".into()),
                     url: None,

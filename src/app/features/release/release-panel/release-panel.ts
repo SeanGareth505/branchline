@@ -11,14 +11,14 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
 import { UpdateService, UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
 import type {
+  ReleaseActivity,
   ReleaseActivityStep,
   ReleaseDeployJob,
-  ReleaseDeployJobStep,
   ReleasePhase,
 } from '../../../core/models';
 import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
 
-type JobChipStatus = 'success' | 'failure' | 'pending' | 'unknown';
+type ArtifactStatus = 'success' | 'failure' | 'pending' | 'unknown';
 
 interface ReleaseLinkCard {
   id: string;
@@ -28,26 +28,24 @@ interface ReleaseLinkCard {
   icon: string;
 }
 
-interface JobStepView {
-  key: string;
-  name: string;
-  chip: JobChipStatus;
-  statusLabel: string;
-  duration: string;
-  active: boolean;
-}
-
-interface JobView {
-  job: ReleaseDeployJob;
+interface ArtifactView {
   name: string;
   label: string;
-  chip: JobChipStatus;
+  chip: ArtifactStatus;
   statusLabel: string;
   duration: string;
-  open: boolean;
-  hasSteps: boolean;
   url: string | null;
-  steps: JobStepView[];
+  icon: string;
+}
+
+interface ProgressStepView {
+  id: string;
+  status: ReleaseActivityStep['status'];
+  label: string;
+  detail: string;
+  stateLabel: string;
+  duration: string;
+  artifacts: ArtifactView[];
 }
 
 @Component({
@@ -89,36 +87,10 @@ export class ReleasePanel {
     const activity = this.activity();
     if (!activity) return [];
     const cards: ReleaseLinkCard[] = [];
-    if (activity.repoUrl) {
-      cards.push({
-        id: 'repo',
-        label: 'Repository',
-        hint: 'View on GitHub',
-        url: activity.repoUrl,
-        icon: 'lucideGithub',
-      });
-    }
-    if (activity.deployRunUrl) {
-      cards.push({
-        id: 'run',
-        label: 'Workflow run',
-        hint: 'Live build log',
-        url: activity.deployRunUrl,
-        icon: 'lucidePlay',
-      });
-    } else if (activity.actionsPageUrl) {
-      cards.push({
-        id: 'actions',
-        label: 'Actions',
-        hint: 'release.yml',
-        url: activity.actionsPageUrl,
-        icon: 'lucideWorkflow',
-      });
-    }
     if (activity.releaseUrl) {
       cards.push({
         id: 'release',
-        label: 'Release',
+        label: 'GitHub release',
         hint: activity.tag,
         url: activity.releaseUrl,
         icon: 'lucideTag',
@@ -138,11 +110,6 @@ export class ReleasePanel {
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
-  readonly stepsOpen = signal(true);
-  private readonly jobOpen = signal<Record<string, boolean>>({});
-  private lastActivityStart = 0;
-  private stepsCollapsedForStart = 0;
-  private stepsCollapsedForDeploy = 0;
 
   readonly jobCounts = computed(() => {
     let inProgress = 0;
@@ -162,71 +129,80 @@ export class ReleasePanel {
     };
   });
 
-  readonly jobViews = computed((): JobView[] => {
+  readonly artifacts = computed((): ArtifactView[] => {
     const now = this.now();
-    const openState = this.jobOpen();
-    const jobs = this.deployJobs();
-    const failedName = jobs.find(
-      (job) => (job.steps?.length ?? 0) > 0 && chipStatus(job) === 'failure',
-    )?.name;
-    const runningName = jobs.find(
-      (job) => (job.steps?.length ?? 0) > 0 && job.status === 'in_progress',
-    )?.name;
-    return jobs.map((job) => {
+    return this.deployJobs().map((job) => {
       const chip = chipStatus(job);
-      const hasSteps = (job.steps?.length ?? 0) > 0;
-      const open =
-        openState[job.name] ??
-        (hasSteps && (job.name === failedName || job.name === runningName));
+      const label = formatDeployJobName(job.name);
       return {
-        job,
         name: job.name,
-        label: formatDeployJobName(job.name),
+        label,
         chip,
         statusLabel: statusLabelOf(job, chip),
         duration: durationOf(job, now),
-        open,
-        hasSteps,
         url: job.url ?? null,
-        steps: open && hasSteps ? job.steps!.map((step, index) => toStepView(step, index, now)) : [],
+        icon: artifactIcon(label, job.name),
       };
     });
   });
 
   readonly showReleaseDetails = computed(() => !!this.activity());
 
-  readonly stepsSummary = computed(() => {
-    const steps = this.activity()?.steps ?? [];
-    if (!steps.length) return '';
-    const done = steps.filter((step) => step.status === 'done').length;
-    const error = steps.filter((step) => step.status === 'error').length;
-    if (error) return `${done}/${steps.length} · ${error} failed`;
-    if (done === steps.length) return `${done}/${steps.length} done`;
-    const active = steps.find((step) => step.status === 'active');
-    return active ? `${done}/${steps.length} · ${active.label}` : `${done}/${steps.length}`;
-  });
-
   readonly jobSummary = computed(() => {
     const jobs = this.deployJobs();
     if (!jobs.length) return '';
     const counts = this.jobCounts();
-    if (counts.failed) return `${counts.completed}/${jobs.length} passed · ${counts.failed} failed`;
+    if (counts.failed) return `${counts.completed} of ${jobs.length} ready · ${counts.failed} failed`;
     if (counts.in_progress) {
-      return `${counts.completed}/${jobs.length} passed · ${counts.in_progress} running`;
+      return `${counts.completed} of ${jobs.length} ready · ${counts.in_progress} building`;
     }
-    return `${counts.completed}/${jobs.length} passed`;
+    return `${counts.completed} of ${jobs.length} ready`;
   });
 
-  readonly showDeploySection = computed(() => {
+  readonly progressSteps = computed((): ProgressStepView[] => {
     const activity = this.activity();
-    if (!activity?.willPush && !activity?.deployRunUrl && !activity?.actionsPageUrl) return false;
-    return (
-      this.deployJobs().length > 0 ||
-      this.busy() ||
-      !!activity?.deployRunUrl ||
-      !!activity?.needsRefresh ||
-      !!activity?.actionsPageUrl
-    );
+    if (!activity?.steps.length) return [];
+    const now = this.now();
+    const artifacts = this.artifacts();
+    const nestId = nestArtifactsUnder(activity.steps);
+    return activity.steps.map((step, index) => ({
+      id: step.id,
+      status: step.status,
+      label: step.label,
+      detail: stepDetail(step, activity, this.jobSummary()),
+      stateLabel: stepStateLabel(step.status),
+      duration: stepDuration(activity.steps, index, now),
+      artifacts: nestId === step.id ? artifacts : [],
+    }));
+  });
+
+  readonly progressSummary = computed(() => {
+    const steps = this.progressSteps();
+    if (!steps.length) return '';
+    const done = steps.filter((step) => step.status === 'done').length;
+    const failed = steps.find((step) => step.status === 'error');
+    if (failed) return `${done} of ${steps.length} · failed at ${failed.label.toLowerCase()}`;
+    const active = steps.find((step) => step.status === 'active');
+    if (active) return `${done} of ${steps.length} · ${active.label}`;
+    if (done === steps.length) return `${done} of ${steps.length} done`;
+    return `${done} of ${steps.length}`;
+  });
+
+  readonly progressPct = computed((): number => {
+    const steps = this.progressSteps();
+    if (!steps.length) return 0;
+    const done = steps.filter((step) => step.status === 'done').length;
+    let pct = (done / steps.length) * 100;
+    const active = steps.find((step) => step.status === 'active');
+    if (active?.status === 'active') {
+      const jobs = this.deployJobs();
+      if ((active.id === 'ci' || active.id === 'deploying') && jobs.length) {
+        pct += (this.jobCounts().completed / jobs.length) * (100 / steps.length);
+      } else {
+        pct += 40 / steps.length;
+      }
+    }
+    return Math.max(4, Math.min(100, Math.round(pct)));
   });
 
   readonly workflowStatus = computed(() => {
@@ -254,7 +230,7 @@ export class ReleasePanel {
       return `Tracking paused for ${activity.productName} ${activity.nextVersion}`;
     }
     if (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') {
-      return `Deploying ${activity.productName} ${activity.nextVersion}`;
+      return `Building ${activity.productName} ${activity.nextVersion}`;
     }
     return `Releasing ${activity.productName} ${activity.currentVersion} → ${activity.nextVersion}`;
   });
@@ -319,7 +295,7 @@ export class ReleasePanel {
       return 'On GitHub. Users pick it up the next time they open the app.';
     }
     if (activity.needsRefresh) {
-      return activity.message || 'Refresh to keep watching GitHub Actions.';
+      return activity.message || 'Refresh to keep watching the installer builds.';
     }
     if (activity.phase === 'done' && activity.needsPush) {
       return 'Tagged locally. Push to origin to publish.';
@@ -339,41 +315,13 @@ export class ReleasePanel {
         activity.phase !== 'error' &&
         !activity.needsRefresh;
       if (!live) return;
-      const id = window.setInterval(() => this.now.set(Date.now()), 2000);
+      const id = window.setInterval(() => this.now.set(Date.now()), 1000);
       onCleanup(() => window.clearInterval(id));
     });
     effect(() => {
       if (!this.shippedLive() || this.promptedUpdate) return;
       this.promptedUpdate = true;
       void this.updates.checkForUpdates({ silent: true });
-    });
-    effect(() => {
-      const activity = this.activity();
-      const started = activity?.startedAt ?? 0;
-      if (started === this.lastActivityStart) return;
-      this.lastActivityStart = started;
-      this.stepsOpen.set(true);
-    });
-    effect(() => {
-      const activity = this.activity();
-      if (!activity) return;
-      const deploying =
-        this.deployJobs().length > 0 ||
-        activity.phase === 'ci' ||
-        activity.phase === 'deploying' ||
-        activity.phase === 'publishing';
-      if (!deploying || this.stepsCollapsedForDeploy === activity.startedAt) return;
-      this.stepsCollapsedForDeploy = activity.startedAt;
-      this.stepsOpen.set(false);
-    });
-    effect(() => {
-      const activity = this.activity();
-      if (!activity) return;
-      const finished =
-        activity.phase === 'error' || (activity.phase === 'done' && !activity.needsRefresh);
-      if (!finished || this.stepsCollapsedForStart === activity.startedAt) return;
-      this.stepsCollapsedForStart = activity.startedAt;
-      this.stepsOpen.set(false);
     });
   }
 
@@ -423,26 +371,67 @@ export class ReleasePanel {
     if (!url) return;
     void openUrl(url);
   }
+}
 
-  trackStep(_index: number, step: ReleaseActivityStep): string {
-    return step.id;
+function nestArtifactsUnder(steps: ReleaseActivityStep[]): string | null {
+  const ci = steps.find((step) => step.phase === 'ci');
+  const deploying = steps.find((step) => step.phase === 'deploying');
+  if (ci && ci.status !== 'pending') return ci.id;
+  if (deploying && deploying.status !== 'pending') return deploying.id;
+  return null;
+}
+
+function stepDetail(
+  step: ReleaseActivityStep,
+  activity: ReleaseActivity,
+  jobSummary: string,
+): string {
+  if (step.status === 'pending') return step.message;
+  if (step.phase === 'bumping' && activity.currentVersion !== activity.nextVersion) {
+    return `${activity.currentVersion} → ${activity.nextVersion}`;
   }
-
-  toggleSteps(): void {
-    this.stepsOpen.update((open) => !open);
+  if (step.phase === 'committing') {
+    return `Release ${activity.nextVersion}`;
   }
+  if (step.phase === 'tagging') {
+    return activity.tag || step.message;
+  }
+  if (step.phase === 'pushing' && step.status === 'done') {
+    return `Pushed ${activity.tag} to origin`;
+  }
+  if (step.phase === 'ci' || step.phase === 'deploying') {
+    return jobSummary || step.message;
+  }
+  if (step.phase === 'publishing' && (activity.releaseUrl || step.status === 'done')) {
+    return 'GitHub release is live';
+  }
+  return step.message;
+}
 
-  toggleJob(view: JobView, event?: Event): void {
-    event?.stopPropagation();
-    if (!view.hasSteps) {
-      this.openLink(view.url);
-      return;
-    }
-    this.jobOpen.update((state) => ({ ...state, [view.name]: !view.open }));
+function stepStateLabel(status: ReleaseActivityStep['status']): string {
+  switch (status) {
+    case 'done':
+      return 'Done';
+    case 'active':
+      return 'In progress';
+    case 'error':
+      return 'Failed';
+    default:
+      return 'Waiting';
   }
 }
 
-function chipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus {
+function stepDuration(steps: ReleaseActivityStep[], index: number, now: number): string {
+  const step = steps[index];
+  if (!step?.at || step.status === 'pending') return '';
+  const nextStarted = steps.slice(index + 1).find((item) => item.at)?.at;
+  const end = step.status === 'active' ? now : (nextStarted ?? now);
+  const ms = Math.max(0, end - step.at);
+  if (step.status === 'done' && ms < 500) return '';
+  return formatElapsed(ms);
+}
+
+function chipStatus(job: ReleaseDeployJob): ArtifactStatus {
   const conclusion = job.conclusion?.trim();
   if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
     return 'failure';
@@ -463,22 +452,22 @@ function chipStatus(job: ReleaseDeployJob | ReleaseDeployJobStep): JobChipStatus
   return 'unknown';
 }
 
-function statusLabelOf(job: ReleaseDeployJob | ReleaseDeployJobStep, chip: JobChipStatus): string {
+function statusLabelOf(job: ReleaseDeployJob, chip: ArtifactStatus): string {
   if (chip === 'success') {
     if (job.conclusion === 'skipped') return 'Skipped';
-    return 'Passed';
+    return 'Ready';
   }
   if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
   if (chip === 'pending') {
     if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
-      return 'Queued';
+      return 'Waiting';
     }
-    return 'Running';
+    return 'Building';
   }
-  return job.status || 'Pending';
+  return job.status || 'Waiting';
 }
 
-function durationOf(item: ReleaseDeployJob | ReleaseDeployJobStep, now: number): string {
+function durationOf(item: ReleaseDeployJob, now: number): string {
   const start = Date.parse(item.startedAt ?? '');
   if (Number.isNaN(start)) return '';
   const endRaw = item.completedAt ? Date.parse(item.completedAt) : now;
@@ -486,36 +475,24 @@ function durationOf(item: ReleaseDeployJob | ReleaseDeployJobStep, now: number):
   return formatElapsed(Math.max(0, end - start));
 }
 
-function toStepView(step: ReleaseDeployJobStep, index: number, now: number): JobStepView {
-  const chip = chipStatus(step);
-  return {
-    key: `${step.number ?? index}:${step.name}`,
-    name: step.name,
-    chip,
-    statusLabel: statusLabelOf(step, chip),
-    duration: durationOf(step, now),
-    active: chip === 'pending',
-  };
-}
-
 function phaseLabel(phase: ReleasePhase): string {
   switch (phase) {
     case 'preparing':
-      return 'Preparing…';
+      return 'Checking repo…';
     case 'bumping':
-      return 'Bumping versions…';
+      return 'Writing versions…';
     case 'staging':
-      return 'Staging…';
+      return 'Staging files…';
     case 'committing':
-      return 'Committing…';
+      return 'Creating commit…';
     case 'tagging':
-      return 'Tagging…';
+      return 'Creating tag…';
     case 'pushing':
-      return 'Pushing…';
+      return 'Pushing to origin…';
     case 'deploying':
-      return 'Starting deploy…';
+      return 'Waiting for installer builds…';
     case 'ci':
-      return 'Building on GitHub…';
+      return 'Building installers…';
     case 'publishing':
       return 'Publishing release…';
     case 'done':
@@ -556,4 +533,14 @@ function formatDeployJobName(name: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return trimmed || name;
+}
+
+function artifactIcon(label: string, name: string): string {
+  const text = `${label} ${name}`.toLowerCase();
+  if (text.includes('github release') || text.includes('create-release')) return 'lucideTag';
+  if (text.includes('download')) return 'lucideLink';
+  if (text.includes('android') || text.includes('windows') || text.includes('linux') || text.includes('macos')) {
+    return 'lucideDownload';
+  }
+  return 'lucideArchive';
 }

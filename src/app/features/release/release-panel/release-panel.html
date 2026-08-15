@@ -58,143 +58,64 @@
       }
     </article>
 
-    @if (showDeploySection() || jobViews().length) {
-      <section class="jobs">
+    @if (progressSteps().length) {
+      <section class="progress" aria-label="Release progress">
         <header class="section-head">
-          <h3>Deploy</h3>
-          @if (jobSummary(); as summary) {
-            <span>{{ summary }}</span>
-          } @else if (busy()) {
-            <span>Waiting for jobs…</span>
-          }
+          <h3>Progress</h3>
+          <span>{{ progressSummary() }}</span>
         </header>
-        @if (deployJobs().length) {
-          <ul class="job-list">
-            @for (view of jobViews(); track view.name) {
-              <li [class.open]="view.open">
-                <div class="job-row-wrap">
-                  <button
-                    type="button"
-                    class="job-row"
-                    [title]="view.job.name"
-                    [attr.aria-expanded]="view.hasSteps ? view.open : null"
-                    (click)="toggleJob(view, $event)"
-                  >
-                    @if (view.hasSteps) {
-                      <ng-icon
-                        class="job-chev"
-                        [name]="view.open ? 'lucideChevronDown' : 'lucideChevronRight'"
-                        size="12"
-                      />
-                    } @else {
-                      <span class="job-chev-spacer" aria-hidden="true"></span>
+        <div class="ship-progress" [attr.data-state]="workflowStatus()">
+          <span class="ship-bar" [style.width.%]="progressPct()"></span>
+        </div>
+        <ol class="timeline">
+          @for (step of progressSteps(); track step.id) {
+            <li [class]="step.status">
+              <span class="marker" aria-hidden="true">
+                @if (step.status === 'done') {
+                  <ng-icon name="lucideCheck" size="11" />
+                } @else if (step.status === 'error') {
+                  <ng-icon name="lucideX" size="11" />
+                }
+              </span>
+              <div class="step-body">
+                <div class="step-row">
+                  <span class="step-label">{{ step.label }}</span>
+                  <span class="step-meta">
+                    {{ step.stateLabel }}
+                    @if (step.duration) {
+                      <span class="step-time">{{ step.duration }}</span>
                     }
-                    <span class="job-marker" [attr.data-status]="view.chip" aria-hidden="true">
-                      @if (view.chip === 'success') {
-                        <ng-icon name="lucideCheck" size="10" />
-                      } @else if (view.chip === 'failure') {
-                        <ng-icon name="lucideX" size="10" />
-                      }
-                    </span>
-                    <span class="job-copy">
-                      <span class="job-name">{{ view.label }}</span>
-                      <span class="job-status">
-                        {{ view.statusLabel }}
-                        @if (view.duration) {
-                          <span class="job-time">{{ view.duration }}</span>
-                        }
-                      </span>
-                    </span>
-                  </button>
-                  @if (view.url) {
-                    <button
-                      type="button"
-                      class="job-open"
-                      title="Open job on GitHub"
-                      (click)="openLink(view.url)"
-                    >
-                      <ng-icon name="lucideExternalLink" size="11" />
-                    </button>
-                  }
+                  </span>
                 </div>
-                @if (view.open) {
-                  <ul class="step-list">
-                    @for (step of view.steps; track step.key) {
-                      <li [class.active]="step.active">
-                        <span class="job-marker" [attr.data-status]="step.chip" aria-hidden="true">
-                          @if (step.chip === 'success') {
-                            <ng-icon name="lucideCheck" size="9" />
-                          } @else if (step.chip === 'failure') {
-                            <ng-icon name="lucideX" size="9" />
-                          }
-                        </span>
-                        <span class="step-name">{{ step.name }}</span>
-                        <span class="step-status">
-                          {{ step.statusLabel }}
-                          @if (step.duration) {
-                            <span class="job-time">{{ step.duration }}</span>
-                          }
-                        </span>
+                <p class="step-detail">{{ step.detail }}</p>
+                @if (step.artifacts.length) {
+                  <ul class="platforms">
+                    @for (item of step.artifacts; track item.name) {
+                      <li>
+                        <button
+                          type="button"
+                          class="platform"
+                          [attr.data-status]="item.chip"
+                          [disabled]="!item.url"
+                          [title]="item.url ? 'Open on GitHub' : item.statusLabel"
+                          (click)="openLink(item.url)"
+                        >
+                          <span class="platform-name">{{ item.label }}</span>
+                          <span class="platform-status">
+                            {{ item.statusLabel }}
+                            @if (item.duration) {
+                              <span class="step-time">{{ item.duration }}</span>
+                            }
+                          </span>
+                        </button>
                       </li>
                     }
                   </ul>
                 }
-              </li>
-            }
-          </ul>
-        } @else {
-          <p class="deploy-wait">
-            @if (busy()) {
-              Waiting for GitHub Actions to start…
-            } @else if (trackingPaused()) {
-              No jobs loaded. Refresh to try again.
-            } @else {
-              Jobs appear here once the workflow starts.
-            }
-          </p>
-        }
-      </section>
-    }
-
-    @if (activity.steps.length) {
-      <section class="fold" [class.open]="stepsOpen()">
-        <button
-          type="button"
-          class="fold-toggle"
-          (click)="toggleSteps()"
-          [attr.aria-expanded]="stepsOpen()"
-        >
-          <ng-icon
-            class="fold-chev"
-            [name]="stepsOpen() ? 'lucideChevronDown' : 'lucideChevronRight'"
-            size="13"
-          />
-          <span>Local steps</span>
-          @if (stepsSummary(); as summary) {
-            <span class="fold-meta">{{ summary }}</span>
+              </div>
+            </li>
           }
-        </button>
-        @if (stepsOpen()) {
-          <ol class="steps">
-            @for (step of activity.steps; track trackStep($index, step)) {
-              <li [class]="step.status">
-                <div class="step-main">
-                  <span class="marker" aria-hidden="true">
-                    @if (step.status === 'done') {
-                      <ng-icon name="lucideCheck" size="10" />
-                    } @else if (step.status === 'error') {
-                      <ng-icon name="lucideX" size="10" />
-                    }
-                  </span>
-                  <div class="step-body">
-                    <span class="step-label">{{ step.label }}</span>
-                    <span class="step-message">{{ step.message }}</span>
-                  </div>
-                </div>
-              </li>
-            }
-          </ol>
-        }
+        </ol>
       </section>
     }
 

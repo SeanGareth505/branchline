@@ -2905,7 +2905,7 @@ export class AppStore {
     ];
     if (willPush) {
       phases.push({ phase: 'pushing', message: 'Pushing commit and tags to origin…', delay: 320 });
-      phases.push({ phase: 'deploying', message: 'Waiting for GitHub Actions to start…', delay: 400 });
+      phases.push({ phase: 'deploying', message: 'Waiting for installer builds to start…', delay: 400 });
       phases.push({ phase: 'ci', message: 'Building release artifacts…', delay: 500 });
       phases.push({ phase: 'publishing', message: 'Publishing GitHub release…', delay: 400 });
     }
@@ -7137,7 +7137,7 @@ export class AppStore {
           preview.willPush
             ? devRelease
               ? 'Will bump package.json, commit, tag, then finish Tauri/Cargo sync and push in the background (tauri:dev may restart once).'
-              : 'Will bump, commit, tag, push, and track GitHub Actions until every platform build is published.'
+              : 'Will bump, commit, tag, push, and watch until installers are published for every platform.'
             : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
           `Files: ${preview.files.join(', ')}`,
           devRelease && preview.willPush
@@ -7405,7 +7405,7 @@ export class AppStore {
     try {
       await this.tauri.openExternalUrl(url);
     } catch {
-      this.showWarning(`Could not open workflow run. Open manually: ${url}`);
+      this.showWarning(`Could not open that link. Open manually: ${url}`);
     }
   }
 
@@ -7432,7 +7432,7 @@ export class AppStore {
       {
         path,
         phase,
-        message: 'Checking GitHub Actions…',
+        message: 'Checking installer builds…',
         version: activity.nextVersion,
         tag: activity.tag,
       },
@@ -7627,7 +7627,7 @@ export class AppStore {
           path,
           tag,
           current.nextVersion,
-          'Still building after an hour — refresh to keep watching, or open GitHub Actions.',
+          'Still building after an hour — refresh to keep watching, or open the GitHub release.',
         );
         return;
       }
@@ -7883,7 +7883,7 @@ function hydrateReleaseActivity(activity: ReleaseActivity): ReleaseActivity {
     !activity.needsPush &&
     !activity.releaseUrl &&
     activity.phase === 'done' &&
-    /taking longer|Check GitHub Actions|Link GitHub/i.test(activity.message ?? '');
+    /taking longer|Check GitHub Actions|installer builds|Link GitHub/i.test(activity.message ?? '');
   if (!looksIncomplete) return activity;
   return {
     ...activity,
@@ -7935,36 +7935,36 @@ function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
     {
       id: 'preparing',
       phase: 'preparing',
-      label: 'Prepare',
-      message: 'Check branch, cleanliness, and tag',
+      label: 'Check repo',
+      message: 'Confirm branch, working tree, and next tag',
       status: 'pending',
     },
     {
       id: 'bumping',
       phase: 'bumping',
-      label: 'Bump versions',
-      message: 'Update package and app version files',
+      label: 'Write versions',
+      message: 'Update package, Tauri, and Cargo version files',
       status: 'pending',
     },
     {
       id: 'staging',
       phase: 'staging',
-      label: 'Stage files',
-      message: 'Stage version bumps',
+      label: 'Stage',
+      message: 'git add the version files',
       status: 'pending',
     },
     {
       id: 'committing',
       phase: 'committing',
       label: 'Commit',
-      message: 'Create the release commit',
+      message: 'git commit the release',
       status: 'pending',
     },
     {
       id: 'tagging',
       phase: 'tagging',
       label: 'Tag',
-      message: 'Create the annotated tag',
+      message: 'git tag -a the new version',
       status: 'pending',
     },
   ];
@@ -7973,28 +7973,28 @@ function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
       id: 'pushing',
       phase: 'pushing',
       label: 'Push',
-      message: 'Push commit and tags to origin',
+      message: 'git push origin HEAD --tags',
       status: 'pending',
     });
     steps.push({
       id: 'deploying',
       phase: 'deploying',
-      label: 'Deploy',
-      message: 'Wait for GitHub Actions to start',
+      label: 'Start builds',
+      message: 'Wait until installer jobs appear',
       status: 'pending',
     });
     steps.push({
       id: 'ci',
       phase: 'ci',
-      label: 'Build',
-      message: 'Build release artifacts on GitHub',
+      label: 'Installers',
+      message: 'Build a package for each platform',
       status: 'pending',
     });
     steps.push({
       id: 'publishing',
       phase: 'publishing',
       label: 'Publish',
-      message: 'Publish GitHub release and updater files',
+      message: 'GitHub release and download page',
       status: 'pending',
     });
   }
@@ -8045,7 +8045,12 @@ function advanceReleaseSteps(
       return { ...step, status: 'done', at: step.at ?? Date.now() };
     }
     if (stepIndex === activeIndex) {
-      return { ...step, status: 'active', message, at: Date.now() };
+      return {
+        ...step,
+        status: 'active',
+        message,
+        at: step.status === 'active' ? (step.at ?? Date.now()) : Date.now(),
+      };
     }
     return { ...step, status: 'pending' };
   });

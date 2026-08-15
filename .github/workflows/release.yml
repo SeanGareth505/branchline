@@ -2,15 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      build_android:
-        description: 'Build Android APK (slow; off by default)'
-        type: boolean
-        default: false
-      skip_desktop:
-        description: 'Skip desktop installers (use for an Android-only run)'
-        type: boolean
-        default: false
   push:
     tags:
       - 'v*'
@@ -23,7 +14,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NDK_VERSION: '27.0.12077973'
   RELEASE_NOTES: |
     ## Download
     Easy download page: https://seangareth505.github.io/branchline/
@@ -39,9 +29,9 @@ env:
     ### Windows
     Run the setup `.exe`. SmartScreen may warn on early releases; choose More info → Run anyway if needed.
 
-    ### Android
-    Sideload preview only. Install `Branchline-android.apk` (enable install from this source if asked). Local Git on phone is limited.
-    Install `Branchline-android.apk` (enable install from this source if asked).
+    ### Linux
+    - **AppImage** — `Branchline-linux.AppImage` — run without installing
+    - **Debian / Ubuntu** — `Branchline-linux.deb` — double-click or `sudo dpkg -i`
 
 jobs:
   create-release:
@@ -66,7 +56,7 @@ jobs:
   publish-tauri:
     name: ${{ matrix.name }}
     needs: [create-release]
-    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && github.event.inputs.skip_desktop != 'true' }}
+    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -79,24 +69,18 @@ jobs:
             args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
             name: macOS Intel
-          - platform: ubuntu-22.04
-            args: ''
-            rust_target: ''
-            name: Linux
           - platform: windows-latest
             args: ''
             rust_target: ''
             name: Windows
+          - platform: ubuntu-22.04
+            args: ''
+            rust_target: ''
+            name: Linux
 
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -116,6 +100,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Import Apple Developer certificate
         if: matrix.platform == 'macos-latest'
@@ -195,132 +185,6 @@ jobs:
           if ! echo "$ASSETS" | grep -qi '\.dmg$'; then
             echo "::warning::No .dmg on $TAG — download page macOS links may be broken"
           fi
-
-  build-apk:
-    name: Android
-    needs: [create-release]
-    if: ${{ !cancelled() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && github.event.inputs.build_android == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Read app version
-        id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Cache Android NDK and platforms
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.ANDROID_HOME }}/ndk
-            ${{ env.ANDROID_HOME }}/platforms
-            ${{ env.ANDROID_HOME }}/build-tools
-          key: android-sdk-${{ env.NDK_VERSION }}-36-35.0.0
-
-      - name: Install Android NDK and build-tools
-        run: |
-          sdkmanager --install "ndk;${NDK_VERSION}" "platforms;android-36" "build-tools;35.0.0"
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: npm
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Setup Android signing
-        env:
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
-        run: |
-          cd src-tauri/gen/android
-          if [ -n "${ANDROID_KEY_BASE64:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
-            echo "Using release keystore from GitHub secrets"
-            echo "keyAlias=$ANDROID_KEY_ALIAS" > keystore.properties
-            echo "password=$ANDROID_KEY_PASSWORD" >> keystore.properties
-            echo "$ANDROID_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/branchline-release.jks"
-            echo "storeFile=$RUNNER_TEMP/branchline-release.jks" >> keystore.properties
-          else
-            echo "No signing secrets set — generating a CI keystore for this build"
-            keytool -genkeypair -v \
-              -keystore "$RUNNER_TEMP/branchline-ci.jks" \
-              -alias branchline \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass branchline -keypass branchline \
-              -dname "CN=Branchline, OU=CI, O=Branchline, L=Internet, ST=NA, C=US"
-            echo "keyAlias=branchline" > keystore.properties
-            echo "password=branchline" >> keystore.properties
-            echo "storeFile=$RUNNER_TEMP/branchline-ci.jks" >> keystore.properties
-          fi
-
-      - name: Build Android APK
-        run: npm run tauri -- android build --apk --target aarch64
-        env:
-          NDK_HOME: ${{ env.NDK_HOME }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-
-      - name: Collect APK
-        id: apk
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          APK=$(find src-tauri/gen/android -name '*.apk' -type f | head -n 1)
-          if [ -z "$APK" ]; then
-            echo "No APK found under src-tauri/gen/android"
-            find src-tauri/gen/android -type f \( -name '*.apk' -o -name '*.aab' \) | head -50 || true
-            exit 1
-          fi
-          OUT="Branchline-${VERSION}-android.apk"
-          cp "$APK" "$OUT"
-          cp "$APK" Branchline-android.apk
-          echo "path=$OUT" >> "$GITHUB_OUTPUT"
-          echo "stable=Branchline-android.apk" >> "$GITHUB_OUTPUT"
-          ls -lh "$OUT" Branchline-android.apk
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Branchline-${{ steps.version.outputs.version }}-android
-          path: |
-            ${{ steps.apk.outputs.path }}
-            ${{ steps.apk.outputs.stable }}
-          if-no-files-found: error
-
-      - name: Upload APK to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release upload "${{ github.ref_name }}" \
-            "${{ steps.apk.outputs.path }}" \
-            "${{ steps.apk.outputs.stable }}" \
-            -R "${{ github.repository }}" \
-            --clobber
 
   stabilize-names:
     name: Stable download names

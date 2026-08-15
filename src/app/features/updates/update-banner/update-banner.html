@@ -12,11 +12,6 @@
           }
         }
       </span>
-      @if (updates.releaseNotes(); as notes) {
-        @if (updates.phase() !== 'downloading') {
-          <p class="notes">{{ notes }}</p>
-        }
-      }
     </div>
     <div class="actions">
       @if (updates.phase() === 'downloading') {
