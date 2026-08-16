@@ -112,6 +112,12 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.sync-btn[data-kind='changes'] {
+  color: var(--git-modified);
+  border-color: color-mix(in srgb, var(--git-modified) 32%, transparent);
+  background: color-mix(in srgb, var(--git-modified) 12%, transparent);
+}
+
 .sync-btn[data-kind='synced'] {
   color: var(--text-muted);
 }

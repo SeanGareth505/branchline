@@ -128,6 +128,8 @@
       [attr.data-sha]="row.commit?.sha ?? null"
       [class.alt]="row.alt"
       [class.artificial]="row.artificial"
+      [class.dirty]="!!row.art && row.art.fileCount > 0"
+      [class.staged-dirty]="row.art?.kind === 'staged' && row.art.fileCount > 0"
       [class.selected]="isRowSelected(row)"
       [class.compare]="isRowCompare(row)"
       [class.selected-compare]="isRowCompare(row)"
@@ -219,7 +221,21 @@
           >
             <span class="wd-dot" [class.staged]="a.kind === 'staged'"></span>
             <span class="subject">{{ a.label }}</span>
-            <span class="meta">{{ a.fileCount }} files · +{{ a.added }} ~{{ a.modified }} −{{ a.deleted }}</span>
+            @if (a.fileCount > 0) {
+              <span class="wd-chip">{{ a.kind === 'staged' ? 'Ready' : 'Uncommitted' }}</span>
+            }
+            <span class="meta">
+              <span class="wd-files">{{ a.fileCount }} {{ a.fileCount === 1 ? 'file' : 'files' }}</span>
+              @if (a.added) {
+                <span class="stat add">+{{ a.added }}</span>
+              }
+              @if (a.modified) {
+                <span class="stat mod">~{{ a.modified }}</span>
+              }
+              @if (a.deleted) {
+                <span class="stat del">−{{ a.deleted }}</span>
+              }
+            </span>
           </div>
           <div class="col-muted"></div>
           <div class="col-muted"></div>

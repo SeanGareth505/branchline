@@ -300,6 +300,15 @@
                   @if (row.branch.isCurrent) {
                     <span class="head-chip" title="Checked out — this is the branch you are on">HEAD</span>
                   }
+                  @if (row.branch.isCurrent && store.changeCount(); as n) {
+                    <span
+                      class="sync-chip row-sync"
+                      data-kind="dirty"
+                      [title]="n + ' uncommitted change' + (n === 1 ? '' : 's')"
+                    >
+                      {{ n }}
+                    </span>
+                  }
                   @if (row.branch.isCurrent && syncLabel(); as sync) {
                     @if (sync.kind === 'publish') {
                       <button

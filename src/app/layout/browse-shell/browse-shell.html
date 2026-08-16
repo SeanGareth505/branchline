@@ -106,10 +106,14 @@
               <button
                 type="button"
                 [class.active]="store.browseTab() === 'files'"
+                [class.has-changes]="store.changeCount() > 0"
                 title="Browse changed files in a tree"
                 (click)="setTab('files')"
               >
                 Files
+                @if (store.changeCount(); as n) {
+                  <span class="tab-count">{{ n }}</span>
+                }
               </button>
               @if (showInspectTab('blame')) {
                 <button

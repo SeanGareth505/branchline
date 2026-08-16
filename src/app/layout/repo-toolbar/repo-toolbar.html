@@ -19,12 +19,25 @@
     <button
       type="button"
       class="tool primary"
-      title="Commit (⌘⇧C / Ctrl+Shift+C)"
+      [class.pending]="store.changeCount() > 0"
+      [attr.aria-label]="
+        store.changeCount() > 0
+          ? 'Commit ' + store.changeCount() + ' change' + (store.changeCount() === 1 ? '' : 's')
+          : 'Commit'
+      "
+      [title]="
+        store.changeCount() > 0
+          ? 'Commit ' + store.changeCount() + ' change' + (store.changeCount() === 1 ? '' : 's') + ' (⌘⇧C / Ctrl+Shift+C)'
+          : 'Commit (⌘⇧C / Ctrl+Shift+C)'
+      "
       [disabled]="store.repoContentPending()"
       (click)="store.focusCommitPanel()"
     >
       <ng-icon name="lucideGitCommitHorizontal" size="14" />
       <span>Commit</span>
+      @if (store.changeCount(); as n) {
+        <span class="count-badge">{{ n }}</span>
+      }
     </button>
 
     <div class="split" [class.open]="menu() === 'pull'">

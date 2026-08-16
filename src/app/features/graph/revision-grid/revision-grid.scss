@@ -357,6 +357,19 @@
   cursor: default;
 }
 
+.row.artificial.dirty:not(.selected) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.row.artificial.staged-dirty:not(.selected) {
+  background: color-mix(in srgb, var(--git-added) 10%, transparent);
+}
+
+.row.artificial.dirty .subject {
+  font-weight: 650;
+}
+
 .col-graph {
   height: 100%;
   display: flex;
@@ -469,6 +482,48 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-2) 22%, transparent);
 }
 
+.row.artificial.dirty .wd-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--lane-1) 32%, transparent);
+}
+
+.wd-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  padding: 0.08rem 0.38rem;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.row.artificial.staged-dirty .wd-chip {
+  color: var(--git-added);
+  background: color-mix(in srgb, var(--git-added) 14%, transparent);
+}
+
+.meta .wd-files {
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.meta .stat {
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta .stat.add {
+  color: var(--git-added);
+}
+
+.meta .stat.mod {
+  color: var(--git-modified);
+}
+
+.meta .stat.del {
+  color: var(--git-deleted);
+}
+
 .subject {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -530,6 +585,9 @@
 }
 
 .meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-muted);
   font-size: 11px;
   font-style: normal;

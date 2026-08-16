@@ -351,6 +351,11 @@
   background: color-mix(in srgb, var(--git-added) 10%, transparent);
 }
 
+.sync-chip[data-kind='dirty'] {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+}
+
 .sync-chip.row-sync {
   margin-left: 0.2rem;
 }
