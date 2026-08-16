@@ -92,22 +92,38 @@
                   <ul class="platforms">
                     @for (item of step.artifacts; track item.name) {
                       <li>
-                        <button
-                          type="button"
-                          class="platform"
-                          [attr.data-status]="item.chip"
-                          [disabled]="!item.url"
-                          [title]="item.url ? 'Open on GitHub' : item.statusLabel"
-                          (click)="openLink(item.url)"
-                        >
-                          <span class="platform-name">{{ item.label }}</span>
-                          <span class="platform-status">
-                            {{ item.statusLabel }}
-                            @if (item.duration) {
-                              <span class="step-time">{{ item.duration }}</span>
+                        <div class="platform" [attr.data-status]="item.chip">
+                          <ng-icon class="platform-icon" [name]="item.icon" size="14" />
+                          <div class="platform-copy">
+                            <div class="platform-title">
+                              <span class="platform-name">{{ item.label }}</span>
+                              @if (item.kind) {
+                                <span class="kind-tag">{{ item.kind }}</span>
+                              }
+                            </div>
+                            @if (item.step) {
+                              <p class="platform-step">{{ item.step }}</p>
                             }
-                          </span>
-                        </button>
+                          </div>
+                          <div class="platform-end">
+                            <span class="status-chip" [attr.data-status]="item.chip">
+                              {{ item.statusLabel }}
+                              @if (item.duration) {
+                                <span class="step-time">{{ item.duration }}</span>
+                              }
+                            </span>
+                            @if (item.url) {
+                              <button
+                                type="button"
+                                class="open-job"
+                                title="Open on GitHub"
+                                (click)="openLink(item.url)"
+                              >
+                                <ng-icon name="lucideExternalLink" size="12" />
+                              </button>
+                            }
+                          </div>
+                        </div>
                       </li>
                     }
                   </ul>

@@ -31,6 +31,8 @@ interface ReleaseLinkCard {
 interface ArtifactView {
   name: string;
   label: string;
+  kind: string;
+  step: string;
   chip: ArtifactStatus;
   statusLabel: string;
   duration: string;
@@ -87,6 +89,15 @@ export class ReleasePanel {
     const activity = this.activity();
     if (!activity) return [];
     const cards: ReleaseLinkCard[] = [];
+    if (activity.deployRunUrl) {
+      cards.push({
+        id: 'workflow',
+        label: 'Workflow',
+        hint: 'Open this run on GitHub Actions',
+        url: activity.deployRunUrl,
+        icon: 'lucideWorkflow',
+      });
+    }
     if (activity.releaseUrl) {
       cards.push({
         id: 'release',
@@ -137,6 +148,8 @@ export class ReleasePanel {
       return {
         name: job.name,
         label,
+        kind: jobKind(label, job.name),
+        step: currentJobStep(job, chip),
         chip,
         statusLabel: statusLabelOf(job, chip),
         duration: durationOf(job, now),
@@ -512,6 +525,57 @@ function formatElapsed(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+function jobKind(label: string, name: string): string {
+  const text = `${label} ${name}`.toLowerCase();
+  if (text.includes('github release') || text.includes('create-release')) return 'GitHub';
+  if (text.includes('arm64') || text.includes('aarch64') || text.includes('apple silicon')) return 'arm64';
+  if (text.includes('intel') || (text.includes('macos') && text.includes('x64'))) return 'x64';
+  if (text.includes('windows')) return 'Windows';
+  if (text.includes('linux') || text.includes('ubuntu')) return 'Linux';
+  if (text.includes('download')) return 'Web';
+  return '';
+}
+
+function currentJobStep(job: ReleaseDeployJob, chip: ArtifactStatus): string {
+  const steps = job.steps ?? [];
+  if (!steps.length) return '';
+  if (chip === 'failure') {
+    const failed = [...steps].reverse().find((step) => step.conclusion === 'failure');
+    return failed ? shortenJobStep(failed.name) : '';
+  }
+  if (chip === 'success') return '';
+  const running = steps.find((step) => step.status === 'in_progress');
+  if (running) return shortenJobStep(running.name);
+  const waiting = steps.find(
+    (step) => step.status === 'queued' || step.status === 'pending' || step.status === 'waiting',
+  );
+  if (waiting) return shortenJobStep(waiting.name);
+  const last = [...steps].reverse().find((step) => step.status === 'completed' || !!step.conclusion);
+  return last ? shortenJobStep(last.name) : '';
+}
+
+function shortenJobStep(name: string): string {
+  let text = name.replace(/^Run\s+/i, '').trim();
+  text = text.replace(/@[\w.-]+$/, '');
+  const lower = text.toLowerCase();
+  if (lower.includes('tauri-action') || lower.includes('tauri build')) return 'Packaging app';
+  if (lower.includes('checkout')) return 'Checkout';
+  if (lower.includes('setup node') || lower.includes('setup-node')) return 'Setup Node';
+  if (lower.includes('install rust') || lower.includes('rust-toolchain')) return 'Install Rust';
+  if (lower.includes('rust cache')) return 'Rust cache';
+  if (lower.includes('frontend depend') || lower.includes('npm ci') || lower.includes('npm install')) {
+    return 'Install npm';
+  }
+  if (lower.includes('linux depend')) return 'Linux deps';
+  if (lower.includes('certificate') || lower.includes('signing')) return 'Signing';
+  if (lower.includes('verify') && lower.includes('artifact')) return 'Verify artifacts';
+  if (lower.includes('upload') || lower.includes('stabilize') || lower.includes('download')) {
+    return 'Publish files';
+  }
+  if (text.length > 36) return `${text.slice(0, 34)}…`;
+  return text;
 }
 
 function formatDeployJobName(name: string): string {
