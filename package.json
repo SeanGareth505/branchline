@@ -59,12 +59,13 @@
   "scripts": {
     "build": "ng build",
     "ng": "ng",
+    "perf:smoke": "node scripts/perf-smoke.mjs",
+    "prepare": "husky",
     "release": "node scripts/release.mjs",
     "release:init": "node scripts/release.mjs --init",
     "release:major": "node scripts/release.mjs major",
     "release:minor": "node scripts/release.mjs minor",
     "release:patch": "node scripts/release.mjs patch",
-    "perf:smoke": "node scripts/perf-smoke.mjs",
     "start": "ng serve --port 4200",
     "tauri": "tauri",
     "tauri:android:build": "tauri android build -- --apk",
@@ -72,8 +73,7 @@
     "tauri:dev": "tauri dev",
     "test": "ng test",
     "test:ci": "ng test --watch=false --browsers=ChromeHeadless",
-    "watch": "ng build --watch --configuration development",
-    "prepare": "husky"
+    "watch": "ng build --watch --configuration development"
   },
-  "version": "0.7.39"
+  "version": "0.8.0"
 }
