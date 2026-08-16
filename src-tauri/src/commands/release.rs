@@ -1365,6 +1365,8 @@ struct GhWorkflowRun {
     head_branch: Option<String>,
     #[serde(default)]
     display_title: Option<String>,
+    #[serde(default)]
+    head_sha: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1388,7 +1390,18 @@ fn github_actions_page_url(owner: &str, repo: &str) -> String {
     format!("https://github.com/{owner}/{repo}/actions/workflows/release.yml")
 }
 
-fn tag_matches_run(tag: &str, head_branch: Option<&str>, display_title: Option<&str>) -> bool {
+fn tag_matches_run(
+    tag: &str,
+    head_branch: Option<&str>,
+    display_title: Option<&str>,
+    head_sha: Option<&str>,
+    expected_sha: Option<&str>,
+) -> bool {
+    if let (Some(expected), Some(actual)) = (expected_sha, head_sha) {
+        if !expected.is_empty() && expected.eq_ignore_ascii_case(actual) {
+            return true;
+        }
+    }
     if head_branch.is_some_and(|b| b == tag) {
         return true;
     }
@@ -1410,7 +1423,10 @@ struct WorkflowSnapshot {
 }
 
 fn workflow_is_running(status: &str) -> bool {
-    matches!(status, "queued" | "in_progress" | "waiting" | "requested")
+    matches!(
+        status,
+        "queued" | "in_progress" | "waiting" | "requested" | "pending"
+    )
 }
 
 fn optional_job_name(name: &str) -> bool {
@@ -1418,24 +1434,51 @@ fn optional_job_name(name: &str) -> bool {
     lower.contains("stabilize") || lower.contains("stable download")
 }
 
+fn conclusion_is_failure(conclusion: &str) -> bool {
+    matches!(
+        conclusion,
+        "failure" | "cancelled" | "timed_out" | "startup_failure" | "action_required" | "stale"
+    )
+}
+
+fn job_is_active(job: &ReleaseDeployJob) -> bool {
+    if job
+        .conclusion
+        .as_deref()
+        .is_some_and(|c| !c.trim().is_empty())
+    {
+        return false;
+    }
+    job.status != "completed"
+}
+
 fn required_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
     jobs.iter().any(|job| {
         !optional_job_name(&job.name)
-            && job.conclusion.as_deref().is_some_and(|c| {
-                matches!(c, "failure" | "cancelled" | "timed_out")
-            })
+            && job
+                .conclusion
+                .as_deref()
+                .is_some_and(conclusion_is_failure)
+    })
+}
+
+fn required_jobs_active(jobs: &[ReleaseDeployJob]) -> bool {
+    jobs.iter()
+        .any(|job| !optional_job_name(&job.name) && job_is_active(job))
+}
+
+fn failed_required_job(jobs: &[ReleaseDeployJob]) -> Option<&ReleaseDeployJob> {
+    jobs.iter().find(|job| {
+        !optional_job_name(&job.name)
+            && job
+                .conclusion
+                .as_deref()
+                .is_some_and(conclusion_is_failure)
     })
 }
 
 fn job_succeeded(job: &ReleaseDeployJob) -> bool {
-    matches!(
-        job.conclusion.as_deref(),
-        Some("success" | "skipped" | "neutral")
-    ) || (job.status == "completed"
-        && !matches!(
-            job.conclusion.as_deref(),
-            Some("failure" | "cancelled" | "timed_out")
-        ))
+    matches!(job.conclusion.as_deref(), Some("success" | "neutral"))
 }
 
 fn required_jobs_succeeded(jobs: &[ReleaseDeployJob]) -> bool {
@@ -1444,6 +1487,23 @@ fn required_jobs_succeeded(jobs: &[ReleaseDeployJob]) -> bool {
         .filter(|job| !optional_job_name(&job.name))
         .collect();
     !required.is_empty() && required.iter().all(|job| job_succeeded(job))
+}
+
+fn live_release_message(tag: &str) -> String {
+    format!(
+        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+    )
+}
+
+fn failure_message(tag: &str, conclusion: &str, jobs: &[ReleaseDeployJob]) -> String {
+    if let Some(job) = failed_required_job(jobs) {
+        let why = job.conclusion.as_deref().unwrap_or("failed");
+        format!("{} {why} for {tag}", job.name)
+    } else if conclusion.is_empty() {
+        format!("Installer build failed for {tag}")
+    } else {
+        format!("Installer build {conclusion} for {tag}")
+    }
 }
 
 fn evaluate_deploy(
@@ -1462,15 +1522,17 @@ fn evaluate_deploy(
             Vec::new(),
         );
     };
+    let jobs_failed = required_job_failed(&run.jobs);
+    let jobs_active = required_jobs_active(&run.jobs);
+    let terminal_failure = (jobs_failed && !jobs_active)
+        || (conclusion_is_failure(&run.conclusion) && !jobs_active);
     if required_jobs_succeeded(&run.jobs) {
         if let Some(url) = release_url.clone() {
-            if !required_job_failed(&run.jobs) {
+            if !jobs_failed {
                 return urls.output(
                     "success",
                     "done",
-                    &format!(
-                        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
-                    ),
+                    &live_release_message(tag),
                     run.run_url,
                     Some(url),
                     run.jobs,
@@ -1478,9 +1540,33 @@ fn evaluate_deploy(
             }
         }
     }
+    if terminal_failure {
+        if let Some(url) = release_url.clone() {
+            if !run.jobs.is_empty() && !jobs_failed {
+                return urls.output(
+                    "success",
+                    "done",
+                    &live_release_message(tag),
+                    run.run_url,
+                    Some(url),
+                    run.jobs,
+                );
+            }
+        }
+        return urls.output(
+            "failure",
+            "error",
+            &failure_message(tag, &run.conclusion, &run.jobs),
+            run.run_url,
+            release_url,
+            run.jobs,
+        );
+    }
     if workflow_is_running(&run.status) {
         let message = if release_url.is_some() {
             "Still building remaining installers…"
+        } else if run.jobs.is_empty() {
+            "Waiting for installer builds to start…"
         } else {
             "Building installers…"
         };
@@ -1498,9 +1584,7 @@ fn evaluate_deploy(
             return urls.output(
                 "success",
                 "done",
-                &format!(
-                    "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
-                ),
+                &live_release_message(tag),
                 run.run_url,
                 Some(url),
                 run.jobs,
@@ -1512,33 +1596,6 @@ fn evaluate_deploy(
             "Build finished — publishing GitHub release…",
             run.run_url,
             None,
-            run.jobs,
-        );
-    }
-    if matches!(
-        run.conclusion.as_str(),
-        "failure" | "cancelled" | "timed_out"
-    ) {
-        if let Some(url) = release_url.clone() {
-            if !run.jobs.is_empty() && !required_job_failed(&run.jobs) {
-                return urls.output(
-                    "success",
-                    "done",
-                    &format!(
-                        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
-                    ),
-                    run.run_url,
-                    Some(url),
-                    run.jobs,
-                );
-            }
-        }
-        return urls.output(
-            "failure",
-            "error",
-            &format!("Installer build {} for {tag}", run.conclusion),
-            run.run_url,
-            release_url,
             run.jobs,
         );
     }
@@ -1625,7 +1682,7 @@ fn gh_list_workflow_runs(
 }
 
 fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
-    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle";
+    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle,headSha";
     let mut runs = Vec::new();
     for workflow in RELEASE_WORKFLOW_FILES {
         runs.extend(gh_list_workflow_runs(
@@ -1814,7 +1871,11 @@ fn fetch_run_snapshot_with_api(
     })
 }
 
-fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput> {
+fn poll_deploy_with_gh(
+    repo: &str,
+    tag: &str,
+    tag_sha: Option<&str>,
+) -> Option<PollReleaseDeployOutput> {
     let gh = gh_command()?;
     let (owner, repo_name) = repo.split_once('/')?;
     let urls = DeployUrls::for_repo(owner, repo_name);
@@ -1835,6 +1896,8 @@ fn poll_deploy_with_gh(repo: &str, tag: &str) -> Option<PollReleaseDeployOutput>
             tag,
             run.head_branch.as_deref(),
             run.display_title.as_deref(),
+            run.head_sha.as_deref(),
+            tag_sha,
         )
     });
     if let Some(id) = matched.as_ref().and_then(|run| run.database_id) {
@@ -1950,6 +2013,7 @@ fn poll_deploy_with_api(
     owner: &str,
     repo: &str,
     tag: &str,
+    tag_sha: Option<&str>,
 ) -> AppResult<PollReleaseDeployOutput> {
     let full = format!("{owner}/{repo}");
     let urls = DeployUrls::for_repo(owner, repo);
@@ -1987,6 +2051,8 @@ fn poll_deploy_with_api(
             tag,
             run.get("head_branch").and_then(|v| v.as_str()),
             run.get("display_title").and_then(|v| v.as_str()),
+            run.get("head_sha").and_then(|v| v.as_str()),
+            tag_sha,
         )
     });
     if let Some(id) = matched.as_ref().and_then(|run| run.get("id").and_then(|v| v.as_u64())) {
@@ -2025,11 +2091,14 @@ fn poll_release_deploy_blocking(
     git_cli::ensure_repo(&path)?;
     let (owner, repo) = resolve_github_repo(&path)?;
     let full = format!("{owner}/{repo}");
-    if let Some(result) = poll_deploy_with_gh(&full, &tag) {
+    let tag_sha = git_cli::run_git(&path, &["rev-parse", &format!("{tag}^{{commit}}")]).ok();
+    if let Some(result) = poll_deploy_with_gh(&full, &tag, tag_sha.as_deref()) {
         return Ok(result);
     }
     match connection {
-        Some(connection) => poll_deploy_with_api(&connection, &owner, &repo, &tag),
+        Some(connection) => {
+            poll_deploy_with_api(&connection, &owner, &repo, &tag, tag_sha.as_deref())
+        }
         None => Ok(DeployUrls::for_repo(&owner, &repo).output(
             "unavailable",
             "deploying",
@@ -2338,13 +2407,55 @@ mod tests {
         }
     }
 
+    fn job(name: &str, status: &str, conclusion: &str) -> ReleaseDeployJob {
+        ReleaseDeployJob {
+            name: name.into(),
+            status: status.into(),
+            conclusion: if conclusion.is_empty() {
+                None
+            } else {
+                Some(conclusion.into())
+            },
+            url: None,
+            steps: vec![],
+            started_at: None,
+            completed_at: None,
+        }
+    }
+
     #[test]
     fn tag_matches_head_branch_and_title() {
-        assert!(tag_matches_run("v0.7.4", Some("v0.7.4"), None));
-        assert!(tag_matches_run("v0.7.4", None, Some("Release Desktop v0.7.4")));
-        assert!(tag_matches_run("v0.7.4", None, Some("Release 0.7.4")));
-        assert!(tag_matches_run("v0.7.4", Some("0.7.4"), None));
-        assert!(!tag_matches_run("v0.7.4", Some("main"), Some("chore: docs")));
+        assert!(tag_matches_run("v0.7.4", Some("v0.7.4"), None, None, None));
+        assert!(tag_matches_run(
+            "v0.7.4",
+            None,
+            Some("Release Desktop v0.7.4"),
+            None,
+            None
+        ));
+        assert!(tag_matches_run("v0.7.4", None, Some("Release 0.7.4"), None, None));
+        assert!(tag_matches_run("v0.7.4", Some("0.7.4"), None, None, None));
+        assert!(!tag_matches_run(
+            "v0.7.4",
+            Some("main"),
+            Some("chore: docs"),
+            None,
+            None
+        ));
+        assert!(tag_matches_run(
+            "v0.8.0",
+            None,
+            None,
+            Some("abc123"),
+            Some("abc123")
+        ));
+        assert!(!tag_matches_run(
+            "v0.8.0",
+            Some("main"),
+            Some("chore: docs"),
+            Some("abc123"),
+            Some("def456")
+        ));
     }
 
     #[test]
@@ -2502,6 +2613,66 @@ mod tests {
             Some("https://github.com/acme/branchline/releases/tag/v0.7.8".into()),
             Some(snapshot),
         );
+        assert_eq!(result.status, "failure");
+        assert_eq!(result.phase, "error");
+    }
+
+    #[test]
+    fn deploy_fails_when_create_release_failed_even_if_workflow_still_running() {
+        let snapshot = WorkflowSnapshot {
+            status: "in_progress".into(),
+            conclusion: "".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![
+                job("create-release", "completed", "failure"),
+                job("macOS arm64", "completed", "skipped"),
+                job("Windows", "completed", "skipped"),
+                job("Linux", "completed", "skipped"),
+            ],
+        };
+        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
+        assert_eq!(result.status, "failure");
+        assert_eq!(result.phase, "error");
+        assert!(result.message.contains("create-release"));
+    }
+
+    #[test]
+    fn deploy_stays_running_while_other_required_jobs_continue() {
+        let snapshot = WorkflowSnapshot {
+            status: "in_progress".into(),
+            conclusion: "".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![
+                job("macOS arm64", "completed", "failure"),
+                job("Windows", "in_progress", ""),
+            ],
+        };
+        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
+        assert_eq!(result.status, "running");
+        assert_eq!(result.phase, "ci");
+    }
+
+    #[test]
+    fn deploy_fails_on_startup_failure() {
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.8.0",
+            None,
+            Some(run("completed", "startup_failure")),
+        );
+        assert_eq!(result.status, "failure");
+        assert_eq!(result.phase, "error");
+    }
+
+    #[test]
+    fn deploy_fails_when_completed_run_has_failed_job_without_conclusion() {
+        let snapshot = WorkflowSnapshot {
+            status: "completed".into(),
+            conclusion: "".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![job("create-release", "completed", "failure")],
+        };
+        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
         assert_eq!(result.status, "failure");
         assert_eq!(result.phase, "error");
     }

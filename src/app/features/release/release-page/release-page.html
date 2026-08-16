@@ -7,14 +7,14 @@
           heading="Release"
           body="Bump, commit, and tag from one place. Progress shows each Git step, then installer builds, until the version is live."
         />
-        @if (busy()) {
+        @if (activity()?.phase === 'error') {
+          <span class="error-badge">Failed</span>
+        } @else if (busy()) {
           <span class="live-badge">In progress</span>
         } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
           <span class="done-badge">Live</span>
         } @else if (activity()?.needsRefresh) {
           <span class="live-badge">Paused</span>
-        } @else if (activity()?.phase === 'error') {
-          <span class="error-badge">Failed</span>
         }
       </div>
       <p>{{ subtitle() }}</p>
@@ -26,10 +26,14 @@
             type="button"
             class="bl-btn"
             title="Reload installer build status from GitHub"
-            [disabled]="refreshLocked()"
+            [disabled]="refreshLocked() || store.releaseDeployChecking()"
             (click)="refreshDeploy()"
           >
-            <ng-icon name="lucideRefreshCw" size="14" />
+            <ng-icon
+              name="lucideRefreshCw"
+              size="14"
+              [class.spin]="store.releaseDeployChecking()"
+            />
             Refresh
           </button>
         }

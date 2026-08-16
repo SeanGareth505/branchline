@@ -40,6 +40,7 @@ import type {
   ConflictSidesOutput,
   ReleaseActivity,
   ReleaseActivityStep,
+  ReleaseDeployJob,
   ReleasePhase,
   PollReleaseDeployOutput,
   ReleaseProgressEvent,
@@ -385,6 +386,7 @@ export class AppStore {
     return null;
   });
   readonly releaseBusy = signal(false);
+  readonly releaseDeployChecking = signal(false);
   readonly releaseAttaching = signal(false);
   readonly releaseActivity = signal<ReleaseActivity | null>(null);
   readonly visibleReleaseActivity = computed(() => {
@@ -425,6 +427,7 @@ export class AppStore {
   });
   private releaseProgressUnlisten: UnlistenFn | null = null;
   private releaseDeployPollTimer: number | null = null;
+  private releaseDeployWatchGen = 0;
   private persistReleaseTimer: number | null = null;
   private lastReleaseFingerprint = '';
   private lastReleaseNoticeKey = '';
@@ -2612,6 +2615,8 @@ export class AppStore {
   clearReleaseActivity(): void {
     if (this.releaseBusy()) return;
     const tag = this.releaseActivity()?.tag;
+    this.releaseDeployWatchGen += 1;
+    this.releaseDeployChecking.set(false);
     this.stopReleaseDeployPoll();
     if (this.persistReleaseTimer !== null) {
       window.clearTimeout(this.persistReleaseTimer);
@@ -2809,11 +2814,54 @@ export class AppStore {
     if (activity.phase === 'done' || activity.phase === 'error') return;
     const path = this.currentRepo()?.path;
     if (!path) return;
-    void this.watchReleaseDeploy(path, activity.tag);
+    void this.watchReleaseDeploy(path, activity.tag, { immediate: true });
   }
 
   openReleaseTab(): void {
     if (this.currentRepo()) this.setView('release');
+  }
+
+  viewReleaseOutcome(
+    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed' = 'failure',
+  ): void {
+    const url = this.releaseOutcomeUrl(kind);
+    if (url) {
+      this.openReleaseTab();
+      void this.openReleaseExternalUrl(url);
+      return;
+    }
+    if (this.view() !== 'release') {
+      this.setView('release');
+      return;
+    }
+    this.showWarning('No GitHub Actions URL yet. Details are on the Release screen.');
+  }
+
+  private releaseOutcomeUrl(
+    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed',
+  ): string | null {
+    const activity = this.releaseActivity();
+    const failedJobUrl =
+      (activity?.deployJobs ?? []).find((job) => {
+        const conclusion = job.conclusion?.trim() ?? '';
+        return conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out';
+      })?.url?.trim() || null;
+    const runUrl = activity?.deployRunUrl?.trim() || null;
+    const releaseUrl = activity?.releaseUrl?.trim() || null;
+    const actionsUrl = activity?.actionsPageUrl?.trim() || null;
+    if (kind === 'success') return firstNonEmptyUrl(releaseUrl, runUrl, actionsUrl);
+    if (kind === 'failure' || kind === 'job-failed') {
+      return firstNonEmptyUrl(failedJobUrl, runUrl, actionsUrl, releaseUrl);
+    }
+    return firstNonEmptyUrl(runUrl, actionsUrl, releaseUrl);
+  }
+
+  private async openReleaseExternalUrl(url: string): Promise<void> {
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch {
+      this.showWarning(`Could not open that link. Open manually: ${url}`);
+    }
   }
 
   private notifyReleaseOutcome(
@@ -2865,7 +2913,7 @@ export class AppStore {
       kind: toastKind,
       category: 'release',
       durationMs: toastKind === 'error' ? 14000 : 9000,
-      undo: () => this.setView('release'),
+      undo: () => this.viewReleaseOutcome(kind),
       actionLabel: 'View',
     });
     void this.sendDesktopIfEnabled('release', title, message);
@@ -2919,7 +2967,7 @@ export class AppStore {
           current.phase !== 'done' &&
           current.phase !== 'error'
         ) {
-          void this.watchReleaseDeploy(path, tag);
+          void this.watchReleaseDeploy(path, tag, { immediate: true });
         }
         return true;
       }
@@ -2935,7 +2983,11 @@ export class AppStore {
         result,
       });
       this.clearDismissedReleaseTag(tag);
-      if (result.status === 'success' || result.status === 'failure') {
+      if (
+        result.status === 'success' ||
+        result.status === 'failure' ||
+        deployJobsTerminalFailure(result.jobs)
+      ) {
         this.releaseBusy.set(false);
         return true;
       }
@@ -2960,9 +3012,17 @@ export class AppStore {
     tag: string;
     result: PollReleaseDeployOutput;
   }): void {
-    const phase = normalizeReleasePhase(input.result.phase);
+    const terminalFailure =
+      input.result.status === 'failure' ||
+      deployJobsTerminalFailure(input.result.jobs);
+    const phase = terminalFailure
+      ? 'error'
+      : normalizeReleasePhase(input.result.phase);
     const trackingPhase = phase === 'idle' ? 'deploying' : phase;
     const finished = trackingPhase === 'done' || trackingPhase === 'error';
+    const message = terminalFailure
+      ? input.result.message.trim() || deployFailureMessage(input.tag, input.result.jobs ?? [])
+      : input.result.message;
     const current = this.releaseActivity();
     const existing =
       current && sameRepoPath(current.path, input.path) && current.tag === input.tag
@@ -2971,6 +3031,13 @@ export class AppStore {
     const draft = this.releaseNotesDraft();
     const draftBody =
       draft && sameRepoPath(draft.path, input.path) ? draft.body : '';
+    const baseSteps = existing?.steps?.length
+      ? existing.steps
+      : advanceReleaseSteps(
+          buildReleaseSteps(true),
+          trackingPhase === 'error' ? 'deploying' : trackingPhase,
+          message,
+        );
     const activity: ReleaseActivity = {
       path: input.path,
       productName: input.productName,
@@ -2986,10 +3053,10 @@ export class AppStore {
       repoUrl: input.result.repoUrl ?? null,
       deployJobs: input.result.jobs ?? [],
       phase: trackingPhase,
-      message: input.result.message,
+      message,
       notes: existing?.notes ?? draftBody,
       notesSynced: existing?.notesSynced ?? false,
-      steps: advanceReleaseSteps(buildReleaseSteps(true), trackingPhase, input.result.message),
+      steps: advanceReleaseSteps(baseSteps, trackingPhase, message),
       startedAt: existing?.startedAt ?? Date.now(),
       finishedAt: finished ? Date.now() : null,
       ok: trackingPhase === 'done' ? true : trackingPhase === 'error' ? false : null,
@@ -7566,23 +7633,21 @@ export class AppStore {
   }
 
   async openReleaseDeployRun(): Promise<void> {
-    const url = this.releaseActivity()?.deployRunUrl;
-    if (!url) return;
-    try {
-      await this.tauri.openExternalUrl(url);
-    } catch {
-      this.showWarning(`Could not open that link. Open manually: ${url}`);
+    const url = this.releaseActivity()?.deployRunUrl?.trim();
+    if (!url) {
+      this.showWarning('No GitHub Actions run URL yet.');
+      return;
     }
+    await this.openReleaseExternalUrl(url);
   }
 
   async openReleasePage(): Promise<void> {
-    const url = this.releaseActivity()?.releaseUrl;
-    if (!url) return;
-    try {
-      await this.tauri.openExternalUrl(url);
-    } catch {
-      this.showWarning(`Could not open release page. Open manually: ${url}`);
+    const url = this.releaseActivity()?.releaseUrl?.trim();
+    if (!url) {
+      this.showWarning('No GitHub release URL yet.');
+      return;
     }
+    await this.openReleaseExternalUrl(url);
   }
 
   async refreshReleaseDeploy(): Promise<void> {
@@ -7590,24 +7655,10 @@ export class AppStore {
     const activity = this.releaseActivity();
     if (!path || !activity || !sameRepoPath(activity.path, path) || !activity.tag) return;
     if (!activity.willPush || activity.needsPush) return;
-    const phase =
-      activity.phase === 'done' || activity.phase === 'error' || activity.phase === 'idle'
-        ? 'deploying'
-        : activity.phase;
-    this.applyReleaseProgress(
-      {
-        path,
-        phase,
-        message: 'Checking installer builds…',
-        version: activity.nextVersion,
-        tag: activity.tag,
-      },
-      { needsRefresh: false },
-    );
-    this.releaseBusy.set(true);
+    this.releaseDeployChecking.set(true);
     if (this.lastReleaseNoticeKey.endsWith(':paused')) this.lastReleaseNoticeKey = '';
     this.openReleaseTab();
-    void this.watchReleaseDeploy(path, activity.tag);
+    void this.watchReleaseDeploy(path, activity.tag, { immediate: true });
   }
 
   private pauseReleaseTracking(
@@ -7652,33 +7703,66 @@ export class AppStore {
       tag,
       message,
     });
+    this.releaseDeployChecking.set(false);
     this.stopReleaseDeployPoll();
   }
 
-  private async watchReleaseDeploy(path: string, tag: string): Promise<void> {
+  private async watchReleaseDeploy(
+    path: string,
+    tag: string,
+    options?: { immediate?: boolean },
+  ): Promise<void> {
     this.stopReleaseDeployPoll();
+    const watchGen = ++this.releaseDeployWatchGen;
     const activity = this.releaseActivity();
-    if (!activity) return;
+    if (!activity) {
+      this.releaseDeployChecking.set(false);
+      return;
+    }
     let attempts = 0;
     let errors = 0;
     const poll = async (): Promise<void> => {
       attempts += 1;
+      if (watchGen !== this.releaseDeployWatchGen) return;
       const current = this.releaseActivity();
       if (!current || !sameRepoPath(current.path, path) || current.tag !== tag) {
+        this.releaseDeployChecking.set(false);
         this.stopReleaseDeployPoll();
         return;
       }
       try {
         const result = await this.tauri.pollReleaseDeploy(path, tag);
+        if (watchGen !== this.releaseDeployWatchGen) return;
+        this.releaseDeployChecking.set(false);
         errors = 0;
-        const phase = normalizeReleasePhase(result.phase);
+        const latest = this.releaseActivity();
+        if (!latest || !sameRepoPath(latest.path, path) || latest.tag !== tag) {
+          this.stopReleaseDeployPoll();
+          return;
+        }
+        const jobs = result.jobs ?? latest.deployJobs ?? [];
+        const terminalFailure =
+          result.status === 'failure' || deployJobsTerminalFailure(result.jobs ?? jobs);
+        if (
+          latest.phase === 'error' &&
+          !terminalFailure &&
+          (result.status === 'pending' || result.status === 'unavailable')
+        ) {
+          this.releaseBusy.set(false);
+          this.stopReleaseDeployPoll();
+          return;
+        }
+        const phase = terminalFailure ? 'error' : normalizeReleasePhase(result.phase);
+        const message = terminalFailure
+          ? result.message.trim() || deployFailureMessage(tag, result.jobs ?? jobs)
+          : result.message;
         const deployExtras = {
-          deployRunUrl: result.runUrl ?? current.deployRunUrl ?? null,
-          releaseUrl: result.releaseUrl ?? current.releaseUrl ?? null,
-          websiteUrl: result.websiteUrl ?? current.websiteUrl ?? null,
-          actionsPageUrl: result.actionsPageUrl ?? current.actionsPageUrl ?? null,
-          repoUrl: result.repoUrl ?? current.repoUrl ?? null,
-          deployJobs: result.jobs ?? current.deployJobs ?? [],
+          deployRunUrl: result.runUrl ?? latest.deployRunUrl ?? null,
+          releaseUrl: result.releaseUrl ?? latest.releaseUrl ?? null,
+          websiteUrl: result.websiteUrl ?? latest.websiteUrl ?? null,
+          actionsPageUrl: result.actionsPageUrl ?? latest.actionsPageUrl ?? null,
+          repoUrl: result.repoUrl ?? latest.repoUrl ?? null,
+          deployJobs: result.jobs ?? latest.deployJobs ?? [],
           needsPush: false,
           needsRefresh: false,
         };
@@ -7686,13 +7770,13 @@ export class AppStore {
           {
             path,
             phase,
-            message: result.message,
-            version: current.nextVersion,
+            message,
+            version: latest.nextVersion,
             tag,
           },
           deployExtras,
         );
-        const hadReleaseUrl = !!current.releaseUrl;
+        const hadReleaseUrl = !!latest.releaseUrl;
         const nextUrl = deployExtras.releaseUrl;
         if (!hadReleaseUrl && nextUrl) {
           const notes = (this.releaseActivity()?.notes ?? '').trim();
@@ -7702,7 +7786,7 @@ export class AppStore {
             void this.loadGitHubReleaseNotes();
           }
         }
-        if (result.status === 'success') {
+        if (result.status === 'success' && !terminalFailure) {
           this.releaseBusy.set(false);
           const doneMessage =
             result.message.trim() ||
@@ -7712,58 +7796,62 @@ export class AppStore {
               path,
               phase: 'done',
               message: doneMessage,
-              version: current.nextVersion,
+              version: latest.nextVersion,
               tag,
             },
             deployExtras,
           );
           this.notifyReleaseOutcome('success', {
-            productName: current.productName,
-            version: current.nextVersion,
+            productName: latest.productName,
+            version: latest.nextVersion,
             tag,
             message: doneMessage,
           });
           this.stopReleaseDeployPoll();
           return;
         }
-        if (result.status === 'failure') {
+        if (terminalFailure) {
           this.releaseBusy.set(false);
+          const failMessage =
+            result.message.trim() || deployFailureMessage(tag, result.jobs ?? jobs);
           this.applyReleaseProgress(
             {
               path,
               phase: 'error',
-              message: result.message,
-              version: current.nextVersion,
+              message: failMessage,
+              version: latest.nextVersion,
               tag,
             },
             deployExtras,
           );
           this.notifyReleaseOutcome('failure', {
-            productName: current.productName,
-            version: current.nextVersion,
+            productName: latest.productName,
+            version: latest.nextVersion,
             tag,
-            message: result.message,
+            message: failMessage,
           });
           this.stopReleaseDeployPoll();
           return;
         }
         if (result.status === 'unavailable') {
-          this.pauseReleaseTracking(path, tag, current.nextVersion, result.message, deployExtras);
+          this.pauseReleaseTracking(path, tag, latest.nextVersion, result.message, deployExtras);
           return;
         }
-        const failedJob = (result.jobs ?? []).find((job) => {
-          const conclusion = job.conclusion?.trim() ?? '';
-          return conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out';
-        });
+        const failedJob = (result.jobs ?? []).find((job) =>
+          deployConclusionFailed(job.conclusion),
+        );
         if (failedJob) {
           this.notifyReleaseOutcome('job-failed', {
-            productName: current.productName,
-            version: current.nextVersion,
+            productName: latest.productName,
+            version: latest.nextVersion,
             tag,
             message: `${failedJob.name} failed`,
           });
         }
+        this.releaseBusy.set(true);
       } catch {
+        if (watchGen !== this.releaseDeployWatchGen) return;
+        this.releaseDeployChecking.set(false);
         errors += 1;
         if (errors >= 8) {
           this.pauseReleaseTracking(
@@ -7775,6 +7863,7 @@ export class AppStore {
           return;
         }
       }
+      if (watchGen !== this.releaseDeployWatchGen) return;
       if (attempts >= 720) {
         this.pauseReleaseTracking(
           path,
@@ -7789,6 +7878,10 @@ export class AppStore {
         void poll();
       }, delay);
     };
+    if (options?.immediate) {
+      void poll();
+      return;
+    }
     this.releaseDeployPollTimer = window.setTimeout(() => {
       void poll();
     }, 2000);
@@ -8030,6 +8123,14 @@ function releaseActivityFingerprint(activity: ReleaseActivity): string {
   });
 }
 
+function firstNonEmptyUrl(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
 function hydrateReleaseActivity(activity: ReleaseActivity): ReleaseActivity {
   const looksIncomplete =
     activity.willPush &&
@@ -8061,6 +8162,53 @@ function isBrowseTab(value: unknown): value is BrowseTab {
     value === 'reflog' ||
     value === 'console'
   );
+}
+
+function deployOptionalJobName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.includes('stabilize') || lower.includes('stable download');
+}
+
+function deployConclusionFailed(conclusion: string | null | undefined): boolean {
+  const value = conclusion?.trim() ?? '';
+  return (
+    value === 'failure' ||
+    value === 'cancelled' ||
+    value === 'timed_out' ||
+    value === 'startup_failure' ||
+    value === 'action_required' ||
+    value === 'stale'
+  );
+}
+
+function deployJobActive(job: ReleaseDeployJob): boolean {
+  if ((job.conclusion?.trim() ?? '') !== '') return false;
+  return job.status.trim() !== 'completed';
+}
+
+function deployJobsTerminalFailure(jobs: ReleaseDeployJob[] | undefined): boolean {
+  if (!jobs?.length) return false;
+  let failed = false;
+  for (const job of jobs) {
+    if (deployOptionalJobName(job.name)) continue;
+    if (deployConclusionFailed(job.conclusion)) {
+      failed = true;
+      continue;
+    }
+    if (deployJobActive(job)) return false;
+  }
+  return failed;
+}
+
+function deployFailureMessage(tag: string, jobs: ReleaseDeployJob[]): string {
+  const failed = jobs.find(
+    (job) => !deployOptionalJobName(job.name) && deployConclusionFailed(job.conclusion),
+  );
+  if (failed) {
+    const why = failed.conclusion?.trim() || 'failed';
+    return `${failed.name} ${why} for ${tag}`;
+  }
+  return `Installer build failed for ${tag}`;
 }
 
 function normalizeReleasePhase(value: string): ReleasePhase {

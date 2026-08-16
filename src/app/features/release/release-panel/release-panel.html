@@ -19,10 +19,14 @@
                 type="button"
                 class="tag-btn"
                 title="Reload installer build status from GitHub"
-                [disabled]="refreshLocked()"
+                [disabled]="refreshLocked() || store.releaseDeployChecking()"
                 (click)="refreshDeploy()"
               >
-                <ng-icon name="lucideRefreshCw" size="11" />
+                <ng-icon
+                  name="lucideRefreshCw"
+                  size="11"
+                  [class.spin]="store.releaseDeployChecking()"
+                />
                 Refresh
               </button>
             }

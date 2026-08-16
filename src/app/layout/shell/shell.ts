@@ -150,7 +150,7 @@ export class Shell {
     let failed = false;
     for (const job of jobs) {
       const conclusion = job.conclusion?.trim() ?? '';
-      if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
+      if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out' || conclusion === 'startup_failure') {
         failed = true;
         continue;
       }
@@ -159,8 +159,8 @@ export class Shell {
       }
       if (job.status.trim() !== 'completed') pending = true;
     }
+    if (failed && !pending) return 'failure';
     if (this.store.releaseBusy() || pending) return 'running';
-    if (failed) return 'failure';
     if (activity.needsRefresh) return 'paused';
     if (activity.phase === 'done') return 'success';
     return 'running';

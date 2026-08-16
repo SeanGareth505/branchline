@@ -520,7 +520,7 @@ function stepDuration(steps: ReleaseActivityStep[], index: number, now: number):
 
 function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion' | 'completedAt'>): ArtifactStatus {
   const conclusion = job.conclusion?.trim();
-  if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
+  if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out' || conclusion === 'startup_failure') {
     return 'failure';
   }
   if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {

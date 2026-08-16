@@ -568,6 +568,16 @@
   background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+.tag-btn ng-icon.spin {
+  animation: release-refresh-spin 0.7s linear infinite;
+}
+
+@keyframes release-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .elapsed {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;

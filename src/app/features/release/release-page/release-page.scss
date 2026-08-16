@@ -86,6 +86,16 @@
   gap: 0.35rem;
 }
 
+.hero-actions ng-icon.spin {
+  animation: release-refresh-spin 0.7s linear infinite;
+}
+
+@keyframes release-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .panel {
   flex: 1;
   min-height: 0;
