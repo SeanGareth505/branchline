@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.7.32"
+version = "0.7.33"
 description = "Branchline — premium desktop Git client"
 authors = ["Sean Gareth"]
 license = "MIT"
