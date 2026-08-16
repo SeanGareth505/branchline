@@ -479,40 +479,48 @@ button.sync-chip:hover {
   content-visibility: visible;
 }
 
-.ref-viewport .ref-row.folder {
-  margin-top: 0;
-  min-height: 28px;
-  height: 28px;
+.tree-trail {
+  margin: 0 0.35rem;
+  padding: 0.12rem 0.15rem 0.2rem;
+  color: color-mix(in srgb, var(--text-muted) 82%, transparent);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ref-list {
-  --tree-indent: 15px;
-  --tree-gutter: 6px;
+  --tree-indent: 16px;
+  --tree-gutter: 8px;
+  --tree-line: color-mix(in srgb, var(--text-muted) 28%, transparent);
   list-style: none;
   margin: 0;
   padding: 0.15rem 0.15rem 0.35rem 0.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.08rem;
+  gap: 0;
   min-width: 0;
 }
 
 .ref-row {
-  --tree-indent: 15px;
-  --tree-gutter: 6px;
+  --tree-indent: 16px;
+  --tree-gutter: 8px;
+  --tree-line: color-mix(in srgb, var(--text-muted) 28%, transparent);
   --depth: 0;
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  border-radius: 6px;
+  border-radius: 5px;
   border: 1px solid transparent;
   min-width: 0;
   max-width: 100%;
   content-visibility: auto;
-  contain-intrinsic-size: auto 1.7rem;
-  min-height: 28px;
-  height: 28px;
+  contain-intrinsic-size: auto 26px;
+  min-height: 26px;
+  height: 26px;
   padding-left: calc(var(--tree-gutter) + var(--depth) * var(--tree-indent));
   padding-right: 0.35rem;
   box-sizing: border-box;
@@ -523,42 +531,56 @@ button.sync-chip:hover {
   left: var(--tree-gutter);
   top: 0;
   bottom: 0;
+  display: flex;
   width: calc(var(--depth) * var(--tree-indent));
   pointer-events: none;
   z-index: 0;
 }
 
-.ref-row[data-depth='0'] .tree-guides {
-  display: none;
+.guide {
+  position: relative;
+  flex: 0 0 var(--tree-indent);
+  width: var(--tree-indent);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-style: normal;
 }
 
-.tree-guides::before {
+.guide[data-kind='line']::before,
+.guide[data-kind='tee']::before,
+.guide[data-kind='corner']::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: 7px;
+  width: 0;
+  border-left: 1px solid var(--tree-line);
+}
+
+.guide[data-kind='line']::before,
+.guide[data-kind='tee']::before {
   top: 0;
   bottom: 0;
-  width: calc((var(--depth) - 1) * var(--tree-indent));
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent 0,
-    transparent calc(var(--tree-indent) - 1px),
-    color-mix(in srgb, var(--text-muted) 34%, transparent) calc(var(--tree-indent) - 1px),
-    color-mix(in srgb, var(--text-muted) 34%, transparent) var(--tree-indent)
-  );
 }
 
-.tree-guides::after {
+.guide[data-kind='corner']::before {
+  top: 0;
+  height: 50%;
+}
+
+.guide[data-kind='tee']::after,
+.guide[data-kind='corner']::after {
   content: '';
   position: absolute;
-  left: calc(100% - var(--tree-indent));
-  top: 0;
-  width: calc(var(--tree-indent) - 4px);
-  height: 50%;
-  border-left: 1px solid color-mix(in srgb, var(--text-muted) 46%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 46%, transparent);
-  border-bottom-left-radius: 3px;
-  box-sizing: border-box;
+  left: 7px;
+  top: 50%;
+  width: calc(var(--tree-indent) - 7px);
+  border-top: 1px solid var(--tree-line);
+}
+
+.ref-row:hover .guide::before,
+.ref-row:hover .guide::after {
+  border-color: color-mix(in srgb, var(--text-muted) 48%, transparent);
 }
 
 .ref-row > :not(.tree-guides) {
@@ -568,17 +590,18 @@ button.sync-chip:hover {
 
 .ref-row.folder {
   border: 0;
-  min-height: 30px;
-  height: 30px;
-  margin-top: 0.22rem;
+  min-height: 26px;
+  height: 26px;
+  margin-top: 0;
+  background: transparent;
 }
 
-.ref-row.folder:first-child {
-  margin-top: 0.08rem;
+.ref-row.folder.zero .count {
+  opacity: 0.55;
 }
 
 .ref-row.folder:hover {
-  background: transparent;
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
 }
 
 .folder-btn {
@@ -591,7 +614,7 @@ button.sync-chip:hover {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  padding: 0 0.45rem 0 0.2rem;
+  padding: 0 0.4rem 0 0.1rem;
   text-align: left;
   color: var(--text-secondary);
   cursor: pointer;
@@ -602,7 +625,7 @@ button.sync-chip:hover {
 }
 
 .folder-btn:hover {
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  background: transparent;
   color: var(--text-primary);
 }
 
@@ -626,7 +649,8 @@ button.sync-chip:hover {
   color: var(--text-secondary);
 }
 
-.folder-btn .label {
+.folder-btn .label,
+.name .label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -636,7 +660,7 @@ button.sync-chip:hover {
 
 .folder-btn .count {
   margin-left: auto;
-  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  background: transparent;
   color: var(--text-muted);
 }
 
@@ -684,9 +708,9 @@ button.sync-chip:hover {
 }
 
 .ref-row.current {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .ref-row.current .label {
@@ -778,9 +802,6 @@ button.sync-chip:hover {
 }
 
 .name .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
 }
 

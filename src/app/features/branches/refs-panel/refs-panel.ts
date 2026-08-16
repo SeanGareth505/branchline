@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -61,9 +62,26 @@ interface BranchTreeLeaf {
 
 type BranchTreeNode = BranchTreeDir | BranchTreeLeaf;
 
+type TreeGuideKind = 'blank' | 'line' | 'tee' | 'corner';
+
 type BranchFlatRow =
-  | { kind: 'dir'; path: string; name: string; depth: number; branchCount: number; open: boolean }
-  | { kind: 'branch'; path: string; name: string; depth: number; branch: BranchInfo };
+  | {
+      kind: 'dir';
+      path: string;
+      name: string;
+      depth: number;
+      branchCount: number;
+      open: boolean;
+      guides: TreeGuideKind[];
+    }
+  | {
+      kind: 'branch';
+      path: string;
+      name: string;
+      depth: number;
+      branch: BranchInfo;
+      guides: TreeGuideKind[];
+    };
 
 interface RemoteGroupView {
   name: string;
@@ -90,13 +108,22 @@ interface TagTreeLeaf {
 type TagTreeNode = TagTreeDir | TagTreeLeaf;
 
 type TagFlatRow =
-  | { kind: 'dir'; path: string; name: string; depth: number; tagCount: number; open: boolean }
-  | { kind: 'tag'; path: string; name: string; depth: number; sha: string };
+  | {
+      kind: 'dir';
+      path: string;
+      name: string;
+      depth: number;
+      tagCount: number;
+      open: boolean;
+      guides: TreeGuideKind[];
+    }
+  | { kind: 'tag'; path: string; name: string; depth: number; sha: string; guides: TreeGuideKind[] };
 
 @Component({
   selector: 'app-refs-panel',
   imports: [
     FormsModule,
+    NgTemplateOutlet,
     NgIcon,
     CdkConnectedOverlay,
     CdkOverlayOrigin,
@@ -118,7 +145,10 @@ export class RefsPanel {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
-  readonly refRowHeight = 28;
+  readonly refRowHeight = 26;
+  readonly localScrollIndex = signal(0);
+  readonly tagScrollIndex = signal(0);
+  readonly remoteScrollIndex = signal<Record<string, number>>({});
   trackBranchRow = (_: number, row: BranchFlatRow): string => row.path + ':' + row.kind;
   trackTagRow = (_: number, row: TagFlatRow): string => row.path + ':' + row.kind;
 
@@ -355,6 +385,8 @@ export class RefsPanel {
   );
 
   readonly localRows = computed(() => this.flattenBranchTree(this.buildBranchTree(this.filteredLocal()), 'local'));
+  readonly localTrail = computed(() => this.treeTrail(this.localRows(), this.localScrollIndex()));
+  readonly tagTrail = computed(() => this.treeTrail(this.tagRows(), this.tagScrollIndex()));
   readonly remoteGroups = computed((): RemoteGroupView[] => {
     const remotes = this.filteredRemote();
     const expanded = this.expandedRemotes();
@@ -511,6 +543,38 @@ export class RefsPanel {
       else next.add(path);
       return next;
     });
+  }
+
+  rowTreePath(row: BranchFlatRow | TagFlatRow): string {
+    if (row.kind === 'branch') return row.branch.name;
+    if (row.kind === 'tag') return row.path;
+    const stripped = row.path.replace(/^[^:]+:/, '');
+    return stripped;
+  }
+
+  onLocalScroll(index: number): void {
+    this.localScrollIndex.set(index);
+  }
+
+  onTagScroll(index: number): void {
+    this.tagScrollIndex.set(index);
+  }
+
+  onRemoteScroll(path: string, index: number): void {
+    this.remoteScrollIndex.update((current) => ({ ...current, [path]: index }));
+  }
+
+  remoteTrail(group: RemoteGroupView): string {
+    return this.treeTrail(group.rows, this.remoteScrollIndex()[group.path] ?? 0);
+  }
+
+  treeTrail(rows: Array<BranchFlatRow | TagFlatRow>, index: number): string {
+    if (index <= 0 || !rows.length) return '';
+    const row = rows[Math.min(index, rows.length - 1)];
+    if (!row || row.depth < 2) return '';
+    const parts = this.rowTreePath(row).split('/').filter(Boolean);
+    parts.pop();
+    return parts.join(' / ');
   }
 
   async deleteBranch(name: string): Promise<void> {
@@ -1407,8 +1471,10 @@ export class RefsPanel {
 
   private flattenBranchTree(nodes: BranchTreeNode[], scope: string): BranchFlatRow[] {
     const out: BranchFlatRow[] = [];
-    const walk = (list: BranchTreeNode[], depth: number) => {
-      for (const node of list) {
+    const walk = (list: BranchTreeNode[], depth: number, ancestorContinues: boolean[]) => {
+      list.forEach((node, index) => {
+        const isLast = index === list.length - 1;
+        const guides = treeGuides(depth, ancestorContinues, isLast);
         if (node.kind === 'dir') {
           const folderPath = `${scope}:${node.path}`;
           const open = this.folderOpen(folderPath);
@@ -1419,8 +1485,9 @@ export class RefsPanel {
             depth,
             branchCount: node.branchCount,
             open,
+            guides,
           });
-          if (open) walk(node.children, depth + 1);
+          if (open) walk(node.children, depth + 1, [...ancestorContinues, !isLast]);
         } else {
           out.push({
             kind: 'branch',
@@ -1428,11 +1495,12 @@ export class RefsPanel {
             name: node.name,
             depth,
             branch: node.branch,
+            guides,
           });
         }
-      }
+      });
     };
-    walk(nodes, 0);
+    walk(nodes, 0, []);
     return out;
   }
 
@@ -1500,8 +1568,10 @@ export class RefsPanel {
 
   private flattenTagTree(nodes: TagTreeNode[], scope: string): TagFlatRow[] {
     const out: TagFlatRow[] = [];
-    const walk = (list: TagTreeNode[], depth: number) => {
-      for (const node of list) {
+    const walk = (list: TagTreeNode[], depth: number, ancestorContinues: boolean[]) => {
+      list.forEach((node, index) => {
+        const isLast = index === list.length - 1;
+        const guides = treeGuides(depth, ancestorContinues, isLast);
         if (node.kind === 'dir') {
           const folderPath = `${scope}:${node.path}`;
           const open = this.folderOpen(folderPath);
@@ -1512,8 +1582,9 @@ export class RefsPanel {
             depth,
             tagCount: node.tagCount,
             open,
+            guides,
           });
-          if (open) walk(node.children, depth + 1);
+          if (open) walk(node.children, depth + 1, [...ancestorContinues, !isLast]);
         } else {
           out.push({
             kind: 'tag',
@@ -1521,11 +1592,25 @@ export class RefsPanel {
             name: node.name,
             depth,
             sha: node.sha,
+            guides,
           });
         }
-      }
+      });
     };
-    walk(nodes, 0);
+    walk(nodes, 0, []);
     return out;
   }
+}
+
+function treeGuides(
+  depth: number,
+  ancestorContinues: boolean[],
+  isLast: boolean,
+): TreeGuideKind[] {
+  const guides: TreeGuideKind[] = [];
+  for (let i = 0; i < depth; i++) {
+    if (i < depth - 1) guides.push(ancestorContinues[i] ? 'line' : 'blank');
+    else guides.push(isLast ? 'corner' : 'tee');
+  }
+  return guides;
 }

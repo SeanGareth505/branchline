@@ -176,6 +176,16 @@
     </div>
   </div>
 
+  <ng-template #treeGuides let-guides>
+    @if (guides.length) {
+      <span class="tree-guides" aria-hidden="true">
+        @for (kind of guides; track $index) {
+          <i class="guide" [attr.data-kind]="kind"></i>
+        }
+      </span>
+    }
+  </ng-template>
+
   <div class="groups">
     @if (isSectionVisible('local')) {
     <section class="group kind-local" [class.collapsed]="!isOpen('local')">
@@ -219,17 +229,26 @@
             <li class="ref-row empty-row">{{ store.myBranchesOnly() ? 'No branches tipped by you' : 'No local branches' }}</li>
           </ul>
         } @else {
+          @if (localTrail()) {
+            <div class="tree-trail">{{ localTrail() }}</div>
+          }
           <cdk-virtual-scroll-viewport
             class="ref-viewport"
             [itemSize]="refRowHeight"
             [minBufferPx]="80"
             [maxBufferPx]="240"
             [style.height.px]="refViewportPx(localRows().length)"
+            (scrolledIndexChange)="onLocalScroll($event)"
           >
             <ng-container *cdkVirtualFor="let row of localRows(); trackBy: trackBranchRow">
             @if (row.kind === 'dir') {
-              <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
-                <span class="tree-guides" aria-hidden="true"></span>
+              <div
+                class="ref-row folder"
+                [class.zero]="row.branchCount === 0"
+                [attr.data-depth]="row.depth"
+                [style.--depth]="row.depth"
+              >
+                <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                 <button
                   type="button"
                   class="folder-btn"
@@ -238,7 +257,7 @@
                 >
                   <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
                   <ng-icon class="folder-icon" [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
-                  <span class="label">{{ row.name }}</span>
+                  <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   <span class="count">{{ row.branchCount }}</span>
                 </button>
               </div>
@@ -256,7 +275,7 @@
                 [style.--depth]="row.depth"
                 (contextmenu)="openBranchMenu(row.branch.name, $event)"
               >
-                <span class="tree-guides" aria-hidden="true"></span>
+                <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                 <div class="identity">
                   <button
                     type="button"
@@ -266,7 +285,7 @@
                     [title]="branchTitle(row.branch)"
                   >
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
-                    <span class="label">{{ row.name }}</span>
+                    <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
                   @if (row.branch.isCurrent) {
                     <span class="head-chip" title="Checked out — this is the branch you are on">HEAD</span>
@@ -384,17 +403,26 @@
               <li class="ref-row empty-row">No branches</li>
             </ul>
           } @else {
+            @if (remoteTrail(group); as trail) {
+              <div class="tree-trail">{{ trail }}</div>
+            }
             <cdk-virtual-scroll-viewport
               class="ref-viewport"
               [itemSize]="refRowHeight"
               [minBufferPx]="80"
               [maxBufferPx]="240"
               [style.height.px]="refViewportPx(group.rows.length)"
+              (scrolledIndexChange)="onRemoteScroll(group.path, $event)"
             >
               <ng-container *cdkVirtualFor="let row of group.rows; trackBy: trackBranchRow">
               @if (row.kind === 'dir') {
-                <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
-                  <span class="tree-guides" aria-hidden="true"></span>
+                <div
+                  class="ref-row folder"
+                  [class.zero]="row.branchCount === 0"
+                  [attr.data-depth]="row.depth"
+                  [style.--depth]="row.depth"
+                >
+                  <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                   <button
                     type="button"
                     class="folder-btn"
@@ -403,7 +431,7 @@
                   >
                     <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
                     <ng-icon class="folder-icon" [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
-                    <span class="label">{{ row.name }}</span>
+                    <span class="label"><span class="label-text">{{ row.name }}</span></span>
                     <span class="count">{{ row.branchCount }}</span>
                   </button>
                 </div>
@@ -418,7 +446,7 @@
                   [style.--depth]="row.depth"
                   (contextmenu)="openBranchMenu(row.branch.name, $event)"
                 >
-                  <span class="tree-guides" aria-hidden="true"></span>
+                  <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                   <button
                     type="button"
                     class="name"
@@ -427,7 +455,7 @@
                     [title]="branchTitle(row.branch)"
                   >
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
-                    <span class="label">{{ row.name }}</span>
+                    <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
                 </div>
               }
@@ -504,17 +532,26 @@
             <li class="ref-row empty-row">No tags</li>
           </ul>
         } @else {
+          @if (tagTrail()) {
+            <div class="tree-trail">{{ tagTrail() }}</div>
+          }
           <cdk-virtual-scroll-viewport
             class="ref-viewport"
             [itemSize]="refRowHeight"
             [minBufferPx]="80"
             [maxBufferPx]="240"
             [style.height.px]="refViewportPx(tagRows().length)"
+            (scrolledIndexChange)="onTagScroll($event)"
           >
             <ng-container *cdkVirtualFor="let row of tagRows(); trackBy: trackTagRow">
             @if (row.kind === 'dir') {
-              <div class="ref-row folder" [attr.data-depth]="row.depth" [style.--depth]="row.depth">
-                <span class="tree-guides" aria-hidden="true"></span>
+              <div
+                class="ref-row folder"
+                [class.zero]="row.tagCount === 0"
+                [attr.data-depth]="row.depth"
+                [style.--depth]="row.depth"
+              >
+                <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                 <button
                   type="button"
                   class="folder-btn"
@@ -523,7 +560,7 @@
                 >
                   <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
                   <ng-icon class="folder-icon" [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
-                  <span class="label">{{ row.name }}</span>
+                  <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   <span class="count">{{ row.tagCount }}</span>
                 </button>
               </div>
@@ -535,10 +572,10 @@
                 [style.--depth]="row.depth"
                 (contextmenu)="openTagMenu(row.path, $event)"
               >
-                <span class="tree-guides" aria-hidden="true"></span>
+                <ng-container *ngTemplateOutlet="treeGuides; context: { $implicit: row.guides }" />
                 <button type="button" class="name" (click)="locateTag(row.sha)" [title]="row.path">
                   <ng-icon class="leaf-icon" name="lucideTag" size="12" />
-                  <span class="label">{{ row.name }}</span>
+                  <span class="label"><span class="label-text">{{ row.name }}</span></span>
                 </button>
                 <button
                   type="button"
