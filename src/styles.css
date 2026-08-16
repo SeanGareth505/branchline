@@ -505,6 +505,20 @@ code,
   gap: 0;
 }
 
+.bl-btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  padding: 0.18rem 0.4rem;
+}
+
+.bl-btn.quiet:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  color: var(--text-primary);
+  border-color: transparent;
+}
+
 .bl-btn-primary {
   background: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 70%, transparent);

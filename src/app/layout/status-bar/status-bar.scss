@@ -73,6 +73,8 @@
   font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition:
     background var(--duration-fast) var(--ease-out),
@@ -131,6 +133,8 @@
 .dummy-pill {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.06em;

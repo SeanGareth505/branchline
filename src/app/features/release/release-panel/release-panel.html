@@ -92,13 +92,30 @@
                   <ul class="platforms">
                     @for (item of step.artifacts; track item.name) {
                       <li>
-                        <div class="platform" [attr.data-status]="item.chip">
-                          <ng-icon class="platform-icon" [name]="item.icon" size="14" />
+                        <div
+                          class="platform"
+                          [class.open]="isJobExpanded(item.name)"
+                          [class.expandable]="item.children.length > 0"
+                          [attr.data-status]="item.chip"
+                          [attr.role]="item.children.length ? 'button' : null"
+                          [attr.tabindex]="item.children.length ? 0 : null"
+                          [attr.aria-expanded]="item.children.length ? isJobExpanded(item.name) : null"
+                          (click)="item.children.length ? toggleJob(item.name) : null"
+                          (keydown.enter)="item.children.length ? toggleJob(item.name) : null"
+                          (keydown.space)="item.children.length ? toggleJob(item.name, $event) : null"
+                        >
+                          <span class="job-mark" [attr.data-status]="item.chip" aria-hidden="true">
+                            @if (item.chip === 'success') {
+                              <ng-icon name="lucideCheck" size="11" />
+                            } @else if (item.chip === 'failure') {
+                              <ng-icon name="lucideX" size="11" />
+                            }
+                          </span>
                           <div class="platform-copy">
                             <div class="platform-title">
                               <span class="platform-name">{{ item.label }}</span>
                             </div>
-                            @if (item.step) {
+                            @if (item.step && !isJobExpanded(item.name)) {
                               <p class="platform-step">{{ item.step }}</p>
                             }
                           </div>
@@ -114,13 +131,29 @@
                                 type="button"
                                 class="open-job"
                                 title="Open on GitHub"
-                                (click)="openLink(item.url)"
+                                (click)="openLink(item.url); $event.stopPropagation()"
                               >
                                 <ng-icon name="lucideExternalLink" size="12" />
                               </button>
                             }
                           </div>
                         </div>
+                        @if (isJobExpanded(item.name) && item.children.length) {
+                          <ol class="job-steps">
+                            @for (child of item.children; track child.id) {
+                              <li [attr.data-status]="child.chip">
+                                <span class="job-step-mark" aria-hidden="true"></span>
+                                <span class="job-step-name">{{ child.label }}</span>
+                                <span class="job-step-meta">
+                                  {{ child.statusLabel }}
+                                  @if (child.duration) {
+                                    <span class="step-time">{{ child.duration }}</span>
+                                  }
+                                </span>
+                              </li>
+                            }
+                          </ol>
+                        }
                       </li>
                     }
                   </ul>

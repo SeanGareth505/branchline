@@ -65,7 +65,7 @@ const GRID_COL_IDS: GridColId[] = ['graph', 'message', 'author', 'date', 'sha'];
 const COL_MIN: Record<GridColId, number> = {
   graph: 28,
   message: 120,
-  author: 56,
+  author: 80,
   date: 64,
   sha: 52,
 };

@@ -28,6 +28,14 @@ interface ReleaseLinkCard {
   icon: string;
 }
 
+interface JobChildView {
+  id: string;
+  label: string;
+  chip: ArtifactStatus;
+  statusLabel: string;
+  duration: string;
+}
+
 interface ArtifactView {
   name: string;
   label: string;
@@ -36,7 +44,7 @@ interface ArtifactView {
   statusLabel: string;
   duration: string;
   url: string | null;
-  icon: string;
+  children: JobChildView[];
 }
 
 interface ProgressStepView {
@@ -61,6 +69,7 @@ export class ReleasePanel {
   private readonly updates = inject(UpdateService);
   private readonly now = signal(Date.now());
   private promptedUpdate = false;
+  private readonly expandedJobs = signal(new Set<string>());
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
@@ -146,7 +155,19 @@ export class ReleasePanel {
         statusLabel: statusLabelOf(job, chip),
         duration: durationOf(job, now),
         url: job.url ?? null,
-        icon: artifactIcon(label, job.name),
+        children: (job.steps ?? []).map((child, index) => {
+          const childChip = chipStatus(child);
+          return {
+            id: `${job.name}:${child.number ?? index}:${child.name}`,
+            label: shortenJobStep(child.name),
+            chip: childChip,
+            statusLabel:
+              childChip === 'success' && child.conclusion !== 'skipped'
+                ? 'Done'
+                : statusLabelOf(child, childChip),
+            duration: durationOf(child, now),
+          };
+        }),
       };
     });
   });
@@ -371,6 +392,21 @@ export class ReleasePanel {
     if (!url) return;
     void openUrl(url);
   }
+
+  isJobExpanded(name: string): boolean {
+    return this.expandedJobs().has(name);
+  }
+
+  toggleJob(name: string, event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.expandedJobs.update((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 }
 
 function nestArtifactsUnder(steps: ReleaseActivityStep[]): string | null {
@@ -431,7 +467,7 @@ function stepDuration(steps: ReleaseActivityStep[], index: number, now: number):
   return formatElapsed(ms);
 }
 
-function chipStatus(job: ReleaseDeployJob): ArtifactStatus {
+function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>): ArtifactStatus {
   const conclusion = job.conclusion?.trim();
   if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
     return 'failure';
@@ -452,7 +488,10 @@ function chipStatus(job: ReleaseDeployJob): ArtifactStatus {
   return 'unknown';
 }
 
-function statusLabelOf(job: ReleaseDeployJob, chip: ArtifactStatus): string {
+function statusLabelOf(
+  job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>,
+  chip: ArtifactStatus,
+): string {
   if (chip === 'success') {
     if (job.conclusion === 'skipped') return 'Skipped';
     return 'Ready';
@@ -467,7 +506,10 @@ function statusLabelOf(job: ReleaseDeployJob, chip: ArtifactStatus): string {
   return job.status || 'Waiting';
 }
 
-function durationOf(item: ReleaseDeployJob, now: number): string {
+function durationOf(
+  item: Pick<ReleaseDeployJob, 'startedAt' | 'completedAt'>,
+  now: number,
+): string {
   const start = Date.parse(item.startedAt ?? '');
   if (Number.isNaN(start)) return '';
   const endRaw = item.completedAt ? Date.parse(item.completedAt) : now;
@@ -573,14 +615,4 @@ function formatDeployJobName(name: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return trimmed || name;
-}
-
-function artifactIcon(label: string, name: string): string {
-  const text = `${label} ${name}`.toLowerCase();
-  if (text.includes('github release') || text.includes('create-release')) return 'lucideTag';
-  if (text.includes('download')) return 'lucideLink';
-  if (text.includes('android') || text.includes('windows') || text.includes('linux') || text.includes('macos')) {
-    return 'lucideDownload';
-  }
-  return 'lucideArchive';
 }
