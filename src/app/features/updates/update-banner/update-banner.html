@@ -3,7 +3,11 @@
     <div class="copy">
       <strong>Update available</strong>
       <span>
-        Branchline {{ version }} is ready
+        @if (updates.currentVersion(); as current) {
+          {{ current }} → {{ version }}
+        } @else {
+          Branchline {{ version }} is ready
+        }
         @if (updates.phase() === 'downloading') {
           @if (updates.downloadPercent(); as pct) {
             — downloading {{ pct }}%
@@ -12,6 +16,9 @@
           }
         }
       </span>
+      @if (updates.phase() === 'error' && updates.errorMessage(); as err) {
+        <span class="err">{{ err }}</span>
+      }
     </div>
     <div class="actions">
       @if (updates.phase() === 'downloading') {
@@ -27,7 +34,7 @@
             class="bl-btn bl-btn-primary"
             (click)="updates.installAndRelaunch()"
           >
-            Update & restart
+            Install now
           </button>
         }
         <button type="button" class="bl-btn quiet" (click)="updates.dismissBanner()">

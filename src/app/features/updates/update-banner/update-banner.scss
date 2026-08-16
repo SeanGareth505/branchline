@@ -38,6 +38,12 @@
   color: var(--text-secondary);
 }
 
+.err {
+  flex-basis: 100%;
+  color: var(--git-deleted);
+  font-size: 12px;
+}
+
 .notes {
   margin: 0.15rem 0 0;
   max-width: 42rem;
