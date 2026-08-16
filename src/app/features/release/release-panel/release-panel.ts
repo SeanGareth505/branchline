@@ -322,9 +322,6 @@ export class ReleasePanel {
         actions.push({ id: 'github', label: 'Link GitHub', primary: false });
       }
     }
-    if (this.shippedLive()) {
-      actions.push({ id: 'updates', label: 'Check for updates', primary: true });
-    }
     return actions;
   });
 

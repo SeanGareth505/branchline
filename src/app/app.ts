@@ -89,6 +89,10 @@ export class App implements OnInit {
       return;
     }
     if (event.key === 'Escape') {
+      if (this.updates.notesDialogOpen()) {
+        this.updates.dismissWhatsNew();
+        return;
+      }
       if (this.prompts.request()) {
         this.prompts.cancel();
         return;

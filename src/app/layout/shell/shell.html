@@ -232,6 +232,9 @@
     <app-file-search-dialog />
   }
   <app-toast-host />
+  @defer (when updates.notesDialogOpen()) {
+    <app-whats-new-dialog />
+  }
   <app-safety-dialog />
   <app-prompt-dialog />
   <app-select-dialog />

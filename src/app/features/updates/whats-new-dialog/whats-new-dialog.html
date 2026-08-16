@@ -1,0 +1,44 @@
+@if (updates.notesDialogOpen()) {
+  <div class="backdrop" (click)="updates.dismissWhatsNew()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="whats-new-title"
+    >
+      <header>
+        <div class="copy">
+          <p class="kicker">Updated</p>
+          <h2 id="whats-new-title">What’s new in {{ updates.whatsNewVersion() }}</h2>
+        </div>
+        <button
+          type="button"
+          class="bl-btn icon"
+          (click)="updates.dismissWhatsNew()"
+          aria-label="Close"
+          title="Close"
+        >
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
+
+      <div class="body">
+        @if (updates.whatsNewBody(); as notes) {
+          <pre class="notes">{{ notes }}</pre>
+        } @else {
+          <p class="empty">Branchline {{ updates.whatsNewVersion() }} is installed.</p>
+        }
+      </div>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="updates.openWhatsNewOnGithub()">
+          View on GitHub
+        </button>
+        <button type="button" class="bl-btn bl-btn-primary" (click)="updates.dismissWhatsNew()">
+          Got it
+        </button>
+      </footer>
+    </div>
+  </div>
+}

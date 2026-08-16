@@ -36,7 +36,7 @@
         </div>
       </div>
 
-      @if (linkCards().length) {
+      @if (linkCards().length || shippedLive()) {
         <div class="link-chips">
           @for (card of linkCards(); track card.id) {
             <button
@@ -47,6 +47,17 @@
             >
               <ng-icon [name]="card.icon" size="12" />
               <span>{{ card.label }}</span>
+            </button>
+          }
+          @if (shippedLive()) {
+            <button
+              type="button"
+              class="link-chip"
+              title="Check for a newer Branchline build"
+              (click)="checkForUpdates()"
+            >
+              <ng-icon name="lucideDownload" size="12" />
+              <span>Check for updates</span>
             </button>
           }
         </div>

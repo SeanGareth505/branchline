@@ -43,6 +43,7 @@ import { RepoToolbar } from '../repo-toolbar/repo-toolbar';
 import { StatusBar } from '../status-bar/status-bar';
 import { ToastHost } from '../toast-host/toast-host';
 import { UpdateBanner } from '../../features/updates/update-banner/update-banner';
+import { WhatsNewDialog } from '../../features/updates/whats-new-dialog/whats-new-dialog';
 import { UpdateService } from '../../core/update.service';
 
 type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
@@ -92,6 +93,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     RemoteTroubleshootDialog,
     ReleaseDialog,
     UpdateBanner,
+    WhatsNewDialog,
   ],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',

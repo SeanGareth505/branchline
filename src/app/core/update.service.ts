@@ -4,9 +4,19 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { AppStore } from './app.store';
 import { TauriService } from './tauri.service';
+import {
+  extractWhatsNewBody,
+  githubReleaseTagUrl,
+  normalizeAppVersion,
+  shouldShowWhatsNew,
+} from './whats-new';
 
 const DISMISS_KEY = 'branchline.update.dismissedVersion';
+const LAST_SEEN_KEY = 'branchline.update.lastSeenVersion';
+const PENDING_NOTES_KEY = 'branchline.update.pendingNotes';
 export const UPDATE_DOWNLOAD_PAGE = 'https://seangareth505.github.io/branchline/';
+
+type PendingNotes = { version: string; body: string };
 
 export type UpdatePhase =
   | 'idle'
@@ -30,6 +40,9 @@ export class UpdateService {
   readonly downloadPercent = signal<number | null>(null);
   readonly errorMessage = signal<string | null>(null);
   readonly bannerVisible = signal(false);
+  readonly notesDialogOpen = signal(false);
+  readonly whatsNewVersion = signal('');
+  readonly whatsNewBody = signal('');
   readonly downloadPageUrl = UPDATE_DOWNLOAD_PAGE;
 
   private get store(): AppStore {
@@ -43,6 +56,7 @@ export class UpdateService {
     } catch {
       this.currentVersion.set('');
     }
+    await this.maybeShowWhatsNew();
     await this.checkForUpdates({ silent: true });
   }
 
@@ -178,11 +192,30 @@ export class UpdateService {
       this.downloadPercent.set(100);
       this.phase.set('installing');
       await update.install();
+      this.writePendingNotes(update.version, update.body ?? this.releaseNotes());
       this.phase.set('ready');
     } catch (err) {
       this.errorMessage.set(this.formatError(err));
       this.phase.set('error');
       this.bannerVisible.set(true);
+    }
+  }
+
+  dismissWhatsNew(): void {
+    const version = this.whatsNewVersion() || this.currentVersion();
+    this.writeLastSeenVersion(version);
+    this.clearPendingNotes();
+    this.notesDialogOpen.set(false);
+    this.whatsNewBody.set('');
+  }
+
+  async openWhatsNewOnGithub(): Promise<void> {
+    const url = githubReleaseTagUrl(this.whatsNewVersion() || this.currentVersion());
+    if (!url) return;
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch (err) {
+      this.errorMessage.set(this.formatError(err));
     }
   }
 
@@ -207,11 +240,109 @@ export class UpdateService {
     return message;
   }
 
+  private async maybeShowWhatsNew(): Promise<void> {
+    const current = normalizeAppVersion(this.currentVersion());
+    if (!current) return;
+    const pending = this.readPendingNotes();
+    const pendingForCurrent =
+      pending && normalizeAppVersion(pending.version) === current ? pending : null;
+    const lastSeen = this.readLastSeenVersion();
+    if (
+      !shouldShowWhatsNew({
+        currentVersion: current,
+        lastSeenVersion: lastSeen,
+        pendingVersion: pendingForCurrent?.version ?? null,
+      })
+    ) {
+      if (!lastSeen) this.writeLastSeenVersion(current);
+      if (pending && !pendingForCurrent) this.clearPendingNotes();
+      return;
+    }
+
+    let body = extractWhatsNewBody(pendingForCurrent?.body ?? '');
+    if (!body) {
+      body = extractWhatsNewBody(await this.fetchGithubReleaseNotes(current));
+    }
+    this.whatsNewVersion.set(current);
+    this.whatsNewBody.set(body);
+    this.notesDialogOpen.set(true);
+  }
+
+  private async fetchGithubReleaseNotes(version: string): Promise<string> {
+    const tag = `v${normalizeAppVersion(version)}`;
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/SeanGareth505/branchline/releases/tags/${tag}`,
+        {
+          headers: {
+            Accept: 'application/vnd.github+json',
+          },
+        },
+      );
+      if (!response.ok) return '';
+      const json = (await response.json()) as { body?: unknown };
+      return typeof json.body === 'string' ? json.body : '';
+    } catch {
+      return '';
+    }
+  }
+
   private readDismissedVersion(): string | null {
     try {
       return localStorage.getItem(DISMISS_KEY);
     } catch {
       return null;
+    }
+  }
+
+  private readLastSeenVersion(): string | null {
+    try {
+      return localStorage.getItem(LAST_SEEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private writeLastSeenVersion(version: string): void {
+    const value = normalizeAppVersion(version);
+    if (!value) return;
+    try {
+      localStorage.setItem(LAST_SEEN_KEY, value);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private readPendingNotes(): PendingNotes | null {
+    try {
+      const raw = localStorage.getItem(PENDING_NOTES_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingNotes;
+      if (!parsed?.version) return null;
+      return { version: String(parsed.version), body: String(parsed.body ?? '') };
+    } catch {
+      return null;
+    }
+  }
+
+  private writePendingNotes(version: string, body: string): void {
+    const value = normalizeAppVersion(version);
+    if (!value) return;
+    try {
+      localStorage.setItem(
+        PENDING_NOTES_KEY,
+        JSON.stringify({ version: value, body: body ?? '' }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private clearPendingNotes(): void {
+    try {
+      localStorage.removeItem(PENDING_NOTES_KEY);
+    } catch {
+      /* ignore */
     }
   }
 }
