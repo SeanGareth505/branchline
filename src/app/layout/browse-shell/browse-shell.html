@@ -71,20 +71,20 @@
     [gutterSize]="4"
     (dragEnd)="onMainSplit($event.sizes)"
   >
-    <as-split-area [size]="store.splitMain()[0]" [minSize]="10">
+    <as-split-area [size]="store.splitMain()[0]" [minSize]="12" [maxSize]="30">
       <app-refs-panel />
     </as-split-area>
-    <as-split-area [size]="store.splitMain()[1]" [minSize]="40">
+    <as-split-area [size]="store.splitMain()[1]" [minSize]="70">
       <as-split
         [direction]="'vertical'"
         [gutterSize]="4"
         class="split nested"
         (dragEnd)="onNestedSplit($event.sizes)"
       >
-        <as-split-area [size]="store.splitNested()[0]" [minSize]="30">
+        <as-split-area [size]="store.splitNested()[0]" [minSize]="45">
           <app-revision-grid />
         </as-split-area>
-        <as-split-area [size]="store.splitNested()[1]" [minSize]="18">
+        <as-split-area [size]="store.splitNested()[1]" [minSize]="22" [maxSize]="55">
           <div class="bottom">
             <div class="tabs">
               <button

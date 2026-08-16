@@ -1,7 +1,7 @@
 use crate::domain::undo;
 use crate::infrastructure::{git2_repo, git_cli, sqlite};
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -83,25 +83,30 @@ fn ensure_not_locked(state: &AppState, repo_path: &str, branch_name: &str) -> Ap
 }
 
 #[command]
-pub fn list_branches(
+pub async fn list_branches(
     state: State<'_, AppState>,
     input: RepoPathInput,
 ) -> AppResult<Vec<git2_repo::BranchInfo>> {
     let path = PathBuf::from(&input.path);
-    let mut branches = git2_repo::list_branches(&path)?;
-    let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-    let locks = sqlite::list_branch_locks(&db, &input.path)?;
-    let lock_map: std::collections::HashMap<String, Option<String>> = locks
-        .into_iter()
-        .map(|l| (l.branch_name, l.reason))
-        .collect();
-    for branch in &mut branches {
-        if let Some(reason) = lock_map.get(&branch.name) {
-            branch.locked = true;
-            branch.lock_reason = reason.clone();
+    let locks = {
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        sqlite::list_branch_locks(&db, &input.path)?
+    };
+    run_blocking(move || {
+        let mut branches = git2_repo::list_branches(&path)?;
+        let lock_map: std::collections::HashMap<String, Option<String>> = locks
+            .into_iter()
+            .map(|l| (l.branch_name, l.reason))
+            .collect();
+        for branch in &mut branches {
+            if let Some(reason) = lock_map.get(&branch.name) {
+                branch.locked = true;
+                branch.lock_reason = reason.clone();
+            }
         }
-    }
-    Ok(branches)
+        Ok(branches)
+    })
+    .await
 }
 
 #[command]

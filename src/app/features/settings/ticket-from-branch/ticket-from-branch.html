@@ -4,7 +4,7 @@
       <h2 class="block-title">Ticket from branch</h2>
       <p class="block-hint">
         Fill the conventional-commit scope from the current branch, like
-        <code>feat(sotf-123):</code>. You can always edit it before committing.
+        <code>feat(PROJ-123):</code>. You can always edit it before committing.
       </p>
     </div>
     <button type="button" class="bl-btn quiet" (click)="resetDefaults()">Reset defaults</button>
@@ -43,7 +43,7 @@
         type="text"
         [ngModel]="tryBranch()"
         (ngModelChange)="tryBranch.set($event)"
-        [placeholder]="currentBranch() || 'sotf/feature/sotf-123'"
+        [placeholder]="currentBranch() || 'feature/PROJ-123-login'"
         spellcheck="false"
       />
     </label>
@@ -85,7 +85,7 @@
   <div class="setting">
     <div class="setting-label">
       <strong>Match ticket keys</strong>
-      <span>Find keys like <code>SOTF-123</code> or <code>sotf-123</code> anywhere in the branch</span>
+      <span>Find keys like <code>PROJ-123</code> or <code>proj-123</code> anywhere in the branch</span>
     </div>
     <div class="setting-control">
       <label class="switch">
@@ -145,7 +145,7 @@
   <div class="setting">
     <div class="setting-label">
       <strong>Put ticket in scope</strong>
-      <span>Write <code>feat(sotf-123):</code> instead of leaving the scope empty</span>
+      <span>Write <code>feat(PROJ-123):</code> instead of leaving the scope empty</span>
     </div>
     <div class="setting-control">
       <label class="switch">

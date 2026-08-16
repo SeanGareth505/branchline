@@ -1,4 +1,4 @@
-export const IDENTITY_SWATCH_COUNT = 12;
+const IDENTITY_SWATCH_COUNT = 12;
 
 export function identityIndex(key: string): number {
   let hash = 2166136261;

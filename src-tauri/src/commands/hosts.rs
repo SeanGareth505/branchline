@@ -74,11 +74,6 @@ struct GitHubRepo {
 }
 
 #[derive(Debug, Deserialize)]
-struct GitHubUser {
-    login: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct GitHubRelease {
     html_url: String,
 }
@@ -177,7 +172,7 @@ pub fn publish_to_github(
     let base = connection.base_url.trim().trim_end_matches('/');
     let client = reqwest::blocking::Client::new();
 
-    let _user: GitHubUser = client
+    let _: serde_json::Value = client
         .get(format!("{base}/user"))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "Branchline")

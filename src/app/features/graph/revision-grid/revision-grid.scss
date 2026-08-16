@@ -180,6 +180,19 @@
   padding: 0 !important;
 }
 
+.graph-h-scroll {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.graph-h-spacer {
+  height: 1px;
+}
+
 .col-resizer {
   position: absolute;
   top: 0;
@@ -351,7 +364,14 @@
   justify-content: flex-start;
   border-right: 1px solid color-mix(in srgb, var(--border-subtle) 55%, transparent);
   background: color-mix(in srgb, var(--bg-base) 40%, transparent);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.col-graph::-webkit-scrollbar {
+  display: none;
 }
 
 .graph-svg {
@@ -591,17 +611,25 @@
 }
 
 .grid-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0.2rem 0;
+  width: 100%;
+  min-width: var(--grid-min-width, 100%);
 }
 
-.grid-skeleton-row {
-  display: grid;
-  grid-template-columns: 2.6rem minmax(0, 1fr) 18% 5.8rem;
+.row.skeleton-row,
+.row.skeleton-row:hover {
+  cursor: default;
+  pointer-events: none;
+}
+
+.row.skeleton-row.alt:hover {
+  background: color-mix(in srgb, var(--bg-surface) 40%, var(--bg-elevated));
+}
+
+.skeleton-row .col-graph {
   align-items: center;
-  gap: 0.75rem;
-  height: 28px;
-  padding: 0 0.65rem;
+  justify-content: center;
+}
+
+.skeleton-row .col-sha {
+  cursor: default;
 }

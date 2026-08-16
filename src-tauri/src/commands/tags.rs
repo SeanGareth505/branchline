@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -32,38 +32,43 @@ pub struct DeleteTagInput {
 }
 
 #[command]
-pub fn list_tags(input: RepoPathInput) -> AppResult<Vec<TagInfo>> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let (ok, out, _) = git_cli::run_git_allow_fail(
-        &path,
-        &[
-            "for-each-ref",
-            "--sort=-creatordate",
-            "--format=%(refname:short)|%(objectname)|%(objectname:short)|%(subject)",
-            "refs/tags",
-        ],
-    );
-    if !ok || out.trim().is_empty() {
-        return Ok(vec![]);
-    }
-    let mut tags = Vec::new();
-    for line in out.lines() {
-        let parts: Vec<&str> = line.splitn(4, '|').collect();
-        if parts.len() < 3 {
-            continue;
+pub async fn list_tags(input: RepoPathInput) -> AppResult<Vec<TagInfo>> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        git_cli::ensure_repo(&path)?;
+        let (ok, out, _) = git_cli::run_git_allow_fail(
+            &path,
+            &[
+                "for-each-ref",
+                "--format=%(refname:short)|%(objectname)|%(objectname:short)|%(subject)",
+                "refs/tags",
+            ],
+        );
+        if !ok || out.trim().is_empty() {
+            return Ok(vec![]);
         }
-        tags.push(TagInfo {
-            name: parts[0].trim().to_string(),
-            sha: parts[1].trim().to_string(),
-            short_sha: parts[2].trim().to_string(),
-            message: parts
-                .get(3)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
-        });
-    }
-    Ok(tags)
+        let mut tags = Vec::new();
+        for line in out.lines() {
+            if tags.len() >= 4_000 {
+                break;
+            }
+            let parts: Vec<&str> = line.splitn(4, '|').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            tags.push(TagInfo {
+                name: parts[0].trim().to_string(),
+                sha: parts[1].trim().to_string(),
+                short_sha: parts[2].trim().to_string(),
+                message: parts
+                    .get(3)
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+            });
+        }
+        Ok(tags)
+    })
+    .await
 }
 
 #[command]

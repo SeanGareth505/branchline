@@ -98,7 +98,13 @@
     [minBufferPx]="80"
     [maxBufferPx]="240"
   >
-    @if (rows().length === 0) {
+    @if (store.repoStatusPending()) {
+      <div class="tree-skeleton" role="status" aria-label="Loading files">
+        @for (_ of [0, 1, 2, 3, 4, 5, 6, 7]; track $index) {
+          <app-skeleton [width]="$index % 3 === 0 ? '44%' : '72%'" height="0.7rem" />
+        }
+      </div>
+    } @else if (rows().length === 0) {
       <div class="empty">
         @if (counts().total === 0) {
           <p>Working tree is clean</p>

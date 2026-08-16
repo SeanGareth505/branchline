@@ -5,6 +5,7 @@ import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overla
 import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { AppStore } from '../../../core/app.store';
 import type { FileStatusEntry, FileStatusKind } from '../../../core/models';
+import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 
 type FileArea = 'staged' | 'unstaged' | 'untracked' | 'conflicted';
 type FilterChip = 'all' | FileArea;
@@ -47,6 +48,7 @@ type FlatRow =
     CdkFixedSizeVirtualScroll,
     CdkVirtualForOf,
     CdkConnectedOverlay,
+    Skeleton,
   ],
   templateUrl: './file-tree-panel.html',
   styleUrl: './file-tree-panel.scss',

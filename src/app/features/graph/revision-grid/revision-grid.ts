@@ -16,11 +16,21 @@ import { FormsModule } from '@angular/forms';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { ArtificialCommit, CommitInfo, RevisionGridColumns } from '../../../core/models';
+import {
+  COL_PAD,
+  GRID_COL_IDS,
+  GRID_COL_SAMPLE,
+  clampColWidth,
+  measureTextWidth,
+  sampleStride,
+  type GridColId,
+} from '../../../core/revision-grid-columns';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 import {
   ROW_HEIGHT,
   buildGraphLayout,
+  graphContentWidthForLanes,
   graphWidthForLanes,
   lanePitch,
   laneX,
@@ -59,33 +69,6 @@ interface StaticRowView {
   commit?: CommitInfo;
 }
 
-type GridColId = 'graph' | 'message' | 'author' | 'date' | 'sha';
-
-const GRID_COL_IDS: GridColId[] = ['graph', 'message', 'author', 'date', 'sha'];
-
-const COL_MIN: Record<GridColId, number> = {
-  graph: 28,
-  message: 120,
-  author: 80,
-  date: 64,
-  sha: 52,
-};
-
-const COL_MAX: Record<GridColId, number> = {
-  graph: 800,
-  message: 2000,
-  author: 600,
-  date: 400,
-  sha: 280,
-};
-
-function clampColWidth(col: GridColId, width: number, graphFit: number): number {
-  const min = COL_MIN[col];
-  const max = col === 'graph' ? Math.max(COL_MAX.graph, graphFit) : COL_MAX[col];
-  if (!Number.isFinite(width)) return min;
-  return Math.round(Math.min(max, Math.max(min, width)));
-}
-
 @Component({
   selector: 'app-revision-grid',
   imports: [
@@ -107,6 +90,24 @@ export class RevisionGrid {
   private readonly headerRef = viewChild<ElementRef<HTMLElement>>('header');
 
   readonly rowHeight = ROW_HEIGHT;
+  readonly skeletonRows = [
+    { message: '15.2rem', author: '5.4rem' },
+    { message: '11.6rem', author: '4.1rem' },
+    { message: '17.8rem', author: '6.2rem' },
+    { message: '9.8rem', author: '4.8rem' },
+    { message: '13.4rem', author: '5.1rem' },
+    { message: '16.1rem', author: '3.9rem' },
+    { message: '10.4rem', author: '5.8rem' },
+    { message: '14.7rem', author: '4.5rem' },
+    { message: '12.2rem', author: '6.0rem' },
+    { message: '18.4rem', author: '4.3rem' },
+    { message: '8.9rem', author: '5.6rem' },
+    { message: '13.9rem', author: '4.7rem' },
+    { message: '16.6rem', author: '5.3rem' },
+    { message: '11.1rem', author: '4.0rem' },
+    { message: '14.3rem', author: '5.9rem' },
+    { message: '9.5rem', author: '4.6rem' },
+  ];
   readonly queryDraft = signal(this.store.historyFilter().query);
   readonly authorDraft = signal(this.store.historyFilter().author);
   private filterTimer: number | null = null;
@@ -144,15 +145,25 @@ export class RevisionGrid {
       const sha = reveal.sha;
       untracked(() => this.scheduleScrollToSha(sha));
     });
+    effect(() => {
+      const max = Math.max(0, this.graphContentWidth() - this.displayGraphWidth());
+      const left = untracked(() => this.graphScrollLeft());
+      if (left > max) this.graphScrollLeft.set(max);
+    });
   }
 
   readonly layout = computed(() => {
+    if (this.store.repoGraphPending()) {
+      return { nodes: [] as GraphNode[], laneCount: 1 };
+    }
     const commits = this.filterActive()
       ? this.store.filteredCommits()
       : this.store.commits();
     const artificial = this.filterActive() ? [] : this.store.artificial();
     return buildGraphLayout(artificial, commits);
   });
+
+  readonly graphNodes = computed(() => this.layout().nodes);
 
   readonly lineageShas = computed(() => {
     const selected = this.store.selectedCommit();
@@ -189,9 +200,13 @@ export class RevisionGrid {
   readonly lanePitch = computed(() => lanePitch(this.layout().laneCount));
   readonly nodeR = computed(() => nodeRadiusForPitch(this.lanePitch()));
   readonly nodeRSel = computed(() => this.nodeR() + 1.25);
+  readonly graphContentWidth = computed(() =>
+    graphContentWidthForLanes(this.layout().laneCount, this.lanePitch()),
+  );
   readonly graphWidth = computed(() =>
     graphWidthForLanes(this.layout().laneCount, this.lanePitch()),
   );
+  readonly graphScrollLeft = signal(0);
 
   readonly headerCols: { id: GridColId; label: string; className: string }[] = [
     { id: 'graph', label: '', className: 'h-graph' },
@@ -223,28 +238,23 @@ export class RevisionGrid {
   readonly displayGraphWidth = computed(() => {
     const stored = this.store.revisionGridColumns().graph;
     if (stored == null) return this.graphWidth();
-    return clampColWidth('graph', stored, this.graphWidth());
+    return clampColWidth('graph', stored);
   });
 
-  readonly staticRows = computed((): StaticRowView[] => {
-    const nodes = this.layout().nodes;
-    const pitch = this.lanePitch();
-
-    return nodes.map((node, i) => {
-      const commit = node.commit;
-      return {
-        id: node.id,
-        node,
-        alt: i % 2 === 1,
-        artificial: node.kind === 'artificial',
-        head: !!commit?.refs.includes('HEAD'),
-        cx: laneX(node.lane, pitch),
-        nodeFill: laneColor(node.colorIndex),
-        art: node.artificial,
-        commit,
-      };
-    });
-  });
+  rowView(node: GraphNode, index: number): StaticRowView {
+    const commit = node.commit;
+    return {
+      id: node.id,
+      node,
+      alt: index % 2 === 1,
+      artificial: node.kind === 'artificial',
+      head: !!commit?.refs.includes('HEAD'),
+      cx: laneX(node.lane, this.lanePitch()),
+      nodeFill: laneColor(node.colorIndex),
+      art: node.artificial,
+      commit,
+    };
+  }
 
   topLinks(row: StaticRowView): LinkView[] {
     return mapLinks(row.node.topLinks, 'top', this.lanePitch());
@@ -268,7 +278,7 @@ export class RevisionGrid {
     }));
   }
 
-  trackRow = (_: number, row: StaticRowView): string => row.id;
+  trackNode = (_: number, node: GraphNode): string => node.id;
 
   isRowSelected(row: StaticRowView): boolean {
     if (row.artificial && row.art) {
@@ -362,6 +372,21 @@ export class RevisionGrid {
     if (body && header) header.scrollLeft = body.scrollLeft;
   }
 
+  onGraphColScroll(event: Event): void {
+    const left = (event.currentTarget as HTMLElement).scrollLeft;
+    if (Math.abs(left - this.graphScrollLeft()) < 0.5) return;
+    this.graphScrollLeft.set(left);
+  }
+
+  onGraphWheel(event: WheelEvent): void {
+    const max = Math.max(0, this.graphContentWidth() - this.displayGraphWidth());
+    if (max <= 0) return;
+    const dx = event.deltaX !== 0 ? event.deltaX : event.shiftKey ? event.deltaY : 0;
+    if (!dx) return;
+    event.preventDefault();
+    this.graphScrollLeft.set(Math.min(max, Math.max(0, this.graphScrollLeft() + dx)));
+  }
+
   onResizeStart(col: GridColId, event: PointerEvent): void {
     if (event.button !== 0) return;
     if (event.detail > 1) {
@@ -388,11 +413,7 @@ export class RevisionGrid {
   onResizeMove(event: PointerEvent): void {
     const drag = this.resizeDrag;
     if (!drag) return;
-    const next = clampColWidth(
-      drag.col,
-      drag.startW + (event.clientX - drag.startX),
-      this.graphWidth(),
-    );
+    const next = clampColWidth(drag.col, drag.startW + (event.clientX - drag.startX));
     const current = this.store.revisionGridColumns();
     const patched: RevisionGridColumns = { ...current, [drag.col]: next };
     this.store.setRevisionGridColumns(patched, { persist: false });
@@ -406,9 +427,46 @@ export class RevisionGrid {
     event.preventDefault();
     event.stopPropagation();
     this.endResize(false);
-    if (col !== 'graph') return;
     const current = this.store.revisionGridColumns();
-    this.store.setRevisionGridColumns({ ...current, graph: undefined });
+    if (col === 'graph' || col === 'message') {
+      this.store.setRevisionGridColumns({ ...current, [col]: undefined });
+      return;
+    }
+    this.store.setRevisionGridColumns({ ...current, [col]: this.fitTextColumn(col) });
+  }
+
+  private fitTextColumn(col: 'author' | 'date' | 'sha'): number {
+    const commits = this.filterActive() ? this.store.filteredCommits() : this.store.commits();
+    const sample = sampleStride(commits, GRID_COL_SAMPLE);
+    const font = this.columnFont(col === 'sha');
+    let max = 0;
+    if (col === 'sha') {
+      max = measureTextWidth('abcdef1', font);
+      for (const commit of sample) {
+        max = Math.max(max, measureTextWidth(commit.shortSha || commit.sha.slice(0, 7), font));
+      }
+    } else if (col === 'date') {
+      max = measureTextWidth('59 seconds ago', font);
+      for (const commit of sample) {
+        max = Math.max(max, measureTextWidth(formatTime(commit.timestamp), font));
+      }
+    } else {
+      max = measureTextWidth('Author', font);
+      for (const commit of sample) {
+        max = Math.max(max, measureTextWidth(commit.author, font));
+      }
+    }
+    return clampColWidth(col, max + COL_PAD);
+  }
+
+  private columnFont(mono: boolean): string {
+    const header = this.headerRef()?.nativeElement;
+    const styles = header ? getComputedStyle(header) : null;
+    const size = styles?.fontSize || '11.5px';
+    const family = mono
+      ? 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+      : styles?.fontFamily || 'ui-sans-serif, system-ui, sans-serif';
+    return `${size} ${family}`;
   }
 
   private endResize(persist = false): void {
@@ -740,8 +798,8 @@ export class RevisionGrid {
   }
 
   private indexOfSha(sha: string): number {
-    return this.staticRows().findIndex((row) => {
-      const rowSha = row.commit?.sha;
+    return this.graphNodes().findIndex((node) => {
+      const rowSha = node.commit?.sha;
       return !!rowSha && matchesSha(sha, rowSha);
     });
   }
@@ -764,7 +822,7 @@ export class RevisionGrid {
       return;
     }
 
-    const rowSha = this.staticRows()[index]?.commit?.sha ?? sha;
+    const rowSha = this.graphNodes()[index]?.commit?.sha ?? sha;
     const el = viewport.elementRef.nativeElement.querySelector(
       `[data-sha="${cssEscape(rowSha)}"]`,
     ) as HTMLElement | null;

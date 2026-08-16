@@ -130,6 +130,13 @@
   padding: 0.35rem 0.4rem 0.75rem;
 }
 
+.tree-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem 0.7rem;
+}
+
 .empty {
   display: flex;
   flex-direction: column;

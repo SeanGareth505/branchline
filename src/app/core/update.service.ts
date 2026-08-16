@@ -201,6 +201,9 @@ export class UpdateService {
     if (/404|not found/i.test(message)) {
       return `${message} — the updater file was missing. Try again, or use Download page.`;
     }
+    if (/403|forbidden/i.test(message)) {
+      return `${message} — GitHub blocked the installer download. Use Download page, then try again after the release finishes publishing.`;
+    }
     return message;
   }
 

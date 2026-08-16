@@ -136,9 +136,9 @@
           </div>
         </header>
 
-        @if (store.repoContentPending() || (loading() && !patch())) {
+        @if (store.repoGraphPending() || store.repoStatusPending() || (loading() && !patch())) {
           <app-loading-block
-            [message]="store.repoContentPending() ? 'Loading repository…' : 'Loading diff…'"
+            [message]="store.repoGraphPending() || store.repoStatusPending() ? 'Loading repository…' : 'Loading diff…'"
             [compact]="true"
           />
         } @else if (!files().length && !patch()) {

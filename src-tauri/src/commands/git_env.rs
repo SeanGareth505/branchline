@@ -198,14 +198,14 @@ mod tests {
 
     #[test]
     fn expand_tilde_identity_paths() {
-        let home = Path::new("/Users/sean");
+        let home = Path::new("/Users/demo");
         assert_eq!(
-            expand_ssh_path("~/.ssh/SeanNortjeBigly-GitHub", home),
-            home.join(".ssh/SeanNortjeBigly-GitHub")
+            expand_ssh_path("~/.ssh/id_ed25519_github", home),
+            home.join(".ssh/id_ed25519_github")
         );
         assert_eq!(
-            expand_ssh_path("/Users/sean/.ssh/id_ed25519", home),
-            Path::new("/Users/sean/.ssh/id_ed25519")
+            expand_ssh_path("/Users/demo/.ssh/id_ed25519", home),
+            Path::new("/Users/demo/.ssh/id_ed25519")
         );
     }
 
@@ -214,16 +214,16 @@ mod tests {
         let config = r#"
 Host github.com
 	HostName github.com
-	User SeanNortjeBigly
-	IdentityFile /Users/sean/.ssh/SeanNortjeBigly-GitHub
+	User git
+	IdentityFile /Users/demo/.ssh/id_ed25519_github
 Host bitbucket.org
-	IdentityFile ~/.ssh/seannortje1-Bitbucket
+	IdentityFile ~/.ssh/id_ed25519_bitbucket
 "#;
         assert_eq!(
             identity_file_values(config),
             vec![
-                "/Users/sean/.ssh/SeanNortjeBigly-GitHub".to_string(),
-                "~/.ssh/seannortje1-Bitbucket".to_string(),
+                "/Users/demo/.ssh/id_ed25519_github".to_string(),
+                "~/.ssh/id_ed25519_bitbucket".to_string(),
             ]
         );
     }

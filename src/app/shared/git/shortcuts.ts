@@ -23,7 +23,7 @@ export function isModifierOnly(event: KeyboardEvent): boolean {
   return event.key === 'Meta' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Shift' || event.key === 'OS';
 }
 
-export function eventKeyName(event: KeyboardEvent): string {
+function eventKeyName(event: KeyboardEvent): string {
   if (event.key === ' ') return 'Space';
   if (event.key.length === 1) return event.key.toUpperCase();
   return event.key;

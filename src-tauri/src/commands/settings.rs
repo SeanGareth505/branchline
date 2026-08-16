@@ -269,6 +269,11 @@ fn default_commit_types() -> Vec<CommitTypeOption> {
             description: "Documentation".into(),
         },
         CommitTypeOption {
+            id: "style".into(),
+            label: "style".into(),
+            description: "Formatting only".into(),
+        },
+        CommitTypeOption {
             id: "refactor".into(),
             label: "refactor".into(),
             description: "Code change without behavior change".into(),
@@ -349,7 +354,7 @@ fn default_connections() -> Vec<ConnectionConfig> {
             provider: "jira".into(),
             label: "Jira".into(),
             enabled: false,
-            base_url: "https://your-domain.atlassian.net".into(),
+            base_url: String::new(),
             username: String::new(),
             token: String::new(),
             organization: String::new(),

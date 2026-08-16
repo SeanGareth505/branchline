@@ -333,13 +333,13 @@ mod tests {
     #[test]
     fn converts_ssh_and_https_github_urls() {
         assert_eq!(
-            convert_github_remote("git@github.com:Dis-Chem/dischem-web.git", "https").as_deref(),
-            Some("https://github.com/Dis-Chem/dischem-web.git")
+            convert_github_remote("git@github.com:acme/widgets.git", "https").as_deref(),
+            Some("https://github.com/acme/widgets.git")
         );
         assert_eq!(
-            convert_github_remote("https://github.com/Dis-Chem/dischem-sap-commerce.git", "ssh")
+            convert_github_remote("https://github.com/acme/api.git", "ssh")
                 .as_deref(),
-            Some("git@github.com:Dis-Chem/dischem-sap-commerce.git")
+            Some("git@github.com:acme/api.git")
         );
         assert_eq!(convert_github_remote("git@bitbucket.org:team/repo.git", "https"), None);
     }
@@ -348,17 +348,17 @@ mod tests {
     fn parses_multiple_gh_accounts() {
         let text = r#"
 github.com
-  ✓ Logged in to github.com account SeanNortjeBigly (keyring)
+  ✓ Logged in to github.com account demo (keyring)
   - Active account: true
-  X Failed to log in to github.com account SeanGareth505 (keyring)
+  X Failed to log in to github.com account teammate (keyring)
   - Active account: false
 "#;
         let accounts = parse_gh_auth_status(text);
         assert_eq!(accounts.len(), 2);
-        assert_eq!(accounts[0].login, "SeanNortjeBigly");
+        assert_eq!(accounts[0].login, "demo");
         assert!(accounts[0].active);
         assert!(accounts[0].ok);
-        assert_eq!(accounts[1].login, "SeanGareth505");
+        assert_eq!(accounts[1].login, "teammate");
         assert!(!accounts[1].active);
         assert!(!accounts[1].ok);
     }

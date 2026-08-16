@@ -263,13 +263,18 @@ export function laneColor(index: number, styles?: CSSStyleDeclaration | null): s
 
 export function lanePitch(laneCount: number): number {
   const count = Math.max(1, laneCount);
-  const natural = GRAPH_PAD * 2 + count * LANE_WIDTH;
-  if (natural <= MAX_GRAPH_WIDTH) return LANE_WIDTH;
-  return Math.max(MIN_LANE_WIDTH, (MAX_GRAPH_WIDTH - GRAPH_PAD * 2) / count);
+  const inner = MAX_GRAPH_WIDTH - GRAPH_PAD * 2;
+  if (count * LANE_WIDTH <= inner) return LANE_WIDTH;
+  return Math.max(MIN_LANE_WIDTH, inner / count);
+}
+
+export function graphContentWidthForLanes(laneCount: number, pitch = lanePitch(laneCount)): number {
+  return Math.round(GRAPH_PAD * 2 + Math.max(1, laneCount) * pitch);
 }
 
 export function graphWidthForLanes(laneCount: number, pitch = lanePitch(laneCount)): number {
-  return Math.max(MIN_GRAPH_WIDTH, GRAPH_PAD * 2 + Math.max(1, laneCount) * pitch);
+  const raw = graphContentWidthForLanes(laneCount, pitch);
+  return Math.min(MAX_GRAPH_WIDTH, Math.max(MIN_GRAPH_WIDTH, raw));
 }
 
 export function laneX(lane: number, pitch = LANE_WIDTH): number {
@@ -277,7 +282,7 @@ export function laneX(lane: number, pitch = LANE_WIDTH): number {
 }
 
 export function nodeRadiusForPitch(pitch: number): number {
-  return Math.min(NODE_RADIUS, Math.max(4.75, pitch * 0.36));
+  return Math.min(NODE_RADIUS, Math.max(5, pitch * 0.38));
 }
 
 export function linkPath(
@@ -330,5 +335,5 @@ export const MIN_LANE_WIDTH = 12;
 export const GRAPH_PAD = 10;
 export const NODE_RADIUS = 5;
 export const NODE_RADIUS_SELECTED = 6.5;
-export const MIN_GRAPH_WIDTH = 48;
-export const MAX_GRAPH_WIDTH = 260;
+export const MIN_GRAPH_WIDTH = 56;
+export const MAX_GRAPH_WIDTH = 400;

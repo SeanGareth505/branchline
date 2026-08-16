@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -40,8 +40,8 @@ fn short_sha(sha: &str) -> String {
 }
 
 #[command]
-pub fn list_submodules(input: RepoPathInput) -> AppResult<Vec<SubmoduleInfo>> {
-    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+pub async fn list_submodules(input: RepoPathInput) -> AppResult<Vec<SubmoduleInfo>> {
+    run_blocking(move || git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let (ok, out, _) = git_cli::run_git_allow_fail(path, &["submodule", "status", "--recursive"]);
         if !ok && out.trim().is_empty() {
             return Ok(vec![]);
@@ -108,7 +108,8 @@ pub fn list_submodules(input: RepoPathInput) -> AppResult<Vec<SubmoduleInfo>> {
             });
         }
         Ok(entries)
-    })
+    }))
+    .await
 }
 
 #[command]

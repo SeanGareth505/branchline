@@ -1,4 +1,15 @@
-import { commitWebUrl, compareWebUrl, fileWebUrl } from './repo-links';
+import {
+  commitWebUrl,
+  compareWebUrl,
+  fileWebUrl,
+  githubSshKeysUrl,
+  normalizeRemoteUrl,
+  primaryGithubOwner,
+  remoteProtocol,
+  remoteRepoSlug,
+  toHttpsRemoteUrl,
+  toSshRemoteUrl,
+} from './repo-links';
 
 describe('repo web links', () => {
   it('builds a GitHub commit URL', () => {
@@ -32,5 +43,39 @@ describe('repo web links', () => {
     expect(fileWebUrl('https://gitlab.com/group/proj.git', 'abc1234', 'src/app.ts')).toBe(
       'https://gitlab.com/group/proj/-/blob/abc1234/src/app.ts',
     );
+  });
+
+  it('converts HTTPS remotes to SSH', () => {
+    expect(toSshRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
+      'git@github.com:Dis-Chem/dischem-sap-commerce.git',
+    );
+    expect(toHttpsRemoteUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
+      'https://github.com/Dis-Chem/dischem-web.git',
+    );
+    expect(remoteProtocol('https://github.com/org/repo.git')).toBe('https');
+    expect(remoteProtocol('git@github.com:org/repo.git')).toBe('ssh');
+  });
+
+  it('matches trailing-slash and .git URLs', () => {
+    expect(normalizeRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
+      normalizeRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce.git'),
+    );
+  });
+
+  it('builds SSH key settings URL', () => {
+    expect(githubSshKeysUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
+      'https://github.com/settings/keys',
+    );
+  });
+
+  it('reads the org/repo slug from SSH remotes', () => {
+    expect(remoteRepoSlug('git@github.com:Dis-Chem/dischem-sap-commerce.git')).toBe(
+      'Dis-Chem/dischem-sap-commerce',
+    );
+    expect(
+      primaryGithubOwner([
+        { name: 'origin', fetchUrl: 'https://github.com/Dis-Chem/dischem-web.git' },
+      ]),
+    ).toBe('dis-chem');
   });
 });

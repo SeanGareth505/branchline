@@ -1,10 +1,10 @@
-import { DEFAULT_COMMIT_TYPES, formatConventionalHead, parseConventionalSubject } from './commit-types';
+import { DEFAULT_COMMIT_TYPES, formatConventionalHead, lintConventionalMessage, parseConventionalSubject, suggestCommitType } from './commit-types';
 
 describe('conventional commit subject', () => {
   it('parses type, scope, breaking marker, and summary', () => {
-    expect(parseConventionalSubject('feat(sotf-123)!: add login', DEFAULT_COMMIT_TYPES)).toEqual({
+    expect(parseConventionalSubject('feat(api)!: add login', DEFAULT_COMMIT_TYPES)).toEqual({
       type: 'feat',
-      scope: 'sotf-123',
+      scope: 'api',
       breaking: true,
       summary: 'add login',
     });
@@ -14,13 +14,47 @@ describe('conventional commit subject', () => {
     expect(
       formatConventionalHead({
         type: 'feat',
-        scope: 'sotf-123',
+        scope: 'api',
         subject: 'add login',
       }),
-    ).toBe('feat(sotf-123): add login');
+    ).toBe('feat(api): add login');
     expect(formatConventionalHead({ type: 'fix', breaking: true, subject: 'crash' })).toBe(
       'fix!: crash',
     );
     expect(formatConventionalHead({ type: '', subject: 'wip' })).toBe('wip');
+  });
+});
+
+describe('conventional lint and suggestions', () => {
+  it('requires a type and lowercase summary', () => {
+    expect(
+      lintConventionalMessage('wip', { requireType: true, types: DEFAULT_COMMIT_TYPES }).map(
+        (i) => i.rule,
+      ),
+    ).toContain('type-empty');
+    expect(
+      lintConventionalMessage('fix: Add login', { requireType: true, types: DEFAULT_COMMIT_TYPES }).map(
+        (i) => i.rule,
+      ),
+    ).toContain('subject-case');
+    expect(
+      lintConventionalMessage('fix: add login', { requireType: true, types: DEFAULT_COMMIT_TYPES }),
+    ).toEqual([]);
+  });
+
+  it('suggests types from branch and files', () => {
+    expect(suggestCommitType({ branch: 'fix/nav', files: [] })).toBe('fix');
+    expect(
+      suggestCommitType({
+        branch: 'develop',
+        files: [{ path: 'src/foo.spec.ts', status: 'modified' }],
+      }),
+    ).toBe('test');
+    expect(
+      suggestCommitType({
+        branch: 'develop',
+        files: [{ path: 'src/login.ts', status: 'untracked' }],
+      }),
+    ).toBe('feat');
   });
 });

@@ -1425,6 +1425,25 @@ fn required_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
     })
 }
 
+fn job_succeeded(job: &ReleaseDeployJob) -> bool {
+    matches!(
+        job.conclusion.as_deref(),
+        Some("success" | "skipped" | "neutral")
+    ) || (job.status == "completed"
+        && !matches!(
+            job.conclusion.as_deref(),
+            Some("failure" | "cancelled" | "timed_out")
+        ))
+}
+
+fn required_jobs_succeeded(jobs: &[ReleaseDeployJob]) -> bool {
+    let required: Vec<&ReleaseDeployJob> = jobs
+        .iter()
+        .filter(|job| !optional_job_name(&job.name))
+        .collect();
+    !required.is_empty() && required.iter().all(|job| job_succeeded(job))
+}
+
 fn evaluate_deploy(
     urls: &DeployUrls,
     tag: &str,
@@ -1441,6 +1460,22 @@ fn evaluate_deploy(
             Vec::new(),
         );
     };
+    if required_jobs_succeeded(&run.jobs) {
+        if let Some(url) = release_url.clone() {
+            if !required_job_failed(&run.jobs) {
+                return urls.output(
+                    "success",
+                    "done",
+                    &format!(
+                        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+                    ),
+                    run.run_url,
+                    Some(url),
+                    run.jobs,
+                );
+            }
+        }
+    }
     if workflow_is_running(&run.status) {
         let message = if release_url.is_some() {
             "Still building remaining installers…"
@@ -1667,6 +1702,44 @@ fn remember_deploy_run(repo: &str, tag: &str, run_id: u64, release_url: Option<S
 }
 
 fn fetch_run_snapshot_with_gh(gh: &str, repo: &str, run_id: u64) -> Option<WorkflowSnapshot> {
+    let viewed = Command::new(gh)
+        .args([
+            "run",
+            "view",
+            &run_id.to_string(),
+            "-R",
+            repo,
+            "--json",
+            "status,conclusion,url,jobs",
+        ])
+        .output()
+        .ok();
+    if let Some(output) = viewed {
+        if output.status.success() {
+            if let Ok(payload) = serde_json::from_slice::<Value>(&output.stdout) {
+                let status = payload
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if !status.is_empty() {
+                    return Some(WorkflowSnapshot {
+                        status,
+                        conclusion: payload
+                            .get("conclusion")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string(),
+                        run_url: payload
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string),
+                        jobs: parse_deploy_jobs(&payload),
+                    });
+                }
+            }
+        }
+    }
     let run_path = format!("repos/{repo}/actions/runs/{run_id}");
     let output = Command::new(gh).args(["api", &run_path]).output().ok()?;
     if !output.status.success() {
@@ -2270,6 +2343,52 @@ mod tests {
         assert!(tag_matches_run("v0.7.4", None, Some("Release 0.7.4")));
         assert!(tag_matches_run("v0.7.4", Some("0.7.4"), None));
         assert!(!tag_matches_run("v0.7.4", Some("main"), Some("chore: docs")));
+    }
+
+    #[test]
+    fn deploy_is_live_when_required_jobs_succeed_before_workflow_finishes() {
+        let snapshot = WorkflowSnapshot {
+            status: "in_progress".into(),
+            conclusion: "".into(),
+            run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+            jobs: vec![
+                ReleaseDeployJob {
+                    name: "macOS arm64".into(),
+                    status: "completed".into(),
+                    conclusion: Some("success".into()),
+                    url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
+                },
+                ReleaseDeployJob {
+                    name: "Windows".into(),
+                    status: "completed".into(),
+                    conclusion: Some("success".into()),
+                    url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
+                },
+                ReleaseDeployJob {
+                    name: "Stable download names".into(),
+                    status: "in_progress".into(),
+                    conclusion: None,
+                    url: None,
+                    steps: vec![],
+                    started_at: None,
+                    completed_at: None,
+                },
+            ],
+        };
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.7.36",
+            Some("https://github.com/acme/branchline/releases/tag/v0.7.36".into()),
+            Some(snapshot),
+        );
+        assert_eq!(result.status, "success");
+        assert_eq!(result.phase, "done");
     }
 
     #[test]

@@ -285,3 +285,12 @@ jobs:
             exit 1
           fi
           gh release upload "$TAG" "${EXISTING[@]}" -R "${{ github.repository }}" --clobber
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Publish public updater URLs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/fix-updater-latest-json.mjs "${{ github.ref_name }}"

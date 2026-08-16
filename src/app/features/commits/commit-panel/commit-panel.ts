@@ -79,10 +79,10 @@ export class CommitPanel {
   }
 
   private resolveCommit(raw: string) {
-    const commits = this.store.commits();
+    const map = this.store.commitBySha();
     return (
-      commits.find((c) => c.sha === raw || c.shortSha === raw) ??
-      commits.find((c) => c.sha.startsWith(raw) || raw.startsWith(c.sha.slice(0, raw.length))) ??
+      map.get(raw) ??
+      (raw.length >= 7 ? map.get(raw.slice(0, 7)) : undefined) ??
       null
     );
   }

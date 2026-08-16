@@ -433,8 +433,8 @@ mod tests {
     #[test]
     fn pull_with_named_remote_does_not_assume_origin() {
         assert_eq!(
-            pull_args(Some("dischem-sap-commerce"), false),
-            vec!["pull", "dischem-sap-commerce"]
+            pull_args(Some("upstream"), false),
+            vec!["pull", "upstream"]
         );
         assert_eq!(
             pull_args(Some("origin"), true),
@@ -446,8 +446,8 @@ mod tests {
     fn fetch_without_remote_lets_git_use_configured_upstream() {
         assert_eq!(fetch_args(None), vec!["fetch"]);
         assert_eq!(
-            fetch_args(Some("dischem-sap-commerce")),
-            vec!["fetch", "dischem-sap-commerce"]
+            fetch_args(Some("upstream")),
+            vec!["fetch", "upstream"]
         );
     }
 }

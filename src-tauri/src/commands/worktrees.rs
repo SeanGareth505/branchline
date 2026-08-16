@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -55,8 +55,8 @@ fn branch_name_from_ref(raw: &str) -> Option<String> {
 }
 
 #[command]
-pub fn list_worktrees(input: RepoPathInput) -> AppResult<Vec<WorktreeInfo>> {
-    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+pub async fn list_worktrees(input: RepoPathInput) -> AppResult<Vec<WorktreeInfo>> {
+    run_blocking(move || git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let out = git_cli::run_git(path, &["worktree", "list", "--porcelain"])?;
         if out.trim().is_empty() {
             return Ok(vec![]);
@@ -118,7 +118,8 @@ pub fn list_worktrees(input: RepoPathInput) -> AppResult<Vec<WorktreeInfo>> {
         }
 
         Ok(entries)
-    })
+    }))
+    .await
 }
 
 #[command]

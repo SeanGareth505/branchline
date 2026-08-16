@@ -7,9 +7,9 @@
   display: block;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--bg-hover) 70%, transparent) 0%,
-    color-mix(in srgb, var(--glass-bg-strong) 90%, transparent) 45%,
-    color-mix(in srgb, var(--bg-hover) 70%, transparent) 90%
+    color-mix(in srgb, var(--text-muted) 16%, var(--bg-surface)) 0%,
+    color-mix(in srgb, var(--text-muted) 28%, var(--bg-elevated)) 45%,
+    color-mix(in srgb, var(--text-muted) 16%, var(--bg-surface)) 90%
   );
   background-size: 200% 100%;
   animation: bl-shimmer 1.35s ease-in-out infinite;

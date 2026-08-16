@@ -186,8 +186,8 @@
     }
   </ng-template>
 
-  <div class="groups" [class.is-pending]="store.repoContentPending()">
-    @if (store.repoContentPending()) {
+  <div class="groups" [class.is-pending]="store.repoRefsPending()">
+    @if (store.repoRefsPending()) {
       <div class="refs-skeleton" role="status" aria-label="Loading branches">
         @for (_ of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; track $index) {
           <app-skeleton

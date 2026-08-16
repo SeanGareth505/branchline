@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -67,35 +67,38 @@ pub struct ProbeRemoteOutput {
 }
 
 #[command]
-pub fn list_remotes(input: RepoPathInput) -> AppResult<Vec<RemoteInfo>> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let (ok, out, _) = git_cli::run_git_allow_fail(&path, &["remote", "-v"]);
-    if !ok || out.trim().is_empty() {
-        return Ok(vec![]);
-    }
+pub async fn list_remotes(input: RepoPathInput) -> AppResult<Vec<RemoteInfo>> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        git_cli::ensure_repo(&path)?;
+        let (ok, out, _) = git_cli::run_git_allow_fail(&path, &["remote", "-v"]);
+        if !ok || out.trim().is_empty() {
+            return Ok(vec![]);
+        }
 
-    let mut map: std::collections::BTreeMap<String, RemoteInfo> = std::collections::BTreeMap::new();
-    for line in out.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 3 {
-            continue;
+        let mut map: std::collections::BTreeMap<String, RemoteInfo> = std::collections::BTreeMap::new();
+        for line in out.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let name = parts[0].to_string();
+            let url = parts[1].to_string();
+            let kind = parts[2].trim_matches(|c| c == '(' || c == ')');
+            let entry = map.entry(name.clone()).or_insert(RemoteInfo {
+                name,
+                fetch_url: String::new(),
+                push_url: String::new(),
+            });
+            if kind == "fetch" {
+                entry.fetch_url = url;
+            } else if kind == "push" {
+                entry.push_url = url;
+            }
         }
-        let name = parts[0].to_string();
-        let url = parts[1].to_string();
-        let kind = parts[2].trim_matches(|c| c == '(' || c == ')');
-        let entry = map.entry(name.clone()).or_insert(RemoteInfo {
-            name,
-            fetch_url: String::new(),
-            push_url: String::new(),
-        });
-        if kind == "fetch" {
-            entry.fetch_url = url;
-        } else if kind == "push" {
-            entry.push_url = url;
-        }
-    }
-    Ok(map.into_values().collect())
+        Ok(map.into_values().collect())
+    })
+    .await
 }
 
 #[command]

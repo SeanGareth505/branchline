@@ -637,6 +637,12 @@
   color: var(--accent);
 }
 
+.type-chip.suggested {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
+  color: var(--accent);
+}
+
 .type-chip.add {
   min-width: 1.5rem;
   font-weight: 700;
@@ -816,6 +822,21 @@
 
 .hint.warn {
   color: var(--git-modified);
+}
+
+.lint-issues {
+  margin: 0.15rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lint-issues .error {
+  color: var(--git-deleted, #e05d5d);
 }
 
 .composer-side {

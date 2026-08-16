@@ -468,8 +468,6 @@ export interface JiraIssue {
   labels: string[];
 }
 
-export type MockJiraIssue = JiraIssue;
-
 export interface JiraTransition {
   id: string;
   name: string;

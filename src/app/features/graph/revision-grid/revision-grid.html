@@ -83,20 +83,26 @@
       <div
         [class]="col.className"
         [class.is-resizing]="resizingCol() === col.id"
-        (dblclick)="col.id === 'graph' ? onFitColumn(col.id, $event) : null"
+        (dblclick)="onFitColumn(col.id, $event)"
       >
-        {{ col.label }}
-        <span
+        @if (col.id === 'graph') {
+          <div
+            class="graph-h-scroll"
+            [scrollLeft]="graphScrollLeft()"
+            (scroll)="onGraphColScroll($event)"
+          >
+            <div class="graph-h-spacer" [style.width.px]="graphContentWidth()"></div>
+          </div>
+        } @else {
+          {{ col.label }}
+        }
+        <span>
           class="col-resizer"
           [class.is-active]="resizingCol() === col.id"
           role="separator"
           aria-orientation="vertical"
           [attr.aria-label]="'Resize ' + (col.label || 'graph') + ' column'"
-          [title]="
-            col.id === 'graph'
-              ? 'Drag to resize. Double-click to fit the graph.'
-              : 'Resize ' + col.label + ' column'
-          "
+          [title]="'Drag to resize. Double-click to fit the ' + (col.label || 'graph') + ' column.'"
           (pointerdown)="onResizeStart(col.id, $event)"
           (pointermove)="onResizeMove($event)"
           (pointerup)="onResizeEnd()"
@@ -115,8 +121,9 @@
     [maxBufferPx]="240"
     (scroll)="onScroll()"
   >
+    <ng-container *cdkVirtualFor="let node of graphNodes(); let i = index; trackBy: trackNode">
+    @let row = rowView(node, i);
     <div
-      *cdkVirtualFor="let row of staticRows(); trackBy: trackRow"
       class="row"
       [attr.data-sha]="row.commit?.sha ?? null"
       [class.alt]="row.alt"
@@ -140,10 +147,16 @@
       (dblclick)="onRowDblClick(row, $event)"
       (contextmenu)="onContext(row, $event)"
     >
-        <div class="col-graph" aria-hidden="true">
+        <div
+          class="col-graph"
+          aria-hidden="true"
+          [scrollLeft]="graphScrollLeft()"
+          (scroll)="onGraphColScroll($event)"
+          (wheel)="onGraphWheel($event)"
+        >
           <svg
             class="graph-svg"
-            [attr.width]="graphWidth()"
+            [attr.width]="graphContentWidth()"
             [attr.height]="rowHeight"
             [class.dashed]="row.artificial"
           >
@@ -257,16 +270,32 @@
           </button>
         }
     </div>
+    </ng-container>
 
-    @if (!staticRows().length) {
-      @if (store.repoContentPending()) {
+    @if (!graphNodes().length) {
+      @if (store.repoGraphPending()) {
         <div class="grid-skeleton" role="status" aria-label="Loading commits">
-          @for (_ of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; track $index) {
-            <div class="grid-skeleton-row">
-              <app-skeleton width="2.4rem" height="0.7rem" />
-              <app-skeleton [width]="$index % 3 === 0 ? '42%' : '68%'" height="0.7rem" />
-              <app-skeleton width="18%" height="0.7rem" />
-              <app-skeleton width="5.5rem" height="0.7rem" />
+          @for (row of skeletonRows; track $index) {
+            <div
+              class="row skeleton-row"
+              [class.alt]="$index % 2 === 1"
+              [style.height.px]="rowHeight"
+            >
+              <div class="col-graph" aria-hidden="true">
+                <app-skeleton variant="circle" width="8px" height="8px" />
+              </div>
+              <div class="col-message">
+                <app-skeleton [width]="row.message" height="10px" />
+              </div>
+              <div class="col-muted">
+                <app-skeleton [width]="row.author" height="10px" />
+              </div>
+              <div class="col-muted">
+                <app-skeleton width="4.5rem" height="10px" />
+              </div>
+              <div class="col-sha">
+                <app-skeleton width="3.35rem" height="10px" />
+              </div>
             </div>
           }
         </div>

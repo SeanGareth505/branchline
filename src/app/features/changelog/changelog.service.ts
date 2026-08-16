@@ -8,13 +8,6 @@ export type ChangelogFormat =
   | 'engineering'
   | 'plain';
 
-export type ChangelogRangePreset =
-  | 'since-latest-tag'
-  | 'between-tags'
-  | 'compare'
-  | 'selection'
-  | 'custom';
-
 export interface ChangelogOptions {
   format: ChangelogFormat;
   version: string;
@@ -204,7 +197,7 @@ export class ChangelogService {
     return commits.slice(start, end);
   }
 
-  parseCommit(commit: CommitInfo): ParsedCommit {
+  private parseCommit(commit: CommitInfo): ParsedCommit {
     const raw = (commit.subject || commit.message || '').trim();
     const firstLine = raw.split('\n')[0]?.trim() ?? '';
     const match = firstLine.match(CONVENTIONAL_RE);

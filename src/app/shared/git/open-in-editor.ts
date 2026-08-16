@@ -80,7 +80,7 @@ async function openWithIde(
   }
 }
 
-export async function openInPreferredEditor(
+async function openInPreferredEditor(
   absPath: string,
   options: OpenInEditorOptions,
 ): Promise<void> {
@@ -109,22 +109,6 @@ export async function openInPreferredEditor(
     default:
       await openPath(absPath);
   }
-}
-
-export async function openInSpecificEditor(
-  absPath: string,
-  editor: IdeEditor | 'preferred' | 'system',
-  options: OpenInEditorOptions,
-): Promise<void> {
-  if (editor === 'preferred') {
-    await openInPreferredEditor(absPath, options);
-    return;
-  }
-  if (editor === 'system') {
-    await openPath(absPath);
-    return;
-  }
-  await openWithIde(editor, absPath, options);
 }
 
 export async function openPathsInPreferredEditor(

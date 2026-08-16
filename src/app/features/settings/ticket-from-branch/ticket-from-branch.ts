@@ -33,7 +33,7 @@ export class TicketFromBranch {
     () =>
       this.tryBranch().trim() ||
       this.store.status()?.branch?.trim() ||
-      'sotf/feature/sotf-123',
+      'feature/PROJ-123-login',
   );
 
   readonly segments = computed(() => branchSegments(this.previewBranch()));

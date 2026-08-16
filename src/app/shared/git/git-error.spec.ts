@@ -3,7 +3,6 @@ import {
   humanizeGitError,
   isRemoteAccessError,
 } from './git-error';
-import { githubSshKeysUrl, githubSsoUrl, normalizeRemoteUrl, primaryGithubOwner, remoteProtocol, remoteRepoSlug, toHttpsRemoteUrl, toSshRemoteUrl } from './repo-links';
 
 describe('git remote errors', () => {
   const notFound =
@@ -45,42 +44,5 @@ describe('git remote errors', () => {
       '! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs',
     );
     expect(message.toLowerCase()).toContain('pull');
-  });
-
-  it('converts HTTPS remotes to SSH', () => {
-    expect(toSshRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
-      'git@github.com:Dis-Chem/dischem-sap-commerce.git',
-    );
-    expect(toHttpsRemoteUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
-      'https://github.com/Dis-Chem/dischem-web.git',
-    );
-    expect(remoteProtocol('https://github.com/org/repo.git')).toBe('https');
-    expect(remoteProtocol('git@github.com:org/repo.git')).toBe('ssh');
-  });
-
-  it('matches trailing-slash and .git URLs', () => {
-    expect(normalizeRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
-      normalizeRemoteUrl('https://github.com/Dis-Chem/dischem-sap-commerce.git'),
-    );
-  });
-
-  it('builds an org SSO URL', () => {
-    expect(githubSsoUrl('https://github.com/Dis-Chem/dischem-sap-commerce/')).toBe(
-      'https://github.com/orgs/Dis-Chem/sso',
-    );
-    expect(githubSshKeysUrl('git@github.com:Dis-Chem/dischem-web.git')).toBe(
-      'https://github.com/settings/keys',
-    );
-  });
-
-  it('reads the org/repo slug from SSH remotes', () => {
-    expect(remoteRepoSlug('git@github.com:Dis-Chem/dischem-sap-commerce.git')).toBe(
-      'Dis-Chem/dischem-sap-commerce',
-    );
-    expect(
-      primaryGithubOwner([
-        { name: 'origin', fetchUrl: 'https://github.com/Dis-Chem/dischem-web.git' },
-      ]),
-    ).toBe('dis-chem');
   });
 });

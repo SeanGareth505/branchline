@@ -435,28 +435,13 @@ fn map_status_char(c: char) -> FileStatusKind {
     }
 }
 
-fn parse_signature_letter(raw: &str) -> Option<String> {
-    let letter = raw.trim();
-    if letter.is_empty() || letter == "N" {
-        None
-    } else {
-        Some(letter.to_string())
-    }
-}
-
 pub fn commit_log(path: &Path, limit: usize, first_parent: bool) -> AppResult<Vec<CommitInfo>> {
     git_cli::ensure_repo(path)?;
 
-    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1f%G?%x1e";
+    let format = "%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%D%x1e";
     let max = format!("--max-count={limit}");
     let pretty = format!("--pretty=format:{format}");
-    let mut args = vec![
-        "log",
-        &max,
-        &pretty,
-        "--decorate=short",
-        "--all",
-    ];
+    let mut args = vec!["log", &max, &pretty, "--all"];
     if first_parent {
         args.push("--first-parent");
     }
@@ -480,7 +465,6 @@ pub fn commit_log(path: &Path, limit: usize, first_parent: bool) -> AppResult<Ve
             .map(|s| s.to_string())
             .collect();
         let refs = parse_decorate_refs(parts.get(7).copied().unwrap_or(""));
-        let signature = parse_signature_letter(parts.get(8).copied().unwrap_or(""));
         let subject = parts[2].to_string();
         let message = subject.clone();
         commits.push(CommitInfo {
@@ -493,7 +477,7 @@ pub fn commit_log(path: &Path, limit: usize, first_parent: bool) -> AppResult<Ve
             timestamp: parts[5].parse().unwrap_or(0),
             parents,
             refs,
-            signature,
+            signature: None,
             lane_hint: lane % 8,
             is_relative_to_head: false,
         });
@@ -689,26 +673,18 @@ pub fn artificial_commits(path: &Path) -> AppResult<Vec<ArtificialCommit>> {
 
 pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
     git_cli::ensure_repo(path)?;
-    let local = git_cli::run_git(
+    let refs = git_cli::run_git(
         path,
         &[
             "for-each-ref",
             "--format=%(refname)%09%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)%09%(objectname:short)%09%(objectname)%09%(contents:subject)%09%(authorname)%09%(authoremail)",
             "refs/heads",
-        ],
-    )?;
-    let remote = git_cli::run_git(
-        path,
-        &[
-            "for-each-ref",
-            "--format=%(refname)%09%(refname:short)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)%09%(objectname:short)%09%(objectname)",
             "refs/remotes",
         ],
     )?;
 
     let mut branches = Vec::new();
-    parse_branch_lines(&local, &mut branches);
-    parse_branch_lines(&remote, &mut branches);
+    parse_branch_lines(&refs, &mut branches);
     Ok(branches)
 }
 
@@ -843,22 +819,6 @@ pub fn branch_upstream_name(path: &Path, branch: &str) -> Option<String> {
     }
 }
 
-pub fn local_branch_for_remote_tracking(path: &Path, remote_tracking: &str) -> Option<String> {
-    if let Ok(branches) = list_branches(path) {
-        if let Some(local) = branches.iter().find(|b| {
-            !b.is_remote && b.upstream.as_deref() == Some(remote_tracking)
-        }) {
-            return Some(local.name.clone());
-        }
-    }
-    let (_, branch) = parse_remote_tracking_name(remote_tracking)?;
-    if ref_exists(path, &format!("refs/heads/{branch}")) {
-        Some(branch)
-    } else {
-        None
-    }
-}
-
 pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
     branch_upstream_name(path, branch).is_some()
 }
@@ -892,8 +852,8 @@ mod tests {
         assert_eq!(parse_remote_tracking_name("origin"), None);
         assert_eq!(parse_remote_tracking_name("origin/HEAD"), None);
         assert_eq!(
-            parse_remote_tracking_name("dischem-sap-commerce/develop"),
-            Some(("dischem-sap-commerce".into(), "develop".into()))
+            parse_remote_tracking_name("upstream/develop"),
+            Some(("upstream".into(), "develop".into()))
         );
     }
 

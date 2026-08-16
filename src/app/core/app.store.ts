@@ -69,6 +69,13 @@ import { ReleaseDialogService } from '../features/release/release-dialog/release
 import { ChangelogService } from '../features/changelog/changelog.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 import {
+  COL_DEFAULT,
+  SPLIT_MAIN_DEFAULT,
+  SPLIT_NESTED_DEFAULT,
+  normalizeRevisionGridColumns,
+  normalizeSplitSizes,
+} from './revision-grid-columns';
+import {
   DEFAULT_TICKET_FROM_BRANCH,
   normalizeTicketFromBranch,
 } from '../shared/git/ticket-from-branch';
@@ -99,6 +106,12 @@ import {
   slugifyUser,
 } from './workflow-placeholders';
 import { DEFAULT_SHORTCUTS, shortcutMatches } from '../shared/git/shortcuts';
+import {
+  COMMIT_LOG_INITIAL,
+  COMMIT_LOG_MAX,
+  COMMIT_LOG_WARM,
+  shouldKeepExistingCommitLog,
+} from './commit-log-window';
 
 export { DEFAULT_SHORTCUTS, shortcutMatches };
 
@@ -361,8 +374,11 @@ export class AppStore {
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly actionBusy = signal<string | null>(null);
+  readonly repoStatusPending = computed(() => this.syncingRepo() && !this.status());
+  readonly repoRefsPending = computed(() => this.syncingRepo() && this.branches().length === 0);
+  readonly repoGraphPending = computed(() => this.syncingRepo() && this.commits().length === 0);
   readonly repoContentPending = computed(
-    () => this.syncingRepo() && !this.status() && this.commits().length === 0,
+    () => this.repoStatusPending() && this.repoGraphPending(),
   );
   readonly busyMessage = computed(() => {
     if (this.loading()) return this.loadingLabel();
@@ -426,7 +442,7 @@ export class AppStore {
   readonly changelogModalOpen = signal(false);
   readonly shortcutOverlayOpen = signal(false);
   readonly fileSearchOpen = signal(false);
-  readonly commitLogLimit = signal(1000);
+  readonly commitLogLimit = signal(COMMIT_LOG_INITIAL);
   readonly commitLogHasMore = signal(false);
   readonly loadingMoreCommits = signal(false);
   readonly cloneDialogOpen = signal(false);
@@ -483,13 +499,9 @@ export class AppStore {
   readonly fileHistoryPath = signal<string | null>(null);
   readonly automationFilter = signal<AutomationFilter>('all');
   readonly automationSection = signal<AutomationSection>('workflows');
-  readonly splitMain = signal<number[]>([16, 84]);
-  readonly splitNested = signal<number[]>([62, 38]);
-  readonly revisionGridColumns = signal<RevisionGridColumns>({
-    author: 120,
-    date: 128,
-    sha: 80,
-  });
+  readonly splitMain = signal<number[]>([...SPLIT_MAIN_DEFAULT]);
+  readonly splitNested = signal<number[]>([...SPLIT_NESTED_DEFAULT]);
+  readonly revisionGridColumns = signal<RevisionGridColumns>({ ...COL_DEFAULT });
   private sessionSaveTimer: number | null = null;
   private sessionOverlay: UiSession = {};
   private restoringSession = false;
@@ -497,13 +509,18 @@ export class AppStore {
   private lastRepoCacheFp = '';
   private repoDiskCache: Record<string, RepoCacheEntry> | null = null;
   private repoLoadGen = 0;
+  private graphCommitsFull: CommitInfo[] | null = null;
+  private commitApplyCancel: (() => void) | null = null;
   private readonly repoSnapshots = new Map<string, RepoWorkingSnapshot>();
   private static readonly SNAPSHOT_MAX = 12;
+  private static readonly GRAPH_FIRST_PAINT = 120;
+  private static readonly GRAPH_PAINT_CHUNK = 220;
   private repoFsUnlisten: UnlistenFn | null = null;
   private repoFsRefreshTimer: number | null = null;
   private mutationDepth = 0;
   private refreshQueued = false;
   private refreshInFlight: Promise<void> | null = null;
+  private commitLogWarmGen = 0;
   private workingTreeRefreshQueued = false;
   private workingTreeRefreshInFlight: Promise<void> | null = null;
   private lastWorkingTreeRefreshAt = 0;
@@ -740,10 +757,11 @@ export class AppStore {
 
   setSplitSizes(kind: 'main' | 'nested', sizes: number[]): void {
     if (!sizes.length) return;
-    if (kind === 'main') this.splitMain.set([...sizes]);
-    else this.splitNested.set([...sizes]);
+    const next = normalizeSplitSizes(kind, sizes);
+    if (kind === 'main') this.splitMain.set(next);
+    else this.splitNested.set(next);
     if (!this.restoringSession) {
-      this.patchSession(kind === 'main' ? { splitMain: [...sizes] } : { splitNested: [...sizes] });
+      this.patchSession(kind === 'main' ? { splitMain: next } : { splitNested: next });
     }
   }
 
@@ -818,10 +836,10 @@ export class AppStore {
         mineOnly: session.historyMineOnly ?? f.mineOnly,
       }));
       if (Array.isArray(session.splitMain) && session.splitMain.length >= 2) {
-        this.splitMain.set(session.splitMain.map(Number));
+        this.splitMain.set(normalizeSplitSizes('main', session.splitMain.map(Number)));
       }
       if (Array.isArray(session.splitNested) && session.splitNested.length >= 2) {
-        this.splitNested.set(session.splitNested.map(Number));
+        this.splitNested.set(normalizeSplitSizes('nested', session.splitNested.map(Number)));
       }
       if (session.revisionGridColumns) {
         this.revisionGridColumns.set(normalizeRevisionGridColumns(session.revisionGridColumns));
@@ -889,6 +907,7 @@ export class AppStore {
       this.restoreReleaseActivity();
       this.restoreReleaseNotesDraft();
       this.startWorktreePoll();
+      scheduleIdleWork(() => this.readRepoDiskCache());
       try {
         this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
       } catch {
@@ -1128,16 +1147,14 @@ export class AppStore {
     return { hideUntracked: this.settings().hideUntracked };
   }
 
-  private hydrateRepoCache(path: string): boolean {
+  private hydrateRepoCache(path: string, includeGraph = true): boolean {
     try {
       const all = this.readRepoDiskCache();
       const entry = all[normalizeCachePath(path)];
       if (!entry?.status) return false;
       if (Date.now() - (entry.savedAt || 0) > 7 * 24 * 60 * 60 * 1000) return false;
       this.status.set(entry.status);
-      this.commits.set(entry.commits ?? []);
       this.branches.set(entry.branches ?? []);
-      this.artificial.set(entry.artificial ?? artificialFromStatus(entry.status));
       this.stashes.set(entry.stashes ?? []);
       this.tags.set(entry.tags ?? []);
       this.remotes.set(entry.remotes ?? []);
@@ -1146,13 +1163,18 @@ export class AppStore {
       this.lfsFiles.set([]);
       this.identity.set(null);
       this.updateNextAction(entry.status);
-      const head = entry.commits?.[0]?.sha ?? null;
-      this.selectedSha.set(head);
-      this.selectedShas.set(head ? [head] : []);
-      this.compareSha.set(null);
       this.diffSource.set('commit');
-      this.selectedDiffPath.set(null);
-      this.fileHistoryPath.set(null);
+      if (includeGraph) {
+        const commits = entry.commits ?? [];
+        this.artificial.set(entry.artificial ?? artificialFromStatus(entry.status));
+        const head = commits[0]?.sha ?? null;
+        this.selectedSha.set(head);
+        this.selectedShas.set(head ? [head] : []);
+        this.compareSha.set(null);
+        this.selectedDiffPath.set(null);
+        this.fileHistoryPath.set(null);
+        this.applyCommitsProgressive(commits);
+      }
       return true;
     } catch {
       return false;
@@ -1184,7 +1206,7 @@ export class AppStore {
       if (!current || !sameRepoPath(current, path)) return;
       const status = this.status();
       if (!status) return;
-      const commits = this.commits();
+      const commits = this.graphCommitsFull ?? this.commits();
       const branches = this.branches();
       const fp = `${normalizeCachePath(path)}:${commitsFingerprint(commits)}:${branchesFingerprint(branches)}:${statusFingerprint(status)}`;
       if (fp === this.lastRepoCacheFp) return;
@@ -1228,14 +1250,6 @@ export class AppStore {
     return !current || !sameRepoPath(current, path);
   }
 
-  private yieldToPaint(): Promise<void> {
-    return new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        window.setTimeout(() => resolve(), 0);
-      });
-    });
-  }
-
   private repoTabStub(path: string): RepoSummary {
     const existing = this.openRepos().find((r) => sameRepoPath(r.path, path));
     if (existing) return existing;
@@ -1269,21 +1283,21 @@ export class AppStore {
   private snapshotCurrentRepo(): void {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    if (!this.status() && this.commits().length === 0) return;
+    if (!this.status() && this.commits().length === 0 && !this.graphCommitsFull?.length) return;
     this.repoSnapshots.set(normalizeCachePath(path), {
       savedAt: Date.now(),
       status: this.status(),
-      commits: this.commits().slice(),
-      artificial: this.artificial().slice(),
-      branches: this.branches().slice(),
-      stashes: this.stashes().slice(),
-      tags: this.tags().slice(),
-      remotes: this.remotes().slice(),
-      worktrees: this.worktrees().slice(),
-      submodules: this.submodules().slice(),
-      lfsFiles: this.lfsFiles().slice(),
+      commits: this.graphCommitsFull ?? this.commits(),
+      artificial: this.artificial(),
+      branches: this.branches(),
+      stashes: this.stashes(),
+      tags: this.tags(),
+      remotes: this.remotes(),
+      worktrees: this.worktrees(),
+      submodules: this.submodules(),
+      lfsFiles: this.lfsFiles(),
       selectedSha: this.selectedSha(),
-      selectedShas: this.selectedShas().slice(),
+      selectedShas: this.selectedShas(),
       compareSha: this.compareSha(),
       diffSource: this.diffSource(),
       selectedDiffPath: this.selectedDiffPath(),
@@ -1293,12 +1307,8 @@ export class AppStore {
     this.pruneRepoSnapshots();
   }
 
-  private restoreRepoSnapshot(path: string): boolean {
-    const snap = this.repoSnapshots.get(normalizeCachePath(path));
-    if (!snap) return false;
+  private applyWorkingSnapshot(snap: RepoWorkingSnapshot, includeGraph: boolean): void {
     this.status.set(snap.status);
-    this.commits.set(snap.commits);
-    this.artificial.set(snap.artificial);
     this.branches.set(snap.branches);
     this.stashes.set(snap.stashes);
     this.tags.set(snap.tags);
@@ -1306,15 +1316,38 @@ export class AppStore {
     this.worktrees.set(snap.worktrees);
     this.submodules.set(snap.submodules);
     this.lfsFiles.set(snap.lfsFiles);
-    this.selectedSha.set(snap.selectedSha);
-    this.selectedShas.set(snap.selectedShas);
-    this.compareSha.set(snap.compareSha);
-    this.diffSource.set(snap.diffSource);
-    this.selectedDiffPath.set(snap.selectedDiffPath);
-    this.fileHistoryPath.set(snap.fileHistoryPath);
     this.identity.set(snap.identity);
+    this.diffSource.set(snap.diffSource);
+    if (includeGraph) {
+      this.artificial.set(snap.artificial);
+      this.selectedSha.set(snap.selectedSha);
+      this.selectedShas.set(snap.selectedShas);
+      this.compareSha.set(snap.compareSha);
+      this.selectedDiffPath.set(snap.selectedDiffPath);
+      this.fileHistoryPath.set(snap.fileHistoryPath);
+      this.applyCommitsProgressive(snap.commits);
+    } else {
+      this.cancelCommitApply();
+      this.graphCommitsFull = null;
+      this.commits.set([]);
+      this.artificial.set([]);
+      this.selectedSha.set(null);
+      this.selectedShas.set([]);
+      this.compareSha.set(null);
+      this.selectedDiffPath.set(null);
+      this.fileHistoryPath.set(null);
+    }
     if (snap.status) this.updateNextAction(snap.status);
-    return true;
+  }
+
+  private restoreCachedRepo(path: string, includeGraph: boolean): boolean {
+    const snap = this.repoSnapshots.get(normalizeCachePath(path));
+    if (snap) {
+      this.applyWorkingSnapshot(snap, includeGraph);
+      return true;
+    }
+    if (!includeGraph) return false;
+    return this.hydrateRepoCache(path, includeGraph);
   }
 
   private dropRepoSnapshot(path: string): void {
@@ -1414,18 +1447,31 @@ export class AppStore {
     const stub = this.mergeFocusedSummary(this.repoTabStub(normalized));
     this.currentRepo.set(stub);
     this.upsertOpenRepo(stub);
-
-    const hadLive = this.restoreRepoSnapshot(normalized) || this.hydrateRepoCache(normalized);
-    if (!hadLive) this.clearWorkingState();
+    this.cancelCommitApply();
+    this.clearWorkingState();
     this.syncingRepo.set(true);
-    if (this.hasLinkedPrHost()) void this.refreshPullRequests('open');
+    this.restoreCachedRepo(normalized, false);
 
     const summaryPromise = switching
       ? this.tauri.focusRepository(normalized).then((summary) => this.mergeFocusedSummary(summary))
       : this.tauri.openRepository(normalized);
-
-    await this.yieldToPaint();
-    if (this.repoLoadStale(gen, normalized)) return;
+    void this.refreshRepo();
+    this.resumeReleaseTrackingIfNeeded();
+    if (this.hasLinkedPrHost()) void this.refreshPullRequests('open');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (this.repoLoadStale(gen, normalized) || this.commits().length > 0) return;
+        if (this.repoSnapshots.has(normalizeCachePath(normalized))) {
+          this.restoreCachedRepo(normalized, true);
+          return;
+        }
+        this.commitApplyCancel = scheduleIdleWork(() => {
+          this.commitApplyCancel = null;
+          if (this.repoLoadStale(gen, normalized) || this.commits().length > 0) return;
+          this.hydrateRepoCache(normalized, true);
+        });
+      });
+    });
 
     try {
       const summary = await summaryPromise;
@@ -1437,7 +1483,7 @@ export class AppStore {
         if (this.repoLoadStale(gen, normalized)) return;
       }
       void this.applyGithubRepoAccount({ silent: true });
-      void this.refreshRepo();
+      if (!this.refreshInFlight) void this.refreshRepo();
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistOpenRepos();
       if (!switching && (this.isDummyBackend || this.isDummyRepoPath(normalized))) {
@@ -1525,9 +1571,74 @@ export class AppStore {
     });
   }
 
-  private setCommitsIfChanged(commits: CommitInfo[]): void {
-    if (commitsFingerprint(this.commits()) === commitsFingerprint(commits)) return;
-    this.commits.set(commits);
+  private setCommitsIfChanged(commits: CommitInfo[], requestedLimit: number): void {
+    const current = this.graphCommitsFull ?? this.commits();
+    if (shouldKeepExistingCommitLog(current, commits, requestedLimit)) {
+      return;
+    }
+    this.applyCommitsProgressive(commits);
+  }
+
+  private applyCommitsProgressive(commits: CommitInfo[]): void {
+    const gen = this.repoLoadGen;
+    const current = this.commits();
+    const full = this.graphCommitsFull ?? current;
+    if (
+      commits.length === full.length &&
+      commits.length === current.length &&
+      commitsFingerprint(full) === commitsFingerprint(commits)
+    ) {
+      this.graphCommitsFull = null;
+      return;
+    }
+    this.cancelCommitApply();
+    this.graphCommitsFull = commits;
+    const first = AppStore.GRAPH_FIRST_PAINT;
+    if (commits.length <= first) {
+      this.commits.set(commits);
+      this.graphCommitsFull = null;
+      return;
+    }
+    const prefix = commitPrefixLength(current, commits);
+    if (prefix === commits.length) {
+      this.commits.set(commits);
+      this.graphCommitsFull = null;
+      return;
+    }
+    let shown = prefix === current.length ? current.length : 0;
+    if (shown === 0) {
+      this.commits.set(commits.slice(0, first));
+      shown = first;
+    } else if (shown < first) {
+      shown = Math.min(first, commits.length);
+      this.commits.set(commits.slice(0, shown));
+    }
+    if (shown >= commits.length) {
+      this.commits.set(commits);
+      this.graphCommitsFull = null;
+      return;
+    }
+    this.scheduleCommitTail(commits, shown, gen);
+  }
+
+  private scheduleCommitTail(commits: CommitInfo[], shown: number, gen: number): void {
+    this.commitApplyCancel = scheduleIdleWork(() => {
+      this.commitApplyCancel = null;
+      if (this.repoLoadStale(gen) || this.graphCommitsFull !== commits) return;
+      const next = Math.min(shown + AppStore.GRAPH_PAINT_CHUNK, commits.length);
+      this.commits.set(next >= commits.length ? commits : commits.slice(0, next));
+      if (next >= commits.length) {
+        this.graphCommitsFull = null;
+        return;
+      }
+      this.scheduleCommitTail(commits, next, gen);
+    });
+  }
+
+  private cancelCommitApply(): void {
+    this.commitApplyCancel?.();
+    this.commitApplyCancel = null;
+    this.graphCommitsFull = null;
   }
 
   private setBranchesIfChanged(branches: BranchInfo[]): void {
@@ -1575,6 +1686,7 @@ export class AppStore {
   }
 
   private clearWorkingState(): void {
+    this.cancelCommitApply();
     this.status.set(null);
     this.commits.set([]);
     this.artificial.set([]);
@@ -1608,7 +1720,7 @@ export class AppStore {
     this.diffSource.set('commit');
     this.selectedDiffPath.set(null);
     this.fileHistoryPath.set(null);
-    this.commitLogLimit.set(1000);
+    this.commitLogLimit.set(COMMIT_LOG_INITIAL);
     this.commitLogHasMore.set(false);
     this.loadingMoreCommits.set(false);
     this.cherryPreviewOpen.set(false);
@@ -1981,10 +2093,7 @@ export class AppStore {
         username: cleanedEmail,
         token: cleanedToken,
         hasToken: true,
-        baseUrl: (baseUrl?.trim() || c.baseUrl || 'https://your-domain.atlassian.net').replace(
-          /\/$/,
-          '',
-        ),
+        baseUrl: (baseUrl?.trim() || c.baseUrl || '').replace(/\/$/, ''),
       };
     });
     try {
@@ -2149,24 +2258,20 @@ export class AppStore {
   }
 
   private async runRefreshRepo(path: string, opts?: { notify?: boolean }): Promise<void> {
+    this.commitLogWarmGen++;
+    const logLimit = COMMIT_LOG_INITIAL;
     const prev = this.status();
-    const [status, commits, branches, stashes, tags, remotes] = await Promise.all([
+    const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, this.commitLogLimit()),
+      this.tauri.getCommitLog(path, logLimit),
       this.tauri.listBranches(path),
-      this.tauri.listStashes(path),
-      this.tauri.listTags(path),
-      this.tauri.listRemotes(path),
     ]);
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
     this.status.set(status);
-    this.setCommitsIfChanged(commits);
-    this.commitLogHasMore.set(commits.length >= this.commitLogLimit() && this.commitLogLimit() < 5000);
+    this.setCommitsIfChanged(commits, logLimit);
+    this.commitLogHasMore.set(commits.length >= logLimit && this.commitLogLimit() < COMMIT_LOG_MAX);
     this.artificial.set(artificialFromStatus(status));
     this.setBranchesIfChanged(branches);
-    this.stashes.set(stashes);
-    this.tags.set(tags);
-    this.remotes.set(remotes);
     this.lastWorkingTreeRefreshAt = Date.now();
     this.worktreePollDelay = AppStore.WORKTREE_POLL_MIN_MS;
     this.syncRepoSummaryFromStatus(path, status);
@@ -2182,8 +2287,9 @@ export class AppStore {
     this.persistRepoCache(path);
     this.snapshotCurrentRepo();
     void this.refreshCommitStatuses();
+    void this.refreshSecondaryLists(path, { includeLfs: opts?.notify === true });
+    void this.warmCommitLog(path);
     if (opts?.notify) {
-      void this.refreshHeavyLists(path, { includeLfs: true });
       const changed =
         status.staged.length + status.unstaged.length + status.untracked.length;
       const branch = status.branch || 'HEAD';
@@ -2193,8 +2299,6 @@ export class AppStore {
           : `Refreshed ${branch} · clean`,
         { kind: 'success', durationMs: 2500, category: 'general' },
       );
-    } else {
-      void this.refreshHeavyLists(path, { includeLfs: false });
     }
   }
 
@@ -2208,12 +2312,13 @@ export class AppStore {
       await this.refreshInFlight;
       return;
     }
-    this.syncingRepo.set(true);
+    const showSync = !this.status() || this.commits().length === 0;
+    if (showSync) this.syncingRepo.set(true);
     this.refreshInFlight = this.runRefreshRepoMeta(path)
       .catch((err) => this.showError(err))
       .finally(() => {
         this.refreshInFlight = null;
-        this.syncingRepo.set(false);
+        if (showSync) this.syncingRepo.set(false);
         if (this.refreshQueued && this.mutationDepth === 0) {
           this.refreshQueued = false;
           const current = this.currentRepo()?.path;
@@ -2224,26 +2329,29 @@ export class AppStore {
   }
 
   private async runRefreshRepoMeta(path: string): Promise<void> {
+    this.commitLogWarmGen++;
     const prev = this.status();
+    const logLimit = COMMIT_LOG_INITIAL;
     const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, this.commitLogLimit()),
+      this.tauri.getCommitLog(path, logLimit),
       this.tauri.listBranches(path),
     ]);
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
-    if (prev && statusFingerprint(prev) === statusFingerprint(status)) {
-      this.setCommitsIfChanged(commits);
-      this.setBranchesIfChanged(branches);
-      this.lastWorkingTreeRefreshAt = Date.now();
+    const statusUnchanged = !!prev && statusFingerprint(prev) === statusFingerprint(status);
+    this.setCommitsIfChanged(commits, logLimit);
+    this.setBranchesIfChanged(branches);
+    this.commitLogHasMore.set(commits.length >= logLimit && this.commitLogLimit() < COMMIT_LOG_MAX);
+    this.lastWorkingTreeRefreshAt = Date.now();
+    if (statusUnchanged) {
       this.snapshotCurrentRepo();
+      if (!shouldKeepExistingCommitLog(this.graphCommitsFull ?? this.commits(), commits, logLimit)) {
+        void this.warmCommitLog(path);
+      }
       return;
     }
     this.status.set(status);
-    this.setCommitsIfChanged(commits);
-    this.commitLogHasMore.set(commits.length >= this.commitLogLimit() && this.commitLogLimit() < 5000);
     this.artificial.set(artificialFromStatus(status));
-    this.setBranchesIfChanged(branches);
-    this.lastWorkingTreeRefreshAt = Date.now();
     this.worktreePollDelay = AppStore.WORKTREE_POLL_MIN_MS;
     this.syncRepoSummaryFromStatus(path, status);
     if (!this.selectedSha() && commits[0]) {
@@ -2254,6 +2362,7 @@ export class AppStore {
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
     this.snapshotCurrentRepo();
+    void this.warmCommitLog(path);
   }
 
   async refreshBisectStatus(path?: string): Promise<void> {
@@ -2282,6 +2391,51 @@ export class AppStore {
       this.lfsFiles.set(lfsFiles);
     } catch {
       /* optional */
+    }
+  }
+
+  private async refreshSecondaryLists(
+    path: string,
+    opts?: { includeLfs?: boolean },
+  ): Promise<void> {
+    try {
+      const [stashes, tags, remotes] = await Promise.all([
+        this.tauri.listStashes(path),
+        this.tauri.listTags(path),
+        this.tauri.listRemotes(path),
+      ]);
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
+      this.stashes.set(stashes);
+      this.tags.set(tags);
+      this.remotes.set(remotes);
+      this.snapshotCurrentRepo();
+      this.persistRepoCache(path);
+    } catch {
+      /* secondary lists are best-effort */
+    }
+    void this.refreshHeavyLists(path, opts);
+  }
+
+  private async warmCommitLog(path: string): Promise<void> {
+    const target = Math.max(COMMIT_LOG_WARM, this.commitLogLimit());
+    const current = this.graphCommitsFull ?? this.commits();
+    if (target <= COMMIT_LOG_INITIAL) return;
+    if (current.length >= target) {
+      this.commitLogLimit.set(Math.max(this.commitLogLimit(), Math.min(current.length, COMMIT_LOG_MAX)));
+      this.commitLogHasMore.set(this.commitLogLimit() < COMMIT_LOG_MAX);
+      return;
+    }
+    const gen = this.commitLogWarmGen;
+    try {
+      const commits = await this.tauri.getCommitLog(path, target);
+      if (gen !== this.commitLogWarmGen) return;
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
+      this.commitLogLimit.set(Math.max(this.commitLogLimit(), target));
+      this.commitLogHasMore.set(commits.length >= target && target < COMMIT_LOG_MAX);
+      this.setCommitsIfChanged(commits, target);
+      this.snapshotCurrentRepo();
+    } catch {
+      /* warm history is best-effort */
     }
   }
 
@@ -2646,6 +2800,15 @@ export class AppStore {
 
   private pauseBackgroundReleaseWork(): void {
     this.stopReleaseDeployPoll();
+  }
+
+  private resumeReleaseTrackingIfNeeded(): void {
+    const activity = this.visibleReleaseActivity();
+    if (!activity?.tag || !activity.willPush || activity.needsPush) return;
+    if (activity.phase === 'done' || activity.phase === 'error') return;
+    const path = this.currentRepo()?.path;
+    if (!path) return;
+    void this.watchReleaseDeploy(path, activity.tag);
   }
 
   openReleaseTab(): void {
@@ -5172,17 +5335,21 @@ export class AppStore {
   async loadMoreCommits(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path || this.loadingMoreCommits()) return;
-    const next = Math.min(this.commitLogLimit() + 1000, 5000);
+    const next =
+      this.commitLogLimit() < COMMIT_LOG_WARM
+        ? COMMIT_LOG_WARM
+        : Math.min(this.commitLogLimit() + 1000, COMMIT_LOG_MAX);
     if (next === this.commitLogLimit()) {
       this.commitLogHasMore.set(false);
       return;
     }
     this.loadingMoreCommits.set(true);
+    this.commitLogWarmGen++;
     try {
       const commits = await this.tauri.getCommitLog(path, next);
       this.commitLogLimit.set(next);
-      this.commitLogHasMore.set(commits.length >= next && next < 5000);
-      this.setCommitsIfChanged(commits);
+      this.commitLogHasMore.set(commits.length >= next && next < COMMIT_LOG_MAX);
+      this.setCommitsIfChanged(commits, next);
     } catch (err) {
       this.showError(err);
     } finally {
@@ -7489,16 +7656,11 @@ export class AppStore {
 
   private async watchReleaseDeploy(path: string, tag: string): Promise<void> {
     this.stopReleaseDeployPoll();
-    if (this.view() !== 'release') return;
     const activity = this.releaseActivity();
     if (!activity) return;
     let attempts = 0;
     let errors = 0;
     const poll = async (): Promise<void> => {
-      if (this.view() !== 'release') {
-        this.stopReleaseDeployPoll();
-        return;
-      }
       attempts += 1;
       const current = this.releaseActivity();
       if (!current || !sameRepoPath(current.path, path) || current.tag !== tag) {
@@ -7507,10 +7669,6 @@ export class AppStore {
       }
       try {
         const result = await this.tauri.pollReleaseDeploy(path, tag);
-        if (this.view() !== 'release') {
-          this.stopReleaseDeployPoll();
-          return;
-        }
         errors = 0;
         const phase = normalizeReleasePhase(result.phase);
         const deployExtras = {
@@ -7519,7 +7677,7 @@ export class AppStore {
           websiteUrl: result.websiteUrl ?? current.websiteUrl ?? null,
           actionsPageUrl: result.actionsPageUrl ?? current.actionsPageUrl ?? null,
           repoUrl: result.repoUrl ?? current.repoUrl ?? null,
-          deployJobs: result.jobs?.length ? result.jobs : current.deployJobs ?? [],
+          deployJobs: result.jobs ?? current.deployJobs ?? [],
           needsPush: false,
           needsRefresh: false,
         };
@@ -7615,10 +7773,6 @@ export class AppStore {
           );
           return;
         }
-      }
-      if (this.view() !== 'release') {
-        this.stopReleaseDeployPoll();
-        return;
       }
       if (attempts >= 720) {
         this.pauseReleaseTracking(
@@ -8171,7 +8325,7 @@ function defaultConnections(): AppSettings['connections'] {
       provider: 'jira',
       label: 'Jira',
       enabled: false,
-      baseUrl: 'https://your-domain.atlassian.net',
+      baseUrl: '',
       username: '',
       token: '',
       organization: '',
@@ -8208,14 +8362,20 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
       ? base
       : base.map((def) => {
           const found = incoming.find((c) => c.provider === def.provider || c.id === def.id);
-          return found
-            ? {
-                ...def,
-                ...found,
-                organization: found.organization ?? '',
-                project: found.project ?? '',
-              }
-            : def;
+          if (!found) return def;
+          const merged = {
+            ...def,
+            ...found,
+            organization: found.organization ?? '',
+            project: found.project ?? '',
+          };
+          if (
+            merged.provider === 'jira' &&
+            /your-domain\.atlassian\.net/i.test(merged.baseUrl || '')
+          ) {
+            merged.baseUrl = '';
+          }
+          return merged;
         });
 
   return {
@@ -8324,27 +8484,6 @@ function normalizeKeyboardShortcuts(raw: unknown): KeyboardShortcuts {
   };
 }
 
-function normalizeRevisionGridColumns(raw: unknown): RevisionGridColumns {
-  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const clamp = (value: unknown, fallback: number, min: number, max: number): number => {
-    const n = typeof value === 'number' ? value : Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.round(Math.min(max, Math.max(min, n)));
-  };
-  const optional = (value: unknown, min: number, max: number): number | undefined => {
-    if (value == null || value === 0) return undefined;
-    const n = clamp(value, 0, min, max);
-    return n > 0 ? n : undefined;
-  };
-  return {
-    graph: optional(o['graph'], 28, 800),
-    message: optional(o['message'], 120, 2000),
-    author: clamp(o['author'], 120, 56, 600),
-    date: clamp(o['date'], 128, 64, 400),
-    sha: clamp(o['sha'], 80, 52, 280),
-  };
-}
-
 function normalizePreferredEditor(raw: unknown): PreferredEditor {
   const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
   if (
@@ -8375,6 +8514,29 @@ function normalizeCachePath(path: string): string {
     .replace(/\\/g, '/')
     .replace(/\/+$/, '')
     .toLowerCase();
+}
+
+function commitPrefixLength(current: CommitInfo[], next: CommitInfo[]): number {
+  const n = Math.min(current.length, next.length);
+  for (let i = 0; i < n; i++) {
+    if (current[i].sha !== next[i].sha) return i;
+  }
+  return n;
+}
+
+function scheduleIdleWork(fn: () => void, timeout = 48): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  const ric = typeof requestIdleCallback === 'function' ? requestIdleCallback : null;
+  if (ric) {
+    const id = ric(() => fn(), { timeout });
+    return () => {
+      if (typeof cancelIdleCallback === 'function') cancelIdleCallback(id);
+    };
+  }
+  const id = window.setTimeout(fn, 0);
+  return () => window.clearTimeout(id);
 }
 
 function commitsFingerprint(commits: CommitInfo[]): string {

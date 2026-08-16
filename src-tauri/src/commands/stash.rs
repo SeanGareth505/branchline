@@ -1,5 +1,5 @@
 use crate::infrastructure::git_cli;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::command;
@@ -43,37 +43,40 @@ pub struct StashBranchInput {
 }
 
 #[command]
-pub fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let (ok, out, _) =
-        git_cli::run_git_allow_fail(&path, &["stash", "list", "--pretty=format:%gd|%H|%gs"]);
-    if !ok || out.trim().is_empty() {
-        return Ok(vec![]);
-    }
-    let mut entries = Vec::new();
-    for (i, line) in out.lines().enumerate() {
-        let parts: Vec<&str> = line.splitn(3, '|').collect();
-        if parts.len() < 3 {
-            continue;
+pub async fn list_stashes(input: RepoPathInput) -> AppResult<Vec<StashEntry>> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        git_cli::ensure_repo(&path)?;
+        let (ok, out, _) =
+            git_cli::run_git_allow_fail(&path, &["stash", "list", "--pretty=format:%gd|%H|%gs"]);
+        if !ok || out.trim().is_empty() {
+            return Ok(vec![]);
         }
-        let id = parts[0].trim().to_string();
-        let sha = parts[1].trim().to_string();
-        let message = parts[2].trim().to_string();
-        let branch = message
-            .strip_prefix("WIP on ")
-            .or_else(|| message.strip_prefix("On "))
-            .and_then(|rest| rest.split(':').next())
-            .map(|s| s.trim().to_string());
-        entries.push(StashEntry {
-            index: i as i32,
-            id,
-            message,
-            branch,
-            sha,
-        });
-    }
-    Ok(entries)
+        let mut entries = Vec::new();
+        for (i, line) in out.lines().enumerate() {
+            let parts: Vec<&str> = line.splitn(3, '|').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let id = parts[0].trim().to_string();
+            let sha = parts[1].trim().to_string();
+            let message = parts[2].trim().to_string();
+            let branch = message
+                .strip_prefix("WIP on ")
+                .or_else(|| message.strip_prefix("On "))
+                .and_then(|rest| rest.split(':').next())
+                .map(|s| s.trim().to_string());
+            entries.push(StashEntry {
+                index: i as i32,
+                id,
+                message,
+                branch,
+                sha,
+            });
+        }
+        Ok(entries)
+    })
+    .await
 }
 
 #[command]

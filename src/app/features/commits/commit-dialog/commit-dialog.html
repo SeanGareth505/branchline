@@ -345,7 +345,8 @@
                 type="button"
                 class="type-chip"
                 [class.on]="commitType() === t.id"
-                [title]="t.description || t.label"
+                [class.suggested]="t.id === suggestedType() && commitType() !== t.id"
+                [title]="t.id === suggestedType() ? `Suggested: ${t.description || t.label}` : t.description || t.label"
                 (click)="setType(t.id)"
               >
                 {{ t.label }}
@@ -406,7 +407,7 @@
             <input
               class="subject-input"
               type="text"
-              [placeholder]="commitType() ? 'Short summary' : 'Commit message'"
+              [placeholder]="commitType() ? 'add a short summary' : 'Commit message'"
               [ngModel]="subject()"
               (ngModelChange)="onSubjectChange($event)"
               aria-label="Commit subject"
@@ -416,7 +417,7 @@
           <div class="headline-meta">
             @if (suggestedTicket(); as key) {
               @if (!commitType()) {
-                <span class="meta-tag">Pick a type for feat({{ key }}):</span>
+                <span class="meta-tag">Pick a type for {{ suggestedType() || 'feat' }}({{ key }}):</span>
               } @else if (scope().trim() === key && ticketFromBranch() === key && !store.activeJiraKey()) {
                 <span class="meta-tag">From branch</span>
               } @else if (scope().trim() === key && store.activeJiraKey()) {
@@ -434,8 +435,15 @@
                 {{ chip.label }}
               </button>
             }
-            <span class="hint" [class.warn]="headlineTooLong()">{{ charHint() }}</span>
+            <span class="hint" [class.warn]="headlineTooLong() || hasLintError()">{{ charHint() }}</span>
           </div>
+          @if (lintIssues().length) {
+            <ul class="lint-issues">
+              @for (issue of lintIssues(); track issue.rule) {
+                <li [class.error]="issue.level === 'error'">{{ issue.message }}</li>
+              }
+            </ul>
+          }
 
           <label class="field body-field">
             <span class="sr-only">Commit body</span>

@@ -29,14 +29,6 @@ export function parseCheckoutBlockedPaths(message: string): string[] {
   return paths;
 }
 
-export function summarizeCheckoutBlockedPaths(paths: string[], limit = 4): string {
-  if (!paths.length) return '';
-  if (paths.length <= limit) return paths.join(', ');
-  const shown = paths.slice(0, limit - 1);
-  return `${shown.join(', ')}, and ${paths.length - shown.length} more`;
-}
-
-/** Paths Git would refuse to overwrite when checking out `target` with local changes kept. */
 export function computeCheckoutOverwritePaths(input: {
   changedBetweenHeadAndTarget: string[];
   dirtyTrackedPaths: string[];

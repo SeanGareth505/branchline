@@ -7,12 +7,12 @@ describe('identityColor', () => {
 
   it('maps different repo names to different swatches', () => {
     expect(identityColor('branchline')).toMatch(/^var\(--swatch-\d+\)$/);
-    expect(identityColor('dischemstore')).not.toBe(identityColor('branchline'));
+    expect(identityColor('acme-store')).not.toBe(identityColor('branchline'));
   });
 
   it('uses the repo name rather than a shared parent path', () => {
-    expect(repoIdentityKey('branchline', '/Users/sean/Projects/branchline')).toBe('branchline');
-    expect(repoIdentityKey('dischemstore', '/Users/sean/Projects/dischemstore')).toBe('dischemstore');
+    expect(repoIdentityKey('branchline', '/Users/demo/Projects/branchline')).toBe('branchline');
+    expect(repoIdentityKey('acme-store', '/Users/demo/Projects/acme-store')).toBe('acme-store');
   });
 
   it('assigns unique colors when preferred swatches collide', () => {

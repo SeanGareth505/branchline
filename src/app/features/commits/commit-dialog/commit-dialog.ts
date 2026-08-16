@@ -14,9 +14,13 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { CommitShortcutId, FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
+  DEFAULT_COMMIT_TYPES,
   formatConventionalHead,
+  lintConventionalMessage,
+  mergeCommitTypes,
   normalizeCommitTypeId,
   parseConventionalSubject,
+  suggestCommitType,
 } from '../../../core/commit-types';
 import { extractBranchTopic, extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
 import {
@@ -93,8 +97,28 @@ export class CommitDialog {
 
   readonly jiraKeyHint = computed(() => this.suggestedTicket());
 
+  readonly usesCommitlint = computed(() =>
+    (this.store.repoChecks()?.checks ?? []).some(
+      (c) => c.trigger === 'commit-msg' && /commitlint/i.test(`${c.command} ${c.name}`),
+    ),
+  );
+
+  readonly suggestedType = computed(() => {
+    const status = this.store.status();
+    return suggestCommitType({
+      branch: status?.branch ?? '',
+      files: [
+        ...(status?.staged ?? []),
+        ...(status?.unstaged ?? []),
+        ...(status?.untracked ?? []),
+      ],
+    });
+  });
+
   readonly types = computed(() => {
-    const configured = this.store.settings().commitTypes;
+    const configured = this.usesCommitlint()
+      ? mergeCommitTypes(this.store.settings().commitTypes, DEFAULT_COMMIT_TYPES)
+      : this.store.settings().commitTypes;
     const current = this.commitType();
     if (current && !configured.some((t) => t.id === current)) {
       return [...configured, { id: current, label: current, description: '' }];
@@ -141,7 +165,7 @@ export class CommitDialog {
   readonly messagePreview = computed(() => {
     const subject = this.subject().trim();
     const type = this.commitType();
-    const head = type && subject
+    const head = type
       ? formatConventionalHead({
           type,
           scope: this.scope(),
@@ -162,6 +186,7 @@ export class CommitDialog {
   readonly canCommit = computed(() => {
     if (this.conflictedCount() > 0) return false;
     if (!this.messagePreview().trim() && !this.allowEmpty()) return false;
+    if (this.lintIssues().some((i) => i.level === 'error')) return false;
     if (this.amend() || this.allowEmpty()) return true;
     return this.stagedCount() > 0 || this.unstagedCount() > 0;
   });
@@ -169,6 +194,8 @@ export class CommitDialog {
   readonly commitBlockedReason = computed(() => {
     if (this.conflictedCount() > 0) return 'Resolve conflicts before committing';
     if (!this.messagePreview().trim() && !this.allowEmpty()) return 'Write a commit message';
+    const lintError = this.lintIssues().find((i) => i.level === 'error');
+    if (lintError) return lintError.message;
     if (!this.amend() && !this.allowEmpty() && this.stagedCount() === 0 && this.unstagedCount() === 0) {
       return 'Nothing to commit';
     }
@@ -214,10 +241,12 @@ export class CommitDialog {
         })
       : subject;
     const len = line.length;
-    if (!subject) return 'Write a short summary';
+    const max = this.usesCommitlint() ? 100 : 72;
+    if (!subject) return this.usesCommitlint() ? 'Lowercase summary, like add login' : 'Write a short summary';
     if (len <= 50) return `${len}/50 ideal`;
     if (len <= 72) return `${len}/72 ok`;
-    return `${len} chars — consider shortening`;
+    if (len <= max) return `${len}/${max}`;
+    return `${len} chars — shorten to ${max}`;
   });
 
   readonly headlineTooLong = computed(() => {
@@ -232,8 +261,19 @@ export class CommitDialog {
           subject,
         })
       : subject;
-    return line.length > 72;
+    return line.length > (this.usesCommitlint() ? 100 : 72);
   });
+
+  readonly lintIssues = computed(() => {
+    const requireType = this.usesCommitlint() || !!this.commitType();
+    if (!requireType && !this.subject().trim()) return [];
+    return lintConventionalMessage(this.messagePreview(), {
+      requireType,
+      types: this.types(),
+    });
+  });
+
+  readonly hasLintError = computed(() => this.lintIssues().some((i) => i.level === 'error'));
 
   readonly canAddType = computed(() => !!normalizeCommitTypeId(this.newTypeDraft()));
 
@@ -1127,7 +1167,8 @@ export class CommitDialog {
     this.sessionSequence.set([]);
     this.fillScopeFromTicket();
     if (this.scope().trim()) this.noteShortcut('scope');
-    void this.store.loadRepoChecks();
+    await this.store.loadRepoChecks();
+    this.applySuggestedType();
 
     const status = this.store.status();
     const firstConflict = status?.conflicted[0]?.path ?? null;
@@ -1188,6 +1229,15 @@ export class CommitDialog {
     const q = this.fileFilter().trim().toLowerCase();
     if (!q) return files;
     return files.filter((f) => f.path.toLowerCase().includes(q));
+  }
+
+  private applySuggestedType(): void {
+    if (this.commitType() || !this.usesCommitlint()) return;
+    const suggested = this.suggestedType();
+    if (!suggested) return;
+    this.commitType.set(suggested);
+    this.noteShortcut('type');
+    this.fillScopeFromTicket();
   }
 
   private resetForm(): void {

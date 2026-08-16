@@ -504,7 +504,7 @@ function stepDuration(steps: ReleaseActivityStep[], index: number, now: number):
   return formatElapsed(ms);
 }
 
-function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>): ArtifactStatus {
+function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion' | 'completedAt'>): ArtifactStatus {
   const conclusion = job.conclusion?.trim();
   if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out') {
     return 'failure';
@@ -513,7 +513,7 @@ function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>): Artif
     return 'success';
   }
   const status = job.status.trim();
-  if (status === 'completed') return 'success';
+  if (status === 'completed' || !!job.completedAt) return 'success';
   if (status === 'in_progress') return 'pending';
   if (
     status === 'queued' ||
