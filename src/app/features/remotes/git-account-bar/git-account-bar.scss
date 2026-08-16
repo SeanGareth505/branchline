@@ -8,15 +8,15 @@
 
 :host.compact .bar {
   margin: 0;
-  padding: 0.5rem 0.55rem;
+  padding: 0.4rem 0.5rem;
 }
 
 .bar {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
   margin: 0.15rem 0.25rem 0.35rem;
-  padding: 0.55rem 0.6rem;
+  padding: 0.4rem 0.5rem;
   border-radius: 8px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-bg-soft) 88%, transparent);
@@ -25,7 +25,7 @@
 .copy {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.1rem;
 }
 
 .copy strong {
@@ -37,28 +37,27 @@
 
 .copy span {
   font-size: 11.5px;
-  line-height: 1.4;
+  line-height: 1.3;
   color: var(--text-secondary);
 }
 
 .controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.55rem 0.7rem;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
 }
 
 .cluster {
   display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .cluster.extras {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.35rem;
-  padding-bottom: 0.12rem;
+  gap: 0.4rem;
+  margin-left: auto;
 }
 
 .seg-label {
@@ -67,6 +66,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .solo {
@@ -78,7 +78,6 @@
 .solo.muted {
   font-weight: 550;
   color: var(--text-muted);
-  padding-bottom: 0.18rem;
 }
 
 .text-btn {
@@ -106,7 +105,7 @@
   display: inline-flex;
   flex-wrap: wrap;
   gap: 0.15rem;
-  padding: 0.12rem;
+  padding: 0.1rem;
   border-radius: 8px;
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--bg-base) 40%, transparent);
@@ -114,7 +113,7 @@
 
 .seg-btn {
   margin: 0;
-  padding: 0.18rem 0.5rem;
+  padding: 0.14rem 0.45rem;
   border: 0;
   border-radius: 6px;
   background: transparent;

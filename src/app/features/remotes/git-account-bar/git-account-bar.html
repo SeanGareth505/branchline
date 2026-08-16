@@ -62,9 +62,9 @@
           </div>
         </div>
       }
-      @if (sshLogin()) {
+      @if (sshLogin() && (protocol() === 'ssh' || protocol() === 'mixed')) {
         <span class="solo muted" title="Account the default GitHub SSH key authenticates as">
-          SSH key · {{ sshLogin() }}
+          SSH · {{ sshLogin() }}
         </span>
       }
       <div class="cluster extras">
