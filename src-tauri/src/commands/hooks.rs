@@ -1125,14 +1125,17 @@ fn shell_cmd(command: &str) -> Command {
     if cfg!(windows) {
         if let Some(sh) = windows_sh() {
             let mut cmd = Command::new(sh);
+            git_cli::apply_tool_path(&mut cmd);
             cmd.arg("-c").arg(command);
             return cmd;
         }
         let mut cmd = Command::new("cmd");
+        git_cli::apply_tool_path(&mut cmd);
         cmd.arg("/C").arg(command);
         cmd
     } else {
         let mut cmd = Command::new("sh");
+        git_cli::apply_tool_path(&mut cmd);
         cmd.arg("-c").arg(command);
         cmd
     }

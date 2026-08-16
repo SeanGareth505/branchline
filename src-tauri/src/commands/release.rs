@@ -464,7 +464,9 @@ fn effective_full_ship(will_push: bool) -> bool {
 fn spawn_dev_release_finish(repo: &Path, version: &str) -> AppResult<()> {
     let script = repo.join("scripts/release-finish-dev.mjs");
     if script.exists() {
-        Command::new("node")
+        let mut cmd = Command::new("node");
+        git_cli::apply_tool_path(&mut cmd);
+        cmd
             .arg(script)
             .arg("--version")
             .arg(version)

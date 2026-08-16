@@ -2540,7 +2540,8 @@ export class AppStore {
     if (!current) return;
     if (!sameRepoPath(current.path, payload.path)) return;
     const phase = normalizeReleasePhase(payload.phase);
-    const message = payload.message?.trim() || current.message;
+    const rawMessage = payload.message?.trim() || current.message;
+    const message = phase === 'error' ? humanizeGitError(rawMessage) : rawMessage;
     const nextVersion = payload.version?.trim() || current.nextVersion;
     const tag = payload.tag?.trim() || current.tag;
     const steps = advanceReleaseSteps(current.steps, phase, message);

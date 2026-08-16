@@ -1,5 +1,8 @@
 use crate::{AppError, AppResult};
 use std::collections::HashMap;
+use std::env;
+use std::ffi::OsString;
+use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -13,6 +16,88 @@ pub fn git_bin() -> AppResult<String> {
     which::which("git")
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|_| AppError::msg("Git executable not found on PATH"))
+}
+
+pub fn apply_tool_path(cmd: &mut Command) {
+    cmd.env("PATH", enriched_path());
+}
+
+pub fn clarify_git_error(raw: &str) -> String {
+    let text = raw.trim();
+    if text.is_empty() {
+        return "Git command failed.".into();
+    }
+    let lower = text.to_ascii_lowercase();
+    let missing_node = lower.contains("npm: command not found")
+        || lower.contains("npx: command not found")
+        || lower.contains("node: command not found")
+        || lower.contains("npm is not recognized")
+        || lower.contains("npx is not recognized")
+        || lower.contains("node is not recognized");
+    if missing_node || (lower.contains("husky") && lower.contains("code 127")) {
+        return "A Git hook could not find Node.js (npm). Restart Branchline so it can see Homebrew or nvm, then retry.".into();
+    }
+    if lower.contains("husky -") && lower.contains("script failed") {
+        return "A Git hook blocked this commit. Fix the failing check, then retry.".into();
+    }
+    if lower.contains("hook declined") {
+        return "A Git hook blocked this operation. Fix the hook output, then retry.".into();
+    }
+    text.to_string()
+}
+
+fn git_failure(args: &[&str], stdout: &str, stderr: &str) -> AppError {
+    let message = if !stderr.trim().is_empty() {
+        stderr.trim().to_string()
+    } else if !stdout.trim().is_empty() {
+        stdout.trim().to_string()
+    } else {
+        format!("git {args:?} failed")
+    };
+    AppError::git(clarify_git_error(&message))
+}
+
+fn extra_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/homebrew/opt/node/bin"),
+        PathBuf::from("/usr/local/opt/node/bin"),
+    ];
+    if let Ok(home) = env::var("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join(".volta/bin"));
+        dirs.push(home.join(".asdf/shims"));
+        dirs.push(home.join(".fnm/aliases/default/bin"));
+        dirs.push(home.join(".local/share/fnm/aliases/default/bin"));
+        dirs.push(home.join(".nodenv/shims"));
+        let nvm = home.join(".nvm/versions/node");
+        if let Ok(entries) = fs::read_dir(&nvm) {
+            let mut versions: Vec<_> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+            versions.sort();
+            if let Some(latest) = versions.last() {
+                dirs.push(latest.join("bin"));
+            }
+        }
+    }
+    dirs.into_iter().filter(|path| path.is_dir()).collect()
+}
+
+fn enriched_path() -> OsString {
+    static PATH: OnceLock<OsString> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut dirs = extra_bin_dirs();
+        if let Some(current) = env::var_os("PATH") {
+            for part in env::split_paths(&current) {
+                if !part.as_os_str().is_empty() && !dirs.iter().any(|dir| dir == &part) {
+                    dirs.push(part);
+                }
+            }
+        }
+        env::join_paths(&dirs).unwrap_or_else(|_| env::var_os("PATH").unwrap_or_default())
+    })
+    .clone()
 }
 
 fn read_capped(mut reader: impl Read, max: usize) -> (Vec<u8>, bool) {
@@ -48,6 +133,7 @@ fn capture_git(
 ) -> AppResult<(bool, String, String)> {
     let bin = git_bin()?;
     let mut cmd = Command::new(&bin);
+    apply_tool_path(&mut cmd);
     cmd.args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -104,14 +190,7 @@ pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
     if ok {
         Ok(stdout.trim_end().to_string())
     } else {
-        let message = if !stderr.trim().is_empty() {
-            stderr.trim().to_string()
-        } else if !stdout.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            format!("git {:?} failed", args)
-        };
-        Err(AppError::git(message))
+        Err(git_failure(args, &stdout, &stderr))
     }
 }
 
@@ -147,7 +226,9 @@ pub fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> AppRes
     use std::io::Write;
 
     let bin = git_bin()?;
-    let mut child = Command::new(&bin)
+    let mut child_cmd = Command::new(&bin);
+    apply_tool_path(&mut child_cmd);
+    let mut child = child_cmd
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::piped())
@@ -194,14 +275,7 @@ pub fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> AppRes
     if status.success() {
         Ok(stdout.trim_end().to_string())
     } else {
-        let message = if !stderr.trim().is_empty() {
-            stderr.trim().to_string()
-        } else if !stdout.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            format!("git {:?} failed", args)
-        };
-        Err(AppError::git(message))
+        Err(git_failure(args, &stdout, &stderr))
     }
 }
 
@@ -210,11 +284,11 @@ pub fn run_git_global(args: &[&str]) -> AppResult<String> {
     if ok {
         Ok(stdout.trim_end().to_string())
     } else {
-        Err(AppError::git(if stderr.trim().is_empty() {
+        Err(AppError::git(clarify_git_error(&if stderr.trim().is_empty() {
             format!("git {:?} failed", args)
         } else {
             stderr.trim().to_string()
-        }))
+        })))
     }
 }
 
@@ -252,6 +326,7 @@ pub fn config_get_scoped(
 ) -> AppResult<Option<String>> {
     let bin = git_bin()?;
     let mut cmd = Command::new(&bin);
+    apply_tool_path(&mut cmd);
     match scope {
         ConfigScope::Global => {
             cmd.args(["config", "--global", "--get", key]);
@@ -449,5 +524,21 @@ mod tests {
             fetch_args(Some("upstream")),
             vec!["fetch", "upstream"]
         );
+    }
+
+    #[test]
+    fn clarifies_missing_npm_in_husky_hooks() {
+        let message = clarify_git_error(
+            ".husky/pre-commit: line 1: npm: command not found\nhusky - pre-commit script failed (code 127)",
+        );
+        assert!(message.to_ascii_lowercase().contains("npm"));
+        assert!(message.to_ascii_lowercase().contains("restart"));
+    }
+
+    #[test]
+    fn clarifies_generic_husky_failures() {
+        let message = clarify_git_error("husky - pre-commit script failed (code 1)");
+        assert!(message.to_ascii_lowercase().contains("hook"));
+        assert!(message.to_ascii_lowercase().contains("retry"));
     }
 }

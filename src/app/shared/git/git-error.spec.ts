@@ -45,4 +45,19 @@ describe('git remote errors', () => {
     );
     expect(message.toLowerCase()).toContain('pull');
   });
+
+  it('explains husky missing npm instead of dumping PATH noise', () => {
+    const message = humanizeGitError(
+      'Git error: .husky/pre-commit: line 1: npm: command not found\nhusky - pre-commit script failed (code 127)',
+    );
+    expect(message.toLowerCase()).toContain('npm');
+    expect(message.toLowerCase()).toContain('restart');
+    expect(message).not.toContain('line 1');
+  });
+
+  it('explains a failing husky check without the raw hook dump', () => {
+    const message = humanizeGitError('husky - pre-commit script failed (code 1)');
+    expect(message.toLowerCase()).toContain('hook');
+    expect(message.toLowerCase()).toContain('retry');
+  });
 });

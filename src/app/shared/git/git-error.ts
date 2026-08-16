@@ -61,8 +61,22 @@ function inferredProtocol(message: string): 'ssh' | 'https' | 'other' {
 }
 
 export function humanizeGitError(message: string): string {
-  const m = message.trim();
+  const m = message.replace(/^(Git error:\s*)+/i, '').trim();
   if (!m) return 'Something went wrong';
+  if (/^A Git hook /i.test(m)) return m;
+
+  if (
+    /npm: command not found|npx: command not found|node: command not found|npm is not recognized|npx is not recognized|node is not recognized/i.test(
+      m,
+    ) ||
+    (/husky/i.test(m) && /code 127/i.test(m))
+  ) {
+    return 'A Git hook could not find Node.js (npm). Restart Branchline so it can see Homebrew or nvm, then retry.';
+  }
+
+  if (/husky - .+ script failed/i.test(m) || /hook declined to/i.test(m)) {
+    return 'A Git hook blocked this commit. Fix the failing check, then retry.';
+  }
 
   if (/failed to fetch|networkerror|net::err_|econnrefused|enotfound|timed out|timeout/i.test(m)) {
     return 'Network unavailable — Branchline will keep working with local Git. Try again when you are online.';
