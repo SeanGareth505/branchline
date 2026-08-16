@@ -89,8 +89,60 @@
                   <p class="step-detail">{{ step.detail }}</p>
                 }
                 @if (step.artifacts.length) {
+                  @if (showJobFilters()) {
+                    <div class="job-filters">
+                      <button
+                        type="button"
+                        class="job-filter"
+                        [class.active]="jobFilter() === 'all'"
+                        (click)="setJobFilter('all')"
+                      >
+                        All
+                      </button>
+                      @if (jobCounts().queued) {
+                        <button
+                          type="button"
+                          class="job-filter"
+                          [class.active]="jobFilter() === 'queued'"
+                          (click)="setJobFilter('queued')"
+                        >
+                          Queued {{ jobCounts().queued }}
+                        </button>
+                      }
+                      @if (jobCounts().building) {
+                        <button
+                          type="button"
+                          class="job-filter"
+                          [class.active]="jobFilter() === 'building'"
+                          (click)="setJobFilter('building')"
+                        >
+                          Building {{ jobCounts().building }}
+                        </button>
+                      }
+                      @if (jobCounts().completed) {
+                        <button
+                          type="button"
+                          class="job-filter"
+                          [class.active]="jobFilter() === 'ready'"
+                          (click)="setJobFilter('ready')"
+                        >
+                          Ready {{ jobCounts().completed }}
+                        </button>
+                      }
+                      @if (jobCounts().failed) {
+                        <button
+                          type="button"
+                          class="job-filter"
+                          [class.active]="jobFilter() === 'failed'"
+                          (click)="setJobFilter('failed')"
+                        >
+                          Failed {{ jobCounts().failed }}
+                        </button>
+                      }
+                    </div>
+                  }
                   <ul class="platforms">
-                    @for (item of step.artifacts; track item.name) {
+                    @for (item of visibleArtifacts(step.artifacts); track item.name) {
                       <li>
                         <div
                           class="platform"
@@ -155,6 +207,8 @@
                           </ol>
                         }
                       </li>
+                    } @empty {
+                      <li class="filter-empty">{{ filterEmptyLabel() }}</li>
                     }
                   </ul>
                 }

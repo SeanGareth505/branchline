@@ -3362,7 +3362,7 @@ export class AppStore {
       else this.openSettings('repos');
     }
     const tab = this.browseTab();
-    if (tab !== 'commit' && tab !== 'diff' && tab !== 'files') {
+    if (tab === 'reflog' || tab === 'console') {
       this.setBrowseTab('diff');
     }
   }

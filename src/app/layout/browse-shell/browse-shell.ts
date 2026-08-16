@@ -42,6 +42,7 @@ export class BrowseShell {
 
   showInspectTab(tab: BrowseTab): boolean {
     if (!this.store.settings().simpleMode) return true;
+    if (tab === 'history' || tab === 'blame') return true;
     return this.store.browseTab() === tab;
   }
 

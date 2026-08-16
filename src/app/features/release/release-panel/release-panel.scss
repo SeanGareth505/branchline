@@ -259,6 +259,38 @@
   color: var(--danger, #ef4444);
 }
 
+.job-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin: 0.4rem 0 0.15rem;
+}
+
+.job-filter {
+  height: 1.45rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--glass-bg) 70%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.job-filter.active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.filter-empty {
+  margin: 0.2rem 0 0;
+  padding: 0.3rem 0.2rem;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .platforms {
   list-style: none;
   margin: 0.4rem 0 0;
@@ -313,7 +345,8 @@
   pointer-events: none;
 }
 
-.job-mark[data-status='unknown'] {
+.job-mark[data-status='unknown'],
+.job-mark[data-status='queued'] {
   background: transparent;
   border: 1.5px solid var(--border-subtle);
 }
@@ -330,6 +363,10 @@
 
 .job-mark[data-status='failure'] {
   background: var(--danger, #ef4444);
+}
+
+.platform[data-status='queued'] {
+  border-color: color-mix(in srgb, var(--text-muted) 22%, var(--glass-border));
 }
 
 .platform[data-status='pending'] {
@@ -404,6 +441,10 @@
   background: color-mix(in srgb, #22c55e 10%, transparent);
 }
 
+.status-chip[data-status='queued'] {
+  color: var(--text-secondary);
+}
+
 .status-chip[data-status='pending'] {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
@@ -461,6 +502,11 @@
   border-radius: 50%;
   background: var(--border-subtle);
   justify-self: center;
+}
+
+.job-steps li[data-status='queued'] .job-step-mark {
+  background: transparent;
+  border: 1.5px solid var(--border-subtle);
 }
 
 .job-steps li[data-status='pending'] .job-step-mark {

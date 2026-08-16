@@ -18,7 +18,8 @@ import type {
 } from '../../../core/models';
 import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
 
-type ArtifactStatus = 'success' | 'failure' | 'pending' | 'unknown';
+type ArtifactStatus = 'success' | 'failure' | 'pending' | 'queued' | 'unknown';
+type JobFilter = 'all' | 'queued' | 'building' | 'ready' | 'failed';
 
 interface ReleaseLinkCard {
   id: string;
@@ -70,6 +71,7 @@ export class ReleasePanel {
   private readonly now = signal(Date.now());
   private promptedUpdate = false;
   private readonly expandedJobs = signal(new Set<string>());
+  readonly jobFilter = signal<JobFilter>('all');
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
@@ -126,20 +128,18 @@ export class ReleasePanel {
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
 
   readonly jobCounts = computed(() => {
-    let inProgress = 0;
+    let queued = 0;
+    let building = 0;
     let completed = 0;
     let failed = 0;
     for (const job of this.deployJobs()) {
       const chip = chipStatus(job);
       if (chip === 'success') completed += 1;
       else if (chip === 'failure') failed += 1;
-      else inProgress += 1;
+      else if (chip === 'pending') building += 1;
+      else queued += 1;
     }
-    return {
-      in_progress: inProgress,
-      completed,
-      failed,
-    };
+    return { queued, building, completed, failed };
   });
 
   readonly artifacts = computed((): ArtifactView[] => {
@@ -177,9 +177,11 @@ export class ReleasePanel {
     if (!jobs.length) return '';
     const counts = this.jobCounts();
     if (counts.failed) return `${counts.completed} of ${jobs.length} ready · ${counts.failed} failed`;
-    if (counts.in_progress) {
-      return `${counts.completed} of ${jobs.length} ready · ${counts.in_progress} building`;
-    }
+    const parts: string[] = [];
+    if (counts.completed) parts.push(`${counts.completed} of ${jobs.length} ready`);
+    if (counts.building) parts.push(`${counts.building} building`);
+    if (counts.queued) parts.push(`${counts.queued} queued`);
+    if (parts.length) return parts.join(' · ');
     return `${counts.completed} of ${jobs.length} ready`;
   });
 
@@ -407,6 +409,41 @@ export class ReleasePanel {
       return next;
     });
   }
+
+  setJobFilter(filter: JobFilter, event?: Event): void {
+    event?.stopPropagation();
+    this.jobFilter.set(filter);
+  }
+
+  matchesJobFilter(item: ArtifactView): boolean {
+    const filter = this.jobFilter();
+    if (filter === 'all') return true;
+    if (filter === 'queued') return item.chip === 'queued' || item.chip === 'unknown';
+    if (filter === 'building') return item.chip === 'pending';
+    if (filter === 'ready') return item.chip === 'success';
+    return item.chip === 'failure';
+  }
+
+  visibleArtifacts(items: ArtifactView[]): ArtifactView[] {
+    return items.filter((item) => this.matchesJobFilter(item));
+  }
+
+  showJobFilters(): boolean {
+    const counts = this.jobCounts();
+    const kinds = [counts.queued, counts.building, counts.completed, counts.failed].filter(
+      (count) => count > 0,
+    ).length;
+    return kinds > 1;
+  }
+
+  filterEmptyLabel(): string {
+    const filter = this.jobFilter();
+    if (filter === 'queued') return 'No queued jobs';
+    if (filter === 'building') return 'Nothing building';
+    if (filter === 'ready') return 'No ready installers yet';
+    if (filter === 'failed') return 'No failed jobs';
+    return 'No jobs';
+  }
 }
 
 function nestArtifactsUnder(steps: ReleaseActivityStep[]): string | null {
@@ -477,13 +514,15 @@ function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>): Artif
   }
   const status = job.status.trim();
   if (status === 'completed') return 'success';
+  if (status === 'in_progress') return 'pending';
   if (
     status === 'queued' ||
-    status === 'in_progress' ||
     status === 'waiting' ||
-    status === 'requested'
+    status === 'requested' ||
+    status === 'pending' ||
+    !status
   ) {
-    return 'pending';
+    return 'queued';
   }
   return 'unknown';
 }
@@ -497,12 +536,8 @@ function statusLabelOf(
     return 'Ready';
   }
   if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
-  if (chip === 'pending') {
-    if (job.status === 'queued' || job.status === 'waiting' || job.status === 'requested') {
-      return 'Waiting';
-    }
-    return 'Building';
-  }
+  if (chip === 'queued') return 'Queued';
+  if (chip === 'pending') return 'Building';
   return job.status || 'Waiting';
 }
 
@@ -564,6 +599,12 @@ function currentJobStep(job: ReleaseDeployJob, chip: ArtifactStatus): string {
     return failed ? shortenJobStep(failed.name) : '';
   }
   if (chip === 'success') return '';
+  if (chip === 'queued') {
+    const waiting = steps.find(
+      (step) => step.status === 'queued' || step.status === 'pending' || step.status === 'waiting',
+    );
+    return waiting ? shortenJobStep(waiting.name) : 'Waiting to start';
+  }
   const running = steps.find((step) => step.status === 'in_progress');
   if (running) return shortenJobStep(running.name);
   const waiting = steps.find(
