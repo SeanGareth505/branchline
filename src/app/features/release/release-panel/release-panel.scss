@@ -269,13 +269,14 @@
 }
 
 .platform {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.6rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
   width: 100%;
+  min-width: 0;
   margin: 0;
-  padding: 0.28rem 0.45rem;
+  padding: 0.32rem 0.55rem;
   border: 1px solid var(--glass-border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--glass-bg) 70%, transparent);
@@ -300,6 +301,10 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .platform-status {
@@ -307,6 +312,7 @@
   font-size: 11px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .platform[data-status='success'] .platform-status {

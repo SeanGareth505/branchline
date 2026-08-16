@@ -309,9 +309,10 @@
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  padding: 0.1rem 0.35rem;
+  padding: 0.12rem 0.42rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+  white-space: nowrap;
 }
 
 .sync-chip[data-kind='ahead'] {
@@ -709,12 +710,13 @@ button.sync-chip:hover {
 .head-chip {
   flex-shrink: 0;
   margin-left: 0.15rem;
-  padding: 0.08rem 0.32rem;
-  border-radius: 4px;
-  font-size: 9.5px;
+  padding: 0.12rem 0.4rem;
+  border-radius: 5px;
+  font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.04em;
   line-height: 1.2;
+  white-space: nowrap;
   color: var(--btn-primary-fg, #ffffff);
   background: var(--accent);
 }

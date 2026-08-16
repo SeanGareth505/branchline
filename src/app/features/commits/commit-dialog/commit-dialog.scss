@@ -617,13 +617,19 @@
 }
 
 .type-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: 1px solid var(--glass-border);
   background: var(--bg-surface);
   color: var(--text-secondary);
-  border-radius: 5px;
-  padding: 0.15rem 0.4rem;
+  border-radius: 6px;
+  padding: 0.28rem 0.55rem;
   font-size: 11px;
   font-weight: 650;
+  line-height: 1.2;
 }
 
 .type-chip.on {

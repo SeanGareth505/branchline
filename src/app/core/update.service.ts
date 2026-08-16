@@ -66,6 +66,16 @@ export class UpdateService {
       this.releaseNotes.set(update.body?.trim() ?? '');
       this.phase.set('available');
 
+      const current = this.currentVersion().trim();
+      if (current && update.version.replace(/^v/, '') === current.replace(/^v/, '')) {
+        this.pending = null;
+        this.availableVersion.set(null);
+        this.releaseNotes.set('');
+        this.bannerVisible.set(false);
+        this.phase.set('idle');
+        return false;
+      }
+
       const dismissed = this.readDismissedVersion();
       const showBanner = !options.silent || dismissed !== update.version;
       if (showBanner) {
@@ -160,7 +170,7 @@ export class UpdateService {
   private formatError(err: unknown): string {
     const message = err instanceof Error ? err.message : String(err);
     if (/404|not found/i.test(message)) {
-      return `${message} — the macOS installer is missing from this release. Use Download page instead.`;
+      return `${message} — the updater file was missing. Try again, or use Download page.`;
     }
     return message;
   }

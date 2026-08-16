@@ -24,17 +24,16 @@
       @if (updates.phase() === 'downloading') {
         <span class="busy">Installing…</span>
       } @else {
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          (click)="updates.installAndRelaunch()"
+        >
+          {{ updates.phase() === 'error' ? 'Try again' : 'Install now' }}
+        </button>
         @if (updates.phase() === 'error') {
-          <button type="button" class="bl-btn bl-btn-primary" (click)="updates.openDownloadPage()">
+          <button type="button" class="bl-btn quiet" (click)="updates.openDownloadPage()">
             Download page
-          </button>
-        } @else {
-          <button
-            type="button"
-            class="bl-btn bl-btn-primary"
-            (click)="updates.installAndRelaunch()"
-          >
-            Install now
           </button>
         }
         <button type="button" class="bl-btn quiet" (click)="updates.dismissBanner()">

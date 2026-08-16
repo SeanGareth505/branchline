@@ -371,7 +371,7 @@
             @if (templates().length) {
               <span class="type-sep" aria-hidden="true"></span>
               @for (t of templates(); track t.id) {
-                <button type="button" class="bl-btn quiet" (click)="applyTemplate(t)">{{ t.name }}</button>
+                <button type="button" class="type-chip" (click)="applyTemplate(t)">{{ t.name }}</button>
               }
             }
           </div>
