@@ -1,18 +1,43 @@
 @if (updates.bannerVisible() && updates.availableVersion(); as version) {
-  <div class="update-banner" role="status">
+  <div class="update-banner" role="status" [attr.data-phase]="updates.phase()">
     <div class="copy">
-      <strong>Update available</strong>
-      <span>
-        @if (updates.currentVersion(); as current) {
-          {{ current }} → {{ version }}
-        } @else {
-          Branchline {{ version }} is ready
+      <strong>
+        @switch (updates.phase()) {
+          @case ('downloading') {
+            Downloading
+          }
+          @case ('installing') {
+            Installing
+          }
+          @case ('ready') {
+            Restart required
+          }
+          @default {
+            Update available
+          }
         }
-        @if (updates.phase() === 'downloading') {
-          @if (updates.downloadPercent(); as pct) {
-            — downloading {{ pct }}%
-          } @else {
-            — downloading…
+      </strong>
+      <span>
+        @switch (updates.phase()) {
+          @case ('downloading') {
+            @if (updates.downloadPercent(); as pct) {
+              {{ pct }}%
+            } @else {
+              Fetching the installer…
+            }
+          }
+          @case ('installing') {
+            Applying {{ version }}…
+          }
+          @case ('ready') {
+            {{ version }} is installed. Restart to finish.
+          }
+          @default {
+            @if (updates.currentVersion(); as current) {
+              {{ current }} → {{ version }}
+            } @else {
+              Branchline {{ version }} is ready
+            }
           }
         }
       </span>
@@ -21,13 +46,28 @@
       }
     </div>
     <div class="actions">
-      @if (updates.phase() === 'downloading') {
-        <span class="busy">Installing…</span>
+      @if (updates.phase() === 'downloading' || updates.phase() === 'installing') {
+        <span class="busy">
+          @if (updates.phase() === 'installing') {
+            Installing…
+          } @else if (updates.downloadPercent(); as pct) {
+            {{ pct }}%
+          } @else {
+            Downloading…
+          }
+        </span>
+      } @else if (updates.phase() === 'ready') {
+        <button type="button" class="bl-btn bl-btn-primary" (click)="updates.relaunchNow()">
+          Restart now
+        </button>
+        <button type="button" class="bl-btn quiet" (click)="updates.dismissBanner()">
+          Later
+        </button>
       } @else {
         <button
           type="button"
           class="bl-btn bl-btn-primary"
-          (click)="updates.installAndRelaunch()"
+          (click)="updates.installUpdate()"
         >
           {{ updates.phase() === 'error' ? 'Try again' : 'Install now' }}
         </button>
@@ -41,5 +81,10 @@
         </button>
       }
     </div>
+    @if (updates.phase() === 'downloading' && updates.downloadPercent() !== null) {
+      <span class="progress" aria-hidden="true">
+        <span class="progress-bar" [style.width.%]="updates.downloadPercent()"></span>
+      </span>
+    }
   </div>
 }

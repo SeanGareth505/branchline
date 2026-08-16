@@ -18,43 +18,71 @@ env:
   CARGO_PROFILE_RELEASE_DEBUG: '0'
   CARGO_TERM_COLOR: always
   RELEASE_NOTES: |
-    ## Download
-    Easy download page: https://seangareth505.github.io/branchline/
+    ## Install
 
-    Public beta. Signed desktop builds when release secrets are configured.
+    If you already have Branchline, use the in-app update banner.
+
+    Otherwise grab a build from the [download page](https://seangareth505.github.io/branchline/), or the assets on this release.
 
     ### macOS
-    1. Open the `.dmg` and drag Branchline to Applications
-    2. Open it from Applications. Gatekeeper may ask you to confirm the first launch.
-    3. If macOS says the app is damaged, use **Fix & Open** on the download page, or:
-       `xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app`
+    - Apple Silicon — `Branchline-mac-arm64.dmg`
+    - Intel — `Branchline-mac-x64.dmg`
+
+    Open the disk image and drag Branchline into Applications, then open it from there. The first launch may ask you to confirm in System Settings → Privacy & Security.
+
+    If macOS says the app is damaged, use **Fix & Open** on the download page, or run:
+
+    `xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app`
 
     ### Windows
-    Run the setup `.exe`. SmartScreen may warn on early releases; choose More info → Run anyway if needed.
+    Run `Branchline-windows-setup.exe`. If SmartScreen appears, choose More info → Run anyway.
 
     ### Linux
-    - **AppImage** — `Branchline-linux.AppImage` — run without installing
-    - **Debian / Ubuntu** — `Branchline-linux.deb` — double-click or `sudo dpkg -i`
+    - **AppImage** — `Branchline-linux.AppImage` — `chmod +x` and run
+    - **Debian / Ubuntu** — `Branchline-linux.deb`
 
 jobs:
   create-release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
     steps:
       - name: Create GitHub Release
+        id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="${{ github.ref_name }}"
-          if gh release view "$TAG" -R "${{ github.repository }}" >/dev/null 2>&1; then
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists"
+            echo "release_id=$(gh release view "$TAG" -R "$REPO" --json id --jq .id)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          GENERATED=""
+          if NOTES_JSON=$(gh api --method POST "repos/${REPO}/releases/generate-notes" -f tag_name="$TAG"); then
+            GENERATED=$(printf '%s' "$NOTES_JSON" | jq -r '.body // empty')
+          fi
+
+          BODY_FILE=$(mktemp)
+          {
+            if [ -n "$GENERATED" ]; then
+              printf '%s\n\n' "$GENERATED"
+            else
+              printf '%s\n' "## What's new" "" "Changes since the previous release are listed on this GitHub tag." ""
+            fi
+            printf '%s\n' "$RELEASE_NOTES"
+          } > "$BODY_FILE"
+
           gh release create "$TAG" \
-            -R "${{ github.repository }}" \
-            --title "Branchline $TAG" \
-            --notes "$RELEASE_NOTES"
+            -R "$REPO" \
+            --title "Branchline ${TAG#v}" \
+            --notes-file "$BODY_FILE"
+
+          echo "release_id=$(gh release view "$TAG" -R "$REPO" --json id --jq .id)" >> "$GITHUB_OUTPUT"
 
   publish-tauri:
     name: ${{ matrix.name }}
@@ -170,9 +198,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: Branchline ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseBody: ${{ env.RELEASE_NOTES }}
+          generateReleaseNotes: ${{ github.ref_type != 'tag' }}
           releaseDraft: ${{ github.ref_type != 'tag' }}
           prerelease: false
           args: ${{ matrix.args }}

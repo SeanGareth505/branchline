@@ -132,24 +132,21 @@ export class ChangelogService {
     fromLabel: string,
     toLabel: string,
   ): string {
-    return this.generate(
-      commits,
-      {
-        format: 'release',
-        version,
-        title: '',
-        team: '',
-        preparedBy: '',
-        includeAuthors: false,
-        includeShas: true,
-        includeContributors: false,
-        excludeMerges: true,
-        excludeChores: false,
-        date: this.todayIso(),
-      },
-      fromLabel,
-      toLabel,
-    ).markdown.trim();
+    const options: ChangelogOptions = {
+      format: 'release',
+      version,
+      title: '',
+      team: '',
+      preparedBy: '',
+      includeAuthors: true,
+      includeShas: false,
+      includeContributors: false,
+      excludeMerges: true,
+      excludeChores: true,
+      date: this.todayIso(),
+    };
+    const parsed = this.generate(commits, options, fromLabel, toLabel).commits;
+    return this.renderGithubRelease(parsed, version, fromLabel, toLabel);
   }
 
   suggestVersion(tags: TagInfo[], commits: CommitInfo[]): string {
@@ -261,6 +258,61 @@ export class ChangelogService {
       default:
         return this.renderRelease(parsed, options, fromLabel, toLabel);
     }
+  }
+
+  private renderGithubRelease(
+    parsed: ParsedCommit[],
+    version: string,
+    fromLabel: string,
+    toLabel: string,
+  ): string {
+    const lines: string[] = [`## What's new in ${version.replace(/^v/, '')}`, ''];
+    const groups = this.groupBySection(parsed);
+    const headings: Partial<Record<ChangelogSection, string>> = {
+      Breaking: 'Breaking',
+      Added: 'Added',
+      Changed: 'Improved',
+      Deprecated: 'Deprecated',
+      Removed: 'Removed',
+      Fixed: 'Fixed',
+      Security: 'Security',
+    };
+
+    let wrote = false;
+    for (const section of SECTION_ORDER) {
+      if (section === 'Other') continue;
+      const items = groups.get(section);
+      if (!items?.length) continue;
+      lines.push(`### ${headings[section] ?? section}`, '');
+      for (const item of items) {
+        lines.push(`- ${this.githubBullet(item)}`);
+      }
+      lines.push('');
+      wrote = true;
+    }
+
+    if (!wrote) {
+      lines.push('_No user-facing changes in this range._', '');
+    }
+
+    if (fromLabel && toLabel && fromLabel !== 'root') {
+      lines.push(`**Full changelog:** \`${fromLabel}\` → \`${toLabel}\``, '');
+    }
+
+    return lines.join('\n').trimEnd() + '\n';
+  }
+
+  private githubBullet(item: ParsedCommit): string {
+    let text = this.sentenceCase(item.summary);
+    if (item.scope) text = `**${item.scope}:** ${text}`;
+    if (item.commit.author) text = `${text} — ${item.commit.author}`;
+    return text;
+  }
+
+  private sentenceCase(value: string): string {
+    const text = value.trim();
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   private renderRelease(

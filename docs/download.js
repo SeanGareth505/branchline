@@ -174,19 +174,19 @@ function renderHowto(platform) {
   const guides = {
     mac: {
       steps: [
-        'Click <strong>Download for Mac</strong> above and open the <code>.dmg</code>.',
-        'Drag <strong>Branchline</strong> into <strong>Applications</strong>. If macOS says it is in the Bin, empty Trash first and replace the copy in Applications.',
-        'Open it from Applications. This is a public beta — Gatekeeper may ask you to confirm the first launch.',
+        'Click <strong>Download for Mac</strong> and open the <code>.dmg</code>.',
+        'Drag <strong>Branchline</strong> into <strong>Applications</strong>, then eject the disk image. If macOS says it is damaged, that is Gatekeeper — the file is fine.',
+        'Click <strong>Copy fix command</strong>, paste it in Terminal, and press Return. Branchline will open.',
       ],
       actions: [
+        {
+          label: 'Copy fix command',
+          copy: 'xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app',
+        },
         {
           label: 'Fix & Open helper',
           href: helperUrl(),
           download: 'install-mac.command',
-        },
-        {
-          label: 'Copy fix command',
-          copy: 'xattr -cr /Applications/Branchline.app && open /Applications/Branchline.app',
         },
       ],
     },

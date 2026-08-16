@@ -9,7 +9,7 @@ import {
 import { NgIcon } from '@ng-icons/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
-import { UpdateService, UPDATE_DOWNLOAD_PAGE } from '../../../core/update.service';
+import { UpdateService } from '../../../core/update.service';
 import type {
   ReleaseActivity,
   ReleaseActivityStep,
@@ -31,7 +31,6 @@ interface ReleaseLinkCard {
 interface ArtifactView {
   name: string;
   label: string;
-  kind: string;
   step: string;
   chip: ArtifactStatus;
   statusLabel: string;
@@ -65,11 +64,6 @@ export class ReleasePanel {
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
-
-  readonly downloadPageUrl = computed(() => {
-    const activity = this.activity();
-    return activity?.websiteUrl?.trim() || UPDATE_DOWNLOAD_PAGE;
-  });
 
   readonly elapsed = computed(() => {
     const activity = this.activity();
@@ -107,8 +101,8 @@ export class ReleasePanel {
         icon: 'lucideTag',
       });
     }
-    const pageUrl = this.downloadPageUrl();
-    if (pageUrl) {
+    const pageUrl = activity.websiteUrl?.trim();
+    if (pageUrl && (activity.releaseUrl || activity.phase === 'done')) {
       cards.push({
         id: 'website',
         label: 'Download page',
@@ -136,7 +130,6 @@ export class ReleasePanel {
       in_progress: inProgress,
       completed,
       failed,
-      all: this.deployJobs().length,
     };
   });
 
@@ -148,7 +141,6 @@ export class ReleasePanel {
       return {
         name: job.name,
         label,
-        kind: jobKind(label, job.name),
         step: currentJobStep(job, chip),
         chip,
         statusLabel: statusLabelOf(job, chip),
@@ -158,8 +150,6 @@ export class ReleasePanel {
       };
     });
   });
-
-  readonly showReleaseDetails = computed(() => !!this.activity());
 
   readonly jobSummary = computed(() => {
     const jobs = this.deployJobs();
@@ -182,7 +172,7 @@ export class ReleasePanel {
       id: step.id,
       status: step.status,
       label: step.label,
-      detail: stepDetail(step, activity, this.jobSummary()),
+      detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
       stateLabel: stepStateLabel(step.status),
       duration: stepDuration(activity.steps, index, now),
       artifacts: nestId === step.id ? artifacts : [],
@@ -278,9 +268,6 @@ export class ReleasePanel {
     const activity = this.activity();
     if (!activity) return '';
     if (this.finalStatus()) return this.finalStatus();
-    if (activity.currentVersion !== activity.nextVersion) {
-      return `${activity.currentVersion} → ${activity.nextVersion}`;
-    }
     return activity.message || '';
   });
 
@@ -525,17 +512,6 @@ function formatElapsed(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
-}
-
-function jobKind(label: string, name: string): string {
-  const text = `${label} ${name}`.toLowerCase();
-  if (text.includes('github release') || text.includes('create-release')) return 'GitHub';
-  if (text.includes('arm64') || text.includes('aarch64') || text.includes('apple silicon')) return 'arm64';
-  if (text.includes('intel') || (text.includes('macos') && text.includes('x64'))) return 'x64';
-  if (text.includes('windows')) return 'Windows';
-  if (text.includes('linux') || text.includes('ubuntu')) return 'Linux';
-  if (text.includes('download')) return 'Web';
-  return '';
 }
 
 function currentJobStep(job: ReleaseDeployJob, chip: ArtifactStatus): string {

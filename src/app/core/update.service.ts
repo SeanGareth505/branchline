@@ -8,7 +8,14 @@ import { TauriService } from './tauri.service';
 const DISMISS_KEY = 'branchline.update.dismissedVersion';
 export const UPDATE_DOWNLOAD_PAGE = 'https://seangareth505.github.io/branchline/';
 
-export type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'error';
+export type UpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'installing'
+  | 'ready'
+  | 'error';
 
 @Injectable({ providedIn: 'root' })
 export class UpdateService {
@@ -127,6 +134,15 @@ export class UpdateService {
   }
 
   async installAndRelaunch(): Promise<void> {
+    await this.installUpdate();
+  }
+
+  async installUpdate(): Promise<void> {
+    if (this.phase() === 'downloading' || this.phase() === 'installing') return;
+    if (this.phase() === 'ready') {
+      await this.relaunchNow();
+      return;
+    }
     if (!this.pending) {
       const found = await this.checkForUpdates({ silent: true });
       if (!found || !this.pending) {
@@ -140,11 +156,12 @@ export class UpdateService {
     this.phase.set('downloading');
     this.downloadPercent.set(0);
     this.errorMessage.set(null);
+    this.bannerVisible.set(true);
 
     try {
       let contentLength: number | undefined;
       let downloaded = 0;
-      await update.downloadAndInstall((event) => {
+      await update.download((event) => {
         if (event.event === 'Started') {
           contentLength = event.data.contentLength;
           downloaded = 0;
@@ -152,13 +169,25 @@ export class UpdateService {
         } else if (event.event === 'Progress') {
           downloaded += event.data.chunkLength;
           if (contentLength && contentLength > 0) {
-            this.downloadPercent.set(Math.min(100, Math.round((downloaded / contentLength) * 100)));
+            this.downloadPercent.set(Math.min(99, Math.round((downloaded / contentLength) * 100)));
           }
         } else if (event.event === 'Finished') {
           this.downloadPercent.set(100);
         }
       });
       this.downloadPercent.set(100);
+      this.phase.set('installing');
+      await update.install();
+      this.phase.set('ready');
+    } catch (err) {
+      this.errorMessage.set(this.formatError(err));
+      this.phase.set('error');
+      this.bannerVisible.set(true);
+    }
+  }
+
+  async relaunchNow(): Promise<void> {
+    try {
       await relaunch();
     } catch (err) {
       this.errorMessage.set(this.formatError(err));

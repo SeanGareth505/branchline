@@ -14,7 +14,6 @@
           <p>{{ statusDetail() }}</p>
         </div>
         <div class="status-meta">
-          @if (showReleaseDetails()) {
             <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
               {{ activity.tag }}
               <ng-icon name="lucideCopy" size="11" />
@@ -22,7 +21,6 @@
             @if (elapsed(); as time) {
               <span class="elapsed">{{ time }}</span>
             }
-          }
         </div>
       </div>
 
@@ -87,7 +85,9 @@
                     }
                   </span>
                 </div>
-                <p class="step-detail">{{ step.detail }}</p>
+                @if (step.detail) {
+                  <p class="step-detail">{{ step.detail }}</p>
+                }
                 @if (step.artifacts.length) {
                   <ul class="platforms">
                     @for (item of step.artifacts; track item.name) {
@@ -97,9 +97,6 @@
                           <div class="platform-copy">
                             <div class="platform-title">
                               <span class="platform-name">{{ item.label }}</span>
-                              @if (item.kind) {
-                                <span class="kind-tag">{{ item.kind }}</span>
-                              }
                             </div>
                             @if (item.step) {
                               <p class="platform-step">{{ item.step }}</p>

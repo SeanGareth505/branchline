@@ -1072,7 +1072,7 @@
                 <button
                   type="button"
                   class="bl-btn"
-                  [disabled]="updates.phase() === 'checking' || updates.phase() === 'downloading'"
+                  [disabled]="updates.phase() === 'checking' || updates.phase() === 'downloading' || updates.phase() === 'installing'"
                   (click)="checkForUpdates()"
                 >
                   @if (updates.phase() === 'checking') {
@@ -1093,8 +1093,8 @@
                   <button
                     type="button"
                     class="bl-btn bl-btn-primary"
-                    [disabled]="updates.phase() === 'downloading'"
-                    (click)="updates.installAndRelaunch()"
+                    [disabled]="updates.phase() === 'downloading' || updates.phase() === 'installing'"
+                    (click)="updates.phase() === 'ready' ? updates.relaunchNow() : updates.installUpdate()"
                   >
                     @if (updates.phase() === 'downloading') {
                       @if (updates.downloadPercent(); as pct) {
@@ -1102,8 +1102,12 @@
                       } @else {
                         Downloading…
                       }
+                    } @else if (updates.phase() === 'installing') {
+                      Installing…
+                    } @else if (updates.phase() === 'ready') {
+                      Restart now
                     } @else {
-                      Update & restart
+                      Install now
                     }
                   </button>
                   <button

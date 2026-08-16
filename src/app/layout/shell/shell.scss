@@ -7,6 +7,8 @@
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: transparent;
 }
 
@@ -49,9 +51,11 @@
 }
 
 .chrome {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
-  z-index: 20;
+  z-index: 30;
   border-bottom: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-bg-strong) 92%, transparent);
   backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.2);
@@ -258,6 +262,14 @@
 .chrome-tools app-repo-toolbar {
   width: 100%;
   min-width: 0;
+}
+
+.main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .main.busy {
