@@ -75,5 +75,5 @@
     "watch": "ng build --watch --configuration development",
     "prepare": "husky"
   },
-  "version": "0.7.38"
+  "version": "0.7.39"
 }
