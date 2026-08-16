@@ -42,16 +42,16 @@
           >
             {{ store.releaseAttaching() ? 'Looking…' : 'Find latest' }}
           </button>
-          <button
-            type="button"
-            class="bl-btn bl-btn-primary"
-            [disabled]="busy()"
-            (click)="startRelease()"
-          >
-            <ng-icon name="lucideRocket" size="14" />
-            Start release
-          </button>
         }
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="busy()"
+          (click)="startRelease()"
+        >
+          <ng-icon name="lucideRocket" size="14" />
+          Create release
+        </button>
       </div>
     }
   </header>
