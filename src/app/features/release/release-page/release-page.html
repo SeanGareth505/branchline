@@ -19,32 +19,39 @@
       </div>
       <p>{{ subtitle() }}</p>
     </div>
-    @if (hasRepo() && configured() && !activity()) {
+    @if (hasRepo() && configured()) {
       <div class="hero-actions">
-        <button
-          type="button"
-          class="bl-btn"
-          [disabled]="store.releaseAttaching()"
-          (click)="trackLatest()"
-        >
-          {{ store.releaseAttaching() ? 'Looking…' : 'Find latest' }}
-        </button>
-        <button
-          type="button"
-          class="bl-btn bl-btn-primary"
-          [disabled]="busy()"
-          (click)="startRelease()"
-        >
-          <ng-icon name="lucideRocket" size="14" />
-          Start release
-        </button>
-      </div>
-    } @else if (hasRepo() && configured() && activity()?.needsRefresh) {
-      <div class="hero-actions">
-        <button type="button" class="bl-btn bl-btn-primary" (click)="refreshDeploy()">
-          <ng-icon name="lucideRefreshCw" size="14" />
-          Refresh
-        </button>
+        @if (canRefreshDeploy()) {
+          <button
+            type="button"
+            class="bl-btn"
+            title="Reload installer build status from GitHub"
+            [disabled]="refreshLocked()"
+            (click)="refreshDeploy()"
+          >
+            <ng-icon name="lucideRefreshCw" size="14" />
+            Refresh
+          </button>
+        }
+        @if (!activity()) {
+          <button
+            type="button"
+            class="bl-btn"
+            [disabled]="store.releaseAttaching()"
+            (click)="trackLatest()"
+          >
+            {{ store.releaseAttaching() ? 'Looking…' : 'Find latest' }}
+          </button>
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="busy()"
+            (click)="startRelease()"
+          >
+            <ng-icon name="lucideRocket" size="14" />
+            Start release
+          </button>
+        }
       </div>
     }
   </header>

@@ -14,6 +14,18 @@
           <p>{{ statusDetail() }}</p>
         </div>
         <div class="status-meta">
+            @if (canRefreshDeploy()) {
+              <button
+                type="button"
+                class="tag-btn"
+                title="Reload installer build status from GitHub"
+                [disabled]="refreshLocked()"
+                (click)="refreshDeploy()"
+              >
+                <ng-icon name="lucideRefreshCw" size="11" />
+                Refresh
+              </button>
+            }
             <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
               {{ activity.tag }}
               <ng-icon name="lucideCopy" size="11" />

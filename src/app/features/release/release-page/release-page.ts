@@ -43,7 +43,23 @@ export class ReleasePage {
   readonly busy = computed(() => this.store.releaseBusy());
   readonly activity = computed(() => this.store.releaseActivity());
 
-  readonly configured = computed(() => !!this.status()?.available);
+  readonly canRefreshDeploy = computed(() => {
+    const activity = this.activity();
+    return !!activity?.tag && !!activity.willPush && !activity.needsPush;
+  });
+
+  readonly refreshLocked = computed(() => {
+    const phase = this.activity()?.phase;
+    if (!this.busy()) return false;
+    return (
+      phase === 'preparing' ||
+      phase === 'bumping' ||
+      phase === 'staging' ||
+      phase === 'committing' ||
+      phase === 'tagging' ||
+      phase === 'pushing'
+    );
+  });
 
   readonly subtitle = computed(() => {
     const activity = this.activity();

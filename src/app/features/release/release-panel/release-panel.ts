@@ -88,6 +88,24 @@ export class ReleasePanel {
     return !!activity?.needsRefresh && !this.busy();
   });
 
+  readonly canRefreshDeploy = computed(() => {
+    const activity = this.activity();
+    return !!activity?.tag && !!activity.willPush && !activity.needsPush;
+  });
+
+  readonly refreshLocked = computed(() => {
+    const phase = this.activity()?.phase;
+    if (!this.busy()) return false;
+    return (
+      phase === 'preparing' ||
+      phase === 'bumping' ||
+      phase === 'staging' ||
+      phase === 'committing' ||
+      phase === 'tagging' ||
+      phase === 'pushing'
+    );
+  });
+
   readonly githubLinked = computed(() => this.store.hasGithubConnection());
 
   readonly linkCards = computed((): ReleaseLinkCard[] => {
@@ -300,7 +318,6 @@ export class ReleasePanel {
       actions.push({ id: 'push', label: 'Push release', primary: true });
     }
     if (this.trackingPaused()) {
-      actions.push({ id: 'refresh', label: 'Refresh status', primary: true });
       if (!this.githubLinked()) {
         actions.push({ id: 'github', label: 'Link GitHub', primary: false });
       }
