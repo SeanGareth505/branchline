@@ -42,6 +42,7 @@ export class ReleasePage {
   readonly hasRepo = computed(() => !!this.store.currentRepo());
   readonly busy = computed(() => this.store.releaseBusy());
   readonly activity = computed(() => this.store.releaseActivity());
+  readonly configured = computed(() => !!this.status()?.available);
 
   readonly canRefreshDeploy = computed(() => {
     const activity = this.activity();
