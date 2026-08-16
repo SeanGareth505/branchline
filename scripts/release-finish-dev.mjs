@@ -1,48 +1,64 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-const configPath = resolve(root, 'release.config.json');
-
-function run(cmd, args) {
-  const result = spawnSync(cmd, args, { cwd: root, encoding: 'utf8' });
-  if (result.status !== 0) {
-    const detail = (result.stderr || result.stdout || '').trim();
-    throw new Error(detail || `${cmd} ${args.join(' ')} failed`);
-  }
-  return (result.stdout || '').trim();
-}
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const config = JSON.parse(readFileSync(join(root, 'release.config.json'), 'utf8'));
 
 function parseArgs(argv) {
-  let version = null;
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--version') {
-      version = argv[i + 1] ?? null;
-      i += 1;
+  const options = {
+    version: '',
+    tag: '',
+    tagMessage: '',
+    push: false,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--push') {
+      options.push = true;
+      continue;
     }
+    if (arg === '--version' || arg === '--tag' || arg === '--tag-message') {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error(`Missing value for ${arg}.`);
+      }
+      if (arg === '--version') options.version = value;
+      if (arg === '--tag') options.tag = value;
+      if (arg === '--tag-message') options.tagMessage = value;
+      index += 1;
+      continue;
+    }
+    if (!arg.startsWith('--') && !options.version) {
+      options.version = arg;
+      continue;
+    }
+    throw new Error(`Unknown argument: ${arg}`);
   }
-  if (!version) {
-    throw new Error('Missing --version');
+  if (!options.version) {
+    throw new Error('Usage: node scripts/release-finish-dev.mjs --version <semver> --tag <tag> --tag-message <message> [--push]');
   }
-  return { version };
+  if (!options.tag) {
+    options.tag = `v${options.version}`;
+  }
+  if (!options.tagMessage) {
+    options.tagMessage = `Branchline ${options.version}`;
+  }
+  return options;
 }
 
-function loadConfig() {
-  if (!existsSync(configPath)) {
-    throw new Error('Missing release.config.json');
+function git(args, extra = {}) {
+  const result = spawnSync('git', args, {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', extra.capture ? 'pipe' : 'inherit', 'inherit'],
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr?.trim() || `git ${args.join(' ')} failed.`);
   }
-  return JSON.parse(readFileSync(configPath, 'utf8'));
-}
-
-function shouldFinishInBackground(file) {
-  if (file.kind === 'toml-package-version' || file.kind === 'cargo-lock-package') {
-    return true;
-  }
-  return String(file.path).replace(/\\/g, '/').startsWith('src-tauri/');
+  return (result.stdout || '').trim();
 }
 
 function readJson(path) {
@@ -83,20 +99,19 @@ function setTomlPackageVersion(path, version) {
 
 function setCargoLockPackageVersion(path, packageName, version) {
   const text = readFileSync(path, 'utf8');
-  const pattern = new RegExp(`(name = "${packageName}"\\nversion = )"([^"]*)"`);
+  const pattern = new RegExp(
+    `(name = "${packageName}"\\nversion = )"([^"]*)"`,
+  );
   if (!pattern.test(text)) {
     throw new Error(`Could not find package "${packageName}" in ${path}`);
   }
   writeFileSync(path, text.replace(pattern, `$1"${version}"`));
 }
 
-function applyFiles(files, version) {
+function applyFiles(version) {
   const changed = [];
-  for (const file of files) {
-    const path = resolve(root, file.path);
-    if (!existsSync(path)) {
-      throw new Error(`Missing file: ${file.path}`);
-    }
+  for (const file of config.files ?? []) {
+    const path = join(root, file.path);
     switch (file.kind) {
       case 'json':
         setJsonKeys(path, file.keys ?? ['version'], version);
@@ -115,25 +130,36 @@ function applyFiles(files, version) {
   return changed;
 }
 
+function tagExists(tag) {
+  const result = spawnSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return result.status === 0;
+}
+
 function main() {
-  const { version } = parseArgs(process.argv.slice(2));
-  const config = loadConfig();
-  const pending = (config.files ?? []).filter(shouldFinishInBackground);
-  if (!pending.length) {
-    run('git', ['push', 'origin', 'HEAD', '--tags']);
-    return;
+  const options = parseArgs(process.argv.slice(2));
+  console.log(`Finishing tauri:dev release ${options.version} (${options.tag}).`);
+  const changed = applyFiles(options.version);
+  console.log(`Updated: ${changed.join(', ')}`);
+  git(['add', '--', ...changed]);
+  git(['commit', '--amend', '--no-edit']);
+  if (tagExists(options.tag)) {
+    git(['tag', '-d', options.tag]);
   }
-  const changed = applyFiles(pending, version);
-  if (changed.length) {
-    run('git', ['add', '--', ...changed]);
-    run('git', ['commit', '--amend', '--no-edit']);
+  git(['tag', '-a', options.tag, '-m', options.tagMessage]);
+  if (options.push) {
+    git(['push', 'origin', 'HEAD']);
+    git(['push', 'origin', options.tag]);
   }
-  run('git', ['push', 'origin', 'HEAD', '--tags']);
+  console.log(`Tagged ${options.tag} at ${git(['rev-parse', 'HEAD'], { capture: true })}.`);
 }
 
 try {
   main();
 } catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
+  console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 }

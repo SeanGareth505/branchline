@@ -461,28 +461,51 @@ fn effective_full_ship(will_push: bool) -> bool {
     will_push && !cfg!(debug_assertions)
 }
 
-fn spawn_dev_release_finish(repo: &Path, version: &str) -> AppResult<()> {
+fn spawn_dev_release_finish(
+    repo: &Path,
+    version: &str,
+    tag: &str,
+    tag_message: &str,
+    push: bool,
+) -> AppResult<()> {
     let script = repo.join("scripts/release-finish-dev.mjs");
-    if script.exists() {
-        let mut cmd = Command::new("node");
-        git_cli::apply_tool_path(&mut cmd);
-        cmd
-            .arg(script)
-            .arg("--version")
-            .arg(version)
-            .current_dir(repo)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| {
-                crate::AppError::msg(format!(
-                    "Could not start background release finish: {e}"
-                ))
-            })?;
-        return Ok(());
+    if !script.exists() {
+        return Err(crate::AppError::msg(
+            "Missing scripts/release-finish-dev.mjs; cannot finish a tauri:dev release.",
+        ));
     }
-    git_cli::run_git(repo, &["push", "origin", "HEAD", "--tags"])?;
+    let log_path = repo.join(".git").join("branchline-release-finish.log");
+    let log = fs::File::create(&log_path).map_err(|e| {
+        crate::AppError::msg(format!(
+            "Could not create release finish log {}: {e}",
+            log_path.display()
+        ))
+    })?;
+    let log_err = log.try_clone().map_err(|e| {
+        crate::AppError::msg(format!("Could not clone release finish log: {e}"))
+    })?;
+    let mut cmd = Command::new("node");
+    git_cli::apply_tool_path(&mut cmd);
+    cmd.arg(&script)
+        .arg("--version")
+        .arg(version)
+        .arg("--tag")
+        .arg(tag)
+        .arg("--tag-message")
+        .arg(tag_message);
+    if push {
+        cmd.arg("--push");
+    }
+    cmd.current_dir(repo)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(log_err))
+        .spawn()
+        .map_err(|e| {
+            crate::AppError::msg(format!(
+                "Could not start background release finish: {e}"
+            ))
+        })?;
     Ok(())
 }
 
@@ -754,9 +777,6 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             effective_full_ship(preview.will_push),
         )?;
         let changed = applied.changed;
-        let dev_finish = cfg!(debug_assertions)
-            && preview.will_push
-            && !applied.dev_skipped.is_empty();
         emit_release_progress(
             &app,
             path,
@@ -779,6 +799,40 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             Some(&preview.tag),
         );
         git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
+        let needs_dev_finish = cfg!(debug_assertions) && !applied.dev_skipped.is_empty();
+        if needs_dev_finish {
+            emit_release_progress(
+                &app,
+                path,
+                "pushing",
+                "Finishing release in background (tauri:dev safe)…",
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            spawn_dev_release_finish(
+                path,
+                &preview.next_version,
+                &preview.tag,
+                &preview.tag_message,
+                preview.will_push,
+            )?;
+            let message = format!(
+                "Finishing {} in background — Branchline may restart while Tauri files sync, then installers will build for {}",
+                preview.tag, preview.product_name
+            );
+            emit_release_progress(
+                &app,
+                path,
+                "deploying",
+                &message,
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            return Ok(MutationOutput {
+                ok: true,
+                message,
+            });
+        }
         emit_release_progress(
             &app,
             path,
@@ -792,33 +846,6 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             &["tag", "-a", &preview.tag, "-m", &preview.tag_message],
         )?;
         if preview.will_push {
-            if dev_finish {
-                emit_release_progress(
-                    &app,
-                    path,
-                    "pushing",
-                    "Finishing release in background (tauri:dev safe)…",
-                    Some(&preview.next_version),
-                    Some(&preview.tag),
-                );
-                spawn_dev_release_finish(path, &preview.next_version)?;
-                let message = format!(
-                    "Finishing {} in background — Branchline may restart while Tauri files sync, then installers will build for {}",
-                    preview.tag, preview.product_name
-                );
-                emit_release_progress(
-                    &app,
-                    path,
-                    "deploying",
-                    &message,
-                    Some(&preview.next_version),
-                    Some(&preview.tag),
-                );
-                return Ok(MutationOutput {
-                    ok: true,
-                    message,
-                });
-            }
             emit_release_progress(
                 &app,
                 path,

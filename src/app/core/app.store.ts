@@ -7369,15 +7369,13 @@ export class AppStore {
           `Tag: ${preview.tagMessage}`,
           preview.willPush
             ? devRelease
-              ? 'Will bump package.json, commit, tag, then finish Tauri/Cargo sync and push in the background (tauri:dev may restart once).'
+              ? 'Will bump package.json and commit, then finish Tauri/Cargo files, tag, and push in the background (tauri:dev may restart once).'
               : 'Will bump, commit, tag, push, and watch until installers are published for every platform.'
             : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
           `Files: ${preview.files.join(', ')}`,
-          devRelease && preview.willPush
-            ? `Background sync: ${devSkipped.join(', ')}`
-            : devRelease
-              ? `Dev mode skips ${devSkipped.join(', ')} until you push.`
-              : '',
+          devRelease
+            ? `Background finish (before tag): ${devSkipped.join(', ')}`
+            : '',
         ]
           .filter(Boolean)
           .join('\n'),
