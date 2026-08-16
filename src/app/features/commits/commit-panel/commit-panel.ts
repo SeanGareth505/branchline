@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
+import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 
 @Component({
   selector: 'app-commit-panel',
-  imports: [],
+  imports: [Skeleton],
   templateUrl: './commit-panel.html',
   styleUrl: './commit-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

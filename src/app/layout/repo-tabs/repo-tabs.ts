@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, untracked } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
 import type { RepoSummary } from '../../core/models';
@@ -13,6 +13,20 @@ import { assignIdentityColors, repoIdentityKey } from '../../shared/ui/identity-
 })
 export class RepoTabs {
   readonly store = inject(AppStore);
+  private readonly host = inject(ElementRef<HTMLElement>);
+
+  constructor() {
+    effect(() => {
+      const path = this.store.currentRepo()?.path;
+      if (!path) return;
+      untracked(() => {
+        requestAnimationFrame(() => {
+          const active = this.host.nativeElement.querySelector('.tab.active');
+          active?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+        });
+      });
+    });
+  }
 
   private readonly tabColors = computed(() =>
     assignIdentityColors(this.store.openRepos().map((repo) => repoIdentityKey(repo.name, repo.path))),

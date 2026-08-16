@@ -20,6 +20,7 @@ import type { BranchInfo } from '../../../core/models';
 import { describeBranchSync, shortUpstream } from '../../../shared/git/branch-sync';
 import { isMainlineBranch } from '../../../shared/git/mainline-branch';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
+import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from '../../../shared/ui/select-dialog/select.service';
 import { parseRemoteRef } from '../../../shared/git/remote-ref';
@@ -136,6 +137,7 @@ type TagFlatRow =
     SubmodulesPanel,
     LfsPanel,
     HelpTip,
+    Skeleton,
   ],
   templateUrl: './refs-panel.html',
   styleUrl: './refs-panel.scss',

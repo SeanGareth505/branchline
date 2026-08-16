@@ -78,6 +78,16 @@
         }
       </div>
     </div>
+  } @else if (store.repoContentPending()) {
+    <div class="inspector-skeleton" role="status" aria-label="Loading commit">
+      <app-skeleton width="28%" height="0.7rem" />
+      <app-skeleton width="72%" height="1.05rem" />
+      <app-skeleton width="48%" height="0.75rem" />
+      <app-skeleton width="100%" height="4.2rem" radius="10px" />
+      <app-skeleton width="36%" height="0.7rem" />
+      <app-skeleton width="88%" height="0.85rem" />
+      <app-skeleton width="64%" height="0.85rem" />
+    </div>
   } @else {
     <div class="empty-inspector">
       <p class="empty-title">No commit selected</p>

@@ -31,6 +31,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@types/jasmine": "~5.1.0",
+    "husky": "^9.1.7",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",
@@ -70,7 +71,9 @@
     "tauri:build": "tauri build",
     "tauri:dev": "tauri dev",
     "test": "ng test",
-    "watch": "ng build --watch --configuration development"
+    "test:ci": "ng test --watch=false --browsers=ChromeHeadless",
+    "watch": "ng build --watch --configuration development",
+    "prepare": "husky"
   },
   "version": "0.7.35"
 }

@@ -20,6 +20,7 @@
       type="button"
       class="tool primary"
       title="Commit (⌘⇧C / Ctrl+Shift+C)"
+      [disabled]="store.repoContentPending()"
       (click)="store.focusCommitPanel()"
     >
       <ng-icon name="lucideGitCommitHorizontal" size="14" />
@@ -31,7 +32,7 @@
         type="button"
         class="tool"
         [title]="pullTitle()"
-        [disabled]="!!store.remoteBusy()"
+        [disabled]="!!store.remoteBusy() || store.repoContentPending()"
         [attr.aria-busy]="store.remoteBusy() === 'fetch' || store.remoteBusy() === 'pull'"
         (click)="runDefaultPull()"
       >
@@ -57,7 +58,7 @@
         aria-label="Pull options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'pull'"
-        [disabled]="!!store.remoteBusy()"
+        [disabled]="!!store.remoteBusy() || store.repoContentPending()"
         cdkOverlayOrigin
         #pullOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('pull', $event)"
@@ -125,7 +126,7 @@
         type="button"
         class="tool"
         [class.locked]="store.currentBranchLocked()"
-        [disabled]="store.currentBranchLocked() || !!store.remoteBusy()"
+        [disabled]="store.currentBranchLocked() || !!store.remoteBusy() || store.repoContentPending()"
         [attr.aria-busy]="store.remoteBusy() === 'push'"
         [title]="
           store.currentBranchLocked()
@@ -158,7 +159,7 @@
         aria-label="Push options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'push'"
-        [disabled]="store.currentBranchLocked() || !!store.remoteBusy()"
+        [disabled]="store.currentBranchLocked() || !!store.remoteBusy() || store.repoContentPending()"
         cdkOverlayOrigin
         #pushOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('push', $event)"
@@ -200,7 +201,7 @@
       type="button"
       class="tool"
       title="Temporarily shelve uncommitted changes"
-      [disabled]="!!store.actionBusy() || !!store.remoteBusy()"
+      [disabled]="!!store.actionBusy() || !!store.remoteBusy() || store.repoContentPending()"
       [attr.aria-busy]="!!store.actionBusy()"
       (click)="runStash()"
     >
@@ -218,7 +219,7 @@
         aria-label="Stash options"
         aria-haspopup="menu"
         [attr.aria-expanded]="menu() === 'stash'"
-        [disabled]="!!store.actionBusy() || !!store.remoteBusy()"
+        [disabled]="!!store.actionBusy() || !!store.remoteBusy() || store.repoContentPending()"
         cdkOverlayOrigin
         #stashOrigin="cdkOverlayOrigin"
         (click)="toggleMenu('stash', $event)"
@@ -282,6 +283,7 @@
       type="button"
       class="tool"
       title="Undo the last Branchline action (often undoes the last commit, keeps your files)"
+      [disabled]="store.repoContentPending()"
       (click)="store.softUndoLastCommit()"
     >
       <ng-icon name="lucideUndo2" size="14" />

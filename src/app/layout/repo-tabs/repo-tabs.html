@@ -4,8 +4,8 @@
       <div
         class="tab"
         role="tab"
-        [class.active]="store.currentRepo()?.path === repo.path"
-        [attr.aria-selected]="store.currentRepo()?.path === repo.path"
+        [class.active]="store.isCurrentRepo(repo.path)"
+        [attr.aria-selected]="store.isCurrentRepo(repo.path)"
         [style.--identity]="colorFor(repo)"
         [title]="tooltip(repo.path, repo.branch)"
       >

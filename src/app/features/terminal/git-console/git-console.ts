@@ -25,6 +25,7 @@ export class GitConsole {
       const tab = this.store.browseTab();
       if (tab === 'console' && path && this.autoPath !== path) {
         this.autoPath = path;
+        this.lines.set([]);
         void this.runQuick('status -sb');
       }
     });

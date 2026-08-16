@@ -17,6 +17,7 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { ArtificialCommit, CommitInfo, RevisionGridColumns } from '../../../core/models';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 import {
   ROW_HEIGHT,
   buildGraphLayout,
@@ -93,6 +94,7 @@ function clampColWidth(col: GridColId, width: number, graphFit: number): number 
     CdkVirtualScrollViewport,
     CdkFixedSizeVirtualScroll,
     CdkVirtualForOf,
+    Skeleton,
   ],
   templateUrl: './revision-grid.html',
   styleUrl: './revision-grid.scss',

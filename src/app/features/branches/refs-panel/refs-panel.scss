@@ -248,6 +248,17 @@
   padding: 0.45rem 0.45rem 1rem;
 }
 
+.groups.is-pending > :not(.refs-skeleton) {
+  display: none;
+}
+
+.refs-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.35rem 0.4rem 0.6rem;
+}
+
 .group {
   display: flex;
   flex-direction: column;

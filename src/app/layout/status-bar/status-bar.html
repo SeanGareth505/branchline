@@ -118,6 +118,11 @@
           {{ store.changeCount() }} change{{ store.changeCount() === 1 ? '' : 's' }}
         </button>
       }
+    } @else if (store.currentRepo(); as repo) {
+      <span class="pill" [title]="repo.path">
+        <ng-icon name="lucideGitBranch" size="14" />
+        <span class="branch-name">{{ repo.branch || repo.name }}</span>
+      </span>
     } @else {
       <span class="meta">No repository open</span>
     }

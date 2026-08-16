@@ -361,6 +361,9 @@ export class AppStore {
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
   readonly actionBusy = signal<string | null>(null);
+  readonly repoContentPending = computed(
+    () => this.syncingRepo() && !this.status() && this.commits().length === 0,
+  );
   readonly busyMessage = computed(() => {
     if (this.loading()) return this.loadingLabel();
     return null;
@@ -1349,12 +1352,18 @@ export class AppStore {
     this.persistOpenRepos();
   }
 
+  isCurrentRepo(path: string): boolean {
+    const current = this.currentRepo()?.path;
+    return !!current && sameRepoPath(current, path);
+  }
+
   async openRepo(
     path: string,
-    opts?: { restoreView?: boolean; activate?: boolean },
+    opts?: { restoreView?: boolean; activate?: boolean; keepView?: boolean },
   ): Promise<void> {
     const restoreView = opts?.restoreView !== false;
     const activate = opts?.activate !== false;
+    const keepView = !!opts?.keepView;
     const normalized = path.trim();
     if (!normalized) return;
 
@@ -1374,12 +1383,14 @@ export class AppStore {
     }
 
     if (this.currentRepo() && sameRepoPath(this.currentRepo()!.path, normalized)) {
-      if (restoreView) this.setView('browse');
-      else this.view.set('browse');
+      if (!keepView) {
+        if (restoreView) this.setView('browse');
+        else this.view.set('browse');
+      }
       return;
     }
 
-    if (this.view() !== 'onboarding') {
+    if (!keepView && this.view() !== 'onboarding') {
       if (restoreView) this.setView('browse');
       else {
         if (this.view() === 'release') this.pauseBackgroundReleaseWork();
@@ -1404,21 +1415,17 @@ export class AppStore {
     this.currentRepo.set(stub);
     this.upsertOpenRepo(stub);
 
-    await this.yieldToPaint();
-    if (this.repoLoadStale(gen, normalized)) return;
+    const hadLive = this.restoreRepoSnapshot(normalized) || this.hydrateRepoCache(normalized);
+    if (!hadLive) this.clearWorkingState();
+    this.syncingRepo.set(true);
+    if (this.hasLinkedPrHost()) void this.refreshPullRequests('open');
 
     const summaryPromise = switching
       ? this.tauri.focusRepository(normalized).then((summary) => this.mergeFocusedSummary(summary))
       : this.tauri.openRepository(normalized);
 
-    const hadLive = this.restoreRepoSnapshot(normalized) || this.hydrateRepoCache(normalized);
-    if (!hadLive) {
-      this.clearWorkingState();
-      this.loadingLabel.set('Opening repository…');
-      this.loading.set(true);
-    } else {
-      this.syncingRepo.set(true);
-    }
+    await this.yieldToPaint();
+    if (this.repoLoadStale(gen, normalized)) return;
 
     try {
       const summary = await summaryPromise;
@@ -1429,15 +1436,9 @@ export class AppStore {
         this.repos.set(await this.tauri.listRecentRepos());
         if (this.repoLoadStale(gen, normalized)) return;
       }
-      if (hadLive) {
-        void this.applyGithubRepoAccount({ silent: true });
-        void this.refreshRepo();
-      } else {
-        await this.refreshRepo();
-        await this.applyGithubRepoAccount({ silent: true });
-      }
+      void this.applyGithubRepoAccount({ silent: true });
+      void this.refreshRepo();
       if (this.repoLoadStale(gen, normalized)) return;
-      this.persistRepoCache(normalized);
       this.persistOpenRepos();
       if (!switching && (this.isDummyBackend || this.isDummyRepoPath(normalized))) {
         this.showWarning(
@@ -1455,9 +1456,6 @@ export class AppStore {
           (err) => this.showError(err),
         );
       }
-      if (!switching && this.hasGithubConnection()) {
-        void this.refreshPullRequests('open');
-      }
       void this.loadRepoChecks({ toastNew: !switching });
     } catch (err) {
       this.showError(err);
@@ -1465,13 +1463,13 @@ export class AppStore {
     } finally {
       if (gen === this.repoLoadGen) {
         this.loading.set(false);
-        if (!hadLive) this.syncingRepo.set(false);
+        if (!this.refreshInFlight) this.syncingRepo.set(false);
       }
     }
   }
 
   async switchOpenRepo(path: string): Promise<void> {
-    await this.openRepo(path);
+    await this.openRepo(path, { keepView: true });
   }
 
   async closeOpenRepo(path: string, showToast = true): Promise<void> {
@@ -1489,7 +1487,7 @@ export class AppStore {
     }
 
     if (tabs.length) {
-      await this.openRepo(tabs[tabs.length - 1].path);
+      await this.openRepo(tabs[tabs.length - 1].path, { keepView: true });
       if (showToast && name) this.showToast(`Closed ${name}`);
       return;
     }

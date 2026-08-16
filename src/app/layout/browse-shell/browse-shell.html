@@ -13,7 +13,9 @@
               ? 'Pulling from remote'
               : store.remoteBusy() === 'push'
                 ? 'Pushing to remote'
-                : 'Refreshing repository'
+                : store.repoContentPending()
+                  ? 'Loading repository'
+                  : 'Refreshing repository'
       "
     >
       <span class="sync-track" aria-hidden="true"></span>
@@ -26,6 +28,8 @@
           Pulling…
         } @else if (store.remoteBusy() === 'push') {
           Pushing…
+        } @else if (store.repoContentPending()) {
+          Loading…
         } @else {
           Syncing…
         }

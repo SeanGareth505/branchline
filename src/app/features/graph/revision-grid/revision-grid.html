@@ -259,10 +259,23 @@
     </div>
 
     @if (!staticRows().length) {
-      <div class="empty">
-        <p>No commits yet</p>
-        <span>Open a repository to browse history</span>
-      </div>
+      @if (store.repoContentPending()) {
+        <div class="grid-skeleton" role="status" aria-label="Loading commits">
+          @for (_ of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]; track $index) {
+            <div class="grid-skeleton-row">
+              <app-skeleton width="2.4rem" height="0.7rem" />
+              <app-skeleton [width]="$index % 3 === 0 ? '42%' : '68%'" height="0.7rem" />
+              <app-skeleton width="18%" height="0.7rem" />
+              <app-skeleton width="5.5rem" height="0.7rem" />
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="empty">
+          <p>No commits yet</p>
+          <span>Open a repository to browse history</span>
+        </div>
+      }
     }
   </cdk-virtual-scroll-viewport>
 
