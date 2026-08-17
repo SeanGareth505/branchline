@@ -32,6 +32,7 @@ import {
   buildGraphLayout,
   graphContentWidthForLanes,
   graphWidthForLanes,
+  edgeWidthForPitch,
   lanePitch,
   laneX,
   linkPath,
@@ -200,6 +201,7 @@ export class RevisionGrid {
   readonly lanePitch = computed(() => lanePitch(this.layout().laneCount));
   readonly nodeR = computed(() => nodeRadiusForPitch(this.lanePitch()));
   readonly nodeRSel = computed(() => this.nodeR() + 1.25);
+  readonly edgeWidth = computed(() => edgeWidthForPitch(this.lanePitch()));
   readonly graphContentWidth = computed(() =>
     graphContentWidthForLanes(this.layout().laneCount, this.lanePitch()),
   );
@@ -208,12 +210,12 @@ export class RevisionGrid {
   );
   readonly graphScrollLeft = signal(0);
 
-  readonly headerCols: { id: GridColId; label: string; className: string }[] = [
-    { id: 'graph', label: '', className: 'h-graph' },
-    { id: 'message', label: 'Description', className: 'h-message' },
-    { id: 'author', label: 'Author', className: 'h-author' },
-    { id: 'date', label: 'Date', className: 'h-date' },
-    { id: 'sha', label: 'Commit', className: 'h-sha' },
+  readonly headerCols: { id: GridColId; label: string }[] = [
+    { id: 'graph', label: '' },
+    { id: 'message', label: 'Description' },
+    { id: 'author', label: 'Author' },
+    { id: 'date', label: 'Date' },
+    { id: 'sha', label: 'Commit' },
   ];
 
   readonly resizingCol = signal<GridColId | null>(null);
@@ -236,9 +238,12 @@ export class RevisionGrid {
   });
 
   readonly displayGraphWidth = computed(() => {
+    const auto = this.graphWidth();
     const stored = this.store.revisionGridColumns().graph;
-    if (stored == null) return this.graphWidth();
-    return clampColWidth('graph', stored);
+    if (stored == null) return auto;
+    const width = clampColWidth('graph', stored);
+    if (width < auto || width > auto + 20) return auto;
+    return width;
   });
 
   rowView(node: GraphNode, index: number): StaticRowView {

@@ -5,7 +5,7 @@ export type GridColId = 'graph' | 'message' | 'author' | 'date' | 'sha';
 export const GRID_COL_IDS: GridColId[] = ['graph', 'message', 'author', 'date', 'sha'];
 
 export const COL_MIN: Record<GridColId, number> = {
-  graph: 56,
+  graph: 30,
   message: 140,
   author: 72,
   date: 92,

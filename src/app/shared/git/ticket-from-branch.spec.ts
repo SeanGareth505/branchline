@@ -3,6 +3,7 @@ import {
   branchNameWithTicket,
   branchSegments,
   customPatternError,
+  extractBranchSlug,
   extractBranchTopic,
   extractTicketFromBranch,
   normalizeTicketFromBranch,
@@ -98,6 +99,13 @@ describe('ticket from branch', () => {
     );
     expect(extractBranchTopic('team/feature/proj-123', 'proj-123')).toBeNull();
     expect(extractBranchTopic('feature/add-login')).toBe('Add login');
+  });
+
+  it('keeps the raw leftover slug for quick-add chips', () => {
+    expect(extractBranchSlug('sotf-123/abc', 'sotf-123')).toBe('abc');
+    expect(extractBranchSlug('team/feature/proj-123-test', 'proj-123')).toBe('test');
+    expect(extractBranchSlug('sotf-123/feature', 'sotf-123')).toBeNull();
+    expect(extractBranchSlug('sotf-123', 'sotf-123')).toBeNull();
   });
 
   it('inserts a ticket key into a branch that does not have one', () => {

@@ -69,7 +69,10 @@ export function branchNameWithTicket(branch: string, key: string): string {
   return segs.join('/');
 }
 
-export function extractBranchTopic(branch: string, ticket?: string | null): string | null {
+const GENERIC_BRANCH_SLUG =
+  /^(feat|feature|features|fix|fixes|bugfix|hotfix|chore|docs|doc|refactor|perf|test|tests|ci|build|release|releases|main|master|develop|development|dev|wip|spike)$/i;
+
+export function extractBranchSlug(branch: string, ticket?: string | null): string | null {
   const segs = branchSegments(branch);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];
@@ -86,6 +89,13 @@ export function extractBranchTopic(branch: string, ticket?: string | null): stri
   if (ticket && slug.toLowerCase() === ticket.trim().toLowerCase()) return null;
   const onlyTicket = slug.match(TICKET_KEY);
   if (onlyTicket && onlyTicket[0].length === slug.length) return null;
+  if (slug === last && GENERIC_BRANCH_SLUG.test(slug)) return null;
+  return slug;
+}
+
+export function extractBranchTopic(branch: string, ticket?: string | null): string | null {
+  const slug = extractBranchSlug(branch, ticket);
+  if (!slug) return null;
   return humanizeBranchSlug(slug);
 }
 

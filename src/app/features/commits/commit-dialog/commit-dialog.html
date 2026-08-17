@@ -435,7 +435,7 @@
             <input
               class="subject-input"
               type="text"
-              [placeholder]="commitType() ? 'add a short summary' : 'Commit message'"
+              [placeholder]="commitType() ? 'short summary' : 'Commit message'"
               [ngModel]="subject()"
               (ngModelChange)="onSubjectChange($event)"
               aria-label="Commit subject"

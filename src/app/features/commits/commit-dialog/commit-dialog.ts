@@ -22,7 +22,7 @@ import {
   parseConventionalSubject,
   suggestCommitType,
 } from '../../../core/commit-types';
-import { extractBranchTopic, extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
+import { extractBranchSlug, extractBranchTopic, extractTicketFromBranch } from '../../../shared/git/ticket-from-branch';
 import {
   orderByCommitShortcutSequence,
   recordCommitShortcut,
@@ -115,6 +115,9 @@ export class CommitDialog {
 
   readonly suggestedTopic = computed(() =>
     extractBranchTopic(this.store.status()?.branch ?? '', this.suggestedTicket()),
+  );
+  readonly suggestedSlug = computed(() =>
+    extractBranchSlug(this.store.status()?.branch ?? '', this.suggestedTicket()),
   );
 
   readonly jiraKeyHint = computed(() => this.suggestedTicket());
@@ -319,15 +322,20 @@ export class CommitDialog {
   readonly metaActionChips = computed(() => {
     const chips: { id: CommitShortcutId; label: string; title: string }[] = [];
     const key = this.suggestedTicket();
-    const topic = this.suggestedTopic();
-    if (key && this.commitType() && this.scope().trim() !== key) {
-      chips.push({ id: 'scope', label: `Use ${key}`, title: `Put ${key} in the scope` });
+    const slug = this.suggestedSlug();
+    const subject = this.subject().trim();
+    if (key && this.scope().trim() !== key) {
+      chips.push({
+        id: 'scope',
+        label: key,
+        title: this.commitType() ? `Put ${key} in the scope` : `Use ${key} as the scope after you pick a type`,
+      });
     }
-    if (topic) {
+    if (slug && subject.toLowerCase() !== slug.toLowerCase() && !subject.toLowerCase().includes(slug.toLowerCase())) {
       chips.push({
         id: 'topic',
-        label: topic,
-        title: `Add “${topic}” to the description`,
+        label: slug,
+        title: `Use ${slug} as the summary`,
       });
     }
     if (key) {
@@ -1050,7 +1058,7 @@ export class CommitDialog {
   }
 
   insertBranchTopic(): void {
-    if (this.applyBranchTopic()) this.noteShortcut('topic');
+    if (this.applyBranchSlug()) this.noteShortcut('topic');
   }
 
   runMetaShortcut(id: CommitShortcutId): void {
@@ -1077,11 +1085,28 @@ export class CommitDialog {
         this.fillScopeFromTicket();
         if (this.scope().trim()) this.noteShortcut('scope');
       } else if (id === 'topic') {
-        if (this.applyBranchTopic({ onlyIfEmpty: true })) this.noteShortcut('topic');
+        if (this.applyBranchSlug({ onlyIfEmpty: true })) this.noteShortcut('topic');
       } else if (id === 'fixes') {
         if (this.insertFixesLine()) this.noteShortcut('fixes');
       }
     }
+  }
+
+  private applyBranchSlug(opts?: { onlyIfEmpty?: boolean }): boolean {
+    const slug = this.suggestedSlug();
+    if (!slug) return false;
+    const subject = this.subject().trim();
+    if (subject.toLowerCase().includes(slug.toLowerCase())) return false;
+    if (!subject) {
+      this.subject.set(slug);
+      return true;
+    }
+    if (opts?.onlyIfEmpty) return false;
+    const body = this.body();
+    const trimmed = body.trim();
+    if (trimmed.toLowerCase().includes(slug.toLowerCase())) return false;
+    this.body.set(trimmed ? `${trimmed}\n\n${slug}` : slug);
+    return true;
   }
 
   private applyBranchTopic(opts?: { onlyIfEmpty?: boolean }): boolean {

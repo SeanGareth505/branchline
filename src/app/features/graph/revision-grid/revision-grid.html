@@ -81,7 +81,12 @@
   >
     @for (col of headerCols; track col.id) {
       <div
-        [class]="col.className"
+        class="h-col"
+        [class.h-graph]="col.id === 'graph'"
+        [class.h-message]="col.id === 'message'"
+        [class.h-author]="col.id === 'author'"
+        [class.h-date]="col.id === 'date'"
+        [class.h-sha]="col.id === 'sha'"
         [class.is-resizing]="resizingCol() === col.id"
         (dblclick)="onFitColumn(col.id, $event)"
       >
@@ -94,7 +99,7 @@
             <div class="graph-h-spacer" [style.width.px]="graphContentWidth()"></div>
           </div>
         } @else {
-          {{ col.label }}
+          <span class="col-label">{{ col.label }}</span>
         }
         <span
           class="col-resizer"
@@ -160,6 +165,7 @@
             class="graph-svg"
             [attr.width]="graphContentWidth()"
             [attr.height]="rowHeight"
+            [style.--edge-w.px]="edgeWidth()"
             [class.dashed]="row.artificial"
           >
             @for (link of topLinks(row); track link.key) {

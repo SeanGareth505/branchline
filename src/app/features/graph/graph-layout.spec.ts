@@ -16,17 +16,23 @@ import {
 
 describe('graph lane metrics', () => {
   it('keeps full spacing when the graph is not crowded', () => {
-    expect(lanePitch(1)).toBe(LANE_WIDTH);
+    expect(lanePitch(1)).toBe(18);
+    expect(lanePitch(2)).toBe(18);
+    expect(lanePitch(6)).toBe(16);
     expect(lanePitch(8)).toBe(LANE_WIDTH);
-    expect(lanePitch(20)).toBe(LANE_WIDTH);
     expect(graphWidthForLanes(8)).toBe(GRAPH_PAD * 2 + 8 * LANE_WIDTH);
     expect(graphWidthForLanes(8)).toBeLessThan(MAX_GRAPH_WIDTH);
   });
 
-  it('grows with lanes then clamps the column, never crushing pitch below the minimum', () => {
-    expect(graphWidthForLanes(1)).toBe(MIN_GRAPH_WIDTH);
-    expect(graphWidthForLanes(2)).toBeGreaterThanOrEqual(graphWidthForLanes(1));
+  it('hugs a simple history and grows for busier graphs', () => {
+    expect(graphWidthForLanes(1)).toBe(GRAPH_PAD * 2 + 18);
+    expect(graphWidthForLanes(1)).toBeLessThan(graphWidthForLanes(4));
+    expect(graphWidthForLanes(2)).toBeGreaterThan(graphWidthForLanes(1));
     expect(graphWidthForLanes(8)).toBeLessThan(graphWidthForLanes(16));
+  });
+
+  it('grows with lanes then clamps the column, never crushing pitch below the minimum', () => {
+    expect(graphWidthForLanes(1)).toBeGreaterThanOrEqual(MIN_GRAPH_WIDTH);
     expect(lanePitch(20)).toBe(LANE_WIDTH);
     expect(graphWidthForLanes(20)).toBe(GRAPH_PAD * 2 + 20 * LANE_WIDTH);
     expect(graphWidthForLanes(20)).toBeLessThanOrEqual(MAX_GRAPH_WIDTH);

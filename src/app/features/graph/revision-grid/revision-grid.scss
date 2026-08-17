@@ -161,11 +161,17 @@
   height: 100%;
   display: flex;
   align-items: center;
+  min-width: 0;
   padding: 0 0.4rem;
+  overflow: hidden;
+  border-right: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
+.col-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-right: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
 }
 
 .grid-header > div:last-child {
@@ -394,7 +400,7 @@
 
 .graph-svg .edge {
   fill: none;
-  stroke-width: 2.6;
+  stroke-width: var(--edge-w, 2.8);
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -402,20 +408,20 @@
 }
 
 .graph-svg .edge.merge-parent {
-  stroke-width: 2.15;
+  stroke-width: calc(var(--edge-w, 2.8) * 0.82);
   stroke-dasharray: 4 3;
   opacity: 1;
 }
 
 .graph-svg .edge.lineage {
-  stroke-width: 3.1;
+  stroke-width: calc(var(--edge-w, 2.8) * 1.18);
   opacity: 1;
   filter: brightness(1.15);
 }
 
 .graph-svg.dashed .edge {
   stroke-dasharray: 3.5 3;
-  stroke-width: 2.1;
+  stroke-width: calc(var(--edge-w, 2.8) * 0.8);
 }
 
 .graph-svg .node {
