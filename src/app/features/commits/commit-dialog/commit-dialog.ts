@@ -59,7 +59,6 @@ export class CommitDialog {
   readonly amend = signal(false);
   readonly signOff = signal(false);
   readonly pushAfter = signal(true);
-  readonly allowEmpty = signal(false);
   readonly commitType = signal('');
   readonly scope = signal('');
   readonly breaking = signal(false);
@@ -186,20 +185,16 @@ export class CommitDialog {
 
   readonly canCommit = computed(() => {
     if (this.conflictedCount() > 0) return false;
-    if (!this.messagePreview().trim() && !this.allowEmpty()) return false;
+    if (!this.messagePreview().trim()) return false;
     if (this.lintIssues().some((i) => i.level === 'error')) return false;
-    if (this.amend() || this.allowEmpty()) return true;
-    return this.stagedCount() > 0 || this.unstagedCount() > 0;
+    return true;
   });
 
   readonly commitBlockedReason = computed(() => {
     if (this.conflictedCount() > 0) return 'Resolve conflicts before committing';
-    if (!this.messagePreview().trim() && !this.allowEmpty()) return 'Write a commit message';
+    if (!this.messagePreview().trim()) return 'Write a commit message';
     const lintError = this.lintIssues().find((i) => i.level === 'error');
     if (lintError) return lintError.message;
-    if (!this.amend() && !this.allowEmpty() && this.stagedCount() === 0 && this.unstagedCount() === 0) {
-      return 'Nothing to commit';
-    }
     return null;
   });
 
@@ -976,7 +971,7 @@ export class CommitDialog {
     if (!this.canCommit() || this.committing()) return;
 
     const needsStageAll =
-      !this.amend() && !this.allowEmpty() && this.stagedCount() === 0 && this.unstagedCount() > 0;
+      !this.amend() && this.stagedCount() === 0 && this.unstagedCount() > 0;
 
     if (needsStageAll) {
       const n = this.unstagedCount();
@@ -1024,7 +1019,7 @@ export class CommitDialog {
       const commit = await this.store.createCommit(
         this.messagePreview(),
         this.amend(),
-        this.allowEmpty(),
+        true,
         { toast: !willPush, skipHooks: skipGitHooks },
       );
       if (!commit.ok) return;
@@ -1172,7 +1167,6 @@ export class CommitDialog {
     const settings = this.store.settings();
     this.signOff.set(settings.signOffByDefault);
     await this.applyPushAfterDefault(settings.pushAfterCommit);
-    this.allowEmpty.set(false);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
     this.sessionSequence.set([]);
@@ -1257,7 +1251,6 @@ export class CommitDialog {
     this.amend.set(false);
     this.signOff.set(false);
     this.pushAfter.set(this.store.settings().pushAfterCommit ?? true);
-    this.allowEmpty.set(false);
     this.commitType.set('');
     this.scope.set('');
     this.breaking.set(false);

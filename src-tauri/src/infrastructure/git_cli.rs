@@ -8,9 +8,12 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+use std::time::Duration;
 
 /// Hard cap for git stdout/stderr captured into memory (protects against OOM).
 pub const MAX_GIT_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+const GIT_LOCK_RETRIES: u32 = 8;
+const GIT_LOCK_RETRY_MS: u64 = 40;
 
 pub fn git_bin() -> AppResult<String> {
     which::which("git")
@@ -201,12 +204,35 @@ pub fn run_git_capture(cwd: &Path, args: &[&str]) -> AppResult<(bool, String, St
     capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES)
 }
 
-pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
-    let (ok, stdout, stderr) = run_git_capture(cwd, args)?;
-    if ok {
-        Ok(stdout.trim_end().to_string())
+pub fn is_lock_contention(stdout: &str, stderr: &str) -> bool {
+    let text = if stderr.trim().is_empty() {
+        stdout
     } else {
-        Err(git_failure(args, &stdout, &stderr))
+        stderr
+    };
+    let lower = text.to_ascii_lowercase();
+    lower.contains("index.lock")
+        || lower.contains("another git process seems to be running")
+        || (lower.contains("unable to create") && lower.contains(".lock"))
+}
+
+fn retry_lock_delay(attempt: u32) -> Duration {
+    Duration::from_millis(GIT_LOCK_RETRY_MS.saturating_mul(u64::from(attempt.max(1))))
+}
+
+pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
+    let mut attempt = 0u32;
+    loop {
+        let (ok, stdout, stderr) = run_git_capture(cwd, args)?;
+        if ok {
+            return Ok(stdout.trim_end().to_string());
+        }
+        if attempt < GIT_LOCK_RETRIES && is_lock_contention(&stdout, &stderr) {
+            attempt += 1;
+            thread::sleep(retry_lock_delay(attempt));
+            continue;
+        }
+        return Err(git_failure(args, &stdout, &stderr));
     }
 }
 
@@ -239,6 +265,22 @@ pub fn fetch_args(remote: Option<&str>) -> Vec<String> {
 }
 
 pub fn run_git_with_stdin(cwd: &Path, args: &[&str], stdin_data: &str) -> AppResult<String> {
+    let mut attempt = 0u32;
+    loop {
+        match run_git_with_stdin_once(cwd, args, stdin_data) {
+            Ok(out) => return Ok(out),
+            Err(err)
+                if attempt < GIT_LOCK_RETRIES && is_lock_contention(&err.to_string(), "") =>
+            {
+                attempt += 1;
+                thread::sleep(retry_lock_delay(attempt));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn run_git_with_stdin_once(cwd: &Path, args: &[&str], stdin_data: &str) -> AppResult<String> {
     use std::io::Write;
 
     let bin = git_bin()?;
@@ -556,5 +598,18 @@ mod tests {
         let message = clarify_git_error("husky - pre-commit script failed (code 1)");
         assert!(message.to_ascii_lowercase().contains("hook"));
         assert!(message.to_ascii_lowercase().contains("retry"));
+    }
+
+    #[test]
+    fn detects_index_lock_contention() {
+        assert!(is_lock_contention(
+            "",
+            "fatal: Unable to create '/tmp/repo/.git/index.lock': File exists.\nAnother git process seems to be running in this repository",
+        ));
+        assert!(is_lock_contention(
+            "",
+            "fatal: Unable to create '/tmp/repo/.git/refs/heads/main.lock': File exists.",
+        ));
+        assert!(!is_lock_contention("", "fatal: not a git repository"));
     }
 }

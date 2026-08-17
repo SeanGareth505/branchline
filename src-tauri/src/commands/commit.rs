@@ -34,7 +34,7 @@ pub fn create_commit(
 ) -> AppResult<CreateCommitOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let amend = input.amend.unwrap_or(false);
-        let allow_empty = input.allow_empty.unwrap_or(false);
+        let allow_empty = input.allow_empty.unwrap_or(true);
         let message = input.message.trim();
         if message.is_empty() && !allow_empty {
             return Err(AppError::msg("Commit message is required"));
@@ -50,9 +50,7 @@ pub fn create_commit(
         if amend {
             args.push("--amend");
         }
-        if allow_empty {
-            args.push("--allow-empty");
-        }
+        args.push("--allow-empty");
         if input.skip_hooks.unwrap_or(false) {
             args.push("--no-verify");
         }

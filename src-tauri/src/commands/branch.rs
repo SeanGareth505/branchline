@@ -96,25 +96,27 @@ pub async fn list_branches(
         )
     };
     run_blocking(move || {
-        let mut branches = git2_repo::list_branches(&path)?;
-        let lock_map: std::collections::HashMap<String, Option<String>> = locks
-            .into_iter()
-            .map(|l| (l.branch_name, l.reason))
-            .collect();
-        let ticket_map: std::collections::HashMap<String, String> = tickets
-            .into_iter()
-            .map(|t| (t.branch_name, t.issue_key))
-            .collect();
-        for branch in &mut branches {
-            if let Some(reason) = lock_map.get(&branch.name) {
-                branch.locked = true;
-                branch.lock_reason = reason.clone();
+        git_cli::with_repo_lock(&path, |resolved| {
+            let mut branches = git2_repo::list_branches(resolved)?;
+            let lock_map: std::collections::HashMap<String, Option<String>> = locks
+                .into_iter()
+                .map(|l| (l.branch_name, l.reason))
+                .collect();
+            let ticket_map: std::collections::HashMap<String, String> = tickets
+                .into_iter()
+                .map(|t| (t.branch_name, t.issue_key))
+                .collect();
+            for branch in &mut branches {
+                if let Some(reason) = lock_map.get(&branch.name) {
+                    branch.locked = true;
+                    branch.lock_reason = reason.clone();
+                }
+                if let Some(key) = ticket_map.get(&branch.name) {
+                    branch.jira_key = Some(key.clone());
+                }
             }
-            if let Some(key) = ticket_map.get(&branch.name) {
-                branch.jira_key = Some(key.clone());
-            }
-        }
-        Ok(branches)
+            Ok(branches)
+        })
     })
     .await
 }
@@ -328,15 +330,17 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
     args.push(remote.as_str());
     args.push(branch.as_str());
 
-    let out = git_cli::run_git(&path, &args)?;
-    Ok(MutationOutput {
-        ok: true,
-        message: if !out.is_empty() {
-            out
-        } else if set_upstream {
-            format!("Pushed and set upstream to {remote}/{branch}")
-        } else {
-            "Pushed".into()
-        },
+    git_cli::with_repo_lock(&path, |path| {
+        let out = git_cli::run_git(path, &args)?;
+        Ok(MutationOutput {
+            ok: true,
+            message: if !out.is_empty() {
+                out
+            } else if set_upstream {
+                format!("Pushed and set upstream to {remote}/{branch}")
+            } else {
+                "Pushed".into()
+            },
+        })
     })
 }

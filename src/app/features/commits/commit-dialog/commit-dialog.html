@@ -492,10 +492,6 @@
               <input type="checkbox" [ngModel]="pushAfter()" (ngModelChange)="pushAfter.set($event)" />
               Push after commit
             </label>
-            <label title="Allow a commit with no staged changes and/or an empty message">
-              <input type="checkbox" [ngModel]="allowEmpty()" (ngModelChange)="allowEmpty.set($event)" />
-              Allow empty
-            </label>
           </div>
           <div class="composer-actions">
             <div class="composer-actions-secondary">

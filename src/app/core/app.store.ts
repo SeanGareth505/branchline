@@ -4503,10 +4503,6 @@ export class AppStore {
       this.showToast('Resolve conflicts before committing', { kind: 'warning' });
       return { ok: false };
     }
-    if (!amend && !allowEmpty && !status?.staged.length) {
-      this.showToast('Stage at least one file before committing', { kind: 'warning' });
-      return { ok: false };
-    }
     if (amend && !(await this.confirmIfEnabled('confirmAmend', {
       title: 'Amend last commit?',
       message:
@@ -4516,12 +4512,14 @@ export class AppStore {
       return { ok: false };
     }
     try {
-      const result = await this.tauri.createCommit(
-        path,
-        message.trim(),
-        amend,
-        allowEmpty,
-        opts?.skipHooks ?? false,
+      const result = await this.withRepoMutation(() =>
+        this.tauri.createCommit(
+          path,
+          message.trim(),
+          amend,
+          true,
+          opts?.skipHooks ?? false,
+        ),
       );
       await this.refreshRepo();
       const shortSha = result.sha.slice(0, 7);
@@ -5063,11 +5061,13 @@ export class AppStore {
     const remote = this.pushRemoteName();
     if (!(await this.beginRemoteBusy('push'))) return false;
     try {
-      const result = await this.tauri.push(path, {
-        setUpstream: true,
-        remote,
-        branch: branch.trim(),
-      });
+      const result = await this.withRepoMutation(() =>
+        this.tauri.push(path, {
+          setUpstream: true,
+          remote,
+          branch: branch.trim(),
+        }),
+      );
       await this.refreshRepo();
       this.showToast(result.message || `Pushed ${branch.trim()} to ${remote}`, {
         kind: 'success',
@@ -5339,11 +5339,13 @@ export class AppStore {
       const skipHooks =
         !!opts?.skipHooks || this.hasDetectedChecks(['pre-push']);
       const result = await this.runRemoteWithAccountRetry(() =>
-        this.tauri.push(path, {
-          ...pushOpts,
-          remote: this.pushRemoteName(),
-          skipHooks,
-        }),
+        this.withRepoMutation(() =>
+          this.tauri.push(path, {
+            ...pushOpts,
+            remote: this.pushRemoteName(),
+            skipHooks,
+          }),
+        ),
       );
       await this.refreshRepo();
       if (opts?.toast !== false) {
@@ -5443,11 +5445,13 @@ export class AppStore {
     if (!path) return;
     const remote = this.pushRemoteName(branch);
     try {
-      const result = await this.tauri.push(path, {
-        forceWithLease: true,
-        remote,
-        branch: branch?.trim() || undefined,
-      });
+      const result = await this.withRepoMutation(() =>
+        this.tauri.push(path, {
+          forceWithLease: true,
+          remote,
+          branch: branch?.trim() || undefined,
+        }),
+      );
       await this.refreshRepo();
       this.showToast(result.message || `Force-pushed ${branch ?? 'branch'} with lease`, {
         kind: 'success',
@@ -6813,11 +6817,13 @@ export class AppStore {
     if (!pushOpts) return false;
     if (!(await this.beginRemoteBusy('push'))) return false;
     try {
-      const result = await this.tauri.push(path, {
-        ...pushOpts,
-        remote: this.pushRemoteName(branch),
-        branch,
-      });
+      const result = await this.withRepoMutation(() =>
+        this.tauri.push(path, {
+          ...pushOpts,
+          remote: this.pushRemoteName(branch),
+          branch,
+        }),
+      );
       await this.refreshRepo();
       this.showToast(result.message || `Pushed ${branch}`, {
         kind: 'success',
