@@ -167,9 +167,12 @@
               @if (row.file.conflictLabel) {
                 <span class="kind">{{ row.file.conflictLabel }}</span>
               }
-              <span class="area">{{ areaLabel(row.file.area) }}</span>
             </button>
-            <div class="actions">
+            <div class="meta">
+              @if (filter() === 'all') {
+                <span class="area">{{ areaLabel(row.file.area) }}</span>
+              }
+              <div class="actions">
               @if (row.file.area === 'unstaged' || row.file.area === 'untracked') {
                 <button type="button" class="link" title="Stage file" (click)="stageFile(row.path)">
                   Stage
@@ -213,6 +216,7 @@
               >
                 More
               </button>
+              </div>
             </div>
           </div>
         }

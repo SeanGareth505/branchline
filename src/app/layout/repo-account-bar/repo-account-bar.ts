@@ -6,6 +6,7 @@ import {
 } from '@angular/cdk/overlay';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
+import { ALL_REPO_ACCOUNTS } from '../../shared/git/repo-accounts';
 
 @Component({
   selector: 'app-repo-account-bar',
@@ -18,20 +19,32 @@ export class RepoAccountBar {
   readonly store = inject(AppStore);
   readonly menuOpen = signal(false);
   readonly menuPositions: ConnectedPosition[] = [
-    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 6 },
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 6 },
   ];
 
-  readonly visible = computed(
-    () =>
-      !!this.store.githubGitStatus()?.ghAvailable ||
-      (this.store.githubGitStatus()?.accounts.length ?? 0) > 0 ||
-      this.store.repoAccounts().length > 0,
-  );
-
+  readonly allKey = ALL_REPO_ACCOUNTS;
+  readonly accounts = computed(() => this.store.repoAccounts());
+  readonly visible = computed(() => this.accounts().length > 1);
   readonly canAdd = computed(() => !!this.store.githubGitStatus()?.ghAvailable);
   readonly busy = computed(() => this.store.githubGitBusy());
-  readonly cliAccounts = computed(() => this.store.githubGitStatus()?.accounts ?? []);
+  readonly selectedKey = computed(() => this.store.selectedRepoAccountKey());
+  readonly selectedLabel = computed(() => {
+    if (this.store.showingAllRepoAccounts()) return 'All accounts';
+    return this.store.selectedRepoAccountLabel() || this.accounts()[0]?.label || 'Account';
+  });
+
+  readonly counts = computed(() => {
+    const repos = this.store.repos();
+    const map = new Map<string, number>();
+    for (const account of this.accounts()) {
+      map.set(
+        account.key,
+        repos.filter((repo) => this.store.localRepoMatchesAccount(repo.path, account.key)).length,
+      );
+    }
+    return map;
+  });
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
@@ -39,7 +52,8 @@ export class RepoAccountBar {
   }
 
   choose(key: string): void {
-    if (key === this.store.selectedRepoAccountKey()) return;
+    this.closeMenu();
+    if (key === this.selectedKey()) return;
     this.store.selectRepoAccount(key);
   }
 
@@ -56,22 +70,8 @@ export class RepoAccountBar {
     void this.store.addGithubCliAccount();
   }
 
-  unlink(login: string): void {
-    this.closeMenu();
-    const cli = this.cliAccounts().some(
-      (account) => account.login.toLowerCase() === login.trim().toLowerCase(),
-    );
-    if (!cli) return;
-    void this.store.logoutGithubCliUser(login);
-  }
-
   manage(): void {
     this.closeMenu();
     this.store.openSettings('connections', 'github-git');
-  }
-
-  onChipContext(login: string, event: Event): void {
-    event.preventDefault();
-    void this.store.logoutGithubCliUser(login);
   }
 }

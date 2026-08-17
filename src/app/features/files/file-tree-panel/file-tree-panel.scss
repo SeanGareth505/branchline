@@ -2,6 +2,7 @@
   display: block;
   height: 100%;
   min-height: 0;
+  min-width: 0;
 }
 
 .panel {
@@ -9,6 +10,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  min-width: 0;
 }
 
 .toolbar {
@@ -126,6 +128,7 @@
 .tree {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   height: 100%;
   padding: 0.35rem 0.4rem 0.75rem;
 }
@@ -164,14 +167,16 @@
   gap: 0.35rem;
   width: 100%;
   box-sizing: border-box;
+  min-width: 0;
   min-height: 1.85rem;
-  padding: 0.15rem 0.4rem 0.15rem calc(0.35rem + var(--depth, 0) * 1rem);
+  padding: 0.15rem 0.45rem 0.15rem calc(0.35rem + var(--depth, 0) * 1rem);
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
+  overflow: hidden;
 }
 
 .row.dir {
@@ -181,6 +186,9 @@
 }
 
 .row.file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
   overflow: hidden;
 }
 
@@ -222,10 +230,6 @@
   border: 1px solid var(--glass-border);
 }
 
-.row.file {
-  gap: 0.25rem;
-}
-
 .row.file:hover {
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
@@ -236,11 +240,11 @@
 }
 
 .file-main {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+  overflow: hidden;
   border: 0;
   background: transparent;
   color: inherit;
@@ -306,12 +310,13 @@
 
 .area {
   flex-shrink: 0;
+  align-self: center;
   font-size: 10px;
   font-weight: 650;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
-  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .kind {
@@ -324,18 +329,21 @@
   opacity: 0.9;
 }
 
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 .actions {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
+  justify-content: flex-end;
+  gap: 0.1rem;
   flex-shrink: 0;
-  max-width: 42%;
-}
-
-.row.file:hover .actions,
-.row.file.selected .actions,
-.row.file:focus-within .actions {
-  opacity: 1;
+  white-space: nowrap;
 }
 
 .link {

@@ -92,9 +92,6 @@
 
     @if (store.repos().length > 0) {
       <div class="library-controls">
-        @if (store.selectedRepoAccountLabel(); as account) {
-          <span class="filter-hint">Showing {{ account }}</span>
-        }
         <div class="sort-tabs" role="group" aria-label="Sort repositories">
           <button
             type="button"
