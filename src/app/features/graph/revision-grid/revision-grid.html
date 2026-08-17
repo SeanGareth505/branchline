@@ -129,7 +129,7 @@
       [class.alt]="row.alt"
       [class.artificial]="row.artificial"
       [class.dirty]="!!row.art && row.art.fileCount > 0"
-      [class.staged-dirty]="row.art?.kind === 'staged' && row.art.fileCount > 0"
+      [class.staged-dirty]="row.art?.kind === 'staged' && (row.art?.fileCount ?? 0) > 0"
       [class.selected]="isRowSelected(row)"
       [class.compare]="isRowCompare(row)"
       [class.selected-compare]="isRowCompare(row)"

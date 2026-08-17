@@ -1587,6 +1587,7 @@ export class TauriService {
         tagMessage: 'Demo App 0.1.1',
         files: ['package.json'],
         devSkippedFiles: [],
+        backgroundFinish: false,
         blockers: [],
       },
       run_release: { ok: true, message: 'Released Demo App 0.1.1 and pushed v0.1.1' },

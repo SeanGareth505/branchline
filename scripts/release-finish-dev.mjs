@@ -12,6 +12,7 @@ function parseArgs(argv) {
     version: '',
     tag: '',
     tagMessage: '',
+    commitMessage: '',
     push: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -20,7 +21,7 @@ function parseArgs(argv) {
       options.push = true;
       continue;
     }
-    if (arg === '--version' || arg === '--tag' || arg === '--tag-message') {
+    if (arg === '--version' || arg === '--tag' || arg === '--tag-message' || arg === '--commit-message') {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) {
         throw new Error(`Missing value for ${arg}.`);
@@ -28,6 +29,7 @@ function parseArgs(argv) {
       if (arg === '--version') options.version = value;
       if (arg === '--tag') options.tag = value;
       if (arg === '--tag-message') options.tagMessage = value;
+      if (arg === '--commit-message') options.commitMessage = value;
       index += 1;
       continue;
     }
@@ -45,6 +47,9 @@ function parseArgs(argv) {
   }
   if (!options.tagMessage) {
     options.tagMessage = `Branchline ${options.version}`;
+  }
+  if (!options.commitMessage) {
+    options.commitMessage = `Release ${options.version}`;
   }
   return options;
 }
@@ -145,7 +150,7 @@ function main() {
   const changed = applyFiles(options.version);
   console.log(`Updated: ${changed.join(', ')}`);
   git(['add', '--', ...changed]);
-  git(['commit', '--amend', '--no-edit']);
+  git(['commit', '-m', options.commitMessage]);
   if (tagExists(options.tag)) {
     git(['tag', '-d', options.tag]);
   }

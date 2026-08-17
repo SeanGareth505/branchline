@@ -116,6 +116,8 @@ pub struct ReleasePreviewOutput {
     pub files: Vec<String>,
     #[serde(default)]
     pub dev_skipped_files: Vec<String>,
+    #[serde(default)]
+    pub background_finish: bool,
     pub blockers: Vec<String>,
 }
 
@@ -461,17 +463,22 @@ fn effective_full_ship(will_push: bool) -> bool {
     will_push && !cfg!(debug_assertions)
 }
 
+fn release_finish_script(repo: &Path) -> PathBuf {
+    repo.join("scripts").join("release-finish-dev.mjs")
+}
+
 fn spawn_dev_release_finish(
     repo: &Path,
     version: &str,
     tag: &str,
     tag_message: &str,
+    commit_message: &str,
     push: bool,
 ) -> AppResult<()> {
-    let script = repo.join("scripts/release-finish-dev.mjs");
+    let script = release_finish_script(repo);
     if !script.exists() {
         return Err(crate::AppError::msg(
-            "Missing scripts/release-finish-dev.mjs; cannot finish a tauri:dev release.",
+            "Missing scripts/release-finish-dev.mjs; cannot finish a background release.",
         ));
     }
     let log_path = repo.join(".git").join("branchline-release-finish.log");
@@ -486,13 +493,16 @@ fn spawn_dev_release_finish(
     })?;
     let mut cmd = Command::new("node");
     git_cli::apply_tool_path(&mut cmd);
+    git_cli::detach_child(&mut cmd);
     cmd.arg(&script)
         .arg("--version")
         .arg(version)
         .arg("--tag")
         .arg(tag)
         .arg("--tag-message")
-        .arg(tag_message);
+        .arg(tag_message)
+        .arg("--commit-message")
+        .arg(commit_message);
     if push {
         cmd.arg("--push");
     }
@@ -614,7 +624,14 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         &tag,
         &product_name,
     );
-    let applied = apply_files(repo, &cfg.files, &next, true, effective_full_ship(will_push))?;
+    let background_finish = release_finish_script(repo).is_file();
+    let applied = apply_files(
+        repo,
+        &cfg.files,
+        &next,
+        true,
+        background_finish || effective_full_ship(will_push),
+    )?;
     let files = applied.changed;
     let dev_skipped_files = applied.dev_skipped;
 
@@ -666,6 +683,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         tag_message,
         files,
         dev_skipped_files,
+        background_finish,
         blockers,
     })
 }
@@ -731,7 +749,11 @@ pub fn preview_release(input: ReleasePreviewInput) -> AppResult<ReleasePreviewOu
 }
 
 #[command]
-pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<MutationOutput> {
+pub async fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<MutationOutput> {
+    crate::error::run_blocking(move || run_release_blocking(app, input)).await
+}
+
+fn run_release_blocking(app: AppHandle, input: ReleasePreviewInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         emit_release_progress(
             &app,
@@ -747,6 +769,43 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             emit_release_progress(&app, path, "error", &message, None, None);
             return Ok(MutationOutput {
                 ok: false,
+                message,
+            });
+        }
+        if preview.background_finish {
+            emit_release_progress(
+                &app,
+                path,
+                "pushing",
+                "Starting background release so the app stays responsive…",
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            crate::infrastructure::diagnostics::mark_expected_restart(
+                "background release writing Tauri version files",
+            );
+            spawn_dev_release_finish(
+                path,
+                &preview.next_version,
+                &preview.tag,
+                &preview.tag_message,
+                &preview.commit_message,
+                preview.will_push,
+            )?;
+            let message = format!(
+                "Releasing {} in the background — Branchline may reload once if tauri:dev is running, then installers will build for {}",
+                preview.tag, preview.product_name
+            );
+            emit_release_progress(
+                &app,
+                path,
+                "deploying",
+                &message,
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            return Ok(MutationOutput {
+                ok: true,
                 message,
             });
         }
@@ -799,40 +858,6 @@ pub fn run_release(app: AppHandle, input: ReleasePreviewInput) -> AppResult<Muta
             Some(&preview.tag),
         );
         git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
-        let needs_dev_finish = cfg!(debug_assertions) && !applied.dev_skipped.is_empty();
-        if needs_dev_finish {
-            emit_release_progress(
-                &app,
-                path,
-                "pushing",
-                "Finishing release in background (tauri:dev safe)…",
-                Some(&preview.next_version),
-                Some(&preview.tag),
-            );
-            spawn_dev_release_finish(
-                path,
-                &preview.next_version,
-                &preview.tag,
-                &preview.tag_message,
-                preview.will_push,
-            )?;
-            let message = format!(
-                "Finishing {} in background — Branchline may restart while Tauri files sync, then installers will build for {}",
-                preview.tag, preview.product_name
-            );
-            emit_release_progress(
-                &app,
-                path,
-                "deploying",
-                &message,
-                Some(&preview.next_version),
-                Some(&preview.tag),
-            );
-            return Ok(MutationOutput {
-                ok: true,
-                message,
-            });
-        }
         emit_release_progress(
             &app,
             path,
@@ -1037,18 +1062,16 @@ fn parse_deploy_jobs(value: &Value) -> Vec<ReleaseDeployJob> {
                     if name.is_empty() {
                         return None;
                     }
+                    let status = json_job_status(job);
+                    let (started_at, completed_at) = json_job_times(job, &status);
                     Some(ReleaseDeployJob {
                         name: name.to_string(),
-                        status: job
-                            .get("status")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
+                        status,
                         conclusion: json_opt_str(job, &["conclusion"]),
                         url: json_opt_str(job, &["html_url", "url"]),
                         steps: parse_deploy_job_steps(job),
-                        started_at: json_opt_str(job, &["started_at", "startedAt"]),
-                        completed_at: json_opt_str(job, &["completed_at", "completedAt"]),
+                        started_at,
+                        completed_at,
                     })
                 })
                 .collect()
@@ -1067,22 +1090,55 @@ fn parse_deploy_job_steps(job: &Value) -> Vec<ReleaseDeployJobStep> {
                     if name.is_empty() {
                         return None;
                     }
+                    let status = json_job_status(step);
+                    let (started_at, completed_at) = json_job_times(step, &status);
                     Some(ReleaseDeployJobStep {
                         name: name.to_string(),
-                        status: step
-                            .get("status")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
+                        status,
                         conclusion: json_opt_str(step, &["conclusion"]),
                         number: step.get("number").and_then(|v| v.as_i64()),
-                        started_at: json_opt_str(step, &["started_at", "startedAt"]),
-                        completed_at: json_opt_str(step, &["completed_at", "completedAt"]),
+                        started_at,
+                        completed_at,
                     })
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn json_job_status(value: &Value) -> String {
+    value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn json_job_times(value: &Value, status: &str) -> (Option<String>, Option<String>) {
+    let started_at = json_opt_job_time(value, &["started_at", "startedAt"]);
+    let completed_at = if status == "completed" {
+        json_opt_job_time(value, &["completed_at", "completedAt"])
+    } else {
+        None
+    };
+    (started_at, completed_at)
+}
+
+fn json_opt_job_time(value: &Value, keys: &[&str]) -> Option<String> {
+    json_opt_str(value, keys).filter(|stamp| is_real_job_timestamp(stamp))
+}
+
+fn is_real_job_timestamp(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with("0000-") || trimmed.starts_with("0001-") || trimmed.starts_with("1970-01-01")
+    {
+        return false;
+    }
+    true
 }
 
 fn json_opt_str(value: &Value, keys: &[&str]) -> Option<String> {
@@ -1451,7 +1507,7 @@ struct WorkflowSnapshot {
 
 fn workflow_is_running(status: &str) -> bool {
     matches!(
-        status,
+        status.to_ascii_lowercase().as_str(),
         "queued" | "in_progress" | "waiting" | "requested" | "pending"
     )
 }
@@ -1476,7 +1532,7 @@ fn job_is_active(job: &ReleaseDeployJob) -> bool {
     {
         return false;
     }
-    job.status != "completed"
+    job.status.to_ascii_lowercase() != "completed"
 }
 
 fn required_job_failed(jobs: &[ReleaseDeployJob]) -> bool {
@@ -1807,8 +1863,12 @@ fn fetch_run_snapshot_with_gh(gh: &str, repo: &str, run_id: u64) -> Option<Workf
                     .get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
-                    .to_string();
+                    .to_ascii_lowercase();
                 if !status.is_empty() {
+                    let mut jobs = fetch_run_jobs_with_gh(gh, repo, run_id);
+                    if jobs.is_empty() {
+                        jobs = parse_deploy_jobs(&payload);
+                    }
                     return Some(WorkflowSnapshot {
                         status,
                         conclusion: payload
@@ -1820,7 +1880,7 @@ fn fetch_run_snapshot_with_gh(gh: &str, repo: &str, run_id: u64) -> Option<Workf
                             .get("url")
                             .and_then(|v| v.as_str())
                             .map(str::to_string),
-                        jobs: parse_deploy_jobs(&payload),
+                        jobs,
                     });
                 }
             }
@@ -2736,6 +2796,36 @@ mod tests {
         assert_eq!(jobs[0].steps[1].name, "Build");
         assert_eq!(jobs[0].steps[1].status, "in_progress");
         assert_eq!(jobs[0].started_at.as_deref(), None);
+    }
+
+    #[test]
+    fn parse_deploy_jobs_drops_placeholder_completed_at() {
+        let payload = serde_json::json!({
+            "jobs": [{
+                "name": "Linux",
+                "status": "in_progress",
+                "conclusion": "",
+                "startedAt": "2026-08-17T06:13:18Z",
+                "completedAt": "0001-01-01T00:00:00Z",
+                "steps": [{
+                    "name": "Install Linux dependencies",
+                    "status": "in_progress",
+                    "conclusion": "",
+                    "number": 7,
+                    "startedAt": "2026-08-17T06:13:46Z",
+                    "completedAt": "0001-01-01T00:00:00Z"
+                }]
+            }]
+        });
+        let jobs = parse_deploy_jobs(&payload);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].status, "in_progress");
+        assert_eq!(jobs[0].conclusion, None);
+        assert_eq!(jobs[0].started_at.as_deref(), Some("2026-08-17T06:13:18Z"));
+        assert_eq!(jobs[0].completed_at, None);
+        assert_eq!(jobs[0].steps[0].status, "in_progress");
+        assert_eq!(jobs[0].steps[0].completed_at, None);
+        assert!(job_is_active(&jobs[0]));
     }
 
     #[test]

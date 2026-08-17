@@ -820,6 +820,7 @@ export interface ReleasePreviewOutput {
   tagMessage: string;
   files: string[];
   devSkippedFiles?: string[];
+  backgroundFinish?: boolean;
   blockers: string[];
 }
 

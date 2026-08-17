@@ -11,6 +11,9 @@
       <div class="status-top">
         <div class="status-copy">
           <h2>{{ headline() }}</h2>
+          @if (whenLabel(); as when) {
+            <p class="status-when">{{ when }}</p>
+          }
           <p>{{ statusDetail() }}</p>
         </div>
         <div class="status-meta">
@@ -34,9 +37,6 @@
               {{ activity.tag }}
               <ng-icon name="lucideCopy" size="11" />
             </button>
-            @if (elapsed(); as time) {
-              <span class="elapsed">{{ time }}</span>
-            }
         </div>
       </div>
 
@@ -107,6 +107,9 @@
                   <span class="step-label">{{ step.label }}</span>
                   <span class="step-meta">
                     {{ step.stateLabel }}
+                    @if (step.when) {
+                      <span class="step-when">{{ step.when }}</span>
+                    }
                     @if (step.duration) {
                       <span class="step-time">{{ step.duration }}</span>
                     }
@@ -194,6 +197,9 @@
                             <div class="platform-title">
                               <span class="platform-name">{{ item.label }}</span>
                             </div>
+                            @if (item.when) {
+                              <p class="platform-when">{{ item.when }}</p>
+                            }
                             @if (item.step && !isJobExpanded(item.name)) {
                               <p class="platform-step">{{ item.step }}</p>
                             }
@@ -225,6 +231,9 @@
                                 <span class="job-step-name">{{ child.label }}</span>
                                 <span class="job-step-meta">
                                   {{ child.statusLabel }}
+                                  @if (child.when) {
+                                    <span class="step-when">{{ child.when }}</span>
+                                  }
                                   @if (child.duration) {
                                     <span class="step-time">{{ child.duration }}</span>
                                   }

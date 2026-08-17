@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
+import { format } from 'date-fns';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
 import { UpdateService } from '../../../core/update.service';
@@ -35,6 +36,7 @@ interface JobChildView {
   chip: ArtifactStatus;
   statusLabel: string;
   duration: string;
+  when: string;
 }
 
 interface ArtifactView {
@@ -44,6 +46,7 @@ interface ArtifactView {
   chip: ArtifactStatus;
   statusLabel: string;
   duration: string;
+  when: string;
   url: string | null;
   children: JobChildView[];
 }
@@ -55,6 +58,7 @@ interface ProgressStepView {
   detail: string;
   stateLabel: string;
   duration: string;
+  when: string;
   artifacts: ArtifactView[];
 }
 
@@ -81,6 +85,29 @@ export class ReleasePanel {
     if (!activity) return '';
     const end = activity.finishedAt ?? this.now();
     return formatElapsed(Math.max(0, end - activity.startedAt));
+  });
+
+  readonly startedLabel = computed(() => {
+    const activity = this.activity();
+    if (!activity?.startedAt) return '';
+    return formatClock(activity.startedAt);
+  });
+
+  readonly finishedLabel = computed(() => {
+    const activity = this.activity();
+    if (!activity?.finishedAt) return '';
+    return formatClock(activity.finishedAt);
+  });
+
+  readonly whenLabel = computed(() => {
+    const started = this.startedLabel();
+    if (!started) return '';
+    const parts = [`Started ${started}`];
+    const finished = this.finishedLabel();
+    if (finished) parts.push(`Finished ${finished}`);
+    const elapsed = this.elapsed();
+    if (elapsed) parts.push(elapsed);
+    return parts.join(' · ');
   });
 
   readonly trackingPaused = computed(() => {
@@ -172,6 +199,7 @@ export class ReleasePanel {
         chip,
         statusLabel: statusLabelOf(job, chip),
         duration: durationOf(job, now),
+        when: formatClock(job.startedAt),
         url: job.url ?? null,
         children: (job.steps ?? []).map((child, index) => {
           const childChip = chipStatus(child);
@@ -184,6 +212,7 @@ export class ReleasePanel {
                 ? 'Done'
                 : statusLabelOf(child, childChip),
             duration: durationOf(child, now),
+            when: formatClock(child.startedAt),
           };
         }),
       };
@@ -216,6 +245,7 @@ export class ReleasePanel {
       detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
       stateLabel: stepStateLabel(step.status),
       duration: stepDuration(activity.steps, index, now),
+      when: formatClock(step.at),
       artifacts: nestId === step.id ? artifacts : [],
     }));
   });
@@ -518,16 +548,8 @@ function stepDuration(steps: ReleaseActivityStep[], index: number, now: number):
   return formatElapsed(ms);
 }
 
-function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion' | 'completedAt'>): ArtifactStatus {
-  const conclusion = job.conclusion?.trim();
-  if (conclusion === 'failure' || conclusion === 'cancelled' || conclusion === 'timed_out' || conclusion === 'startup_failure') {
-    return 'failure';
-  }
-  if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
-    return 'success';
-  }
-  const status = job.status.trim();
-  if (status === 'completed' || !!job.completedAt) return 'success';
+function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion'>): ArtifactStatus {
+  const status = job.status.trim().toLowerCase();
   if (status === 'in_progress') return 'pending';
   if (
     status === 'queued' ||
@@ -538,6 +560,20 @@ function chipStatus(job: Pick<ReleaseDeployJob, 'status' | 'conclusion' | 'compl
   ) {
     return 'queued';
   }
+  const conclusion = job.conclusion?.trim().toLowerCase() ?? '';
+  if (
+    conclusion === 'failure' ||
+    conclusion === 'cancelled' ||
+    conclusion === 'timed_out' ||
+    conclusion === 'startup_failure' ||
+    conclusion === 'action_required'
+  ) {
+    return 'failure';
+  }
+  if (conclusion === 'success' || conclusion === 'skipped' || conclusion === 'neutral') {
+    return 'success';
+  }
+  if (status === 'completed') return 'success';
   return 'unknown';
 }
 
@@ -546,7 +582,7 @@ function statusLabelOf(
   chip: ArtifactStatus,
 ): string {
   if (chip === 'success') {
-    if (job.conclusion === 'skipped') return 'Skipped';
+    if (job.conclusion?.trim().toLowerCase() === 'skipped') return 'Skipped';
     return 'Ready';
   }
   if (chip === 'failure') return job.conclusion?.trim() || 'Failed';
@@ -559,10 +595,9 @@ function durationOf(
   item: Pick<ReleaseDeployJob, 'startedAt' | 'completedAt'>,
   now: number,
 ): string {
-  const start = Date.parse(item.startedAt ?? '');
-  if (Number.isNaN(start)) return '';
-  const endRaw = item.completedAt ? Date.parse(item.completedAt) : now;
-  const end = Number.isNaN(endRaw) ? now : endRaw;
+  const start = parseClock(item.startedAt);
+  if (start == null) return '';
+  const end = parseClock(item.completedAt) ?? now;
   return formatElapsed(Math.max(0, end - start));
 }
 
@@ -603,6 +638,21 @@ function formatElapsed(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+const CLOCK_FLOOR = Date.UTC(2010, 0, 1);
+
+function parseClock(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(ms) || Number.isNaN(ms) || ms < CLOCK_FLOOR) return null;
+  return ms;
+}
+
+function formatClock(value: number | string | null | undefined): string {
+  const ms = parseClock(value);
+  if (ms == null) return '';
+  return format(new Date(ms), 'd MMM yyyy, HH:mm');
 }
 
 function currentJobStep(job: ReleaseDeployJob, chip: ArtifactStatus): string {

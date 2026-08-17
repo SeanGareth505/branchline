@@ -22,6 +22,22 @@ pub fn apply_tool_path(cmd: &mut Command) {
     cmd.env("PATH", enriched_path());
 }
 
+pub fn detach_child(cmd: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW);
+    }
+}
+
 pub fn clarify_git_error(raw: &str) -> String {
     let text = raw.trim();
     if text.is_empty() {
