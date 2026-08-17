@@ -234,6 +234,11 @@
 }
 
 .step-meta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
   flex-shrink: 0;
   font-size: 11px;
   color: var(--text-muted);
@@ -257,6 +262,28 @@
   margin-left: 0.35rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+}
+
+.step-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.35rem;
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--glass-bg) 82%, transparent);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.step-open:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg));
+  color: var(--text-primary);
 }
 
 .step-detail {

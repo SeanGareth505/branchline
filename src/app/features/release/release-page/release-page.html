@@ -37,6 +37,17 @@
             Refresh
           </button>
         }
+        @if (deployUrl(); as deploy) {
+          <button
+            type="button"
+            class="bl-btn"
+            title="Open this deploy on GitHub Actions"
+            (click)="openDeploy()"
+          >
+            <ng-icon name="lucideExternalLink" size="14" />
+            Open deploy
+          </button>
+        }
         @if (!activity()) {
           <button
             type="button"

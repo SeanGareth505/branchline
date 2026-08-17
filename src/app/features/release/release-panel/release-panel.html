@@ -33,6 +33,17 @@
                 Refresh
               </button>
             }
+            @if (deployUrl(); as deploy) {
+              <button
+                type="button"
+                class="tag-btn"
+                title="Open this deploy on GitHub Actions"
+                (click)="openLink(deploy)"
+              >
+                <ng-icon name="lucideExternalLink" size="11" />
+                Open deploy
+              </button>
+            }
             <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
               {{ activity.tag }}
               <ng-icon name="lucideCopy" size="11" />
@@ -112,6 +123,17 @@
                     }
                     @if (step.duration) {
                       <span class="step-time">{{ step.duration }}</span>
+                    }
+                    @if (step.actionUrl) {
+                      <button
+                        type="button"
+                        class="step-open"
+                        [title]="step.actionLabel"
+                        (click)="openLink(step.actionUrl)"
+                      >
+                        <ng-icon name="lucideExternalLink" size="11" />
+                        {{ step.actionLabel }}
+                      </button>
                     }
                   </span>
                 </div>

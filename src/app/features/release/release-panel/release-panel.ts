@@ -18,6 +18,11 @@ import type {
   ReleasePhase,
 } from '../../../core/models';
 import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
+import {
+  actionsWebUrl,
+  releaseWorkflowWebUrl,
+  tagWebUrl,
+} from '../../../shared/git/repo-links';
 
 type ArtifactStatus = 'success' | 'failure' | 'pending' | 'queued' | 'unknown';
 type JobFilter = 'all' | 'queued' | 'building' | 'ready' | 'failed';
@@ -60,6 +65,8 @@ interface ProgressStepView {
   duration: string;
   when: string;
   artifacts: ArtifactView[];
+  actionUrl: string | null;
+  actionLabel: string;
 }
 
 @Component({
@@ -135,25 +142,49 @@ export class ReleasePanel {
 
   readonly githubLinked = computed(() => this.store.hasGithubConnection());
 
+  readonly originUrl = computed(() => this.store.originFetchUrl() ?? '');
+
+  readonly deployUrl = computed(() => {
+    const activity = this.activity();
+    if (!activity?.willPush || activity.needsPush) return null;
+    return (
+      activity.deployRunUrl?.trim() ||
+      activity.actionsPageUrl?.trim() ||
+      releaseWorkflowWebUrl(this.originUrl()) ||
+      actionsWebUrl(this.originUrl())
+    );
+  });
+
+  readonly githubReleaseUrl = computed(() => {
+    const activity = this.activity();
+    const tag = activity?.tag?.trim();
+    if (!activity || !tag) return null;
+    return activity.releaseUrl?.trim() || tagWebUrl(this.originUrl(), tag);
+  });
+
   readonly linkCards = computed((): ReleaseLinkCard[] => {
     const activity = this.activity();
     if (!activity) return [];
     const cards: ReleaseLinkCard[] = [];
-    if (activity.deployRunUrl) {
+    const deploy = this.deployUrl();
+    if (deploy) {
       cards.push({
-        id: 'workflow',
-        label: 'Workflow',
-        hint: 'Open this run on GitHub Actions',
-        url: activity.deployRunUrl,
+        id: 'deploy',
+        label: activity.deployRunUrl ? 'Open deploy' : 'Open Actions',
+        hint: activity.deployRunUrl
+          ? 'Open this installer run on GitHub Actions'
+          : 'Open the release workflow on GitHub Actions',
+        url: deploy,
         icon: 'lucideWorkflow',
       });
     }
-    if (activity.releaseUrl) {
+    const release = this.githubReleaseUrl();
+    if (release && (activity.releaseUrl || activity.phase === 'publishing' || activity.phase === 'done')) {
       cards.push({
         id: 'release',
-        label: 'GitHub release',
+        label: 'Open release',
         hint: activity.tag,
-        url: activity.releaseUrl,
+        url: release,
         icon: 'lucideTag',
       });
     }
@@ -238,16 +269,22 @@ export class ReleasePanel {
     const now = this.now();
     const artifacts = this.artifacts();
     const nestId = nestArtifactsUnder(activity.steps);
-    return activity.steps.map((step, index) => ({
-      id: step.id,
-      status: step.status,
-      label: step.label,
-      detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
-      stateLabel: stepStateLabel(step.status),
-      duration: stepDuration(activity.steps, index, now),
-      when: formatClock(step.at),
-      artifacts: nestId === step.id ? artifacts : [],
-    }));
+    const origin = this.originUrl();
+    return activity.steps.map((step, index) => {
+      const action = stepOpenAction(step, activity, origin);
+      return {
+        id: step.id,
+        status: step.status,
+        label: step.label,
+        detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
+        stateLabel: stepStateLabel(step.status),
+        duration: stepDuration(activity.steps, index, now),
+        when: formatClock(step.at),
+        artifacts: nestId === step.id ? artifacts : [],
+        actionUrl: action?.url ?? null,
+        actionLabel: action?.label ?? '',
+      };
+    });
   });
 
   readonly progressSummary = computed(() => {
@@ -347,6 +384,12 @@ export class ReleasePanel {
     if (this.showPushFallback()) {
       actions.push({ id: 'push', label: 'Push release', primary: true });
     }
+    if (this.deployUrl() && !this.shippedLive()) {
+      actions.push({ id: 'deploy', label: 'Open deploy', primary: !this.showPushFallback() });
+    }
+    if (this.githubReleaseUrl() && (this.activity()?.releaseUrl || this.activity()?.phase === 'done')) {
+      actions.push({ id: 'release', label: 'Open release', primary: false });
+    }
     if (this.trackingPaused()) {
       if (!this.githubLinked()) {
         actions.push({ id: 'github', label: 'Link GitHub', primary: false });
@@ -421,6 +464,8 @@ export class ReleasePanel {
     else if (id === 'refresh') this.refreshDeploy();
     else if (id === 'github') this.openGithubSettings();
     else if (id === 'updates') this.checkForUpdates();
+    else if (id === 'deploy') this.openLink(this.deployUrl());
+    else if (id === 'release') this.openLink(this.githubReleaseUrl());
   }
 
   async copyTag(): Promise<void> {
@@ -495,6 +540,32 @@ function nestArtifactsUnder(steps: ReleaseActivityStep[]): string | null {
   const deploying = steps.find((step) => step.phase === 'deploying');
   if (ci && ci.status !== 'pending') return ci.id;
   if (deploying && deploying.status !== 'pending') return deploying.id;
+  return null;
+}
+
+function stepOpenAction(
+  step: ReleaseActivityStep,
+  activity: ReleaseActivity,
+  originUrl: string,
+): { url: string; label: string } | null {
+  if (step.status === 'pending') return null;
+  if (step.phase === 'ci' || step.phase === 'deploying') {
+    const url =
+      activity.deployRunUrl?.trim() ||
+      activity.actionsPageUrl?.trim() ||
+      releaseWorkflowWebUrl(originUrl) ||
+      actionsWebUrl(originUrl);
+    if (!url) return null;
+    return {
+      url,
+      label: activity.deployRunUrl ? 'Open deploy' : 'Open Actions',
+    };
+  }
+  if (step.phase === 'publishing') {
+    const url = activity.releaseUrl?.trim() || tagWebUrl(originUrl, activity.tag);
+    if (!url) return null;
+    return { url, label: 'Open release' };
+  }
   return null;
 }
 

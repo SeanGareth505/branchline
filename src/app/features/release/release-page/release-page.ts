@@ -17,6 +17,10 @@ import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { ReleasePanel } from '../release-panel/release-panel';
+import {
+  actionsWebUrl,
+  releaseWorkflowWebUrl,
+} from '../../../shared/git/repo-links';
 
 @Component({
   selector: 'app-release-page',
@@ -48,6 +52,17 @@ export class ReleasePage {
   readonly canRefreshDeploy = computed(() => {
     const activity = this.activity();
     return !!activity?.tag && !!activity.willPush && !activity.needsPush;
+  });
+
+  readonly deployUrl = computed(() => {
+    const activity = this.activity();
+    if (!activity?.willPush || activity.needsPush) return null;
+    return (
+      activity.deployRunUrl?.trim() ||
+      activity.actionsPageUrl?.trim() ||
+      releaseWorkflowWebUrl(this.store.originFetchUrl() ?? '') ||
+      actionsWebUrl(this.store.originFetchUrl() ?? '')
+    );
   });
 
   readonly refreshLocked = computed(() => {
@@ -202,6 +217,12 @@ export class ReleasePage {
 
   refreshDeploy(): void {
     void this.store.refreshReleaseDeploy();
+  }
+
+  openDeploy(): void {
+    const url = this.deployUrl();
+    if (!url) return;
+    void this.tauri.openExternalUrl(url);
   }
 
   trackLatest(): void {
