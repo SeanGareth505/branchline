@@ -15,6 +15,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.4rem;
   min-height: 1.35rem;
   padding: 0.15rem 0.7rem;
   overflow: hidden;
@@ -46,10 +47,10 @@
 
 @keyframes bl-sync-slide {
   0% {
-    transform: translateX(-120%);
+    transform: translateX(-30%);
   }
   100% {
-    transform: translateX(320%);
+    transform: translateX(280%);
   }
 }
 

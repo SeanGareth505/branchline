@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { ApplicationRef, Injectable, computed, inject, signal } from '@angular/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AppSettings,
@@ -92,7 +92,7 @@ import {
 } from '../shared/git/open-in-editor';
 import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
-import { parseRemoteWebBase, primaryGithubOwner, remoteProtocol, commitWebUrl, compareWebUrl, fileWebUrl } from '../shared/git/repo-links';
+import { parseRemoteWebBase, primaryGithubOwner, remoteProtocol, branchWebUrl, tagWebUrl, commitWebUrl, compareWebUrl, fileWebUrl } from '../shared/git/repo-links';
 import {
   ALL_REPO_ACCOUNTS,
   collectWorkspaceAccounts,
@@ -108,14 +108,18 @@ import {
   isRemoteAccessError,
   rawErrorMessage,
 } from '../shared/git/git-error';
-import { summarizeGitToastMessage } from '../shared/git/git-toast';
+import {
+  alreadyUpToDateLabel,
+  isAlreadyUpToDateMessage,
+  summarizeGitToastMessage,
+} from '../shared/git/git-toast';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
   isCheckoutBlockedByLocalChanges,
   parseCheckoutBlockedPaths,
 } from '../shared/git/checkout-blocked';
-import { isMainlineBranch } from '../shared/git/mainline-branch';
+import { isMainlineBranch, resolveBaseUpdateRef } from '../shared/git/mainline-branch';
 import {
   resolveWorkflowPattern,
   sanitizeBranchName,
@@ -177,6 +181,7 @@ export function normalizeSettingsSection(raw: unknown): SettingsSection {
 }
 
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
+export type RemoteBusyKind = 'fetch' | 'pull' | 'push' | 'merge' | 'rebase';
 export type AutomationSection = 'workflows' | 'checks';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
 export type NotificationCategory =
@@ -253,6 +258,7 @@ interface RepoWorkingSnapshot {
 @Injectable({ providedIn: 'root' })
 export class AppStore {
   private readonly tauri = inject(TauriService);
+  private readonly appRef = inject(ApplicationRef);
   private readonly diagnostics = inject(DiagnosticsService);
   private readonly notifications = inject(NotificationService);
   private readonly prompts = inject(PromptService);
@@ -324,6 +330,9 @@ export class AppStore {
     defaultPullAction: 'merge',
     defaultPushAction: 'upstream',
     autoFetchOnOpen: false,
+    fetchAllRemotes: true,
+    fetchPrune: true,
+    fetchTags: false,
     confirmForcePush: true,
     confirmDiscard: true,
     confirmPushNewBranch: true,
@@ -389,7 +398,7 @@ export class AppStore {
   private toastSeq = 0;
   readonly refreshingRepo = signal(false);
   readonly syncingRepo = signal(false);
-  readonly remoteBusy = signal<'fetch' | 'pull' | 'push' | null>(null);
+  readonly remoteBusy = signal<RemoteBusyKind | null>(null);
   readonly actionBusy = signal<string | null>(null);
   readonly repoStatusPending = computed(() => this.syncingRepo() && !this.status());
   readonly repoRefsPending = computed(() => this.syncingRepo() && this.branches().length === 0);
@@ -478,6 +487,7 @@ export class AppStore {
   readonly gitFlowDialogOpen = signal(false);
   readonly branchHygieneDialogOpen = signal(false);
   readonly gitCleanDialogOpen = signal(false);
+  readonly fetchDialogOpen = signal(false);
   readonly syncPreviewDialogOpen = signal(false);
   readonly syncPreviewKind = signal<'incoming' | 'outgoing'>('incoming');
   readonly fetchAllBusy = signal(false);
@@ -625,6 +635,16 @@ export class AppStore {
 
   readonly localBranches = computed(() => this.branches().filter((b) => !b.isRemote));
   readonly remoteBranches = computed(() => this.branches().filter((b) => b.isRemote));
+  readonly baseUpdateRef = computed(() => {
+    const current = this.status()?.branch;
+    if (!current) return null;
+    return resolveBaseUpdateRef(
+      current,
+      this.localBranches().map((b) => b.name),
+      this.remoteBranches().map((b) => b.name),
+      [this.settings().gitFlowDevelop, this.settings().gitFlowMain],
+    );
+  });
   readonly hasUpstreamRemote = computed(() => this.remotes().some((r) => r.name === 'upstream'));
   readonly pinnedShasForRepo = computed(() => {
     const path = this.currentRepo()?.path;
@@ -1609,7 +1629,7 @@ export class AppStore {
       }
       if (!switching && this.settings().autoFetchOnOpen && !this.isDummyBackend) {
         void this.runRemoteWithAccountRetry(() =>
-          this.tauri.fetch(normalized, this.pushRemoteName()),
+          this.tauri.fetch(normalized, { remote: this.pushRemoteName() }),
         ).then(
           () => {
             if (this.repoLoadStale(gen, normalized)) return;
@@ -1827,6 +1847,7 @@ export class AppStore {
     this.gitFlowDialogOpen.set(false);
     this.branchHygieneDialogOpen.set(false);
     this.gitCleanDialogOpen.set(false);
+    this.fetchDialogOpen.set(false);
     this.syncPreviewDialogOpen.set(false);
     this.danglingCommits.set([]);
     this.largeFiles.set([]);
@@ -2149,6 +2170,24 @@ export class AppStore {
 
   openCommitOnHost(sha: string): void {
     const url = commitWebUrl(this.originFetchUrl() ?? '', sha);
+    if (!url) {
+      this.showWarning('No GitHub or GitLab remote found for this repository.');
+      return;
+    }
+    void this.tauri.openExternalUrl(url);
+  }
+
+  openBranchOnHost(branch: string): void {
+    const url = branchWebUrl(this.originFetchUrl() ?? '', branch);
+    if (!url) {
+      this.showWarning('No GitHub or GitLab remote found for this repository.');
+      return;
+    }
+    void this.tauri.openExternalUrl(url);
+  }
+
+  openTagOnHost(tag: string): void {
+    const url = tagWebUrl(this.originFetchUrl() ?? '', tag);
     if (!url) {
       this.showWarning('No GitHub or GitLab remote found for this repository.');
       return;
@@ -3003,24 +3042,33 @@ export class AppStore {
     }
   }
 
-  private beginGitAction(label: string): boolean {
+  private async paintBusy(): Promise<void> {
+    this.appRef.tick();
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
+
+  private async beginGitAction(label: string): Promise<boolean> {
     if (this.remoteBusy() || this.actionBusy() || this.loading()) return false;
     this.actionBusy.set(label);
+    await this.paintBusy();
     return true;
   }
 
-  armRemoteBusy(kind: 'fetch' | 'pull' | 'push'): boolean {
+  armRemoteBusy(kind: RemoteBusyKind): boolean {
     if (this.remoteBusy() || this.actionBusy() || this.loading()) return false;
     this.remoteBusy.set(kind);
+    this.appRef.tick();
     return true;
   }
 
-  private async beginRemoteBusy(kind: 'fetch' | 'pull' | 'push'): Promise<boolean> {
+  private async beginRemoteBusy(kind: RemoteBusyKind): Promise<boolean> {
     if (this.actionBusy() || this.loading()) return false;
     const current = this.remoteBusy();
     if (current && current !== kind) return false;
     this.remoteBusy.set(kind);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await this.paintBusy();
     return this.remoteBusy() === kind;
   }
 
@@ -3940,6 +3988,22 @@ export class AppStore {
 
   showSuccess(message: string, undo?: () => void, category: NotificationCategory = 'general'): void {
     this.showToast(message, { kind: 'success', undo, category });
+  }
+
+  private toastGitIntegrate(
+    raw: string,
+    fallback: string,
+    source?: string | null,
+    category: NotificationCategory = 'pull',
+  ): void {
+    const text = raw.trim() || fallback;
+    const already = isAlreadyUpToDateMessage(text);
+    this.showToast(already ? alreadyUpToDateLabel(source) : text, {
+      kind: already ? 'info' : 'success',
+      durationMs: 3200,
+      category,
+      force: already,
+    });
   }
 
   showWarning(message: string, undo?: () => void, category: NotificationCategory = 'general'): void {
@@ -5144,25 +5208,49 @@ export class AppStore {
     }
   }
 
-  async fetchRemote(remote?: string): Promise<void> {
+  async fetchWithSavedOptions(): Promise<void> {
+    const s = this.settings();
+    this.armRemoteBusy('fetch');
+    await this.fetchRemote(undefined, {
+      allRemotes: s.fetchAllRemotes,
+      prune: s.fetchPrune,
+      tags: s.fetchTags,
+    });
+  }
+
+  async fetchRemote(
+    remote?: string,
+    opts?: { toast?: boolean; allRemotes?: boolean; prune?: boolean; tags?: boolean },
+  ): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) {
       if (this.remoteBusy() === 'fetch') this.remoteBusy.set(null);
       return;
     }
     if (!(await this.beginRemoteBusy('fetch'))) return;
+    const allRemotes = opts?.allRemotes ?? false;
+    const prune = opts?.prune ?? false;
+    const tags = opts?.tags ?? false;
     try {
       const result = await this.runRemoteWithAccountRetry(() =>
         this.withRepoMutation(() =>
-          this.tauri.fetch(path, remote?.trim() || this.pushRemoteName()),
+          this.tauri.fetch(path, {
+            remote: allRemotes ? null : remote?.trim() || this.pushRemoteName(),
+            allRemotes,
+            prune,
+            tags,
+          }),
         ),
       );
       await this.refreshRepo();
-      this.showToast(result.message || 'Fetched from remote', {
-        kind: 'success',
-        durationMs: 3200,
-        category: 'fetch',
-      });
+      if (opts?.toast !== false) {
+        this.toastGitIntegrate(
+          result.message || 'Fetched from remote',
+          'Fetched from remote',
+          allRemotes ? 'all remotes' : remote?.trim() || this.pushRemoteName() || null,
+          'fetch',
+        );
+      }
     } catch (err) {
       this.showError(err);
     } finally {
@@ -5272,11 +5360,12 @@ export class AppStore {
         return;
       }
       await this.refreshRepo();
-      this.showToast(result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'), {
-        kind: 'success',
-        durationMs: 3200,
-        category: 'pull',
-      });
+      this.toastGitIntegrate(
+        result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'),
+        rebase ? 'Pulled with rebase' : 'Pulled from remote',
+        this.status()?.upstream ?? this.pushRemoteName() ?? null,
+        'pull',
+      );
     } catch (err) {
       const message = rawErrorMessage(err);
       if (message.toLowerCase().includes('conflict')) {
@@ -5508,7 +5597,12 @@ export class AppStore {
     }
     const action = this.settings().defaultPullAction;
     if (action === 'fetch') {
-      await this.fetchRemote();
+      const s = this.settings();
+      await this.fetchRemote(undefined, {
+        allRemotes: s.fetchAllRemotes,
+        prune: s.fetchPrune,
+        tags: s.fetchTags,
+      });
     } else {
       await this.pullRemote(action === 'rebase');
     }
@@ -6640,7 +6734,7 @@ export class AppStore {
   async stashPush(message?: string, includeUntracked = false): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    if (!this.beginGitAction(includeUntracked ? 'Stashing including untracked…' : 'Stashing…')) {
+    if (!(await this.beginGitAction(includeUntracked ? 'Stashing including untracked…' : 'Stashing…'))) {
       return;
     }
     try {
@@ -6659,7 +6753,7 @@ export class AppStore {
   async stashPop(index: number): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    if (!this.beginGitAction('Restoring stash…')) return;
+    if (!(await this.beginGitAction('Restoring stash…'))) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashPop(path, index));
       await this.refreshWorkingTreeAndStashes(path);
@@ -6674,7 +6768,7 @@ export class AppStore {
   async stashApply(index: number): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) return;
-    if (!this.beginGitAction('Applying stash…')) return;
+    if (!(await this.beginGitAction('Applying stash…'))) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashApply(path, index));
       await this.refreshWorkingTreeAndStashes(path);
@@ -6698,7 +6792,7 @@ export class AppStore {
     }))) {
       return;
     }
-    if (!this.beginGitAction('Dropping stash…')) return;
+    if (!(await this.beginGitAction('Dropping stash…'))) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashDrop(path, index));
       await this.refreshWorkingTreeAndStashes(path);
@@ -6726,7 +6820,7 @@ export class AppStore {
       confirmOnly: true,
     });
     if (ok === null) return;
-    if (!this.beginGitAction('Dropping stashes…')) return;
+    if (!(await this.beginGitAction('Dropping stashes…'))) return;
     try {
       const result = await this.withRepoMutation(() => this.tauri.stashClear(path));
       await this.refreshWorkingTreeAndStashes(path);
@@ -6765,33 +6859,73 @@ export class AppStore {
 
   async mergeBranch(name: string, noFf = false): Promise<void> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
+    const source = name.trim();
+    if (!path || !source) return;
+    if (!(await this.beginRemoteBusy('merge'))) return;
     try {
-      const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, name, noFf));
+      const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, source, noFf));
       if (!result.ok) {
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.toastGitIntegrate(result.message, `Merged ${source}`, source);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
+    }
+  }
+
+  async mergeLatestBase(): Promise<void> {
+    const path = this.currentRepo()?.path;
+    const base = this.baseUpdateRef();
+    if (!path) return;
+    if (!base) {
+      this.showWarning('No base branch to merge from');
+      return;
+    }
+    if (!(await this.beginRemoteBusy('fetch'))) return;
+    try {
+      const remote = parseRemoteRef(base.ref)?.remote;
+      if (remote) {
+        await this.runRemoteWithAccountRetry(() =>
+          this.withRepoMutation(() => this.tauri.fetch(path, { remote })),
+        );
+      }
+      this.remoteBusy.set('merge');
+      await this.paintBusy();
+      const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, base.ref));
+      if (!result.ok) {
+        await this.handleConflictResult(result);
+        return;
+      }
+      await this.refreshRepo();
+      this.toastGitIntegrate(result.message, `Merged ${base.label}`, base.label);
+    } catch (err) {
+      this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
   async rebaseOnto(onto: string): Promise<void> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
+    const target = onto.trim();
+    if (!path || !target) return;
+    if (!(await this.beginRemoteBusy('rebase'))) return;
     try {
-      const result = await this.withRepoMutation(() => this.tauri.rebaseOnto(path, onto));
+      const result = await this.withRepoMutation(() => this.tauri.rebaseOnto(path, target));
       if (!result.ok) {
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
-      this.showToast(result.message);
+      this.toastGitIntegrate(result.message, `Rebased onto ${target}`, target);
     } catch (err) {
       this.showError(err);
+    } finally {
+      this.remoteBusy.set(null);
     }
   }
 
@@ -6905,7 +7039,7 @@ export class AppStore {
         return false;
       }
       await this.refreshRepo();
-      this.showToast(message, { kind: 'success' });
+      this.toastGitIntegrate(message, fallback);
       return true;
     } catch (err) {
       const message = this.formatError(err);
@@ -7577,6 +7711,18 @@ export class AppStore {
 
   closeGitCleanDialog(): void {
     this.gitCleanDialogOpen.set(false);
+  }
+
+  openFetchDialog(): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    this.fetchDialogOpen.set(true);
+  }
+
+  closeFetchDialog(): void {
+    this.fetchDialogOpen.set(false);
   }
 
   openSyncPreview(kind: 'incoming' | 'outgoing'): void {
@@ -9244,6 +9390,9 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     defaultPullAction: normalizePullAction(raw.defaultPullAction),
     defaultPushAction: normalizePushAction(raw.defaultPushAction),
     autoFetchOnOpen: raw.autoFetchOnOpen ?? false,
+    fetchAllRemotes: raw.fetchAllRemotes ?? true,
+    fetchPrune: raw.fetchPrune ?? true,
+    fetchTags: raw.fetchTags ?? false,
     confirmForcePush: raw.confirmForcePush ?? true,
     confirmDiscard: raw.confirmDiscard ?? true,
     confirmPushNewBranch: raw.confirmPushNewBranch ?? true,

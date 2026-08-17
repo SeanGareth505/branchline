@@ -14,6 +14,7 @@ import type { PrCreateMethod, RepoPrTemplate, SavedPrTemplate } from '../../../c
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { branchLeafName, isMainlineBranch } from '../../../shared/git/mainline-branch';
+import { defaultPrTitle, fallbackPrTitle } from '../../../shared/git/pr-title';
 
 @Component({
   selector: 'app-create-pr-dialog',
@@ -38,6 +39,8 @@ export class CreatePrDialog {
   readonly repoTemplates = signal<RepoPrTemplate[]>([]);
   readonly loadingTemplates = signal(false);
   readonly busy = signal(false);
+  private titleTouched = false;
+  private titleToken = 0;
 
   readonly savedTemplates = computed(() => this.store.settings().prTemplates);
   readonly hostReady = computed(() => this.store.hasLinkedPrHost());
@@ -78,7 +81,7 @@ export class CreatePrDialog {
       const branch = status?.branch ?? '';
       const preferred = this.store.createPrPreferredHead()?.trim();
       const head = preferred || branch;
-      this.title.set(this.defaultTitle());
+      this.titleTouched = false;
       this.body.set('');
       this.head.set(head);
       this.base.set(this.defaultBase(head));
@@ -86,6 +89,8 @@ export class CreatePrDialog {
       this.method.set(this.store.settings().prCreateMethod);
       this.selectedId.set('blank');
       this.busy.set(false);
+      this.title.set(fallbackPrTitle(head));
+      void this.refreshTitle();
       void this.loadRepoTemplates();
     });
   }
@@ -108,9 +113,27 @@ export class CreatePrDialog {
     }
     const saved = this.savedTemplates().find((t) => t.id === id);
     if (saved) {
-      if (saved.title.trim()) this.title.set(saved.title);
+      if (saved.title.trim()) {
+        this.titleTouched = true;
+        this.title.set(saved.title);
+      }
       this.body.set(saved.body);
     }
+  }
+
+  onHeadChange(value: string): void {
+    this.head.set(value);
+    void this.refreshTitle();
+  }
+
+  onBaseChange(value: string): void {
+    this.base.set(value);
+    void this.refreshTitle();
+  }
+
+  onTitleChange(value: string): void {
+    this.titleTouched = true;
+    this.title.set(value);
   }
 
   async saveCurrentTemplate(): Promise<void> {
@@ -158,10 +181,22 @@ export class CreatePrDialog {
     }
   }
 
-  private defaultTitle(): string {
-    const subject = this.store.commits()[0]?.subject?.trim();
-    if (subject) return subject;
-    return (this.store.status()?.branch ?? '').replace(/\//g, ': ');
+  private async refreshTitle(): Promise<void> {
+    if (this.titleTouched) return;
+    const head = this.head().trim();
+    const base = this.base().trim();
+    this.title.set(fallbackPrTitle(head));
+    const path = this.store.currentRepo()?.path;
+    if (!path || !head || !base || head === base) return;
+    const token = ++this.titleToken;
+    try {
+      const commits = await this.tauri.getCommitRange(path, base, head, 100);
+      if (token !== this.titleToken || this.titleTouched) return;
+      this.title.set(defaultPrTitle(commits, head));
+    } catch {
+      if (token !== this.titleToken || this.titleTouched) return;
+      this.title.set(fallbackPrTitle(head));
+    }
   }
 
   private defaultBase(head: string): string {

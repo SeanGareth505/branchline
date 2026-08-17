@@ -73,7 +73,7 @@ export class App implements OnInit {
     }
     if (!typing && shortcutMatches(event, shortcuts.fetch) && this.store.currentRepo()) {
       event.preventDefault();
-      void this.store.fetchRemote();
+      void this.store.fetchWithSavedOptions();
       return;
     }
     if (!typing && shortcutMatches(event, shortcuts.commit) && this.store.currentRepo()) {
@@ -132,6 +132,8 @@ export class App implements OnInit {
         this.store.closeBranchHygieneDialog();
       } else if (this.store.gitCleanDialogOpen()) {
         this.store.closeGitCleanDialog();
+      } else if (this.store.fetchDialogOpen()) {
+        this.store.closeFetchDialog();
       } else if (this.store.syncPreviewDialogOpen()) {
         this.store.closeSyncPreviewDialog();
       } else if (this.store.publishGithubDialogOpen()) {

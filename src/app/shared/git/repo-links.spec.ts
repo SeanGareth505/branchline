@@ -1,4 +1,5 @@
 import {
+  branchWebUrl,
   commitWebUrl,
   compareWebUrl,
   fileWebUrl,
@@ -7,6 +8,7 @@ import {
   primaryGithubOwner,
   remoteProtocol,
   remoteRepoSlug,
+  tagWebUrl,
   toHttpsRemoteUrl,
   toSshRemoteUrl,
 } from './repo-links';
@@ -27,6 +29,21 @@ describe('repo web links', () => {
     );
     expect(commitWebUrl('git@gitlab.com:group/proj.git', 'abc1234')).toBe(
       'https://gitlab.com/group/proj/-/commit/abc1234',
+    );
+  });
+
+  it('builds GitHub and GitLab branch and tag URLs', () => {
+    expect(branchWebUrl('https://github.com/example/navigo.git', 'feature/foo')).toBe(
+      'https://github.com/example/navigo/tree/feature/foo',
+    );
+    expect(branchWebUrl('git@gitlab.com:group/proj.git', 'feature/foo')).toBe(
+      'https://gitlab.com/group/proj/-/tree/feature/foo',
+    );
+    expect(tagWebUrl('https://github.com/example/navigo.git', 'v1.0.0')).toBe(
+      'https://github.com/example/navigo/releases/tag/v1.0.0',
+    );
+    expect(tagWebUrl('https://gitlab.com/group/proj.git', 'v1.0.0')).toBe(
+      'https://gitlab.com/group/proj/-/tags/v1.0.0',
     );
   });
 

@@ -1015,15 +1015,68 @@ export class RefsPanel {
   }
 
   async copySha(name: string): Promise<void> {
+    await this.copyShaValue(this.menuTipSha(name), 'full');
+  }
+
+  async copyShortSha(name: string): Promise<void> {
+    await this.copyShaValue(this.menuTipSha(name), 'short');
+  }
+
+  async copyUpstream(name: string): Promise<void> {
+    const upstream = this.menuUpstream(name);
+    this.closeBranchMenu();
+    if (!upstream) {
+      this.store.showWarning('No upstream to copy');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(upstream);
+      this.store.showSuccess(`Copied ${upstream}`);
+    } catch {
+      this.store.showError('Could not copy upstream');
+    }
+  }
+
+  copyPermalink(name: string): void {
     const sha = this.menuTipSha(name);
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    if (!sha) {
+      this.store.showWarning('No commit to copy');
+      return;
+    }
+    void this.store.copyCommitPermalink(sha);
+  }
+
+  openOnHost(name: string): void {
+    this.closeBranchMenu();
+    this.closeTagMenu();
+    if (this.menuRemoteBranch(name)) {
+      this.store.openBranchOnHost(parseRemoteRef(name)?.branch ?? name);
+      return;
+    }
+    this.store.openBranchOnHost(name);
+  }
+
+  openTagOnHost(name: string): void {
+    this.closeTagMenu();
+    this.store.openTagOnHost(name);
+  }
+
+  hasHostRemote(): boolean {
+    return !!this.store.originFetchUrl();
+  }
+
+  private async copyShaValue(sha: string | null, kind: 'full' | 'short'): Promise<void> {
     this.closeBranchMenu();
     this.closeTagMenu();
     if (!sha) {
       this.store.showWarning('No commit SHA to copy');
       return;
     }
+    const value = kind === 'short' ? sha.slice(0, 7) : sha;
     try {
-      await navigator.clipboard.writeText(sha);
+      await navigator.clipboard.writeText(value);
       this.store.showSuccess(`Copied ${sha.slice(0, 7)}`);
     } catch {
       this.store.showError('Could not copy SHA');
@@ -1038,6 +1091,11 @@ export class RefsPanel {
       return;
     }
     await this.store.mergeBranch(upstream);
+  }
+
+  async mergeLatestBase(): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.mergeLatestBase();
   }
 
   async rebaseOntoUpstream(name: string): Promise<void> {

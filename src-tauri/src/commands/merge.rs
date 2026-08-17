@@ -35,6 +35,24 @@ pub struct ResetInput {
     pub mode: String,
 }
 
+fn merge_success_message(path: &std::path::Path, branch: &str, out: &str) -> String {
+    let trimmed = out.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("already up to date") || lower.contains("already up-to-date") {
+        return format!("Already up to date with {branch}");
+    }
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    let (is_ancestor, _, _) =
+        git_cli::run_git_allow_fail(path, &["merge-base", "--is-ancestor", branch, "HEAD"]);
+    if is_ancestor {
+        format!("Already up to date with {branch}")
+    } else {
+        format!("Merged {branch}")
+    }
+}
+
 #[command]
 pub fn merge_branch(input: MergeInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
@@ -46,11 +64,7 @@ pub fn merge_branch(input: MergeInput) -> AppResult<MutationOutput> {
         match git_cli::run_git(path, &args) {
             Ok(out) => Ok(MutationOutput {
                 ok: true,
-                message: if out.is_empty() {
-                    format!("Merged {}", input.branch)
-                } else {
-                    out
-                },
+                message: merge_success_message(path, &input.branch, &out),
             }),
             Err(e) => {
                 let msg = e.to_string();

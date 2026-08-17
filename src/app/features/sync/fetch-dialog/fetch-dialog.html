@@ -1,0 +1,68 @@
+@if (store.fetchDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="fetch-dialog-title"
+    >
+      <header>
+        <div class="title-block">
+          <span class="eyebrow">Remote</span>
+          <h2 id="fetch-dialog-title">Fetch</h2>
+        </div>
+        <button type="button" class="icon-btn" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <div class="options">
+        <label class="option">
+          <input type="checkbox" [ngModel]="allRemotes()" (ngModelChange)="allRemotes.set($event)" />
+          <span class="option-copy">
+            <span class="option-title">Fetch from all remotes</span>
+            <span class="option-hint">
+              @if (remoteCount() > 1) {
+                Download updates from every configured remote ({{ remoteCount() }}).
+              } @else {
+                Download updates from {{ remoteName() }}.
+              }
+            </span>
+          </span>
+        </label>
+        <label class="option">
+          <input type="checkbox" [ngModel]="prune()" (ngModelChange)="prune.set($event)" />
+          <span class="option-copy">
+            <span class="option-title">Prune tracking branches no longer present on remote(s)</span>
+            <span class="option-hint">Remove local remote-tracking branches that were deleted upstream.</span>
+          </span>
+        </label>
+        <label class="option">
+          <input type="checkbox" [ngModel]="tags()" (ngModelChange)="tags.set($event)" />
+          <span class="option-copy">
+            <span class="option-title">Fetch and store all tags locally</span>
+            <span class="option-hint">Also download tags that are not on the branches being fetched.</span>
+          </span>
+        </label>
+      </div>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="submitting()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="submitting()"
+          (click)="submit()"
+        >
+          @if (submitting()) {
+            <app-spinner size="sm" label="Fetching" />
+            Fetching…
+          } @else {
+            Fetch
+          }
+        </button>
+      </footer>
+    </div>
+  </div>
+}

@@ -1,9 +1,17 @@
-import { summarizeGitToastMessage } from './git-toast';
+import {
+  alreadyUpToDateLabel,
+  isAlreadyUpToDateMessage,
+  summarizeGitToastMessage,
+} from './git-toast';
 
 describe('summarizeGitToastMessage', () => {
   it('keeps short messages', () => {
     expect(summarizeGitToastMessage('Pulled from origin')).toBe('Pulled from origin');
     expect(summarizeGitToastMessage('Already up to date.')).toBe('Already up to date.');
+  });
+
+  it('summarizes hyphenated already-up-to-date lines', () => {
+    expect(summarizeGitToastMessage('Already up-to-date.')).toBe('Already up-to-date.');
   });
 
   it('summarizes a fast-forward pull with a files-changed footer', () => {
@@ -33,5 +41,19 @@ describe('summarizeGitToastMessage', () => {
     const extra = Array.from({ length: 12 }, (_, i) => ` * [new branch]      feature/${i} -> origin/feature/${i}`);
     const raw = ['From github.com:org/repo', ...extra].join('\n');
     expect(summarizeGitToastMessage(raw)).toBe('From github.com:org/repo · 12 more lines');
+  });
+});
+
+describe('already up to date helpers', () => {
+  it('detects git already-up-to-date wording', () => {
+    expect(isAlreadyUpToDateMessage('Already up to date.')).toBe(true);
+    expect(isAlreadyUpToDateMessage('Already up-to-date')).toBe(true);
+    expect(isAlreadyUpToDateMessage('Current branch feature/foo is up to date.')).toBe(true);
+    expect(isAlreadyUpToDateMessage('Fast-forward')).toBe(false);
+  });
+
+  it('names the source branch in the toast', () => {
+    expect(alreadyUpToDateLabel('origin/main')).toBe('Already up to date with origin/main');
+    expect(alreadyUpToDateLabel('')).toBe('Already up to date');
   });
 });

@@ -1,6 +1,19 @@
 const CREATE_MODE = /\bcreate mode \d{6}\b/i;
 const DELETE_MODE = /\bdelete mode \d{6}\b/i;
 const FILES_CHANGED = /\d+ files? changed\b/i;
+const ALREADY_UP_TO_DATE = /already up[- ]to[- ]date/i;
+const BRANCH_UP_TO_DATE = /\bis up to date\.?$/i;
+
+export function isAlreadyUpToDateMessage(raw: string): boolean {
+  const text = raw.replace(/\r\n/g, '\n').trim();
+  if (!text) return false;
+  return ALREADY_UP_TO_DATE.test(text) || BRANCH_UP_TO_DATE.test(text);
+}
+
+export function alreadyUpToDateLabel(source?: string | null): string {
+  const name = source?.trim();
+  return name ? `Already up to date with ${name}` : 'Already up to date';
+}
 
 export function summarizeGitToastMessage(raw: string, maxChars = 220): string {
   const text = raw.replace(/\r\n/g, '\n').trim();
@@ -22,7 +35,7 @@ export function summarizeGitToastMessage(raw: string, maxChars = 220): string {
     return lines.join(' · ');
   }
 
-  const already = lines.find((line) => /already up to date\.?$/i.test(line));
+  const already = lines.find((line) => ALREADY_UP_TO_DATE.test(line) || BRANCH_UP_TO_DATE.test(line));
   const filesChanged = [...lines].reverse().find((line) => FILES_CHANGED.test(line));
   const fastForward = lines.some((line) => /^fast-forward$/i.test(line));
   let created = 0;

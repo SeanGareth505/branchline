@@ -26,7 +26,9 @@
             </span>
             <span class="meta">
               <span class="name">{{ c.name }}</span>
-              <span class="from">{{ c.sourceLabel }}</span>
+              @if (c.sourceLabel !== managers()[0]?.label) {
+                <span class="from">{{ c.sourceLabel }}</span>
+              }
             </span>
             @if (!c.enabled) {
               <span class="off-label">off</span>

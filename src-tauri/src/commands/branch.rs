@@ -62,6 +62,12 @@ pub struct RemoteActionInput {
     pub branch: Option<String>,
     #[serde(default)]
     pub skip_hooks: Option<bool>,
+    #[serde(default)]
+    pub all_remotes: bool,
+    #[serde(default)]
+    pub prune: bool,
+    #[serde(default)]
+    pub tags: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,16 +260,22 @@ pub fn rename_branch(
 #[command]
 pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let args = git_cli::fetch_args(input.remote.as_deref());
-        let out = git_cli::run_git_strings(path, &args)?;
-        Ok(MutationOutput {
-            ok: true,
-            message: if out.is_empty() {
-                "Fetched".into()
-            } else {
-                out
-            },
-        })
+        let args = git_cli::fetch_args(
+            input.remote.as_deref(),
+            input.all_remotes,
+            input.prune,
+            input.tags,
+        );
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (stdout, stderr) = git_cli::run_git_out_err(path, &refs)?;
+        let message = if stdout.is_empty() && stderr.is_empty() {
+            "Already up to date".into()
+        } else if stdout.is_empty() {
+            stderr
+        } else {
+            stdout
+        };
+        Ok(MutationOutput { ok: true, message })
     })
 }
 

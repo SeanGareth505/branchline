@@ -46,11 +46,21 @@
         class="tool"
         [title]="pullTitle()"
         [disabled]="!!store.remoteBusy() || store.repoContentPending()"
-        [attr.aria-busy]="store.remoteBusy() === 'fetch' || store.remoteBusy() === 'pull'"
+        [attr.aria-busy]="
+          store.remoteBusy() === 'fetch' ||
+          store.remoteBusy() === 'pull' ||
+          store.remoteBusy() === 'merge' ||
+          store.remoteBusy() === 'rebase'
+        "
         (click)="runDefaultPull()"
       >
-        @if (store.remoteBusy() === 'fetch' || store.remoteBusy() === 'pull') {
-          <app-spinner size="sm" [label]="store.remoteBusy() === 'fetch' ? 'Fetching' : 'Pulling'" />
+        @if (
+          store.remoteBusy() === 'fetch' ||
+          store.remoteBusy() === 'pull' ||
+          store.remoteBusy() === 'merge' ||
+          store.remoteBusy() === 'rebase'
+        ) {
+          <app-spinner size="sm" [label]="store.busyMessage() || 'Working'" />
         } @else {
           <ng-icon [name]="pullIcon()" size="14" />
         }
@@ -59,6 +69,10 @@
             Fetching…
           } @else if (store.remoteBusy() === 'pull') {
             Pulling…
+          } @else if (store.remoteBusy() === 'merge') {
+            Merging…
+          } @else if (store.remoteBusy() === 'rebase') {
+            Rebasing…
           } @else {
             {{ pullLabel() }}
           }
@@ -130,6 +144,25 @@
             </span>
             Fetch
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            title="Choose remotes, prune, and tags before fetching"
+            (click)="openFetchOptions()"
+          >
+            Fetch options…
+          </button>
+          @if (store.baseUpdateRef(); as base) {
+            <div class="bl-menu-sep"></div>
+            <button
+              type="button"
+              role="menuitem"
+              [title]="'Fetch ' + base.label + ' and merge it into the current branch'"
+              (click)="mergeLatestBase()"
+            >
+              Merge latest {{ base.label }}
+            </button>
+          }
         </div>
       </ng-template>
     </div>

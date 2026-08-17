@@ -697,6 +697,59 @@ code,
   gap: 0.1rem;
 }
 
+.bl-menu:has(> .bl-menu-flyout) {
+  overflow: visible;
+  max-height: none;
+}
+
+.bl-menu-target {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bl-menu-flyout {
+  position: relative;
+  width: 100%;
+}
+
+.bl-menu-flyout > .bl-menu-flyout-trigger .flyout-chev {
+  margin-left: auto;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.bl-menu-flyout:hover > .bl-menu-flyout-trigger,
+.bl-menu-flyout:focus-within > .bl-menu-flyout-trigger {
+  background: var(--bg-hover);
+}
+
+.bl-menu-flyout-panel {
+  position: absolute;
+  top: -0.25rem;
+  left: calc(100% - 2px);
+  z-index: 3;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 80ms ease,
+    visibility 0s linear 120ms;
+}
+
+.bl-menu-flyout:hover > .bl-menu-flyout-panel,
+.bl-menu-flyout:focus-within > .bl-menu-flyout-panel {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
 .bl-menu-label {
   padding: 0.35rem 0.65rem 0.2rem;
   font-size: 10px;
@@ -760,6 +813,10 @@ code,
 
 .cdk-overlay-transparent-backdrop {
   background: transparent;
+}
+
+.cdk-overlay-pane:has(.bl-menu-flyout) {
+  overflow: visible;
 }
 
 .cdk-overlay-container {

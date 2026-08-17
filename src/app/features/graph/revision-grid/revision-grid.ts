@@ -13,6 +13,7 @@ import {
 import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import { CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf } from '@angular/cdk/scrolling';
 import { FormsModule } from '@angular/forms';
+import { NgIcon } from '@ng-icons/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { ArtificialCommit, CommitInfo, RevisionGridColumns } from '../../../core/models';
@@ -74,6 +75,7 @@ interface StaticRowView {
   selector: 'app-revision-grid',
   imports: [
     FormsModule,
+    NgIcon,
     CdkConnectedOverlay,
     CdkVirtualScrollViewport,
     CdkFixedSizeVirtualScroll,

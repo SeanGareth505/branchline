@@ -245,7 +245,19 @@ export class CommandPalette {
         id: 'fetch',
         label: 'Fetch from remote',
         group: 'Git',
-        run: () => void store.fetchRemote(),
+        run: () => void store.fetchWithSavedOptions(),
+      },
+      {
+        id: 'fetch-options',
+        label: 'Fetch options…',
+        group: 'Git',
+        run: () => store.openFetchDialog(),
+      },
+      {
+        id: 'merge-latest-base',
+        label: `Merge latest ${store.baseUpdateRef()?.label ?? 'base branch'}`,
+        group: 'Git',
+        run: () => void store.mergeLatestBase(),
       },
       { id: 'pull', label: 'Pull updates', group: 'Git', run: () => void store.pullRemote() },
       {
@@ -526,7 +538,7 @@ export class CommandPalette {
         id: 'shortcut-fetch',
         label: 'Shortcut · ⌘⇧F / Ctrl+Shift+F — Fetch',
         group: 'Shortcuts',
-        run: () => void store.fetchRemote(),
+        run: () => void store.fetchWithSavedOptions(),
       },
       {
         id: 'shortcut-search',

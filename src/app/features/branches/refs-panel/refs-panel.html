@@ -208,9 +208,6 @@
         >
           <ng-icon class="chev" [name]="chevron('local')" size="13" />
           <span class="kind" title="Branches on this machine">Local</span>
-          @if (syncLabel(); as sync) {
-            <span class="sync-chip" [attr.data-kind]="sync.kind" [title]="sync.statusTooltip">{{ sync.short }}</span>
-          }
           <span class="count" title="Number of local branches">{{ filteredLocal().length }}</span>
         </button>
         @if (cleanupTargetCount() > 0) {
@@ -297,79 +294,83 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
-                  @if (row.branch.isCurrent) {
-                    <span class="head-chip" title="Checked out — this is the branch you are on">HEAD</span>
-                  }
-                  @if (ticketLabel(row.branch.name); as ticket) {
-                    <button
-                      type="button"
-                      class="ticket-chip"
-                      [class.mapped]="!!mappedTicket(row.branch.name)"
-                      [title]="
-                        mappedTicket(row.branch.name)
-                          ? 'Linked to ' + ticket + ' — click to open'
-                          : ticket + ' from branch name — click to open'
-                      "
-                      (click)="openLinkedJira(row.branch.name, $event)"
-                    >
-                      {{ ticket }}
-                    </button>
-                  }
-                  @if (row.branch.isCurrent && store.changeCount(); as n) {
-                    <span
-                      class="sync-chip row-sync"
-                      data-kind="dirty"
-                      [title]="n + ' uncommitted change' + (n === 1 ? '' : 's')"
-                    >
-                      {{ n }}
-                    </span>
-                  }
-                  @if (row.branch.isCurrent && syncLabel(); as sync) {
-                    @if (sync.kind === 'publish') {
-                      <button
-                        type="button"
+                  <div class="row-meta">
+                    @if (row.branch.isCurrent && store.changeCount(); as n) {
+                      <span
                         class="sync-chip row-sync"
-                        [attr.data-kind]="sync.kind"
-                        [title]="sync.tooltip"
-                        (click)="revealUpstream(row.branch, $event)"
+                        data-kind="dirty"
+                        [title]="n + ' uncommitted change' + (n === 1 ? '' : 's')"
                       >
-                        {{ sync.short }}
-                      </button>
-                    } @else {
-                      <span class="sync-chip row-sync" [attr.data-kind]="sync.kind" [title]="sync.statusTooltip">
-                        {{ sync.short }}
+                        {{ n }}
                       </span>
                     }
-                  }
-                  @if (row.branch.locked) {
-                    <span
-                      class="lock-badge"
-                      [title]="
-                        row.branch.lockReason
-                          ? 'Locked: ' + row.branch.lockReason
-                          : 'Locked — push, rename, and delete blocked'
-                      "
-                    >
-                      <ng-icon name="lucideLock" size="10" />
-                    </span>
-                  }
+                    @if (row.branch.isCurrent && syncLabel(); as sync) {
+                      @if (sync.kind !== 'synced') {
+                        @if (sync.kind === 'publish') {
+                          <button
+                            type="button"
+                            class="sync-chip row-sync"
+                            [attr.data-kind]="sync.kind"
+                            [title]="sync.tooltip"
+                            (click)="revealUpstream(row.branch, $event)"
+                          >
+                            {{ sync.short }}
+                          </button>
+                        } @else {
+                          <span
+                            class="sync-chip row-sync"
+                            [attr.data-kind]="sync.kind"
+                            [title]="sync.statusTooltip"
+                          >
+                            {{ sync.short }}
+                          </span>
+                        }
+                      }
+                    }
+                    @if (ticketLabel(row.branch.name); as ticket) {
+                      <button
+                        type="button"
+                        class="ticket-chip"
+                        [class.mapped]="!!mappedTicket(row.branch.name)"
+                        [title]="
+                          mappedTicket(row.branch.name)
+                            ? 'Linked to ' + ticket + ' — click to open'
+                            : ticket + ' from branch name — click to open'
+                        "
+                        (click)="openLinkedJira(row.branch.name, $event)"
+                      >
+                        {{ ticket }}
+                      </button>
+                    }
+                    @if (row.branch.locked) {
+                      <span
+                        class="lock-badge"
+                        [title]="
+                          row.branch.lockReason
+                            ? 'Locked: ' + row.branch.lockReason
+                            : 'Locked — push, rename, and delete blocked'
+                        "
+                      >
+                        <ng-icon name="lucideLock" size="10" />
+                      </span>
+                    }
+                    @if (row.branch.upstream) {
+                      <button
+                        type="button"
+                        class="upstream-chip"
+                        [class.gone]="row.branch.upstreamGone"
+                        [title]="
+                          row.branch.upstreamGone
+                            ? 'Upstream gone — click to look for it'
+                            : 'Show upstream ' + row.branch.upstream
+                        "
+                        (click)="revealUpstream(row.branch, $event)"
+                      >
+                        <ng-icon name="lucideCloud" size="10" />
+                      </button>
+                    }
+                  </div>
                 </div>
-                @if (upstreamLabel(row.branch); as up) {
-                  <button
-                    type="button"
-                    class="upstream-chip"
-                    [class.gone]="row.branch.upstreamGone"
-                    [title]="
-                      row.branch.upstreamGone
-                        ? 'Upstream gone — click to look for it'
-                        : 'Show upstream ' + row.branch.upstream
-                    "
-                    (click)="revealUpstream(row.branch, $event)"
-                  >
-                    <ng-icon name="lucideCloud" size="10" />
-                    <span class="upstream-label">{{ up }}</span>
-                  </button>
-                }
                 @if (!row.branch.isCurrent && !row.branch.locked) {
                   <button
                     type="button"
@@ -696,6 +697,7 @@
 >
   @if (tagMenu(); as menu) {
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+      <div class="bl-menu-label bl-menu-target" [title]="menu.name">{{ menu.name }}</div>
       <button
         type="button"
         title="Check out this tag (detached HEAD)"
@@ -710,43 +712,60 @@
       >
         Show in graph
       </button>
-      <button type="button" title="Copy tag name" (click)="copyRefName(menu.name)">Copy name</button>
-      <button type="button" title="Copy this tag’s commit SHA" (click)="copySha(menu.name)">
-        Copy SHA
-      </button>
+      @if (hasHostRemote()) {
+        <button type="button" title="Open this tag on GitHub or GitLab" (click)="openTagOnHost(menu.name)">
+          Open on host
+        </button>
+      }
+      <ng-container *ngTemplateOutlet="copyFlyout; context: { $implicit: menu.name }" />
+      <div class="bl-menu-flyout">
+        <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+          Integrate
+          <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+        </button>
+        <div class="bl-menu bl-menu-flyout-panel" role="menu">
+          <button
+            type="button"
+            title="Bring this tag’s commit into your current branch"
+            (click)="mergeTag(menu.name)"
+          >
+            Merge into current
+          </button>
+          <button
+            type="button"
+            title="Diff this tag against the branch you have checked out"
+            (click)="compareThis(menu.name)"
+          >
+            Compare with current
+          </button>
+          <button
+            type="button"
+            title="Copy this tag’s commit onto your current branch"
+            (click)="cherryPickTip(menu.name)"
+          >
+            Cherry-pick onto current
+          </button>
+        </div>
+      </div>
+      <div class="bl-menu-flyout">
+        <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+          Create
+          <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+        </button>
+        <div class="bl-menu bl-menu-flyout-panel" role="menu">
+          <button
+            type="button"
+            title="Create and check out a new branch pointing at this tag"
+            (click)="newBranchFrom(menu.name)"
+          >
+            New branch from here…
+          </button>
+          <button type="button" title="Push this tag to a remote" (click)="pushTag(menu.name)">
+            Push tag…
+          </button>
+        </div>
+      </div>
       <div class="bl-menu-sep"></div>
-      <button
-        type="button"
-        title="Bring this tag’s commit into your current branch"
-        (click)="mergeTag(menu.name)"
-      >
-        Merge into current
-      </button>
-      <button
-        type="button"
-        title="Diff this tag against the branch you have checked out"
-        (click)="compareThis(menu.name)"
-      >
-        Compare with current
-      </button>
-      <button
-        type="button"
-        title="Create and check out a new branch pointing at this tag"
-        (click)="newBranchFrom(menu.name)"
-      >
-        New branch from here…
-      </button>
-      <button
-        type="button"
-        title="Copy this tag’s commit onto your current branch"
-        (click)="cherryPickTip(menu.name)"
-      >
-        Cherry-pick onto current
-      </button>
-      <div class="bl-menu-sep"></div>
-      <button type="button" title="Push this tag to a remote" (click)="pushTag(menu.name)">
-        Push tag…
-      </button>
       <button
         type="button"
         class="danger"
@@ -759,6 +778,7 @@
   } @else if (branchMenu(); as menu) {
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
       @if (menuLocalBranch(menu.name); as local) {
+        <div class="bl-menu-label bl-menu-target" [title]="menu.name">{{ menu.name }}</div>
         @if (!local.isCurrent) {
           <button
             type="button"
@@ -775,206 +795,6 @@
         >
           Show in graph
         </button>
-        <button type="button" title="Copy branch name" (click)="copyRefName(menu.name)">
-          Copy name
-        </button>
-        <button type="button" title="Copy this branch’s tip SHA" (click)="copySha(menu.name)">
-          Copy SHA
-        </button>
-
-        <div class="bl-menu-label">Remote</div>
-        @if (local.isCurrent && menuUpstream(menu.name)) {
-          <button
-            type="button"
-            title="Fetch and merge (or rebase) this branch’s upstream"
-            (click)="pullCurrent(false)"
-          >
-            Pull
-          </button>
-          <button
-            type="button"
-            title="Fetch, then rebase this branch onto its upstream"
-            (click)="pullCurrent(true)"
-          >
-            Pull with rebase
-          </button>
-        }
-        @if (menuUpstream(menu.name); as upstream) {
-          <button
-            type="button"
-            [title]="'Merge ' + upstream + ' into your current branch'"
-            (click)="mergeUpstream(menu.name)"
-          >
-            Merge {{ menuUpstreamShort(menu.name) }}
-          </button>
-          @if (local.isCurrent) {
-            <button
-              type="button"
-              [title]="'Replay this branch on top of ' + upstream"
-              (click)="rebaseOntoUpstream(menu.name)"
-            >
-              Rebase onto {{ menuUpstreamShort(menu.name) }}
-            </button>
-          }
-          <button
-            type="button"
-            [title]="'Fast-forward to ' + upstream + ' (refuses if histories diverged)'"
-            (click)="fastForwardThis(menu.name)"
-          >
-            Fast-forward to {{ menuUpstreamShort(menu.name) }}
-          </button>
-        }
-        <button
-          type="button"
-          [title]="
-            menuUpstream(menu.name)
-              ? 'Push this branch to its upstream'
-              : 'Publish this branch to the remote and set upstream'
-          "
-          (click)="pushThis(menu.name)"
-        >
-          {{ menuUpstream(menu.name) ? 'Push' : 'Publish…' }}
-        </button>
-        @if (menuUpstream(menu.name)) {
-          <button
-            type="button"
-            title="Force push with lease (refuses if the remote moved)"
-            (click)="forcePushThis(menu.name)"
-          >
-            Force push with lease…
-          </button>
-        }
-        <button
-          type="button"
-          title="Fetch updates from this branch’s remote"
-          (click)="fetchThis(menu.name)"
-        >
-          Fetch
-        </button>
-        <button
-          type="button"
-          [title]="
-            local.upstream || relatedRemote(local)
-              ? 'Jump to the remote-tracking branch this local tracks'
-              : 'Look for a matching branch under remotes'
-          "
-          (click)="revealUpstream(local); closeBranchMenu()"
-        >
-          {{ local.upstream || relatedRemote(local) ? 'Show upstream' : 'Find on remote…' }}
-        </button>
-        <button
-          type="button"
-          title="Choose which remote-tracking branch this local tracks"
-          (click)="setUpstream(menu.name)"
-        >
-          {{ menuUpstream(menu.name) ? 'Change upstream…' : 'Set upstream…' }}
-        </button>
-        @if (local.upstream) {
-          <button
-            type="button"
-            title="Stop tracking a remote branch"
-            (click)="unsetUpstream(menu.name)"
-          >
-            Unset upstream
-          </button>
-        }
-
-        @if (!local.isCurrent) {
-          <div class="bl-menu-label">Current branch</div>
-          <button
-            type="button"
-            title="Bring this branch’s commits into your current branch"
-            (click)="mergeBranch(menu.name)"
-          >
-            Merge into current
-          </button>
-          <button
-            type="button"
-            title="Replay your current branch’s commits on top of this branch"
-            (click)="rebaseOnto(menu.name)"
-          >
-            Rebase current onto this
-          </button>
-          @if (menuUpstream(menu.name); as upstream) {
-            <button
-              type="button"
-              [title]="'Replay your current branch on top of ' + upstream"
-              (click)="rebaseOntoUpstream(menu.name)"
-            >
-              Rebase current onto {{ menuUpstreamShort(menu.name) }}
-            </button>
-          }
-          <button
-            type="button"
-            title="Move current branch tip here; keep all file changes staged"
-            (click)="resetCurrent(menu.name, 'soft')"
-          >
-            Reset current (soft)
-          </button>
-          <button
-            type="button"
-            title="Move current branch tip here; keep file changes unstaged"
-            (click)="resetCurrent(menu.name, 'mixed')"
-          >
-            Reset current (mixed)
-          </button>
-          <button
-            type="button"
-            title="Move current branch tip here and discard later changes — destructive"
-            (click)="resetCurrent(menu.name, 'hard')"
-          >
-            Hard reset current…
-          </button>
-          <button
-            type="button"
-            title="Copy this branch’s tip onto your current branch as a new commit"
-            (click)="cherryPickTip(menu.name)"
-          >
-            Cherry-pick tip onto current
-          </button>
-          <button
-            type="button"
-            title="Diff this branch against the branch you have checked out"
-            (click)="compareThis(menu.name)"
-          >
-            Compare with current
-          </button>
-        }
-
-        <div class="bl-menu-label">Create</div>
-        <button
-          type="button"
-          title="Create a new local branch starting at this tip"
-          (click)="newBranchFrom(menu.name)"
-        >
-          New branch from here…
-        </button>
-        <button
-          type="button"
-          title="Check out this branch in a separate working directory"
-          (click)="newWorktreeFrom(menu.name)"
-        >
-          New worktree from here…
-        </button>
-        <button
-          type="button"
-          title="Create a tag pointing at this branch’s tip"
-          (click)="createTagHere(menu.name)"
-        >
-          Create tag here…
-        </button>
-        <button
-          type="button"
-          title="Open a pull request from this branch"
-          (click)="openPr(menu.name)"
-        >
-          Open pull request…
-        </button>
-
-        <div class="bl-menu-label">This branch</div>
-        <button type="button" title="Rename this local branch" (click)="rename(menu.name)">
-          Rename…
-        </button>
         @if (mappedTicket(menu.name); as key) {
           <button
             type="button"
@@ -983,54 +803,274 @@
           >
             Open {{ key }}
           </button>
-          <button
-            type="button"
-            [title]="
-              store.canPickJiraIssues()
-                ? 'Attach a different Jira issue'
-                : 'Connect Jira to pick a different issue'
-            "
-            (click)="linkJira(menu.name)"
-          >
-            Change Jira link…
-          </button>
-          <button
-            type="button"
-            title="Remove the Jira link from this branch"
-            (click)="unlinkJira(menu.name)"
-          >
-            Unlink {{ key }}
-          </button>
-        } @else {
-          <button
-            type="button"
-            [title]="
-              store.canPickJiraIssues()
-                ? 'Attach a Jira issue to this branch'
-                : 'Connect Jira to pick an issue'
-            "
-            (click)="linkJira(menu.name)"
-          >
-            {{ store.canPickJiraIssues() ? 'Link to Jira…' : 'Connect Jira…' }}
+        }
+        @if (hasHostRemote()) {
+          <button type="button" title="Open this branch on GitHub or GitLab" (click)="openOnHost(menu.name)">
+            Open on host
           </button>
         }
-        @if (store.isBranchLocked(menu.name)) {
-          <button
-            type="button"
-            title="Allow push, rename, and delete on this branch again"
-            (click)="unlockBranch(menu.name)"
-          >
-            Unlock branch
+        <ng-container *ngTemplateOutlet="copyFlyout; context: { $implicit: menu.name }" />
+        <div class="bl-menu-flyout">
+          <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+            Remote
+            <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
           </button>
-        } @else if (canLockBranch(menu.name)) {
-          <button
-            type="button"
-            title="Block push, rename, and delete to protect this branch"
-            (click)="lockBranch(menu.name)"
-          >
-            Lock branch…
-          </button>
+          <div class="bl-menu bl-menu-flyout-panel" role="menu">
+            @if (local.isCurrent && menuUpstream(menu.name)) {
+              <button
+                type="button"
+                title="Fetch and merge (or rebase) this branch’s upstream"
+                (click)="pullCurrent(false)"
+              >
+                Pull
+              </button>
+              <button
+                type="button"
+                title="Fetch, then rebase this branch onto its upstream"
+                (click)="pullCurrent(true)"
+              >
+                Pull with rebase
+              </button>
+            }
+            <button
+              type="button"
+              [title]="
+                menuUpstream(menu.name)
+                  ? 'Push this branch to its upstream'
+                  : 'Publish this branch to the remote and set upstream'
+              "
+              (click)="pushThis(menu.name)"
+            >
+              {{ menuUpstream(menu.name) ? 'Push' : 'Publish…' }}
+            </button>
+            @if (menuUpstream(menu.name)) {
+              <button
+                type="button"
+                title="Force push with lease (refuses if the remote moved)"
+                (click)="forcePushThis(menu.name)"
+              >
+                Force push with lease…
+              </button>
+            }
+            <button
+              type="button"
+              title="Fetch updates from this branch’s remote"
+              (click)="fetchThis(menu.name)"
+            >
+              Fetch
+            </button>
+            @if (local.isCurrent) {
+              @if (store.baseUpdateRef(); as base) {
+                <button
+                  type="button"
+                  [title]="'Fetch ' + base.label + ' and merge it into this branch'"
+                  (click)="mergeLatestBase()"
+                >
+                  Merge latest {{ base.label }}
+                </button>
+              }
+            }
+            @if (menuUpstream(menu.name); as upstream) {
+              <div class="bl-menu-sep"></div>
+              <button
+                type="button"
+                [title]="'Merge ' + upstream + ' into your current branch'"
+                (click)="mergeUpstream(menu.name)"
+              >
+                Merge {{ menuUpstreamShort(menu.name) }}
+              </button>
+              @if (local.isCurrent) {
+                <button
+                  type="button"
+                  [title]="'Replay this branch on top of ' + upstream"
+                  (click)="rebaseOntoUpstream(menu.name)"
+                >
+                  Rebase onto {{ menuUpstreamShort(menu.name) }}
+                </button>
+              }
+              <button
+                type="button"
+                [title]="'Fast-forward to ' + upstream + ' (refuses if histories diverged)'"
+                (click)="fastForwardThis(menu.name)"
+              >
+                Fast-forward to {{ menuUpstreamShort(menu.name) }}
+              </button>
+            }
+            <div class="bl-menu-sep"></div>
+            <button
+              type="button"
+              [title]="
+                local.upstream || relatedRemote(local)
+                  ? 'Jump to the remote-tracking branch this local tracks'
+                  : 'Look for a matching branch under remotes'
+              "
+              (click)="revealUpstream(local); closeBranchMenu()"
+            >
+              {{ local.upstream || relatedRemote(local) ? 'Show upstream' : 'Find on remote…' }}
+            </button>
+            <button
+              type="button"
+              title="Choose which remote-tracking branch this local tracks"
+              (click)="setUpstream(menu.name)"
+            >
+              {{ menuUpstream(menu.name) ? 'Change upstream…' : 'Set upstream…' }}
+            </button>
+            @if (local.upstream) {
+              <button
+                type="button"
+                title="Stop tracking a remote branch"
+                (click)="unsetUpstream(menu.name)"
+              >
+                Unset upstream
+              </button>
+            }
+          </div>
+        </div>
+        @if (!local.isCurrent) {
+          <div class="bl-menu-flyout">
+            <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+              Current branch
+              <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+            </button>
+            <div class="bl-menu bl-menu-flyout-panel" role="menu">
+              <button
+                type="button"
+                title="Bring this branch’s commits into your current branch"
+                (click)="mergeBranch(menu.name)"
+              >
+                Merge into current
+              </button>
+              <button
+                type="button"
+                title="Replay your current branch’s commits on top of this branch"
+                (click)="rebaseOnto(menu.name)"
+              >
+                Rebase current onto this
+              </button>
+              @if (menuUpstream(menu.name); as upstream) {
+                <button
+                  type="button"
+                  [title]="'Replay your current branch on top of ' + upstream"
+                  (click)="rebaseOntoUpstream(menu.name)"
+                >
+                  Rebase current onto {{ menuUpstreamShort(menu.name) }}
+                </button>
+              }
+              <button
+                type="button"
+                title="Copy this branch’s tip onto your current branch as a new commit"
+                (click)="cherryPickTip(menu.name)"
+              >
+                Cherry-pick tip onto current
+              </button>
+              <button
+                type="button"
+                title="Diff this branch against the branch you have checked out"
+                (click)="compareThis(menu.name)"
+              >
+                Compare with current
+              </button>
+              <ng-container *ngTemplateOutlet="resetFlyout; context: { $implicit: menu.name }" />
+            </div>
+          </div>
         }
+        <div class="bl-menu-flyout">
+          <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+            Create
+            <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+          </button>
+          <div class="bl-menu bl-menu-flyout-panel" role="menu">
+            <button
+              type="button"
+              title="Create a new local branch starting at this tip"
+              (click)="newBranchFrom(menu.name)"
+            >
+              New branch from here…
+            </button>
+            <button
+              type="button"
+              title="Check out this branch in a separate working directory"
+              (click)="newWorktreeFrom(menu.name)"
+            >
+              New worktree from here…
+            </button>
+            <button
+              type="button"
+              title="Create a tag pointing at this branch’s tip"
+              (click)="createTagHere(menu.name)"
+            >
+              Create tag here…
+            </button>
+            <button
+              type="button"
+              title="Open a pull request from this branch"
+              (click)="openPr(menu.name)"
+            >
+              Open pull request…
+            </button>
+          </div>
+        </div>
+        <div class="bl-menu-flyout">
+          <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+            This branch
+            <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+          </button>
+          <div class="bl-menu bl-menu-flyout-panel" role="menu">
+            <button type="button" title="Rename this local branch" (click)="rename(menu.name)">
+              Rename…
+            </button>
+            @if (mappedTicket(menu.name); as key) {
+              <button
+                type="button"
+                [title]="
+                  store.canPickJiraIssues()
+                    ? 'Attach a different Jira issue'
+                    : 'Connect Jira to pick a different issue'
+                "
+                (click)="linkJira(menu.name)"
+              >
+                Change Jira link…
+              </button>
+              <button
+                type="button"
+                title="Remove the Jira link from this branch"
+                (click)="unlinkJira(menu.name)"
+              >
+                Unlink {{ key }}
+              </button>
+            } @else {
+              <button
+                type="button"
+                [title]="
+                  store.canPickJiraIssues()
+                    ? 'Attach a Jira issue to this branch'
+                    : 'Connect Jira to pick an issue'
+                "
+                (click)="linkJira(menu.name)"
+              >
+                {{ store.canPickJiraIssues() ? 'Link to Jira…' : 'Connect Jira…' }}
+              </button>
+            }
+            @if (store.isBranchLocked(menu.name)) {
+              <button
+                type="button"
+                title="Allow push, rename, and delete on this branch again"
+                (click)="unlockBranch(menu.name)"
+              >
+                Unlock branch
+              </button>
+            } @else if (canLockBranch(menu.name)) {
+              <button
+                type="button"
+                title="Block push, rename, and delete to protect this branch"
+                (click)="lockBranch(menu.name)"
+              >
+                Lock branch…
+              </button>
+            }
+          </div>
+        </div>
+        <div class="bl-menu-sep"></div>
         <button
           type="button"
           class="danger"
@@ -1040,6 +1080,7 @@
           Delete…
         </button>
       } @else if (menuRemoteBranch(menu.name); as remote) {
+        <div class="bl-menu-label bl-menu-target" [title]="menu.name">{{ menu.name }}</div>
         <button
           type="button"
           title="Check out a local branch tracking this remote branch"
@@ -1054,13 +1095,12 @@
         >
           Show in graph
         </button>
-        <button type="button" title="Copy branch name" (click)="copyRefName(menu.name)">
-          Copy name
-        </button>
-        <button type="button" title="Copy this branch’s tip SHA" (click)="copySha(menu.name)">
-          Copy SHA
-        </button>
-        <div class="bl-menu-sep"></div>
+        @if (hasHostRemote()) {
+          <button type="button" title="Open this branch on GitHub or GitLab" (click)="openOnHost(menu.name)">
+            Open on host
+          </button>
+        }
+        <ng-container *ngTemplateOutlet="copyFlyout; context: { $implicit: menu.name }" />
         <button
           type="button"
           title="Fetch updates from this remote"
@@ -1068,63 +1108,50 @@
         >
           Fetch {{ remoteNameOf(menu.name) || 'remote' }}
         </button>
-        <button
-          type="button"
-          title="Bring this remote branch’s commits into your current branch"
-          (click)="mergeBranch(menu.name)"
-        >
-          Merge into current
-        </button>
-        <button
-          type="button"
-          title="Replay your current branch’s commits on top of this remote branch"
-          (click)="rebaseOnto(menu.name)"
-        >
-          Rebase current onto this
-        </button>
-        <button
-          type="button"
-          title="Fast-forward your current branch to this remote tip (refuses if histories diverged)"
-          (click)="fastForwardThis(menu.name)"
-        >
-          Fast-forward current to this
-        </button>
-        <button
-          type="button"
-          title="Diff this remote branch against the branch you have checked out"
-          (click)="compareThis(menu.name)"
-        >
-          Compare with current
-        </button>
-        <button
-          type="button"
-          title="Move current branch tip here; keep all file changes staged"
-          (click)="resetCurrent(menu.name, 'soft')"
-        >
-          Reset current (soft)
-        </button>
-        <button
-          type="button"
-          title="Move current branch tip here; keep file changes unstaged"
-          (click)="resetCurrent(menu.name, 'mixed')"
-        >
-          Reset current (mixed)
-        </button>
-        <button
-          type="button"
-          title="Move current branch tip here and discard later changes — destructive"
-          (click)="resetCurrent(menu.name, 'hard')"
-        >
-          Hard reset current…
-        </button>
-        <button
-          type="button"
-          title="Copy this branch’s tip onto your current branch as a new commit"
-          (click)="cherryPickTip(menu.name)"
-        >
-          Cherry-pick tip onto current
-        </button>
-        <div class="bl-menu-sep"></div>
+        <div class="bl-menu-flyout">
+          <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+            Current branch
+            <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+          </button>
+          <div class="bl-menu bl-menu-flyout-panel" role="menu">
+            <button
+              type="button"
+              title="Bring this remote branch’s commits into your current branch"
+              (click)="mergeBranch(menu.name)"
+            >
+              Merge into current
+            </button>
+            <button
+              type="button"
+              title="Replay your current branch’s commits on top of this remote branch"
+              (click)="rebaseOnto(menu.name)"
+            >
+              Rebase current onto this
+            </button>
+            <button
+              type="button"
+              title="Fast-forward your current branch to this remote tip (refuses if histories diverged)"
+              (click)="fastForwardThis(menu.name)"
+            >
+              Fast-forward current to this
+            </button>
+            <button
+              type="button"
+              title="Diff this remote branch against the branch you have checked out"
+              (click)="compareThis(menu.name)"
+            >
+              Compare with current
+            </button>
+            <button
+              type="button"
+              title="Copy this branch’s tip onto your current branch as a new commit"
+              (click)="cherryPickTip(menu.name)"
+            >
+              Cherry-pick tip onto current
+            </button>
+            <ng-container *ngTemplateOutlet="resetFlyout; context: { $implicit: menu.name }" />
+          </div>
+        </div>
         <button
           type="button"
           title="Create a new local branch starting at this remote tip"
@@ -1132,6 +1159,7 @@
         >
           New local branch from here…
         </button>
+        <div class="bl-menu-sep"></div>
         <button
           type="button"
           class="danger"
@@ -1143,4 +1171,63 @@
       }
     </div>
   }
+</ng-template>
+
+<ng-template #copyFlyout let-name>
+  <div class="bl-menu-flyout">
+    <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+      Copy
+      <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+    </button>
+    <div class="bl-menu bl-menu-flyout-panel" role="menu">
+      <button type="button" title="Copy this ref’s name" (click)="copyRefName(name)">Name</button>
+      <button type="button" title="Copy the short commit SHA" (click)="copyShortSha(name)">
+        Short SHA
+      </button>
+      <button type="button" title="Copy the full commit SHA" (click)="copySha(name)">Full SHA</button>
+      @if (menuUpstream(name); as upstream) {
+        <button type="button" [title]="'Copy ' + upstream" (click)="copyUpstream(name)">
+          Upstream
+        </button>
+      }
+      @if (hasHostRemote()) {
+        <button type="button" title="Copy a permalink to this commit" (click)="copyPermalink(name)">
+          Commit URL
+        </button>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #resetFlyout let-name>
+  <div class="bl-menu-flyout">
+    <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+      Reset current
+      <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+    </button>
+    <div class="bl-menu bl-menu-flyout-panel" role="menu">
+      <button
+        type="button"
+        title="Move current branch tip here; keep all file changes staged"
+        (click)="resetCurrent(name, 'soft')"
+      >
+        Soft — keep staged
+      </button>
+      <button
+        type="button"
+        title="Move current branch tip here; keep file changes unstaged"
+        (click)="resetCurrent(name, 'mixed')"
+      >
+        Mixed — keep unstaged
+      </button>
+      <button
+        type="button"
+        class="danger"
+        title="Move current branch tip here and discard later changes — destructive"
+        (click)="resetCurrent(name, 'hard')"
+      >
+        Hard — discard later changes…
+      </button>
+    </div>
+  </div>
 </ng-template>

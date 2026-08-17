@@ -945,9 +945,23 @@ export class TauriService {
     return this.invoke<MutationOutput>('unlink_branch_from_jira', { input: { path, name } });
   }
 
-  fetch(path: string, remote?: string) {
+  fetch(
+    path: string,
+    opts: {
+      remote?: string | null;
+      allRemotes?: boolean;
+      prune?: boolean;
+      tags?: boolean;
+    } = {},
+  ) {
     return this.invoke<MutationOutput>('fetch', {
-      input: { path, remote: remote ?? null },
+      input: {
+        path,
+        remote: opts.remote ?? null,
+        allRemotes: opts.allRemotes ?? false,
+        prune: opts.prune ?? false,
+        tags: opts.tags ?? false,
+      },
     });
   }
 
@@ -1990,6 +2004,9 @@ export class TauriService {
         defaultPullAction: 'merge',
         defaultPushAction: 'upstream',
         autoFetchOnOpen: false,
+        fetchAllRemotes: true,
+        fetchPrune: true,
+        fetchTags: false,
         confirmForcePush: true,
         confirmDiscard: true,
         confirmPushNewBranch: true,
@@ -3458,6 +3475,9 @@ export class TauriService {
       defaultPullAction: 'merge',
       defaultPushAction: 'upstream',
       autoFetchOnOpen: false,
+      fetchAllRemotes: true,
+      fetchPrune: true,
+      fetchTags: false,
       confirmForcePush: true,
       confirmDiscard: true,
       confirmPushNewBranch: true,

@@ -63,20 +63,40 @@ export class RepoToolbar {
   runDefaultPull(): void {
     this.menu.set(null);
     const action = this.store.settings().defaultPullAction;
-    this.store.armRemoteBusy(action === 'fetch' ? 'fetch' : 'pull');
+    if (action === 'fetch') {
+      this.store.armRemoteBusy('fetch');
+      void this.store.fetchWithSavedOptions();
+      return;
+    }
+    this.store.armRemoteBusy('pull');
     void this.applyPull(action);
   }
 
   choosePull(action: DefaultPullAction): void {
     this.menu.set(null);
     void this.store.saveSettings({ defaultPullAction: action });
-    this.store.armRemoteBusy(action === 'fetch' ? 'fetch' : 'pull');
+    if (action === 'fetch') {
+      this.store.armRemoteBusy('fetch');
+      void this.store.fetchWithSavedOptions();
+      return;
+    }
+    this.store.armRemoteBusy('pull');
     void this.applyPull(action);
+  }
+
+  mergeLatestBase(): void {
+    this.menu.set(null);
+    void this.store.mergeLatestBase();
+  }
+
+  openFetchOptions(): void {
+    this.menu.set(null);
+    this.store.openFetchDialog();
   }
 
   private async applyPull(action: DefaultPullAction): Promise<void> {
     if (action === 'fetch') {
-      await this.store.fetchRemote();
+      await this.store.fetchWithSavedOptions();
       return;
     }
     await this.store.pullRemote(action === 'rebase');

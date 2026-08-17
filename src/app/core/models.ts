@@ -350,6 +350,9 @@ export interface AppSettings {
   defaultPullAction: DefaultPullAction;
   defaultPushAction: DefaultPushAction;
   autoFetchOnOpen: boolean;
+  fetchAllRemotes: boolean;
+  fetchPrune: boolean;
+  fetchTags: boolean;
   confirmForcePush: boolean;
   confirmDiscard: boolean;
   confirmPushNewBranch: boolean;

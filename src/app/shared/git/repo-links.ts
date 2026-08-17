@@ -88,6 +88,24 @@ export function remoteRepoSlug(url: string): string | null {
   return remotePath(parsed) || null;
 }
 
+export function branchWebUrl(remoteUrl: string, branch: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  const name = branch.trim().replace(/^refs\/heads\//, '');
+  if (!parsed || !name) return null;
+  const encoded = encodeRefPath(name);
+  if (isGitLabHost(parsed.host)) return `${parsed.webBase}/-/tree/${encoded}`;
+  return `${parsed.webBase}/tree/${encoded}`;
+}
+
+export function tagWebUrl(remoteUrl: string, tag: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  const name = tag.trim().replace(/^refs\/tags\//, '');
+  if (!parsed || !name) return null;
+  const encoded = encodeRefPath(name);
+  if (isGitLabHost(parsed.host)) return `${parsed.webBase}/-/tags/${encoded}`;
+  return `${parsed.webBase}/releases/tag/${encoded}`;
+}
+
 export function commitWebUrl(remoteUrl: string, sha: string): string | null {
   const parsed = parseRemoteWebBase(remoteUrl);
   const id = sha.trim();
@@ -115,15 +133,19 @@ export function fileWebUrl(remoteUrl: string, sha: string, filePath: string): st
   if (isAzureHost(parsed.host)) {
     return `${parsed.webBase}?path=${encodeURIComponent(file)}&version=GC${encodeURIComponent(id)}`;
   }
-  const encoded = file
-    .split('/')
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/');
+  const encoded = encodeRefPath(file);
   if (isGitLabHost(parsed.host)) {
     return `${parsed.webBase}/-/blob/${encodeURIComponent(id)}/${encoded}`;
   }
   return `${parsed.webBase}/blob/${encodeURIComponent(id)}/${encoded}`;
+}
+
+function encodeRefPath(value: string): string {
+  return value
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
 }
 
 function isGitLabHost(host: string): boolean {

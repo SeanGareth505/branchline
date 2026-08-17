@@ -27,6 +27,7 @@ import { CreatePrDialog } from '../../features/pull-requests/create-pr-dialog/cr
 import { GitFlowDialog } from '../../features/git-flow/git-flow-dialog/git-flow-dialog';
 import { BranchHygieneDialog } from '../../features/hygiene/branch-hygiene-dialog/branch-hygiene-dialog';
 import { GitCleanDialog } from '../../features/clean/git-clean-dialog/git-clean-dialog';
+import { FetchDialog } from '../../features/sync/fetch-dialog/fetch-dialog';
 import { SyncPreviewDialog } from '../../features/sync/sync-preview-dialog/sync-preview-dialog';
 import { GithubDeviceLoginDialog } from '../../features/auth/github-device-login-dialog/github-device-login-dialog';
 import { RemoteTroubleshootDialog } from '../../features/remotes/remote-troubleshoot-dialog/remote-troubleshoot-dialog';
@@ -90,6 +91,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     GitFlowDialog,
     BranchHygieneDialog,
     GitCleanDialog,
+    FetchDialog,
     SyncPreviewDialog,
     GithubDeviceLoginDialog,
     RemoteTroubleshootDialog,

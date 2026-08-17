@@ -961,7 +961,8 @@
 app-commit-checks {
   margin-bottom: auto;
   min-width: 0;
-  max-height: min(46%, 22rem);
+  flex: 0 1 auto;
+  max-height: min(28%, 8.5rem);
   overflow: hidden;
 }
 

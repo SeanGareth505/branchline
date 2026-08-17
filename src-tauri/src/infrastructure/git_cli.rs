@@ -221,11 +221,16 @@ fn retry_lock_delay(attempt: u32) -> Duration {
 }
 
 pub fn run_git(cwd: &Path, args: &[&str]) -> AppResult<String> {
+    let (stdout, _) = run_git_out_err(cwd, args)?;
+    Ok(stdout)
+}
+
+pub fn run_git_out_err(cwd: &Path, args: &[&str]) -> AppResult<(String, String)> {
     let mut attempt = 0u32;
     loop {
         let (ok, stdout, stderr) = run_git_capture(cwd, args)?;
         if ok {
-            return Ok(stdout.trim_end().to_string());
+            return Ok((stdout.trim_end().to_string(), stderr.trim_end().to_string()));
         }
         if attempt < GIT_LOCK_RETRIES && is_lock_contention(&stdout, &stderr) {
             attempt += 1;
@@ -256,10 +261,26 @@ pub fn pull_args(remote: Option<&str>, rebase: bool) -> Vec<String> {
     args
 }
 
-pub fn fetch_args(remote: Option<&str>) -> Vec<String> {
+pub fn fetch_args(
+    remote: Option<&str>,
+    all_remotes: bool,
+    prune: bool,
+    tags: bool,
+) -> Vec<String> {
     let mut args = vec!["fetch".to_string()];
-    if let Some(r) = optional_remote(remote) {
-        args.push(r.to_string());
+    if all_remotes {
+        args.push("--all".to_string());
+    }
+    if prune {
+        args.push("--prune".to_string());
+    }
+    if tags {
+        args.push("--tags".to_string());
+    }
+    if !all_remotes {
+        if let Some(r) = optional_remote(remote) {
+            args.push(r.to_string());
+        }
     }
     args
 }
@@ -577,10 +598,22 @@ mod tests {
 
     #[test]
     fn fetch_without_remote_lets_git_use_configured_upstream() {
-        assert_eq!(fetch_args(None), vec!["fetch"]);
+        assert_eq!(fetch_args(None, false, false, false), vec!["fetch"]);
         assert_eq!(
-            fetch_args(Some("upstream")),
+            fetch_args(Some("upstream"), false, false, false),
             vec!["fetch", "upstream"]
+        );
+    }
+
+    #[test]
+    fn fetch_all_prune_and_tags_flags() {
+        assert_eq!(
+            fetch_args(Some("origin"), true, true, false),
+            vec!["fetch", "--all", "--prune"]
+        );
+        assert_eq!(
+            fetch_args(Some("origin"), false, true, true),
+            vec!["fetch", "--prune", "--tags", "origin"]
         );
     }
 

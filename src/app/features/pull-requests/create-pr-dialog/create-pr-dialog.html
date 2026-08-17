@@ -20,7 +20,7 @@
       <div class="branches">
         <label class="field">
           <span>From</span>
-          <select [ngModel]="head()" (ngModelChange)="head.set($event)">
+          <select [ngModel]="head()" (ngModelChange)="onHeadChange($event)" [title]="head()">
             @for (name of branchOptions(); track name) {
               <option [value]="name">{{ name }}</option>
             }
@@ -29,7 +29,7 @@
         <span class="arrow" aria-hidden="true">→</span>
         <label class="field">
           <span>Into</span>
-          <select [ngModel]="base()" (ngModelChange)="base.set($event)">
+          <select [ngModel]="base()" (ngModelChange)="onBaseChange($event)" [title]="base()">
             @for (name of branchOptions(); track name) {
               <option [value]="name">{{ name }}</option>
             }
@@ -98,7 +98,7 @@
         <input
           type="text"
           [ngModel]="title()"
-          (ngModelChange)="title.set($event)"
+          (ngModelChange)="onTitleChange($event)"
           placeholder="Short summary of the change"
         />
       </label>

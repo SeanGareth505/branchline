@@ -47,6 +47,12 @@ pub struct AppSettings {
     #[serde(default)]
     pub auto_fetch_on_open: bool,
     #[serde(default = "default_true")]
+    pub fetch_all_remotes: bool,
+    #[serde(default = "default_true")]
+    pub fetch_prune: bool,
+    #[serde(default)]
+    pub fetch_tags: bool,
+    #[serde(default = "default_true")]
     pub confirm_force_push: bool,
     #[serde(default = "default_true")]
     pub confirm_discard: bool,
@@ -377,6 +383,9 @@ impl Default for AppSettings {
             default_pull_action: default_pull_action(),
             default_push_action: default_push_action(),
             auto_fetch_on_open: false,
+            fetch_all_remotes: true,
+            fetch_prune: true,
+            fetch_tags: false,
             confirm_force_push: true,
             confirm_discard: true,
             confirm_push_new_branch: true,

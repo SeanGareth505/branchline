@@ -355,6 +355,7 @@
     (overlayOutsideClick)="onMenuDismiss($event)"
   >
     <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+      <div class="bl-menu-label bl-menu-target" [title]="menu().sha">{{ menu().sha.slice(0, 7) }}</div>
       <button
         type="button"
         title="Copy this commit onto your current branch as a new commit"
@@ -364,70 +365,124 @@
       </button>
       <button
         type="button"
-        title="Create a new commit that undoes this commit’s changes"
-        (click)="undoCommit()"
-      >
-        Revert with undo commit
-      </button>
-      <button
-        type="button"
-        title="Reorder, edit, squash, or drop commits from this point upward"
-        (click)="interactiveRebase()"
-      >
-        Interactive rebase from here…
-      </button>
-      <button
-        type="button"
         title="Create and check out a new branch pointing at this commit"
         (click)="checkoutCommit()"
       >
         New branch at {{ menu().sha.slice(0, 7) }}
       </button>
-      <button type="button" title="Create a tag on this commit" (click)="createTagHere()">
-        Create tag here…
-      </button>
-      <button
-        type="button"
-        title="Start git bisect with this commit as bad"
-        (click)="startBisectHere()"
-      >
-        Start bisect from here…
-      </button>
-      <button
-        type="button"
-        title="Build a changelog from commits up to this point"
-        (click)="extractChangelog(); closeMenu()"
-      >
-        Extract changelog…
-      </button>
-      <button
-        type="button"
-        title="Combine several recent commits into one"
-        (click)="squashInto()"
-      >
-        Squash recent commits…
-      </button>
-      <button
-        type="button"
-        title="Move branch tip here; keep all file changes staged"
-        (click)="resetSoft()"
-      >
-        Reset soft (keep changes staged)
-      </button>
-      <button
-        type="button"
-        title="Move branch tip here; keep file changes unstaged"
-        (click)="resetMixed()"
-      >
-        Reset mixed (keep changes unstaged)
-      </button>
-      <button
-        type="button"
-        title="Move branch tip here and discard all later changes — destructive"
-        (click)="resetHard()"
-      >
-        Hard reset…
-      </button>
+      <div class="bl-menu-flyout">
+        <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+          Copy
+          <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+        </button>
+        <div class="bl-menu bl-menu-flyout-panel" role="menu">
+          <button
+            type="button"
+            title="Copy the full commit hash to the clipboard"
+            (click)="copySha(menu().sha, $event); closeMenu()"
+          >
+            Full SHA
+          </button>
+          <button
+            type="button"
+            title="Copy a permalink to this commit"
+            (click)="copyLink()"
+          >
+            Commit URL
+          </button>
+        </div>
+      </div>
+      <div class="bl-menu-flyout">
+        <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+          Rewrite
+          <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+        </button>
+        <div class="bl-menu bl-menu-flyout-panel" role="menu">
+          <button
+            type="button"
+            title="Reorder, edit, squash, or drop commits from this point upward"
+            (click)="interactiveRebase()"
+          >
+            Interactive rebase from here…
+          </button>
+          <button
+            type="button"
+            title="Combine several recent commits into one"
+            (click)="squashInto()"
+          >
+            Squash recent commits…
+          </button>
+          <button
+            type="button"
+            title="Create a new commit that undoes this commit’s changes"
+            (click)="undoCommit()"
+          >
+            Revert with undo commit
+          </button>
+          <div class="bl-menu-flyout">
+            <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+              Reset
+              <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+            </button>
+            <div class="bl-menu bl-menu-flyout-panel" role="menu">
+              <button
+                type="button"
+                title="Move branch tip here; keep all file changes staged"
+                (click)="resetSoft()"
+              >
+                Soft — keep staged
+              </button>
+              <button
+                type="button"
+                title="Move branch tip here; keep file changes unstaged"
+                (click)="resetMixed()"
+              >
+                Mixed — keep unstaged
+              </button>
+              <button
+                type="button"
+                class="danger"
+                title="Move branch tip here and discard all later changes — destructive"
+                (click)="resetHard()"
+              >
+                Hard — discard later changes…
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bl-menu-flyout">
+        <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+          Create
+          <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+        </button>
+        <div class="bl-menu bl-menu-flyout-panel" role="menu">
+          <button type="button" title="Create a tag on this commit" (click)="createTagHere()">
+            Create tag here…
+          </button>
+          <button
+            type="button"
+            title="Start git bisect with this commit as bad"
+            (click)="startBisectHere()"
+          >
+            Start bisect from here…
+          </button>
+          <button
+            type="button"
+            title="Build a changelog from commits up to this point"
+            (click)="extractChangelog(); closeMenu()"
+          >
+            Extract changelog…
+          </button>
+          <button
+            type="button"
+            title="Save this commit as a patch file"
+            (click)="savePatch()"
+          >
+            Save as patch…
+          </button>
+        </div>
+      </div>
       <div class="bl-menu-sep"></div>
       <button
         type="button"
@@ -446,31 +501,10 @@
       </button>
       <button
         type="button"
-        title="Copy a permalink to this commit"
-        (click)="copyLink()"
-      >
-        Copy link
-      </button>
-      <button
-        type="button"
-        title="Save this commit as a patch file"
-        (click)="savePatch()"
-      >
-        Save as patch…
-      </button>
-      <button
-        type="button"
         [title]="store.isCommitPinned(menu().sha) ? 'Unpin this commit' : 'Pin this commit'"
         (click)="togglePin()"
       >
         {{ store.isCommitPinned(menu().sha) ? 'Unpin' : 'Pin' }}
-      </button>
-      <button
-        type="button"
-        title="Copy the full commit hash to the clipboard"
-        (click)="copySha(menu().sha, $event); closeMenu()"
-      >
-        Copy full SHA
       </button>
     </div>
   </ng-template>

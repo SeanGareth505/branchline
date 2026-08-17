@@ -316,11 +316,11 @@
 
 .sync-chip {
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 10.5px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  padding: 0.12rem 0.42rem;
+  padding: 0.08rem 0.34rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
   white-space: nowrap;
@@ -357,7 +357,7 @@
 }
 
 .sync-chip.row-sync {
-  margin-left: 0.2rem;
+  margin-left: 0;
 }
 
 button.sync-chip {
@@ -372,35 +372,23 @@ button.sync-chip:hover {
 }
 
 .upstream-chip {
-  flex: 0 1 auto;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  min-width: 0;
-  max-width: min(7.5rem, 48%);
-  margin-left: 0.15rem;
-  padding: 0.12rem 0.35rem;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-left: 0.05rem;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.2;
   cursor: pointer;
-  overflow: hidden;
 }
 
 .upstream-chip ng-icon {
   flex-shrink: 0;
-}
-
-.upstream-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .upstream-chip:hover {
@@ -489,6 +477,14 @@ button.sync-chip:hover {
 .ref-viewport {
   display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+:host ::ng-deep .ref-viewport .cdk-virtual-scroll-content-wrapper {
+  width: 100% !important;
+  max-width: 100%;
 }
 
 .ref-viewport .ref-row {
@@ -532,7 +528,9 @@ button.sync-chip:hover {
   border-radius: 5px;
   border: 1px solid transparent;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
+  overflow: hidden;
   content-visibility: auto;
   contain-intrinsic-size: auto 26px;
   min-height: 26px;
@@ -747,23 +745,11 @@ button.sync-chip:hover {
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
 }
 
-.head-chip {
-  flex-shrink: 0;
-  margin-left: 0.15rem;
-  padding: 0.12rem 0.4rem;
-  border-radius: 5px;
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  line-height: 1.2;
-  white-space: nowrap;
-  color: var(--btn-primary-fg, #ffffff);
-  background: var(--accent);
-}
-
 .ticket-chip {
-  flex-shrink: 0;
-  margin-left: 0.1rem;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 4.8rem;
+  margin-left: 0;
   padding: 0.1rem 0.35rem;
   border-radius: 5px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--glass-border));
@@ -775,6 +761,8 @@ button.sync-chip:hover {
   letter-spacing: 0.02em;
   line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
@@ -831,15 +819,37 @@ button.sync-chip:hover {
   min-width: 0;
   display: flex;
   align-items: center;
+  overflow: hidden;
 }
 
 .identity .name {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
 }
 
 .name .label {
   min-width: 0;
+}
+
+.row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+  flex-shrink: 0;
+  margin-left: 0.15rem;
+}
+
+.ref-row > .icon {
+  position: absolute;
+  right: 0.1rem;
+  z-index: 2;
+  background: var(--bg-elevated);
+}
+
+.ref-row:hover > .icon,
+.ref-row:focus-within > .icon {
+  background: color-mix(in srgb, var(--bg-hover) 85%, var(--bg-elevated));
 }
 
 .icon {
