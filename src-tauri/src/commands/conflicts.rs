@@ -262,9 +262,9 @@ pub fn open_conflict_in_ide(input: OpenConflictInIdeInput) -> AppResult<Mutation
         let (_, theirs) = stage_blob(&repo, 3, &rel);
         let content = if !ours.is_empty() { ours } else { theirs };
         if let Some(parent) = abs.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent)?;
         }
-        let _ = fs::write(&abs, content.as_bytes());
+        fs::write(&abs, content.as_bytes())?;
     }
 
     if mode == "merge" {

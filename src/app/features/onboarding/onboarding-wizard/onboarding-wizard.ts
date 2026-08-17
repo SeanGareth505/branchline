@@ -20,13 +20,11 @@ export class OnboardingWizard implements OnInit {
   readonly items = signal<OnboardingChecklistItem[]>([]);
   readonly name = signal('');
   readonly email = signal('');
+  readonly errorText = signal('');
+  readonly busy = signal(false);
 
   async ngOnInit(): Promise<void> {
-    const status = await this.tauri.getOnboardingStatus();
-    this.items.set(status.items);
-    const identity = await this.tauri.getGitIdentity();
-    this.name.set(identity.name);
-    this.email.set(identity.email);
+    await this.refreshChecklist(true);
   }
 
   statusLabel(status: string): string {
@@ -35,27 +33,62 @@ export class OnboardingWizard implements OnInit {
     return 'Needs attention';
   }
 
-  async refreshChecklist(): Promise<void> {
-    const status = await this.tauri.getOnboardingStatus();
-    this.items.set(status.items);
+  async refreshChecklist(includeIdentity = false): Promise<void> {
+    this.errorText.set('');
+    try {
+      const status = await this.tauri.getOnboardingStatus();
+      this.items.set(status.items);
+      if (includeIdentity) {
+        const identity = await this.tauri.getGitIdentity();
+        this.name.set(identity.name);
+        this.email.set(identity.email);
+      }
+    } catch (err) {
+      this.errorText.set(this.store.formatError(err));
+    }
   }
 
   async saveIdentity(): Promise<void> {
-    await this.tauri.setGitIdentity(this.name(), this.email());
-    await this.store.refreshIdentity();
-    await this.refreshChecklist();
+    this.busy.set(true);
+    this.errorText.set('');
+    try {
+      await this.tauri.setGitIdentity(this.name(), this.email());
+      await this.store.refreshIdentity();
+      await this.refreshChecklist();
+    } catch (err) {
+      this.errorText.set(this.store.formatError(err));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   async complete(): Promise<void> {
-    await this.saveIdentity();
-    await this.tauri.completeOnboarding();
-    this.store.repos.set(await this.tauri.listRecentRepos());
-    this.store.goHome();
+    this.busy.set(true);
+    this.errorText.set('');
+    try {
+      await this.tauri.setGitIdentity(this.name(), this.email());
+      await this.store.refreshIdentity();
+      await this.tauri.completeOnboarding();
+      this.store.repos.set(await this.tauri.listRecentRepos());
+      this.store.goHome();
+    } catch (err) {
+      this.errorText.set(this.store.formatError(err));
+    } finally {
+      this.busy.set(false);
+    }
   }
 
   async skip(): Promise<void> {
-    await this.tauri.skipOnboarding();
-    this.store.repos.set(await this.tauri.listRecentRepos());
-    this.store.goHome();
+    this.busy.set(true);
+    this.errorText.set('');
+    try {
+      await this.tauri.skipOnboarding();
+      this.store.repos.set(await this.tauri.listRecentRepos());
+      this.store.goHome();
+    } catch (err) {
+      this.errorText.set(this.store.formatError(err));
+    } finally {
+      this.busy.set(false);
+    }
   }
 }

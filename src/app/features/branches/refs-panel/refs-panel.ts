@@ -858,6 +858,31 @@ export class RefsPanel {
     this.branchMenu.set(null);
   }
 
+  ticketLabel(name: string): string | null {
+    return this.store.ticketForBranch(name);
+  }
+
+  mappedTicket(name: string): string | null {
+    return this.store.mappedTicketForBranch(name);
+  }
+
+  async linkJira(name: string): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.pickAndLinkBranchToJira(name);
+  }
+
+  async unlinkJira(name: string): Promise<void> {
+    this.closeBranchMenu();
+    await this.store.unlinkBranchFromJira(name);
+  }
+
+  async openLinkedJira(name: string, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    this.closeBranchMenu();
+    const key = this.store.ticketForBranch(name);
+    if (key) await this.store.openJiraIssue(key);
+  }
+
   openTagMenu(name: string, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();

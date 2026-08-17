@@ -159,3 +159,10 @@ footer {
   gap: 0.5rem;
   margin-top: 0.35rem;
 }
+
+.error {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--git-deleted);
+  line-height: 1.4;
+}

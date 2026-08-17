@@ -6,6 +6,7 @@ import type {
   BlameLine,
   BranchInfo,
   BranchLockInfo,
+  BranchJiraLink,
   CherryPickPreview,
   BlobPreview,
   CommitInfo,
@@ -78,6 +79,7 @@ import type {
 } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
 import { DEFAULT_SHORTCUTS } from '../shared/git/shortcuts';
+import { rawErrorMessage } from '../shared/git/git-error';
 
 @Injectable({ providedIn: 'root' })
 export class TauriService {
@@ -85,10 +87,12 @@ export class TauriService {
     typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window);
   private readonly mockPreviewFlags = readMockPreviewFlags();
   private readonly mockLocks = new Map<string, { reason: string | null; lockedAt: string }>();
+  private readonly mockTickets = new Map<string, { issueKey: string; linkedAt: string }>();
   private mockCustomWorkflows: WorkflowInfo[] = [];
   private mockDisabledBuiltinWorkflows = new Set<string>();
   private mockCustomChecks: RepoCheck[] = [];
   private mockGithubLogin = 'demo';
+  private mockGithubAccounts = ['demo', 'teammate'];
   private mockGithubReleaseNotes = new Map<string, string>();
   private mockDisabledCheckIds = new Set<string>();
   private mockAnnouncedManagers = false;
@@ -223,7 +227,11 @@ export class TauriService {
     if (this.isDummyBackend) {
       return this.mockInvoke<T>(cmd, args);
     }
-    return invoke<T>(cmd, args);
+    try {
+      return await invoke<T>(cmd, args);
+    } catch (err) {
+      throw toInvokeError(err);
+    }
   }
 
   async openExternalUrl(url: string): Promise<void> {
@@ -923,6 +931,20 @@ export class TauriService {
     return this.invoke<MutationOutput>('unlock_branch', { input: { path, name } });
   }
 
+  listBranchJiraLinks(path: string) {
+    return this.invoke<BranchJiraLink[]>('list_branch_jira_links', { input: { path } });
+  }
+
+  linkBranchToJira(path: string, name: string, issueKey: string) {
+    return this.invoke<MutationOutput>('link_branch_to_jira', {
+      input: { path, name, issueKey },
+    });
+  }
+
+  unlinkBranchFromJira(path: string, name: string) {
+    return this.invoke<MutationOutput>('unlink_branch_from_jira', { input: { path, name } });
+  }
+
   fetch(path: string, remote?: string) {
     return this.invoke<MutationOutput>('fetch', {
       input: { path, remote: remote ?? null },
@@ -997,6 +1019,14 @@ export class TauriService {
 
   switchGithubCliUser(login: string) {
     return this.invoke<MutationOutput>('switch_github_cli_user', { input: { login } });
+  }
+
+  logoutGithubCliUser(login: string) {
+    return this.invoke<MutationOutput>('logout_github_cli_user', { input: { login } });
+  }
+
+  startGithubCliLogin() {
+    return this.invoke<MutationOutput>('start_github_cli_login');
   }
 
   testConnection(input: TestConnectionInput) {
@@ -1356,14 +1386,50 @@ export class TauriService {
       return { ok: true, message: `Unlocked branch ${name}` } as T;
     }
 
+    if (cmd === 'list_branch_jira_links') {
+      const path = (args?.['input'] as { path?: string })?.path ?? '';
+      const links: BranchJiraLink[] = [];
+      for (const [key, value] of this.mockTickets) {
+        if (!key.startsWith(`${path}::`)) continue;
+        links.push({
+          branchName: key.slice(path.length + 2),
+          issueKey: value.issueKey,
+          linkedAt: value.linkedAt,
+        });
+      }
+      return links as T;
+    }
+
+    if (cmd === 'link_branch_to_jira') {
+      const input = args?.['input'] as { path?: string; name?: string; issueKey?: string };
+      const path = input?.path ?? '';
+      const name = input?.name?.trim() ?? '';
+      const issueKey = input?.issueKey?.trim() ?? '';
+      this.mockTickets.set(lockKey(path, name), {
+        issueKey,
+        linkedAt: new Date().toISOString(),
+      });
+      return { ok: true, message: `Linked ${name} to ${issueKey}` } as T;
+    }
+
+    if (cmd === 'unlink_branch_from_jira') {
+      const input = args?.['input'] as { path?: string; name?: string };
+      const path = input?.path ?? '';
+      const name = input?.name?.trim() ?? '';
+      this.mockTickets.delete(lockKey(path, name));
+      return { ok: true, message: `Unlinked Jira from ${name}` } as T;
+    }
+
     if (cmd === 'list_branches') {
       const path = (args?.['input'] as { path?: string })?.path ?? '/Users/demo/projects/navigo';
       const branches = this.mockBranches().map((b) => {
         const lock = this.mockLocks.get(lockKey(path, b.name));
+        const ticket = this.mockTickets.get(lockKey(path, b.name));
         return {
           ...b,
           locked: !!lock,
           lockReason: lock?.reason ?? null,
+          jiraKey: ticket?.issueKey ?? b.jiraKey,
         };
       });
       return branches as T;
@@ -1383,7 +1449,12 @@ export class TauriService {
     }
 
     if (cmd === 'rename_branch' || cmd === 'delete_branch') {
-      const input = args?.['input'] as { path?: string; name?: string; from?: string };
+      const input = args?.['input'] as {
+        path?: string;
+        name?: string;
+        from?: string;
+        to?: string;
+      };
       const path = input?.path ?? '';
       const name = (input?.name ?? input?.from ?? '').trim();
       const lock = this.mockLocks.get(lockKey(path, name));
@@ -1393,6 +1464,14 @@ export class TauriService {
             ? `Branch '${name}' is locked: ${lock.reason}`
             : `Branch '${name}' is locked. Unlock it before pushing, force-pushing, renaming, or deleting.`,
         );
+      }
+      if (cmd === 'delete_branch' && name) {
+        this.mockTickets.delete(lockKey(path, name));
+      }
+      if (cmd === 'rename_branch' && name && input?.to?.trim()) {
+        const ticket = this.mockTickets.get(lockKey(path, name));
+        this.mockTickets.delete(lockKey(path, name));
+        if (ticket) this.mockTickets.set(lockKey(path, input.to.trim()), ticket);
       }
     }
 
@@ -1429,21 +1508,40 @@ export class TauriService {
 
     if (cmd === 'github_git_status') {
       const login = this.mockGithubLogin;
+      const accounts = this.mockGithubAccounts.length
+        ? this.mockGithubAccounts
+        : ['demo', 'teammate'];
+      if (!accounts.includes(login)) this.mockGithubLogin = accounts[0] ?? '';
       return {
-        sshLogin: login,
+        sshLogin: this.mockGithubLogin,
         usesGhHelper: true,
-        activeLogin: login,
-        accounts: [
-          { login: 'demo', active: login === 'demo', ok: true },
-          { login: 'teammate', active: login === 'teammate', ok: true },
-        ],
+        ghAvailable: true,
+        activeLogin: this.mockGithubLogin,
+        accounts: accounts.map((name) => ({
+          login: name,
+          active: name === this.mockGithubLogin,
+          ok: true,
+        })),
       } as T;
     }
 
     if (cmd === 'switch_github_cli_user') {
       const login = ((args?.['input'] as { login?: string })?.login || 'demo').trim() || 'demo';
       this.mockGithubLogin = login;
+      if (!this.mockGithubAccounts.includes(login)) this.mockGithubAccounts.push(login);
       return { ok: true, message: `GitHub CLI now uses ${login} for HTTPS` } as T;
+    }
+
+    if (cmd === 'logout_github_cli_user') {
+      const login = ((args?.['input'] as { login?: string })?.login || '').trim();
+      this.mockGithubAccounts = this.mockGithubAccounts.filter((name) => name !== login);
+      if (this.mockGithubLogin === login) this.mockGithubLogin = this.mockGithubAccounts[0] ?? '';
+      return { ok: true, message: `Unlinked ${login} from GitHub CLI` } as T;
+    }
+
+    if (cmd === 'start_github_cli_login') {
+      if (!this.mockGithubAccounts.includes('work')) this.mockGithubAccounts.push('work');
+      return { ok: true, message: 'Finish signing in in Terminal, then return here' } as T;
     }
 
     const mocks: Record<string, unknown> = {
@@ -1693,6 +1791,7 @@ export class TauriService {
       github_git_status: {
         sshLogin: 'demo',
         usesGhHelper: true,
+        ghAvailable: true,
         activeLogin: 'demo',
         accounts: [
           { login: 'demo', active: true, ok: true },
@@ -1701,6 +1800,8 @@ export class TauriService {
       },
       set_repo_remote_protocol: { ok: true, message: 'Switched 2 remotes to https' },
       switch_github_cli_user: { ok: true, message: 'GitHub CLI now uses demo for HTTPS' },
+      logout_github_cli_user: { ok: true, message: 'Unlinked teammate from GitHub CLI' },
+      start_github_cli_login: { ok: true, message: 'Finish signing in in Terminal, then return here' },
       remove_remote: { ok: true, message: 'Removed remote' },
       prune_remote: { ok: true, message: 'Pruned stale remote-tracking branches' },
       pull_with_options: { ok: true, message: 'Pulled with rebase' },
@@ -2840,6 +2941,7 @@ export class TauriService {
         tipEmail: 'sean@example.com',
         locked: false,
         lockReason: null,
+        jiraKey: null,
       },
       {
         name: 'feature/auth',
@@ -2854,6 +2956,7 @@ export class TauriService {
         tipEmail: 'maya@example.com',
         locked: false,
         lockReason: null,
+        jiraKey: null,
       },
       {
         name: 'feature/onboarding',
@@ -2868,6 +2971,7 @@ export class TauriService {
         tipEmail: 'sean@example.com',
         locked: false,
         lockReason: null,
+        jiraKey: null,
       },
       {
         name: 'release/1.0',
@@ -2882,6 +2986,7 @@ export class TauriService {
         tipEmail: 'alex@example.com',
         locked: false,
         lockReason: null,
+        jiraKey: null,
       },
       {
         name: 'origin/main',
@@ -2896,6 +3001,7 @@ export class TauriService {
         tipEmail: 'sean@example.com',
         locked: false,
         lockReason: null,
+        jiraKey: null,
       },
     ];
   }
@@ -3505,16 +3611,16 @@ function dummyRepoSummary(args?: Record<string, unknown>): RepoSummary {
   };
 }
 
+function toInvokeError(err: unknown): Error {
+  const message = rawErrorMessage(err);
+  if (err instanceof Error && (!message || err.message.trim() === message)) {
+    return err;
+  }
+  return new Error(message || 'Something went wrong');
+}
+
 function isMissingTauriCommand(err: unknown, command: string): boolean {
-  const text =
-    typeof err === 'string'
-      ? err
-      : err instanceof Error
-        ? err.message
-        : err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message)
-          : String(err ?? '');
-  const lower = text.toLowerCase();
+  const lower = rawErrorMessage(err).toLowerCase();
   return (
     lower.includes('not found') &&
     (lower.includes(command.toLowerCase()) || lower.includes('command'))

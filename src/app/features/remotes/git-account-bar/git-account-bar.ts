@@ -82,12 +82,15 @@ export class GitAccountBar {
     void this.store.refreshGithubGitStatus();
   }
 
+  addAccount(): void {
+    void this.store.addGithubCliAccount();
+  }
+
+  unlink(login: string): void {
+    void this.store.logoutGithubCliUser(login);
+  }
+
   async copyAddAccount(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText('gh auth login');
-      this.store.showSuccess('Copied gh auth login — run it in Terminal for the other account, then Refresh');
-    } catch {
-      this.store.showError('Could not copy. In Terminal run: gh auth login');
-    }
+    await this.addAccount();
   }
 }

@@ -18,13 +18,18 @@ export class ReflogPanel {
   readonly store = inject(AppStore);
   readonly entries = signal<ReflogEntry[]>([]);
   readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  private loadToken = 0;
 
   constructor() {
     effect(() => {
       const path = this.store.currentRepo()?.path;
       const tab = this.store.browseTab();
       if (tab !== 'reflog' || !path) {
-        if (tab === 'reflog') this.entries.set([]);
+        if (tab === 'reflog') {
+          this.entries.set([]);
+          this.error.set(null);
+        }
         return;
       }
       void this.load(path);
@@ -33,14 +38,27 @@ export class ReflogPanel {
   }
 
   private async load(path: string): Promise<void> {
+    const token = ++this.loadToken;
     this.loading.set(true);
+    this.error.set(null);
     try {
-      this.entries.set(await this.tauri.listReflog(path, 100));
-    } catch {
+      const entries = await this.tauri.listReflog(path, 100);
+      if (token !== this.loadToken) return;
+      this.entries.set(entries);
+    } catch (err) {
+      if (token !== this.loadToken) return;
       this.entries.set([]);
+      this.error.set(this.store.formatError(err));
     } finally {
-      this.loading.set(false);
+      if (token === this.loadToken) this.loading.set(false);
     }
+  }
+
+  retry(): void {
+    const path = this.store.currentRepo()?.path;
+    if (!path) return;
+    void this.load(path);
+    void this.store.loadDanglingCommits();
   }
 
   time(ts: number): string {

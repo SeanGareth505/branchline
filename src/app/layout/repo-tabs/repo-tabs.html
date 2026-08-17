@@ -1,6 +1,6 @@
-@if (store.openRepos().length) {
+@if (store.visibleOpenRepos().length) {
   <div class="tabs" role="tablist" aria-label="Open repositories">
-    @for (repo of store.openRepos(); track repo.path) {
+    @for (repo of store.visibleOpenRepos(); track repo.path) {
       <div
         class="tab"
         role="tab"

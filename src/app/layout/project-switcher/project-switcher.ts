@@ -22,7 +22,6 @@ import { AppStore } from '../../core/app.store';
 import type { HostRepository, RecentRepo } from '../../core/models';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
-import { RepoAccountBar } from '../repo-account-bar/repo-account-bar';
 
 type SwitcherTab = 'local' | 'remote' | 'results';
 
@@ -44,7 +43,7 @@ type FlatItem =
 
 @Component({
   selector: 'app-project-switcher',
-  imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin, RepoAccountBar],
+  imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
   templateUrl: './project-switcher.html',
   styleUrl: './project-switcher.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -75,7 +74,7 @@ export class ProjectSwitcher {
   ];
 
   readonly triggerLabel = computed(() =>
-    this.store.openRepos().length ? 'Add repo' : 'Open repo',
+    this.store.visibleOpenRepos().length ? 'Add repo' : 'Open repo',
   );
 
   readonly triggerTitle = computed(() => {

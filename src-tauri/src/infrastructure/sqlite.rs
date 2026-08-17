@@ -59,6 +59,13 @@ pub fn open_and_migrate() -> AppResult<Db> {
             locked_at TEXT NOT NULL,
             PRIMARY KEY (repo_path, branch_name)
         );
+        CREATE TABLE IF NOT EXISTS branch_tickets (
+            repo_path TEXT NOT NULL,
+            branch_name TEXT NOT NULL,
+            issue_key TEXT NOT NULL,
+            linked_at TEXT NOT NULL,
+            PRIMARY KEY (repo_path, branch_name)
+        );
         ",
     )?;
     Ok(conn)
@@ -142,6 +149,81 @@ pub fn unlock_branch(conn: &Connection, repo_path: &str, branch_name: &str) -> A
     conn.execute(
         "DELETE FROM branch_locks WHERE repo_path = ?1 AND branch_name = ?2",
         params![repo_path, branch_name],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchTicketRow {
+    pub repo_path: String,
+    pub branch_name: String,
+    pub issue_key: String,
+    pub linked_at: String,
+}
+
+pub fn list_branch_tickets(conn: &Connection, repo_path: &str) -> AppResult<Vec<BranchTicketRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT repo_path, branch_name, issue_key, linked_at
+         FROM branch_tickets
+         WHERE repo_path = ?1
+         ORDER BY branch_name ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![repo_path], |row| {
+            Ok(BranchTicketRow {
+                repo_path: row.get(0)?,
+                branch_name: row.get(1)?,
+                issue_key: row.get(2)?,
+                linked_at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn link_branch_ticket(
+    conn: &Connection,
+    repo_path: &str,
+    branch_name: &str,
+    issue_key: &str,
+    linked_at: &str,
+) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO branch_tickets (repo_path, branch_name, issue_key, linked_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(repo_path, branch_name) DO UPDATE SET
+           issue_key = excluded.issue_key,
+           linked_at = excluded.linked_at",
+        params![repo_path, branch_name, issue_key, linked_at],
+    )?;
+    Ok(())
+}
+
+pub fn unlink_branch_ticket(conn: &Connection, repo_path: &str, branch_name: &str) -> AppResult<()> {
+    conn.execute(
+        "DELETE FROM branch_tickets WHERE repo_path = ?1 AND branch_name = ?2",
+        params![repo_path, branch_name],
+    )?;
+    Ok(())
+}
+
+pub fn rename_branch_ticket(
+    conn: &Connection,
+    repo_path: &str,
+    from: &str,
+    to: &str,
+) -> AppResult<()> {
+    if from == to {
+        return Ok(());
+    }
+    conn.execute(
+        "DELETE FROM branch_tickets WHERE repo_path = ?1 AND branch_name = ?2",
+        params![repo_path, to],
+    )?;
+    conn.execute(
+        "UPDATE branch_tickets SET branch_name = ?3 WHERE repo_path = ?1 AND branch_name = ?2",
+        params![repo_path, from, to],
     )?;
     Ok(())
 }

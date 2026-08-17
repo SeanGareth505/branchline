@@ -581,8 +581,9 @@ export class SettingsPage implements OnInit {
   async refreshEnv(): Promise<void> {
     try {
       this.gitEnv.set(await this.tauri.getGitEnv());
-    } catch {
+    } catch (err) {
       this.gitEnv.set(null);
+      this.store.showError(err);
     }
   }
 

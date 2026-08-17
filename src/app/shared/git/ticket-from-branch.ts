@@ -55,6 +55,20 @@ export function extractTicketFromBranch(
   return applyTicketCase(raw, settings.ticketCase);
 }
 
+export function branchNameWithTicket(branch: string, key: string): string {
+  const ticket = key.trim();
+  const name = stripRefPrefix(branch);
+  if (!ticket) return name;
+  if (!name) return ticket;
+  if (name.toLowerCase().includes(ticket.toLowerCase())) return name;
+  const segs = branchSegments(name);
+  const last = segs[segs.length - 1] ?? name;
+  const leaf = `${ticket}-${last}`.replace(/-+/g, '-');
+  if (segs.length <= 1) return leaf;
+  segs[segs.length - 1] = leaf;
+  return segs.join('/');
+}
+
 export function extractBranchTopic(branch: string, ticket?: string | null): string | null {
   const segs = branchSegments(branch);
   if (!segs.length) return null;

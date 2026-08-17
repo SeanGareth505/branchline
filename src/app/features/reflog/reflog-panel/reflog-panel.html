@@ -9,6 +9,12 @@
   </header>
   @if (loading()) {
     <app-loading-block message="Loading reflog…" [compact]="true" />
+  } @else if (error()) {
+    <div class="state">
+      <p class="state-title">Couldn’t load reflog</p>
+      <p class="state-hint">{{ error() }}</p>
+      <button type="button" class="bl-btn" (click)="retry()">Try again</button>
+    </div>
   } @else {
     @if (store.danglingCommits().length) {
       <div class="lost">

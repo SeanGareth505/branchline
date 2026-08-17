@@ -278,12 +278,16 @@ h1 {
   animation: rise 480ms var(--ease-out) 160ms both;
 }
 
-.library-controls app-repo-account-bar {
-  flex: 1;
+.filter-hint {
   min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .sort-tabs {
+  margin-left: auto;
   display: inline-flex;
   gap: 0.15rem;
   padding: 0.15rem;

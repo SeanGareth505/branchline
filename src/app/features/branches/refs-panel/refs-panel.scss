@@ -761,6 +761,27 @@ button.sync-chip:hover {
   background: var(--accent);
 }
 
+.ticket-chip {
+  flex-shrink: 0;
+  margin-left: 0.1rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ticket-chip.mapped {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .ref-row.flash {
   animation: branch-flash 1.2s var(--ease-out);
 }

@@ -61,6 +61,35 @@ pub fn push_entry(
     Ok(entry)
 }
 
+pub fn try_push_entry(
+    db: &Db,
+    repo_path: &str,
+    action: &str,
+    label: &str,
+    payload: Value,
+) -> bool {
+    match push_entry(db, repo_path, action, label, payload) {
+        Ok(_) => true,
+        Err(err) => {
+            let _ = crate::infrastructure::diagnostics::record_client_error(
+                "undo.journal",
+                &format!("Could not record undo for {label}"),
+                Some(&err.to_string()),
+            );
+            false
+        }
+    }
+}
+
+pub fn message_with_undo(message: impl Into<String>, recorded: bool) -> String {
+    let message = message.into();
+    if recorded {
+        message
+    } else {
+        format!("{message} — undo is unavailable for this change")
+    }
+}
+
 pub fn list_entries(db: &Db, repo_path: Option<&str>, limit: i64) -> AppResult<Vec<UndoEntry>> {
     let rows = sqlite::list_undo_entries(db, repo_path, limit)?;
     Ok(rows.into_iter().map(UndoEntry::from).collect())

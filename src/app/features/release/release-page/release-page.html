@@ -67,6 +67,12 @@
     </div>
   } @else if (loading()) {
     <app-loading-block message="Loading release settings…" />
+  } @else if (loadError()) {
+    <div class="empty bl-glass">
+      <p class="empty-title">Couldn’t load release settings</p>
+      <p class="empty-hint">{{ loadError() }}</p>
+      <button type="button" class="bl-btn" (click)="retry()">Try again</button>
+    </div>
   } @else if (!configured()) {
     <div class="setup bl-glass">
       <div class="setup-copy">

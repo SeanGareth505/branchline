@@ -364,9 +364,9 @@ export class DiffViewer {
         this.imagePreview.set(null);
         this.preferPatch.set(false);
       }
-    } catch {
+    } catch (err) {
       if (token !== this.loadToken) return;
-      this.patch.set('Could not load diff.');
+      this.patch.set(this.store.formatError(err) || 'Could not load diff.');
       this.files.set([]);
       this.imagePreview.set(null);
     } finally {

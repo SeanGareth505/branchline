@@ -19,6 +19,7 @@ pub struct GithubCliAccount {
 pub struct GithubGitStatus {
     pub ssh_login: String,
     pub uses_gh_helper: bool,
+    pub gh_available: bool,
     pub accounts: Vec<GithubCliAccount>,
     pub active_login: String,
 }
@@ -47,6 +48,7 @@ pub fn github_git_status() -> AppResult<GithubGitStatus> {
     Ok(GithubGitStatus {
         ssh_login: ssh_github_login(),
         uses_gh_helper: uses_gh_credential_helper(),
+        gh_available: gh_command().is_some(),
         accounts,
         active_login,
     })
@@ -145,6 +147,161 @@ pub fn switch_github_cli_user(input: SwitchGithubCliUserInput) -> AppResult<Muta
             ok: false,
             message: format!("Could not run gh: {err}"),
         }),
+    }
+}
+
+#[command]
+pub fn logout_github_cli_user(input: SwitchGithubCliUserInput) -> AppResult<MutationOutput> {
+    let login = input.login.trim();
+    if login.is_empty() {
+        return Ok(MutationOutput {
+            ok: false,
+            message: "Pick a GitHub account to unlink".into(),
+        });
+    }
+    let Some(gh) = gh_command() else {
+        return Ok(MutationOutput {
+            ok: false,
+            message: "GitHub CLI (gh) is not installed".into(),
+        });
+    };
+    let mut command = Command::new(&gh);
+    command
+        .args([
+            "auth",
+            "logout",
+            "--hostname",
+            "github.com",
+            "--user",
+            login,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    match command.spawn() {
+        Ok(mut child) => {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(b"Y\n");
+            }
+            match child.wait_with_output() {
+                Ok(output) if output.status.success() => Ok(MutationOutput {
+                    ok: true,
+                    message: format!("Unlinked {login} from GitHub CLI"),
+                }),
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let detail = if !stderr.trim().is_empty() {
+                        stderr.trim().to_string()
+                    } else {
+                        stdout.trim().to_string()
+                    };
+                    Ok(MutationOutput {
+                        ok: false,
+                        message: if detail.is_empty() {
+                            format!("Could not unlink {login}")
+                        } else {
+                            detail
+                        },
+                    })
+                }
+                Err(err) => Ok(MutationOutput {
+                    ok: false,
+                    message: format!("Could not run gh: {err}"),
+                }),
+            }
+        }
+        Err(err) => Ok(MutationOutput {
+            ok: false,
+            message: format!("Could not run gh: {err}"),
+        }),
+    }
+}
+
+#[command]
+pub fn start_github_cli_login() -> AppResult<MutationOutput> {
+    let Some(gh) = gh_command() else {
+        return Ok(MutationOutput {
+            ok: false,
+            message: "GitHub CLI (gh) is not installed. Install it, then try again.".into(),
+        });
+    };
+    let gh_path = gh.display().to_string();
+    match open_github_login_terminal(&gh_path) {
+        Ok(()) => Ok(MutationOutput {
+            ok: true,
+            message: "Finish signing in in Terminal, then return here".into(),
+        }),
+        Err(err) => Ok(MutationOutput {
+            ok: false,
+            message: format!(
+                "Could not open Terminal ({err}). Run: {gh_path} auth login --hostname github.com --web"
+            ),
+        }),
+    }
+}
+
+fn open_github_login_terminal(gh: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let escaped = gh.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "tell application \"Terminal\" to do script \"{escaped} auth login --hostname github.com --web --git-protocol https\""
+        );
+        let output = Command::new("osascript")
+            .args(["-e", &script])
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|err| err.to_string())?;
+        if output.status.success() {
+            return Ok(());
+        }
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("cmd")
+            .args([
+                "/C",
+                "start",
+                "GitHub login",
+                gh,
+                "auth",
+                "login",
+                "--hostname",
+                "github.com",
+                "--web",
+                "--git-protocol",
+                "https",
+            ])
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|err| err.to_string())?;
+        if output.status.success() {
+            return Ok(());
+        }
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let login = format!("{gh} auth login --hostname github.com --web --git-protocol https");
+        for extra in [
+            ("x-terminal-emulator", vec!["-e", login.as_str()]),
+            ("gnome-terminal", vec!["--", "bash", "-lc", login.as_str()]),
+            ("konsole", vec!["-e", "bash", "-lc", login.as_str()]),
+            ("xterm", vec!["-e", login.as_str()]),
+        ] {
+            if Command::new(extra.0)
+                .args(extra.1)
+                .stdin(Stdio::null())
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        Err("No terminal app found".into())
     }
 }
 

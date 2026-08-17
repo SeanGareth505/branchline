@@ -1,34 +1,79 @@
-@if (store.repoAccounts().length > 1) {
-  <div class="accounts" role="tablist" aria-label="Account">
-    <button
-      type="button"
-      class="chip all"
-      role="tab"
-      [class.on]="store.selectedRepoAccountKey() === allKey"
-      [attr.aria-selected]="store.selectedRepoAccountKey() === allKey"
-      (click)="store.selectRepoAccount(allKey)"
-    >
-      All
-    </button>
+@if (visible()) {
+  <div
+    class="swap"
+    role="group"
+    aria-label="GitHub account"
+    cdkOverlayOrigin
+    #origin="cdkOverlayOrigin"
+  >
     @for (account of store.repoAccounts(); track account.key) {
       <button
         type="button"
-        class="chip"
-        role="tab"
         [class.on]="store.selectedRepoAccountKey() === account.key"
-        [class.live]="account.active"
-        [attr.aria-selected]="store.selectedRepoAccountKey() === account.key"
-        [title]="
-          account.cli
-            ? account.active
-              ? 'GitHub CLI is using this login'
-              : 'Switch GitHub CLI to this login'
-            : 'Show repositories for this owner'
-        "
-        (click)="store.selectRepoAccount(account.key)"
+        [attr.aria-pressed]="store.selectedRepoAccountKey() === account.key"
+        [disabled]="busy()"
+        [title]="'Show ' + account.label + ' repos and tabs. Right-click to unlink.'"
+        (click)="choose(account.key)"
+        (contextmenu)="onChipContext(account.label, $event)"
       >
         {{ account.label }}
       </button>
     }
+    @if (store.repoAccounts().length < 2 && canAdd()) {
+      <button
+        type="button"
+        class="icon"
+        [disabled]="busy()"
+        title="Add a GitHub account"
+        aria-label="Add a GitHub account"
+        (click)="addAccount()"
+      >
+        <ng-icon name="lucidePlus" size="13" />
+      </button>
+    }
+    @if (cliAccounts().length) {
+      <button
+        type="button"
+        class="icon"
+        [attr.aria-expanded]="menuOpen()"
+        aria-haspopup="menu"
+        [disabled]="busy()"
+        title="Manage GitHub accounts"
+        aria-label="Manage GitHub accounts"
+        (click)="toggleMenu()"
+      >
+        <ng-icon name="lucideEllipsis" size="14" />
+      </button>
+    }
   </div>
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="origin"
+    [cdkConnectedOverlayOpen]="menuOpen()"
+    [cdkConnectedOverlayPositions]="menuPositions"
+    [cdkConnectedOverlayPush]="true"
+    [cdkConnectedOverlayWidth]="220"
+    (overlayOutsideClick)="closeMenu()"
+  >
+    <div class="panel bl-glass-dialog" role="menu" aria-label="Manage GitHub accounts">
+      @if (canAdd()) {
+        <button type="button" role="menuitem" (click)="addAccount()">
+          <ng-icon name="lucidePlus" size="14" />
+          Add account
+        </button>
+      }
+      @for (account of cliAccounts(); track account.login) {
+        <button type="button" role="menuitem" class="danger" (click)="unlink(account.login)">
+          <ng-icon name="lucideUnplug" size="14" />
+          Unlink {{ account.login }}
+        </button>
+      }
+      <div class="divider" aria-hidden="true"></div>
+      <button type="button" role="menuitem" (click)="manage()">
+        <ng-icon name="lucideSettings" size="14" />
+        Manage…
+      </button>
+    </div>
+  </ng-template>
 }

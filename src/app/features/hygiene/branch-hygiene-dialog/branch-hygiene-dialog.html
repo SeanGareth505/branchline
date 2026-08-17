@@ -19,6 +19,8 @@
 
       @if (loading()) {
         <p class="empty">Loading…</p>
+      } @else if (error()) {
+        <p class="empty error">{{ error() }}</p>
       } @else if (entries().length === 0) {
         <p class="empty">Nothing to clean up</p>
       } @else {

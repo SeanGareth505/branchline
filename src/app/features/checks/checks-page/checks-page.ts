@@ -102,7 +102,7 @@ export class ChecksPage implements OnInit {
       const ok = await this.store.runSingleCheck(check, { silent: true });
       this.expandedId.set(check.id);
       if (ok) this.store.showSuccess(`${check.name} passed`);
-      else this.store.showError(`${check.name} failed`);
+      else this.store.showError(this.store.checkFailMessage(check.name, this.outputFor(check)));
     } finally {
       this.runningId.set(null);
     }

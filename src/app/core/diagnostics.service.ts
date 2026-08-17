@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { TauriService } from './tauri.service';
 import type { DiagnosticsSummary } from './models';
+import { isIgnorableUnhandledError, rawErrorMessage } from '../shared/git/git-error';
 
 @Injectable({ providedIn: 'root' })
 export class DiagnosticsService {
@@ -13,22 +14,18 @@ export class DiagnosticsService {
     this.bound = true;
 
     window.addEventListener('error', (event) => {
+      const message = event.message || rawErrorMessage(event.error) || 'Unhandled error';
       void this.record(
         'window.error',
-        event.message || 'Unhandled error',
+        message,
         event.error instanceof Error ? event.error.stack : undefined,
       );
     });
 
     window.addEventListener('unhandledrejection', (event) => {
-      const reason = event.reason;
-      const message =
-        reason instanceof Error
-          ? reason.message
-          : typeof reason === 'string'
-            ? reason
-            : 'Unhandled promise rejection';
-      const detail = reason instanceof Error ? reason.stack : undefined;
+      if (isIgnorableUnhandledError(event.reason)) return;
+      const message = rawErrorMessage(event.reason) || 'Unhandled promise rejection';
+      const detail = event.reason instanceof Error ? event.reason.stack : undefined;
       void this.record('unhandledrejection', message, detail);
     });
   }

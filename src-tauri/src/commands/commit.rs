@@ -72,7 +72,7 @@ pub fn create_commit(
 
         {
             let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
+            let _ = undo::try_push_entry(
                 &db,
                 &repo_key,
                 "commit",

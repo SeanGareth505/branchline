@@ -16,6 +16,12 @@
   </header>
   @if (loading()) {
     <app-loading-block message="Loading history…" [compact]="true" />
+  } @else if (error()) {
+    <div class="state">
+      <p class="state-title">Couldn’t load history</p>
+      <p class="state-hint">{{ error() }}</p>
+      <button type="button" class="bl-btn" (click)="retry()">Try again</button>
+    </div>
   } @else if (!hasFile()) {
     <div class="state">
       <p class="state-title">No file selected</p>

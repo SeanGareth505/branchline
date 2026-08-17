@@ -29,7 +29,7 @@ export class RepoTabs {
   }
 
   private readonly tabColors = computed(() =>
-    assignIdentityColors(this.store.openRepos().map((repo) => repoIdentityKey(repo.name, repo.path))),
+    assignIdentityColors(this.store.visibleOpenRepos().map((repo) => repoIdentityKey(repo.name, repo.path))),
   );
 
   colorFor(repo: RepoSummary): string {

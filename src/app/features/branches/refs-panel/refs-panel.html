@@ -300,6 +300,21 @@
                   @if (row.branch.isCurrent) {
                     <span class="head-chip" title="Checked out — this is the branch you are on">HEAD</span>
                   }
+                  @if (ticketLabel(row.branch.name); as ticket) {
+                    <button
+                      type="button"
+                      class="ticket-chip"
+                      [class.mapped]="!!mappedTicket(row.branch.name)"
+                      [title]="
+                        mappedTicket(row.branch.name)
+                          ? 'Linked to ' + ticket + ' — click to open'
+                          : ticket + ' from branch name — click to open'
+                      "
+                      (click)="openLinkedJira(row.branch.name, $event)"
+                    >
+                      {{ ticket }}
+                    </button>
+                  }
                   @if (row.branch.isCurrent && store.changeCount(); as n) {
                     <span
                       class="sync-chip row-sync"
@@ -476,6 +491,17 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
+                  @if (ticketLabel(row.branch.name); as ticket) {
+                    <button
+                      type="button"
+                      class="ticket-chip"
+                      [class.mapped]="!!mappedTicket(row.branch.name)"
+                      [title]="ticket + ' — click to open'"
+                      (click)="openLinkedJira(row.branch.name, $event)"
+                    >
+                      {{ ticket }}
+                    </button>
+                  }
                 </div>
               }
               </ng-container>
@@ -949,6 +975,45 @@
         <button type="button" title="Rename this local branch" (click)="rename(menu.name)">
           Rename…
         </button>
+        @if (mappedTicket(menu.name); as key) {
+          <button
+            type="button"
+            [title]="'Open ' + key + ' in Jira'"
+            (click)="openLinkedJira(menu.name)"
+          >
+            Open {{ key }}
+          </button>
+          <button
+            type="button"
+            [title]="
+              store.canPickJiraIssues()
+                ? 'Attach a different Jira issue'
+                : 'Connect Jira to pick a different issue'
+            "
+            (click)="linkJira(menu.name)"
+          >
+            Change Jira link…
+          </button>
+          <button
+            type="button"
+            title="Remove the Jira link from this branch"
+            (click)="unlinkJira(menu.name)"
+          >
+            Unlink {{ key }}
+          </button>
+        } @else {
+          <button
+            type="button"
+            [title]="
+              store.canPickJiraIssues()
+                ? 'Attach a Jira issue to this branch'
+                : 'Connect Jira to pick an issue'
+            "
+            (click)="linkJira(menu.name)"
+          >
+            {{ store.canPickJiraIssues() ? 'Link to Jira…' : 'Connect Jira…' }}
+          </button>
+        }
         @if (store.isBranchLocked(menu.name)) {
           <button
             type="button"

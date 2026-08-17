@@ -71,13 +71,18 @@ import { ChangelogService } from '../features/changelog/changelog.service';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypes } from './commit-types';
 import {
   COL_DEFAULT,
+  SPLIT_COMMIT_COMPOSER_DEFAULT,
+  SPLIT_COMMIT_FILES_DEFAULT,
   SPLIT_MAIN_DEFAULT,
   SPLIT_NESTED_DEFAULT,
   normalizeRevisionGridColumns,
   normalizeSplitSizes,
+  type SplitKind,
 } from './revision-grid-columns';
 import {
   DEFAULT_TICKET_FROM_BRANCH,
+  branchNameWithTicket,
+  extractTicketFromBranch,
   normalizeTicketFromBranch,
 } from '../shared/git/ticket-from-branch';
 import { normalizeCommitShortcutSequence } from '../shared/git/commit-shortcuts';
@@ -90,9 +95,10 @@ import { parseRemoteRef } from '../shared/git/remote-ref';
 import { parseRemoteWebBase, primaryGithubOwner, remoteProtocol, commitWebUrl, compareWebUrl, fileWebUrl } from '../shared/git/repo-links';
 import {
   ALL_REPO_ACCOUNTS,
-  collectRepoAccounts,
+  collectWorkspaceAccounts,
   hostOwnerFromSlug,
   hostOwnerFromWebUrl,
+  repoAccountKeyForOwner,
   repoAccountMatchesOwner,
   resolveSelectedRepoAccount,
   type RepoAccountOption,
@@ -495,7 +501,7 @@ export class AppStore {
         .filter((url): url is string => !!url)
         .map((url) => hostOwnerFromWebUrl(url)),
     ];
-    return collectRepoAccounts({
+    return collectWorkspaceAccounts({
       cliAccounts: this.githubGitStatus()?.accounts ?? [],
       connectionUsernames: this.linkedGitHosts()
         .map((conn) => conn.username)
@@ -503,19 +509,35 @@ export class AppStore {
       owners,
     });
   });
+  readonly showingAllRepoAccounts = computed(
+    () => this.selectedRepoAccountKey() === ALL_REPO_ACCOUNTS,
+  );
+  readonly selectedRepoAccountLabel = computed(() => {
+    const key = this.selectedRepoAccountKey();
+    if (key === ALL_REPO_ACCOUNTS) return '';
+    return this.repoAccounts().find((account) => account.key === key)?.label ?? key;
+  });
   readonly selectedRepoAccountKey = computed(() =>
     resolveSelectedRepoAccount(this.settings().selectedRepoAccount, this.repoAccounts(), [
       this.githubGitStatus()?.activeLogin ?? '',
       this.githubApiUsername(),
     ]),
   );
+  readonly visibleOpenRepos = computed(() => {
+    const account = this.selectedRepoAccountKey();
+    const tabs = this.openRepos();
+    if (account === ALL_REPO_ACCOUNTS) return tabs;
+    return tabs.filter((repo) => this.localRepoMatchesAccount(repo.path, account));
+  });
   private githubGitStatusAt = 0;
+  private githubGitPollTimer: number | null = null;
   private static readonly GITHUB_GIT_STATUS_TTL_MS = 30_000;
   private readonly repoWebUrlInflight = new Map<string, Promise<string | null>>();
   readonly pendingRefsReveal = signal<string | null>(null);
   readonly createBranchStartPoint = signal<string | null>(null);
   readonly createBranchSuggestedName = signal('');
   readonly activeJiraKey = signal<string | null>(null);
+  private jiraSyncedBranch: string | null | undefined = undefined;
   readonly jiraIssues = signal<JiraIssue[]>([]);
   readonly jiraIssuesLoading = signal(false);
   readonly jiraIssuesError = signal<string | null>(null);
@@ -535,6 +557,8 @@ export class AppStore {
   readonly automationSection = signal<AutomationSection>('workflows');
   readonly splitMain = signal<number[]>([...SPLIT_MAIN_DEFAULT]);
   readonly splitNested = signal<number[]>([...SPLIT_NESTED_DEFAULT]);
+  readonly splitCommitFiles = signal<number[]>([...SPLIT_COMMIT_FILES_DEFAULT]);
+  readonly splitCommitComposer = signal<number[]>([...SPLIT_COMMIT_COMPOSER_DEFAULT]);
   readonly revisionGridColumns = signal<RevisionGridColumns>({ ...COL_DEFAULT });
   private sessionSaveTimer: number | null = null;
   private sessionOverlay: UiSession = {};
@@ -789,13 +813,23 @@ export class AppStore {
     this.setView('automation');
   }
 
-  setSplitSizes(kind: 'main' | 'nested', sizes: number[]): void {
+  setSplitSizes(kind: SplitKind, sizes: number[]): void {
     if (!sizes.length) return;
     const next = normalizeSplitSizes(kind, sizes);
     if (kind === 'main') this.splitMain.set(next);
-    else this.splitNested.set(next);
+    else if (kind === 'nested') this.splitNested.set(next);
+    else if (kind === 'commitFiles') this.splitCommitFiles.set(next);
+    else this.splitCommitComposer.set(next);
     if (!this.restoringSession) {
-      this.patchSession(kind === 'main' ? { splitMain: next } : { splitNested: next });
+      const key =
+        kind === 'main'
+          ? 'splitMain'
+          : kind === 'nested'
+            ? 'splitNested'
+            : kind === 'commitFiles'
+              ? 'commitSplitFiles'
+              : 'commitSplitComposer';
+      this.patchSession({ [key]: next });
     }
   }
 
@@ -838,8 +872,8 @@ export class AppStore {
   }
 
   private persistSessionToDisk(): void {
-    void this.tauri.saveSettings(this.settingsWithSession()).catch(() => {
-      /* ignore background session save failures */
+    void this.tauri.saveSettings(this.settingsWithSession()).catch((err) => {
+      void this.diagnostics.record('session.save', rawErrorMessage(err) || 'Session save failed');
     });
   }
 
@@ -874,6 +908,16 @@ export class AppStore {
       }
       if (Array.isArray(session.splitNested) && session.splitNested.length >= 2) {
         this.splitNested.set(normalizeSplitSizes('nested', session.splitNested.map(Number)));
+      }
+      if (Array.isArray(session.commitSplitFiles) && session.commitSplitFiles.length >= 2) {
+        this.splitCommitFiles.set(
+          normalizeSplitSizes('commitFiles', session.commitSplitFiles.map(Number)),
+        );
+      }
+      if (Array.isArray(session.commitSplitComposer) && session.commitSplitComposer.length >= 2) {
+        this.splitCommitComposer.set(
+          normalizeSplitSizes('commitComposer', session.commitSplitComposer.map(Number)),
+        );
       }
       if (session.revisionGridColumns) {
         this.revisionGridColumns.set(normalizeRevisionGridColumns(session.revisionGridColumns));
@@ -953,7 +997,8 @@ export class AppStore {
         return;
       }
       this.repos.set(await this.tauri.listRecentRepos());
-      void this.refreshGithubGitStatus();
+      this.restoreSessionRepoWebUrls(session);
+      await this.refreshGithubGitStatus();
       const sessionPaths = Array.isArray(session.openRepoPaths)
         ? session.openRepoPaths.filter((p): p is string => typeof p === 'string' && !!p.trim())
         : [];
@@ -965,27 +1010,34 @@ export class AppStore {
               return last ? [last.path] : [];
             })();
       let hasRepo = false;
-      const activePath =
-        (typeof session.activeRepoPath === 'string' && session.activeRepoPath.trim()) ||
-        pathsToOpen[pathsToOpen.length - 1] ||
-        null;
       this.restoringSession = true;
       try {
         this.openRepos.set(pathsToOpen.map((path) => this.repoTabStub(path)));
+        this.prefetchRepoWebUrls(pathsToOpen);
+        const account = this.selectedRepoAccountKey();
+        const matching =
+          account === ALL_REPO_ACCOUNTS
+            ? pathsToOpen
+            : pathsToOpen.filter((path) => this.localRepoMatchesAccount(path, account));
+        const savedForAccount = session.activeRepoPathByAccount?.[account]?.trim() || '';
+        const activePath =
+          (typeof session.activeRepoPath === 'string' && session.activeRepoPath.trim()) || '';
         const toActivate =
-          (activePath && pathsToOpen.some((p) => sameRepoPath(p, activePath))
-            ? activePath
+          (activePath && matching.some((p) => sameRepoPath(p, activePath)) ? activePath : null) ||
+          (savedForAccount && matching.some((p) => sameRepoPath(p, savedForAccount))
+            ? savedForAccount
             : null) ||
-          pathsToOpen[pathsToOpen.length - 1] ||
+          matching[matching.length - 1] ||
           null;
         if (toActivate) {
           await this.openRepo(toActivate, { restoreView: false });
         }
-        hasRepo = !!this.currentRepo() || this.openRepos().length > 0;
-        if (!this.currentRepo() && this.openRepos().length) {
-          await this.openRepo(this.openRepos()[this.openRepos().length - 1].path, {
-            restoreView: false,
-          });
+        hasRepo = !!this.currentRepo();
+        if (!this.currentRepo() && matching.length) {
+          const fallback = matching[matching.length - 1];
+          if (fallback && (!toActivate || !sameRepoPath(fallback, toActivate))) {
+            await this.openRepo(fallback, { restoreView: false });
+          }
           hasRepo = !!this.currentRepo();
         }
         void this.refreshInactiveRepoSummaries();
@@ -1010,9 +1062,30 @@ export class AppStore {
   }
 
   hasLinkedJira(): boolean {
-    return this.settings().connections.some(
-      (c) => c.provider === 'jira' && c.enabled && (c.hasToken || c.token.trim()),
+    const conn = this.jiraConnection();
+    return !!(
+      conn &&
+      conn.enabled &&
+      (conn.hasToken || conn.token.trim()) &&
+      conn.username.trim() &&
+      conn.baseUrl.trim()
     );
+  }
+
+  jiraConnection(): ConnectionConfig | undefined {
+    return this.settings().connections.find((c) => c.provider === 'jira');
+  }
+
+  canPickJiraIssues(): boolean {
+    return this.hasLinkedJira() || this.isDummyBackend;
+  }
+
+  jiraSetupIncomplete(): boolean {
+    const conn = this.jiraConnection();
+    if (!conn?.enabled) return false;
+    const hasToken = !!(conn.hasToken || conn.token.trim());
+    if (!hasToken) return false;
+    return !conn.username.trim() || !conn.baseUrl.trim();
   }
 
   hasGithubConnection(): boolean {
@@ -1193,6 +1266,7 @@ export class AppStore {
       this.stashes.set(entry.stashes ?? []);
       this.tags.set(entry.tags ?? []);
       this.remotes.set(entry.remotes ?? []);
+      this.cacheRepoWebUrl(path, entry.remotes ?? []);
       this.worktrees.set([]);
       this.submodules.set([]);
       this.lfsFiles.set([]);
@@ -1348,6 +1422,8 @@ export class AppStore {
     this.stashes.set(snap.stashes);
     this.tags.set(snap.tags);
     this.remotes.set(snap.remotes);
+    const currentPath = this.currentRepo()?.path;
+    if (currentPath) this.cacheRepoWebUrl(currentPath, snap.remotes);
     this.worktrees.set(snap.worktrees);
     this.submodules.set(snap.submodules);
     this.lfsFiles.set(snap.lfsFiles);
@@ -1517,6 +1593,11 @@ export class AppStore {
         this.repos.set(await this.tauri.listRecentRepos());
         if (this.repoLoadStale(gen, normalized)) return;
       }
+      this.alignSelectedAccountToRepo(normalized);
+      void this.ensureRepoWebUrl(normalized).then(() => {
+        if (this.repoLoadStale(gen, normalized)) return;
+        this.alignSelectedAccountToRepo(normalized);
+      });
       void this.applyGithubRepoAccount({ silent: true });
       if (!this.refreshInFlight) void this.refreshRepo();
       if (this.repoLoadStale(gen, normalized)) return;
@@ -1567,17 +1648,16 @@ export class AppStore {
       return;
     }
 
-    if (tabs.length) {
-      await this.openRepo(tabs[tabs.length - 1].path, { keepView: true });
+    const visible = tabs.filter((r) =>
+      this.localRepoMatchesAccount(r.path, this.selectedRepoAccountKey()),
+    );
+    if (visible.length) {
+      await this.openRepo(visible[visible.length - 1].path, { keepView: true });
       if (showToast && name) this.showToast(`Closed ${name}`);
       return;
     }
 
-    this.repoSnapshots.clear();
-    this.clearWorkingState();
-    this.currentRepo.set(null);
-    this.goHome();
-    this.nextAction.set('Open a repository');
+    this.parkCurrentRepo();
     if (showToast && name) this.showToast(`Closed ${name}`);
   }
 
@@ -1711,10 +1791,19 @@ export class AppStore {
 
   private persistOpenRepos(): void {
     if (this.restoringSession) return;
+    const account = this.selectedRepoAccountKey();
+    const currentPath = this.currentRepo()?.path ?? null;
+    const byAccount = { ...(this.readSession().activeRepoPathByAccount ?? {}) };
+    if (currentPath) byAccount[account] = currentPath;
     this.patchSession(
       {
         openRepoPaths: this.openRepos().map((r) => r.path),
-        activeRepoPath: this.currentRepo()?.path ?? null,
+        activeRepoPath: currentPath,
+        activeRepoPathByAccount: byAccount,
+        repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
+          ...this.openRepos().map((r) => r.path),
+          ...this.repos().map((r) => r.path),
+        ]),
       },
       { flush: true },
     );
@@ -1769,6 +1858,8 @@ export class AppStore {
     this.commitWaiter?.(false);
     this.commitWaiter = null;
     this.identity.set(null);
+    this.activeJiraKey.set(null);
+    this.jiraSyncedBranch = undefined;
     if (this.createBranchDialogOpen()) {
       this.closeCreateBranchDialog(false);
     }
@@ -1828,19 +1919,102 @@ export class AppStore {
     );
   }
 
-  selectRepoAccount(key: string): void {
+  selectRepoAccount(key: string, opts?: { syncWorkspace?: boolean }): void {
     const next = key.trim().toLowerCase() || ALL_REPO_ACCOUNTS;
+    const prev = this.selectedRepoAccountKey();
+    if (prev !== next) {
+      const currentPath = this.currentRepo()?.path ?? null;
+      const byAccount = { ...(this.readSession().activeRepoPathByAccount ?? {}) };
+      if (currentPath) byAccount[prev] = currentPath;
+      this.patchSession({
+        openRepoPaths: this.openRepos().map((r) => r.path),
+        activeRepoPath: currentPath,
+        activeRepoPathByAccount: byAccount,
+        repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
+          ...this.openRepos().map((r) => r.path),
+          ...this.repos().map((r) => r.path),
+        ]),
+      });
+    }
     if (this.settings().selectedRepoAccount.trim().toLowerCase() !== next) {
+      this.settings.update((current) => ({ ...current, selectedRepoAccount: next }));
       void this.saveSettings({ selectedRepoAccount: next });
     }
-    if (next === ALL_REPO_ACCOUNTS) return;
-    const cli = (this.githubGitStatus()?.accounts ?? []).find(
-      (account) => account.login.toLowerCase() === next,
+    if (next !== ALL_REPO_ACCOUNTS) {
+      const cli = (this.githubGitStatus()?.accounts ?? []).find(
+        (account) => account.login.toLowerCase() === next,
+      );
+      const mapped = this.settings().githubRepoAccounts[next]?.login.trim() ?? '';
+      const login = cli?.login || mapped;
+      if (login && login !== this.githubGitStatus()?.activeLogin) {
+        void this.switchGithubCliUser(login, { silent: true });
+      }
+    }
+    if (opts?.syncWorkspace !== false && prev !== next) {
+      void this.syncAccountWorkspace(next);
+    }
+  }
+
+  private async syncAccountWorkspace(accountKey: string): Promise<void> {
+    const current = this.currentRepo()?.path;
+    if (current && this.localRepoMatchesAccount(current, accountKey)) return;
+    const saved = this.readSession().activeRepoPathByAccount?.[accountKey]?.trim() || '';
+    const visible = this.openRepos().filter((repo) =>
+      this.localRepoMatchesAccount(repo.path, accountKey),
     );
-    const mapped = this.settings().githubRepoAccounts[next]?.login.trim() ?? '';
-    const login = cli?.login || mapped;
-    if (login && login !== this.githubGitStatus()?.activeLogin) {
-      void this.switchGithubCliUser(login, { silent: true });
+    const fromTabs =
+      visible.find((repo) => saved && sameRepoPath(repo.path, saved)) ??
+      visible[visible.length - 1];
+    if (fromTabs) {
+      await this.openRepo(fromTabs.path, { keepView: !!current, restoreView: !current });
+      return;
+    }
+    if (current) this.parkCurrentRepo();
+  }
+
+  private parkCurrentRepo(): void {
+    this.repoLoadGen += 1;
+    this.snapshotCurrentRepo();
+    this.clearWorkingState();
+    this.currentRepo.set(null);
+    this.syncingRepo.set(false);
+    this.loading.set(false);
+    this.nextAction.set('Open a repository');
+    this.goHome();
+    this.persistOpenRepos();
+  }
+
+  private restoreSessionRepoWebUrls(session: UiSession): void {
+    const cached = normalizeSessionRepoWebUrls(session.repoWebUrls);
+    if (!Object.keys(cached).length) return;
+    this.repoWebUrls.update((current) => ({ ...cached, ...current }));
+  }
+
+  private cacheRepoWebUrl(path: string, remotes: RemoteInfo[]): void {
+    if (!path) return;
+    const origin = remotes.find((remote) => remote.name === 'origin') ?? remotes[0];
+    const url = origin
+      ? parseRemoteWebBase(origin.fetchUrl || origin.pushUrl)?.webBase ?? null
+      : null;
+    const previous = this.repoWebUrls()[path];
+    if (previous === url) return;
+    this.repoWebUrls.update((map) => ({ ...map, [path]: url }));
+  }
+
+  private alignSelectedAccountToRepo(path: string): void {
+    if (this.selectedRepoAccountKey() === ALL_REPO_ACCOUNTS) return;
+    if (this.localRepoMatchesAccount(path)) return;
+    const url = this.repoWebUrl(path);
+    const owner = url
+      ? hostOwnerFromWebUrl(url)
+      : primaryGithubOwner(this.remotes());
+    const key = repoAccountKeyForOwner(
+      owner,
+      this.repoAccounts(),
+      this.settings().githubRepoAccounts,
+    );
+    if (key && key !== this.selectedRepoAccountKey()) {
+      this.selectRepoAccount(key, { syncWorkspace: false });
     }
   }
 
@@ -2249,6 +2423,269 @@ export class AppStore {
     this.openCreateBranchDialog(null, this.branchNameFromIssue(issue));
   }
 
+  ticketForBranch(name: string): string | null {
+    const branch = name.trim();
+    if (!branch) return null;
+    const mapped = this.localBranches()
+      .find((b) => b.name === branch)
+      ?.jiraKey?.trim();
+    if (mapped) return mapped;
+    return extractTicketFromBranch(branch, this.settings().ticketFromBranch);
+  }
+
+  mappedTicketForBranch(name: string): string | null {
+    return (
+      this.localBranches()
+        .find((b) => b.name === name.trim())
+        ?.jiraKey?.trim() || null
+    );
+  }
+
+  branchesLinkedToIssue(issueKey: string): string[] {
+    const key = issueKey.trim().toLowerCase();
+    if (!key) return [];
+    return this.localBranches()
+      .filter((b) => (b.jiraKey || '').trim().toLowerCase() === key)
+      .map((b) => b.name);
+  }
+
+  jiraBrowseUrl(issueKey: string): string | null {
+    const key = issueKey.trim();
+    if (!key) return null;
+    const known = this.jiraIssues().find((i) => i.key === key)?.url?.trim();
+    if (known) return known;
+    const base = this.jiraConnection()?.baseUrl.trim().replace(/\/$/, '');
+    if (!base) return null;
+    const browse = base.replace(/\/rest\/api\/[23]$/, '');
+    return `${browse}/browse/${key}`;
+  }
+
+  async promptConnectJira(message: string): Promise<boolean> {
+    const go = await this.prompts.ask({
+      title: 'Connect Jira',
+      message,
+      confirmLabel: 'Connect Jira',
+      cancelLabel: 'Not now',
+      confirmOnly: true,
+      required: false,
+    });
+    if (go === null) return false;
+    this.openSettings('connections', 'jira');
+    return true;
+  }
+
+  async ensureJiraIssuesAvailable(): Promise<boolean> {
+    const conn = this.jiraConnection();
+    const hasCreds = !!(conn && conn.enabled && (conn.hasToken || conn.token.trim()));
+    if (hasCreds && !conn!.baseUrl.trim()) {
+      await this.promptConnectJira(
+        'Jira is missing the site URL (for example https://company.atlassian.net). Add it under Settings → Connections.',
+      );
+      return false;
+    }
+    if (hasCreds && !conn!.username.trim()) {
+      await this.promptConnectJira(
+        'Jira needs the Atlassian account email as well as the API token.',
+      );
+      return false;
+    }
+    if (!this.canPickJiraIssues()) {
+      await this.promptConnectJira(
+        'Connect Jira under Settings → Connections to pick issues. Ticket keys in branch names still work without signing in.',
+      );
+      return false;
+    }
+    if (this.jiraIssues().length) return true;
+    await this.refreshJiraIssues();
+    if (this.jiraIssues().length) return true;
+    if (this.jiraIssuesError()) {
+      this.showWarning(this.jiraIssuesError()!);
+      return false;
+    }
+    this.showWarning('No Jira issues loaded. Refresh on the Jira page or adjust JQL.');
+    return false;
+  }
+
+  async pickJiraIssue(opts?: {
+    title?: string;
+    message?: string;
+    confirmLabel?: string;
+    initialKey?: string | null;
+  }): Promise<JiraIssue | null> {
+    if (!(await this.ensureJiraIssuesAvailable())) return null;
+    const issues = this.jiraIssues();
+    const picked = await this.selects.ask({
+      title: opts?.title ?? 'Link to Jira',
+      message: opts?.message ?? 'Pick an issue to attach to this branch.',
+      label: 'Issue',
+      options: issues.map((issue) => ({
+        value: issue.key,
+        label: `${issue.key}  ${issue.summary}`,
+        hint: `${issue.status} · ${issue.assignee}`,
+      })),
+      initialValue: opts?.initialKey?.trim() || undefined,
+      confirmLabel: opts?.confirmLabel ?? 'Link',
+      filterable: true,
+    });
+    if (!picked) return null;
+    return (
+      issues.find((issue) => issue.key === picked) ?? {
+        key: picked,
+        summary: picked,
+        status: '',
+        assignee: '',
+        priority: '',
+        issueType: '',
+        url: this.jiraBrowseUrl(picked) ?? '',
+        updatedAt: '',
+        labels: [],
+      }
+    );
+  }
+
+  async linkCurrentBranchToIssue(issue: JiraIssue): Promise<boolean> {
+    const branch = this.currentLocalBranchName();
+    if (!branch) {
+      this.showWarning('Check out a local branch first');
+      return false;
+    }
+    return this.linkBranchToIssue(branch, issue.key);
+  }
+
+  async pickAndLinkBranchToJira(branchName?: string): Promise<boolean> {
+    const branch = (branchName ?? this.currentLocalBranchName() ?? '').trim();
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return false;
+    }
+    if (!branch) {
+      this.showWarning('Check out a local branch first');
+      return false;
+    }
+    if (this.localBranches().every((b) => b.name !== branch) && this.status()?.branch !== branch) {
+      this.showWarning('Link a local branch');
+      return false;
+    }
+    const issue = await this.pickJiraIssue({
+      title: 'Link to Jira',
+      message: `Attach a Jira issue to “${branch}”.`,
+      initialKey: this.ticketForBranch(branch),
+    });
+    if (!issue) return false;
+    return this.linkBranchToIssue(branch, issue.key);
+  }
+
+  async linkBranchToIssue(branchName: string, issueKey: string): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const branch = branchName.trim();
+    const key = issueKey.trim();
+    if (!path || !branch || !key) return false;
+
+    let target = branch;
+    if (!branch.toLowerCase().includes(key.toLowerCase())) {
+      const nextName = branchNameWithTicket(branch, key);
+      const choice = await this.selects.ask({
+        title: `Link ${key}`,
+        message: `“${branch}” does not include ${key}. Rename it so GitHub/GitLab for Jira can pick it up, or keep the name and only link it in Branchline.`,
+        label: 'How to link',
+        options: [
+          {
+            value: 'rename',
+            label: `Rename to ${nextName}`,
+            hint: 'Best when the branch is still local',
+          },
+          {
+            value: 'keep',
+            label: 'Keep this name',
+            hint: 'Safer if a pull request already exists',
+          },
+        ],
+        initialValue: this.localBranches().find((b) => b.name === branch)?.upstream
+          ? 'keep'
+          : 'rename',
+        confirmLabel: 'Continue',
+        filterable: false,
+      });
+      if (!choice) return false;
+      if (choice === 'rename') {
+        try {
+          await this.tauri.renameBranch(path, branch, nextName);
+          target = nextName;
+        } catch (err) {
+          this.showError(err);
+          return false;
+        }
+      }
+    }
+
+    try {
+      const result = await this.tauri.linkBranchToJira(path, target, key);
+      const current = this.currentLocalBranchName();
+      const isCurrent = current === branch || current === target;
+      if (isCurrent) {
+        this.setActiveJiraKey(key);
+        this.jiraSyncedBranch = target;
+      }
+      await this.refreshRepo();
+      this.showSuccess(result.message);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async unlinkBranchFromJira(branchName: string): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    const branch = branchName.trim();
+    if (!path || !branch) return false;
+    try {
+      const result = await this.tauri.unlinkBranchFromJira(path, branch);
+      if (this.status()?.branch === branch) {
+        this.jiraSyncedBranch = branch;
+        this.activeJiraKey.set(
+          extractTicketFromBranch(branch, this.settings().ticketFromBranch),
+        );
+      }
+      await this.refreshRepo();
+      this.showSuccess(result.message);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async openJiraIssue(issueKey: string): Promise<void> {
+    const url = this.jiraBrowseUrl(issueKey);
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    if (!this.hasLinkedJira() && !this.isDummyBackend) {
+      await this.promptConnectJira(
+        `No Jira site URL to open ${issueKey}. Connect Jira under Settings → Connections.`,
+      );
+      return;
+    }
+    this.showWarning(
+      `No Jira URL for ${issueKey}. Add the site URL under Settings → Connections.`,
+    );
+  }
+
+  currentLocalBranchName(): string | null {
+    const status = this.status();
+    if (!status || status.isDetached) return null;
+    return status.branch?.trim() || null;
+  }
+
+  private syncActiveJiraIfBranchChanged(): void {
+    const branch = this.currentLocalBranchName();
+    if (branch === this.jiraSyncedBranch) return;
+    this.jiraSyncedBranch = branch;
+    this.activeJiraKey.set(branch ? this.ticketForBranch(branch) : null);
+  }
+
   async transitionJiraIssue(issueKey: string, transitionId: string): Promise<boolean> {
     try {
       if (this.hasLinkedJira()) {
@@ -2301,6 +2738,7 @@ export class AppStore {
     this.artificial.set(artificialFromStatus(status));
     this.updateNextAction(status);
     this.syncRepoSummaryFromStatus(path, status);
+    this.syncActiveJiraIfBranchChanged();
     this.maybeNotifyStatusChanges(prev, status);
     void this.syncConflictManager(prev, status);
     this.snapshotCurrentRepo();
@@ -2353,6 +2791,7 @@ export class AppStore {
     this.commitLogHasMore.set(commits.length >= logLimit && this.commitLogLimit() < COMMIT_LOG_MAX);
     this.artificial.set(artificialFromStatus(status));
     this.setBranchesIfChanged(branches);
+    this.syncActiveJiraIfBranchChanged();
     this.lastWorkingTreeRefreshAt = Date.now();
     this.worktreePollDelay = AppStore.WORKTREE_POLL_MIN_MS;
     this.syncRepoSummaryFromStatus(path, status);
@@ -2422,6 +2861,7 @@ export class AppStore {
     const statusUnchanged = !!prev && statusFingerprint(prev) === statusFingerprint(status);
     this.setCommitsIfChanged(commits, logLimit);
     this.setBranchesIfChanged(branches);
+    this.syncActiveJiraIfBranchChanged();
     this.commitLogHasMore.set(commits.length >= logLimit && this.commitLogLimit() < COMMIT_LOG_MAX);
     this.lastWorkingTreeRefreshAt = Date.now();
     if (statusUnchanged) {
@@ -2489,6 +2929,7 @@ export class AppStore {
       this.stashes.set(stashes);
       this.tags.set(tags);
       this.remotes.set(remotes);
+      this.cacheRepoWebUrl(path, remotes);
       this.snapshotCurrentRepo();
       this.persistRepoCache(path);
     } catch {
@@ -3529,6 +3970,36 @@ export class AppStore {
     void this.diagnostics.record('ui.error', message);
   }
 
+  checkFailMessage(name: string, output: string): string {
+    const detail = summarizeGitToastMessage(output.trim());
+    return detail ? `${name} failed — ${detail}` : `${name} failed`;
+  }
+
+  private lastFailedCheckMessage(fallback: string): string {
+    const checks = this.repoChecks()?.checks ?? [];
+    for (const check of checks) {
+      const run = this.checkRuns()[check.id];
+      if (run?.status === 'fail') {
+        return this.checkFailMessage(check.name, run.output);
+      }
+    }
+    return fallback;
+  }
+
+  private undoFromToast(path: string, workingTree = false): () => void {
+    return () => {
+      void (async () => {
+        try {
+          await this.tauri.undoLast(path);
+          if (workingTree) await this.refreshWorkingTree();
+          else await this.refreshRepo();
+        } catch (err) {
+          this.showError(err);
+        }
+      })();
+    };
+  }
+
   notifyEvent(
     category: NotificationCategory,
     title: string,
@@ -3776,9 +4247,7 @@ export class AppStore {
     try {
       const result = await this.withRepoMutation(() => this.tauri.discardPaths(path, paths));
       await this.refreshWorkingTree();
-      this.showToast(result.message, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
-      );
+      this.showToast(result.message, this.undoFromToast(path, true));
     } catch (err) {
       this.showError(err);
     }
@@ -3793,9 +4262,7 @@ export class AppStore {
     try {
       const result = await this.tauri.applyPatch(path, patch, mode);
       await this.refreshWorkingTree();
-      this.showToast(result.message, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
-      );
+      this.showToast(result.message, this.undoFromToast(path, true));
       return true;
     } catch (err) {
       this.showError(err);
@@ -3814,9 +4281,7 @@ export class AppStore {
     try {
       const result = await this.tauri.checkoutPathsFromRevision(path, sha, paths, target);
       await this.refreshWorkingTree();
-      this.showToast(result.message, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshWorkingTree()),
-      );
+      this.showToast(result.message, this.undoFromToast(path, true));
       return true;
     } catch (err) {
       this.showError(err);
@@ -3923,7 +4388,7 @@ export class AppStore {
         this.checkRuns.set({ ...runs });
         if (!result.ok) {
           if (!opts?.silent) {
-            this.showError(`${check.name} failed`);
+            this.showError(this.checkFailMessage(check.name, output));
           }
           return false;
         }
@@ -3962,7 +4427,7 @@ export class AppStore {
         [check.id]: { status: result.ok ? 'pass' : 'fail', output },
       });
       if (!result.ok && !opts?.silent) {
-        this.showError(`${check.name} failed`);
+        this.showError(this.checkFailMessage(check.name, output));
       }
       return result.ok;
     } catch (err) {
@@ -4064,7 +4529,7 @@ export class AppStore {
         this.showToast(amend ? `Amended ${shortSha}` : `Committed ${shortSha}`, {
           kind: 'success',
           category: 'commit',
-          undo: () => void this.tauri.undoLast(path).then(() => this.refreshRepo()),
+          undo: this.undoFromToast(path),
         });
       }
       return { ok: true, shortSha };
@@ -4530,7 +4995,7 @@ export class AppStore {
     name: string,
     startPoint?: string,
     checkout = true,
-    opts?: { push?: boolean },
+    opts?: { push?: boolean; jiraKey?: string | null },
   ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path || !name.trim()) return false;
@@ -4538,6 +5003,7 @@ export class AppStore {
     if (!trimmed) return false;
     try {
       const result = await this.tauri.createBranch(path, trimmed, checkout, startPoint);
+      await this.persistCreatedBranchTicket(path, trimmed, opts?.jiraKey);
       await this.refreshRepo();
       if (opts?.push) {
         const pushed = await this.pushNewBranch(trimmed);
@@ -4550,15 +5016,14 @@ export class AppStore {
         }
         return true;
       }
-      this.showToast(result.message, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
-      );
+      this.showToast(result.message, this.undoFromToast(path));
       return true;
     } catch (err) {
       if (
         checkout &&
         (await this.handleCheckoutBlockedByLocalChanges(path, trimmed, err, async () => {
           const result = await this.tauri.createBranch(path, trimmed, true, startPoint);
+          await this.persistCreatedBranchTicket(path, trimmed, opts?.jiraKey);
           await this.refreshRepo();
           if (opts?.push) {
             await this.pushNewBranch(trimmed);
@@ -4570,6 +5035,25 @@ export class AppStore {
       }
       this.showError(err);
       return false;
+    }
+  }
+
+  private async persistCreatedBranchTicket(
+    path: string,
+    branch: string,
+    issueKey?: string | null,
+  ): Promise<void> {
+    const key =
+      issueKey?.trim() ||
+      extractTicketFromBranch(branch, this.settings().ticketFromBranch) ||
+      this.activeJiraKey()?.trim() ||
+      '';
+    if (!key) return;
+    try {
+      await this.tauri.linkBranchToJira(path, branch, key);
+      this.setActiveJiraKey(key);
+    } catch {
+      return;
     }
   }
 
@@ -4640,9 +5124,7 @@ export class AppStore {
       this.safety.set(null);
       await this.refreshRepo();
       if (result.undoable) {
-        this.showToast(result.message, () =>
-          void this.tauri.undoLast(path).then(() => this.refreshRepo()),
-        );
+        this.showToast(result.message, this.undoFromToast(path));
       } else {
         this.showToast(result.message);
       }
@@ -4689,9 +5171,14 @@ export class AppStore {
   }
 
   async fetchAllRecent(): Promise<void> {
-    const recents = this.repos();
+    const account = this.selectedRepoAccountKey();
+    const recents = this.repos().filter((repo) => this.localRepoMatchesAccount(repo.path, account));
     if (!recents.length) {
-      this.showWarning('No recent repositories');
+      this.showWarning(
+        account === ALL_REPO_ACCOUNTS
+          ? 'No recent repositories'
+          : `No recent repositories for ${this.selectedRepoAccountLabel() || 'this account'}`,
+      );
       return;
     }
     if (this.fetchAllBusy()) return;
@@ -4791,7 +5278,7 @@ export class AppStore {
         category: 'pull',
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = rawErrorMessage(err);
       if (message.toLowerCase().includes('conflict')) {
         await this.handleConflictResult({ ok: false, message });
         return;
@@ -4845,7 +5332,7 @@ export class AppStore {
       if (opts?.runChecks !== false && !opts?.skipHooks) {
         const ok = await this.runRepoChecks(['pre-push'], { silent: true });
         if (!ok) {
-          this.showError('Push checks failed');
+          this.showError(this.lastFailedCheckMessage('Push checks failed'));
           return false;
         }
       }
@@ -5175,6 +5662,107 @@ export class AppStore {
     }
   }
 
+  async addGithubCliAccount(): Promise<boolean> {
+    this.githubGitBusy.set(true);
+    const known = new Set(
+      (this.githubGitStatus()?.accounts ?? []).map((account) => account.login.toLowerCase()),
+    );
+    try {
+      const result = await this.tauri.startGithubCliLogin();
+      if (!result.ok) {
+        this.showWarning(result.message);
+        return false;
+      }
+      this.showSuccess(result.message);
+      this.pollNewGithubCliAccount(known);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      this.githubGitBusy.set(false);
+    }
+  }
+
+  async logoutGithubCliUser(login: string): Promise<boolean> {
+    const name = login.trim();
+    if (!name) return false;
+    const confirmed = await this.prompts.ask({
+      title: `Unlink ${name}?`,
+      message: `GitHub CLI will sign out of ${name}. Fetch and push for that account stop until you add it again.`,
+      confirmLabel: 'Unlink',
+      cancelLabel: 'Keep',
+      required: false,
+      confirmOnly: true,
+    });
+    if (confirmed === null) return false;
+    this.githubGitBusy.set(true);
+    try {
+      const result = await this.tauri.logoutGithubCliUser(name);
+      await this.refreshGithubGitStatus({ force: true });
+      if (!result.ok) {
+        this.showWarning(result.message);
+        return false;
+      }
+      this.forgetGithubAccountPrefs(name);
+      const remaining = this.githubGitStatus()?.accounts ?? [];
+      const selected = this.selectedRepoAccountKey();
+      if (selected === name.toLowerCase()) {
+        const next = remaining[0]?.login || ALL_REPO_ACCOUNTS;
+        this.selectRepoAccount(next, { syncWorkspace: true });
+      }
+      this.showSuccess(result.message);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    } finally {
+      this.githubGitBusy.set(false);
+    }
+  }
+
+  private forgetGithubAccountPrefs(login: string): void {
+    const key = login.trim().toLowerCase();
+    if (!key) return;
+    const current = this.settings().githubRepoAccounts;
+    const next: Record<string, GithubRepoAccountPref> = {};
+    for (const [owner, pref] of Object.entries(current)) {
+      if (pref.login.trim().toLowerCase() === key) continue;
+      next[owner] = pref;
+    }
+    if (Object.keys(next).length === Object.keys(current).length) return;
+    void this.saveSettings({ githubRepoAccounts: next });
+  }
+
+  private pollNewGithubCliAccount(known: Set<string>): void {
+    if (this.githubGitPollTimer !== null) {
+      window.clearInterval(this.githubGitPollTimer);
+      this.githubGitPollTimer = null;
+    }
+    const started = Date.now();
+    this.githubGitPollTimer = window.setInterval(() => {
+      void (async () => {
+        await this.refreshGithubGitStatus({ force: true });
+        const added = (this.githubGitStatus()?.accounts ?? []).find(
+          (account) => !known.has(account.login.toLowerCase()),
+        );
+        if (added) {
+          if (this.githubGitPollTimer !== null) {
+            window.clearInterval(this.githubGitPollTimer);
+            this.githubGitPollTimer = null;
+          }
+          this.selectRepoAccount(added.login);
+          this.showSuccess(`Added ${added.login}`);
+          return;
+        }
+        if (Date.now() - started > 90_000 && this.githubGitPollTimer !== null) {
+          window.clearInterval(this.githubGitPollTimer);
+          this.githubGitPollTimer = null;
+        }
+      })();
+    }, 2500);
+  }
+
   private githubOwnerForCurrentRepo(): string {
     return primaryGithubOwner(this.remotes());
   }
@@ -5219,6 +5807,11 @@ export class AppStore {
       if (ok && !opts?.silent) {
         this.showInfo(`Using ${login} for ${owner}`);
       }
+    }
+    const path = this.currentRepo()?.path;
+    if (path) {
+      this.cacheRepoWebUrl(path, this.remotes());
+      this.alignSelectedAccountToRepo(path);
     }
     if (protocol !== 'https' && protocol !== 'ssh') return;
     const github = this.remotes().filter((remote) => /github\.com/i.test(remote.fetchUrl));
@@ -6996,12 +7589,7 @@ export class AppStore {
   async loadBranchHygiene(): Promise<BranchHygieneEntry[]> {
     const path = this.currentRepo()?.path;
     if (!path) return [];
-    try {
-      return await this.tauri.listBranchHygiene(path);
-    } catch (err) {
-      this.showError(err);
-      return [];
-    }
+    return this.tauri.listBranchHygiene(path);
   }
 
   async deleteLocalBranches(names: string[], force: boolean): Promise<void> {
@@ -7023,23 +7611,13 @@ export class AppStore {
   async loadSyncCommits(direction: 'incoming' | 'outgoing'): Promise<SyncCommitInfo[]> {
     const path = this.currentRepo()?.path;
     if (!path) return [];
-    try {
-      return await this.tauri.listSyncCommits(path, direction);
-    } catch (err) {
-      this.showError(err);
-      return [];
-    }
+    return this.tauri.listSyncCommits(path, direction);
   }
 
   async loadCleanPreview(): Promise<CleanEntry[]> {
     const path = this.currentRepo()?.path;
     if (!path) return [];
-    try {
-      return await this.tauri.previewClean(path);
-    } catch (err) {
-      this.showError(err);
-      return [];
-    }
+    return this.tauri.previewClean(path);
   }
 
   async runClean(paths: string[]): Promise<void> {
@@ -8020,9 +8598,7 @@ export class AppStore {
     try {
       const result = await this.tauri.renameBranch(path, from, to.trim());
       await this.refreshRepo();
-      this.showToast(result.message, () =>
-        void this.tauri.undoLast(path).then(() => this.refreshRepo()),
-      );
+      this.showToast(result.message, this.undoFromToast(path));
     } catch (err) {
       this.showError(err);
     }
@@ -8725,6 +9301,38 @@ function normalizeGithubRepoAccounts(raw: unknown): Record<string, GithubRepoAcc
     const protocol = row.protocol === 'ssh' || row.protocol === 'https' ? row.protocol : 'https';
     if (!login) continue;
     out[owner] = { login, protocol };
+  }
+  return out;
+}
+
+function persistRepoWebUrls(
+  urls: Record<string, string | null>,
+  paths: string[],
+): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  const seen = new Set<string>();
+  for (const path of paths) {
+    const key = path.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (urls[key] === undefined) continue;
+    out[key] = urls[key];
+    if (Object.keys(out).length >= 80) break;
+  }
+  return out;
+}
+
+function normalizeSessionRepoWebUrls(raw: unknown): Record<string, string | null> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const path = key.trim();
+    if (!path) continue;
+    if (value === null) {
+      out[path] = null;
+      continue;
+    }
+    if (typeof value === 'string' && value.trim()) out[path] = value.trim();
   }
   return out;
 }

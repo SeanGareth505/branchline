@@ -1,4 +1,5 @@
 use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
+use crate::infrastructure::{git_cli, sqlite};
 use crate::state::AppState;
 use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -295,5 +296,107 @@ fn client() -> &'static reqwest::blocking::Client {
             .timeout(std::time::Duration::from_secs(20))
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListBranchJiraLinksInput {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkBranchToJiraInput {
+    pub path: String,
+    pub name: String,
+    pub issue_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlinkBranchFromJiraInput {
+    pub path: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchJiraLink {
+    pub branch_name: String,
+    pub issue_key: String,
+    pub linked_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MutationOutput {
+    pub ok: bool,
+    pub message: String,
+}
+
+#[command]
+pub fn list_branch_jira_links(
+    state: State<'_, AppState>,
+    input: ListBranchJiraLinksInput,
+) -> AppResult<Vec<BranchJiraLink>> {
+    let path = std::path::PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
+    let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+    let rows = sqlite::list_branch_tickets(&db, &input.path)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| BranchJiraLink {
+            branch_name: row.branch_name,
+            issue_key: row.issue_key,
+            linked_at: row.linked_at,
+        })
+        .collect())
+}
+
+#[command]
+pub fn link_branch_to_jira(
+    state: State<'_, AppState>,
+    input: LinkBranchToJiraInput,
+) -> AppResult<MutationOutput> {
+    let path = std::path::PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
+    let name = input.name.trim();
+    let key = input.issue_key.trim();
+    if name.is_empty() {
+        return Err(AppError::msg("Branch name is required"));
+    }
+    if key.is_empty() {
+        return Err(AppError::msg("Issue key is required"));
+    }
+    let linked_at = chrono::Utc::now().to_rfc3339();
+    {
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        sqlite::link_branch_ticket(&db, &input.path, name, key, &linked_at)?;
+    }
+    Ok(MutationOutput {
+        ok: true,
+        message: format!("Linked {name} to {key}"),
+    })
+}
+
+#[command]
+pub fn unlink_branch_from_jira(
+    state: State<'_, AppState>,
+    input: UnlinkBranchFromJiraInput,
+) -> AppResult<MutationOutput> {
+    let path = std::path::PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err(AppError::msg("Branch name is required"));
+    }
+    {
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        sqlite::unlink_branch_ticket(&db, &input.path, name)?;
+    }
+    Ok(MutationOutput {
+        ok: true,
+        message: format!("Unlinked Jira from {name}"),
     })
 }

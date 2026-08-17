@@ -3,13 +3,13 @@
   place-items: center;
   line-height: 0;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 .spinner {
   --spin-size: 1.75rem;
   --spin-stroke: 2.25px;
-  --cyan: #3ecfff;
-  --cyan-hi: #7ae0ff;
+  --duration: 0.75s;
   display: grid;
   place-items: center;
   position: relative;
@@ -20,22 +20,44 @@
 .spinner[data-size='sm'] {
   --spin-size: 1rem;
   --spin-stroke: 1.75px;
+  --duration: 0.7s;
 }
 
 .spinner[data-size='lg'] {
-  --spin-size: 5.5rem;
+  --spin-size: 3.25rem;
   --spin-stroke: 2.5px;
+  --duration: 0.9s;
+}
+
+.glow,
+svg {
+  grid-area: 1 / 1;
+}
+
+.glow {
+  position: absolute;
+  inset: -62%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 22%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 8%, transparent) 38%,
+    transparent 68%
+  );
+  pointer-events: none;
 }
 
 svg {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
-.spinner:not([data-size='lg']) svg {
+.rotor {
+  transform-box: view-box;
   transform-origin: 50% 50%;
-  animation: bl-spin 0.75s linear infinite;
+  animation: bl-spin var(--duration) linear infinite;
 }
 
 .track,
@@ -43,60 +65,32 @@ svg {
   fill: none;
   stroke-width: var(--spin-stroke);
   stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
-.spinner:not([data-size='lg']) .track {
-  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
+.track {
+  stroke: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.spinner:not([data-size='lg']) .arc {
+.arc {
   stroke: var(--accent);
-  stroke-dasharray: 28 49;
-}
-
-.halo,
-.ring,
-.logo {
-  grid-area: 1 / 1;
-}
-
-.halo {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--cyan) 22%, transparent) 0%,
-    color-mix(in srgb, var(--cyan) 8%, transparent) 46%,
-    transparent 72%
-  );
-  pointer-events: none;
-}
-
-.ring {
-  width: 100%;
-  height: 100%;
-  transform-origin: 50% 50%;
-  animation: bl-spin 0.95s linear infinite;
+  stroke-dasharray: 26 74;
 }
 
 .spinner[data-size='lg'] .track {
-  stroke: color-mix(in srgb, var(--cyan) 20%, transparent);
-  stroke-width: 2.4;
+  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .spinner[data-size='lg'] .arc {
-  stroke: var(--cyan-hi);
-  stroke-width: 2.6;
-  stroke-dasharray: 56 170;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--cyan) 45%, transparent));
+  stroke-dasharray: 28 72;
+  filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--accent) 40%, transparent));
 }
 
-.logo {
-  display: grid;
-  place-items: center;
-  z-index: 1;
-  pointer-events: none;
+.node {
+  fill: var(--accent);
+  stroke: color-mix(in srgb, var(--bg-elevated) 90%, white);
+  stroke-width: 1.75;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 50%, transparent));
 }
 
 @keyframes bl-spin {
@@ -106,15 +100,16 @@ svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  svg,
-  .ring {
+  .rotor {
     animation: none;
   }
 
-  .spinner:not([data-size='lg']) .arc,
-  .spinner[data-size='lg'] .arc {
-    stroke-dasharray: 90 136;
-    transform: rotate(-80deg);
-    transform-origin: 50% 50%;
+  .arc {
+    stroke-dasharray: 72 28;
+  }
+
+  .node,
+  .glow {
+    display: none;
   }
 }

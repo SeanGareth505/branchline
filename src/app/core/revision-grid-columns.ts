@@ -29,8 +29,12 @@ export const COL_DEFAULT: RevisionGridColumns = {
 export const COL_PAD = 20;
 export const GRID_COL_SAMPLE = 64;
 
+export type SplitKind = 'main' | 'nested' | 'commitFiles' | 'commitComposer';
+
 export const SPLIT_MAIN_DEFAULT = [16, 84];
 export const SPLIT_NESTED_DEFAULT = [62, 38];
+export const SPLIT_COMMIT_FILES_DEFAULT = [34, 66];
+export const SPLIT_COMMIT_COMPOSER_DEFAULT = [68, 32];
 
 export function clampColWidth(col: GridColId, width: number): number {
   const min = COL_MIN[col];
@@ -56,14 +60,23 @@ export function normalizeRevisionGridColumns(raw: unknown): RevisionGridColumns 
   };
 }
 
-export function normalizeSplitSizes(kind: 'main' | 'nested', sizes: number[]): number[] {
-  const fallback = kind === 'main' ? SPLIT_MAIN_DEFAULT : SPLIT_NESTED_DEFAULT;
+export function normalizeSplitSizes(kind: SplitKind, sizes: number[]): number[] {
+  const fallback =
+    kind === 'main'
+      ? SPLIT_MAIN_DEFAULT
+      : kind === 'nested'
+        ? SPLIT_NESTED_DEFAULT
+        : kind === 'commitFiles'
+          ? SPLIT_COMMIT_FILES_DEFAULT
+          : SPLIT_COMMIT_COMPOSER_DEFAULT;
   const a = Number(sizes[0]);
   const b = Number(sizes[1]);
   if (!Number.isFinite(a) || !Number.isFinite(b) || a + b <= 0) return [...fallback];
   let left = (a / (a + b)) * 100;
   if (kind === 'main') left = Math.min(30, Math.max(12, left));
-  else left = Math.min(78, Math.max(45, left));
+  else if (kind === 'nested') left = Math.min(78, Math.max(45, left));
+  else if (kind === 'commitFiles') left = Math.min(52, Math.max(18, left));
+  else left = Math.min(80, Math.max(42, left));
   const rounded = Math.round(left * 10) / 10;
   return [rounded, Math.round((100 - rounded) * 10) / 10];
 }

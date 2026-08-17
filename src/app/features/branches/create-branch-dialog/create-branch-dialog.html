@@ -240,6 +240,36 @@
           <span class="preview-label">Creates</span>
           <code class="mono">{{ preview() }}</code>
         </div>
+
+        <div class="jira-row">
+          <button
+            type="button"
+            class="jira-link"
+            [class.on]="!!jiraKey()"
+            (click)="pickTicket()"
+            [title]="jiraLinkTitle()"
+          >
+            <ng-icon name="lucideLink" size="13" />
+            @if (jiraKey(); as key) {
+              <span>{{ key }}</span>
+            } @else if (canPickJira()) {
+              <span>Link Jira issue…</span>
+            } @else {
+              <span>Connect Jira…</span>
+            }
+          </button>
+          @if (jiraKey()) {
+            <button
+              type="button"
+              class="jira-clear"
+              (click)="clearTicket($event)"
+              title="Remove Jira link"
+              aria-label="Remove Jira link"
+            >
+              <ng-icon name="lucideX" size="12" />
+            </button>
+          }
+        </div>
       </div>
 
       <div class="options">

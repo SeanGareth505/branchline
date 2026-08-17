@@ -671,6 +671,49 @@ input[type='text']:focus {
   font-weight: 650;
 }
 
+.jira-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.jira-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.4rem 0.65rem;
+  border-radius: 9px;
+  border: 1px dashed var(--glass-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.jira-link.on {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.jira-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 .options {
   position: relative;
   z-index: 1;

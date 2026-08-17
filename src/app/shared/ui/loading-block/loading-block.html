@@ -1,4 +1,9 @@
 <div class="loading" [class.compact]="compact()" role="status" [attr.aria-live]="'polite'">
   <app-spinner [size]="compact() ? 'md' : 'lg'" [label]="message()" />
   <p>{{ message() }}</p>
+  @if (!compact()) {
+    <span class="rail" aria-hidden="true">
+      <span class="rail-bar"></span>
+    </span>
+  }
 </div>

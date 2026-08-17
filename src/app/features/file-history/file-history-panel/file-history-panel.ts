@@ -18,6 +18,8 @@ export class FileHistoryPanel {
   readonly store = inject(AppStore);
   readonly entries = signal<FileHistoryEntry[]>([]);
   readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  private loadToken = 0;
 
   constructor() {
     effect(() => {
@@ -25,7 +27,10 @@ export class FileHistoryPanel {
       const file = this.store.fileHistoryPath() ?? this.store.selectedDiffPath();
       const tab = this.store.browseTab();
       if (tab !== 'history' || !path || !file) {
-        if (tab === 'history' && !file) this.entries.set([]);
+        if (tab === 'history' && !file) {
+          this.entries.set([]);
+          this.error.set(null);
+        }
         return;
       }
       void this.load(path, file);
@@ -33,14 +38,27 @@ export class FileHistoryPanel {
   }
 
   private async load(path: string, file: string): Promise<void> {
+    const token = ++this.loadToken;
     this.loading.set(true);
+    this.error.set(null);
     try {
-      this.entries.set(await this.tauri.getFileHistory(path, file));
-    } catch {
+      const entries = await this.tauri.getFileHistory(path, file);
+      if (token !== this.loadToken) return;
+      this.entries.set(entries);
+    } catch (err) {
+      if (token !== this.loadToken) return;
       this.entries.set([]);
+      this.error.set(this.store.formatError(err));
     } finally {
-      this.loading.set(false);
+      if (token === this.loadToken) this.loading.set(false);
     }
+  }
+
+  retry(): void {
+    const path = this.store.currentRepo()?.path;
+    const file = this.store.fileHistoryPath() ?? this.store.selectedDiffPath();
+    if (!path || !file) return;
+    void this.load(path, file);
   }
 
   time(ts: number): string {

@@ -58,6 +58,12 @@ describe('revision grid columns', () => {
     expect(normalizeSplitSizes('main', [4, 96])[0]).toBe(12);
     expect(normalizeSplitSizes('nested', [90, 10])[0]).toBe(78);
     expect(normalizeSplitSizes('nested', [20, 80])[0]).toBe(45);
+    expect(normalizeSplitSizes('commitFiles', [34, 66])).toEqual([34, 66]);
+    expect(normalizeSplitSizes('commitFiles', [8, 92])[0]).toBe(18);
+    expect(normalizeSplitSizes('commitFiles', [90, 10])[0]).toBe(52);
+    expect(normalizeSplitSizes('commitComposer', [68, 32])).toEqual([68, 32]);
+    expect(normalizeSplitSizes('commitComposer', [20, 80])[0]).toBe(42);
+    expect(normalizeSplitSizes('commitComposer', [95, 5])[0]).toBe(80);
   });
 
   it('samples a stride instead of walking every item', () => {

@@ -1,4 +1,4 @@
-use crate::infrastructure::{secrets, sqlite};
+use crate::infrastructure::{diagnostics, secrets, sqlite};
 use crate::state::AppState;
 use crate::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -577,6 +577,19 @@ fn persist_connection_secrets(settings: &AppSettings) -> AppSettings {
     disk
 }
 
+fn parse_stored_settings(raw: &str) -> AppResult<AppSettings> {
+    serde_json::from_str(raw).map_err(|err| {
+        let _ = diagnostics::record_client_error(
+            "settings.parse",
+            "Saved settings could not be read",
+            Some(&err.to_string()),
+        );
+        AppError::msg(format!(
+            "Saved settings are unreadable and were not reset. Open Diagnostics to inspect them, then retry. ({err})"
+        ))
+    })
+}
+
 #[command]
 pub fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
     Ok(redact_tokens(load_settings_with_tokens(&state)?))
@@ -585,10 +598,7 @@ pub fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
 pub fn load_settings_with_tokens(state: &AppState) -> AppResult<AppSettings> {
     let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
     let mut settings = match sqlite::get_setting(&db, "app_settings")? {
-        Some(raw) => {
-            let parsed: AppSettings = serde_json::from_str(&raw).unwrap_or_default();
-            ensure_defaults(parsed)
-        }
+        Some(raw) => ensure_defaults(parse_stored_settings(&raw)?),
         None => AppSettings::default(),
     };
     let migrated = hydrate_connection_tokens(&mut settings);
@@ -603,7 +613,7 @@ pub fn load_settings_with_tokens(state: &AppState) -> AppResult<AppSettings> {
 pub fn save_settings(state: State<'_, AppState>, input: AppSettings) -> AppResult<AppSettings> {
     let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
     let mut stored = match sqlite::get_setting(&db, "app_settings")? {
-        Some(raw) => serde_json::from_str::<AppSettings>(&raw).unwrap_or_default(),
+        Some(raw) => parse_stored_settings(&raw)?,
         None => AppSettings::default(),
     };
     hydrate_connection_tokens(&mut stored);

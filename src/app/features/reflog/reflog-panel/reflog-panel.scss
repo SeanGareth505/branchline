@@ -119,3 +119,27 @@ li:hover {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: auto;
+  padding: 1.5rem 1.25rem;
+  max-width: 26rem;
+}
+
+.state-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.state-hint {
+  margin: 0 0 0.35rem;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}

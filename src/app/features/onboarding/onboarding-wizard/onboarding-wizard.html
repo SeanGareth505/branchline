@@ -33,14 +33,22 @@
         Email
         <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)" />
       </label>
-      <button type="button" class="bl-btn" (click)="saveIdentity()">Save identity</button>
+      <button type="button" class="bl-btn" (click)="saveIdentity()" [disabled]="busy()">
+        {{ busy() ? 'Saving…' : 'Save identity' }}
+      </button>
     </div>
 
     <app-ssh-setup-panel [keyComment]="email()" (setupChanged)="refreshChecklist()" />
 
+    @if (errorText()) {
+      <p class="error">{{ errorText() }}</p>
+    }
+
     <footer>
-      <button type="button" class="bl-btn" (click)="skip()">Skip for now</button>
-      <button type="button" class="bl-btn bl-btn-primary" (click)="complete()">Continue</button>
+      <button type="button" class="bl-btn" (click)="skip()" [disabled]="busy()">Skip for now</button>
+      <button type="button" class="bl-btn bl-btn-primary" (click)="complete()" [disabled]="busy()">
+        {{ busy() ? 'Working…' : 'Continue' }}
+      </button>
     </footer>
   </div>
 </section>

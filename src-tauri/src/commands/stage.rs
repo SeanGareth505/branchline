@@ -54,19 +54,17 @@ pub fn stage_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult<M
         args.extend(path_refs);
         git_cli::run_git(path, &args)?;
         let repo_key = path.to_string_lossy().to_string();
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
-                &db,
-                &repo_key,
-                "stage",
-                "Stage files",
-                json!({ "paths": input.paths }),
-            );
-        }
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let recorded = undo::try_push_entry(
+            &db,
+            &repo_key,
+            "stage",
+            "Stage files",
+            json!({ "paths": input.paths }),
+        );
         Ok(MutationOutput {
             ok: true,
-            message: "Staged".into(),
+            message: undo::message_with_undo("Staged", recorded),
         })
     })
 }
@@ -83,19 +81,17 @@ pub fn unstage_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult
         args.extend(path_refs);
         git_cli::run_git(path, &args)?;
         let repo_key = path.to_string_lossy().to_string();
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
-                &db,
-                &repo_key,
-                "unstage",
-                "Unstage files",
-                json!({ "paths": input.paths }),
-            );
-        }
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let recorded = undo::try_push_entry(
+            &db,
+            &repo_key,
+            "unstage",
+            "Unstage files",
+            json!({ "paths": input.paths }),
+        );
         Ok(MutationOutput {
             ok: true,
-            message: "Unstaged".into(),
+            message: undo::message_with_undo("Unstaged", recorded),
         })
     })
 }
@@ -129,20 +125,17 @@ pub fn discard_paths(state: State<'_, AppState>, input: PathsInput) -> AppResult
 
         let stash_ref = git_cli::stash_tip_oid(path).unwrap_or_else(|_| "stash@{0}".into());
         let repo_key = path.to_string_lossy().to_string();
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
-                &db,
-                &repo_key,
-                "discard",
-                "Discard changes",
-                json!({ "paths": input.paths, "stashRef": stash_ref }),
-            );
-        }
-
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let recorded = undo::try_push_entry(
+            &db,
+            &repo_key,
+            "discard",
+            "Discard changes",
+            json!({ "paths": input.paths, "stashRef": stash_ref }),
+        );
         Ok(MutationOutput {
             ok: true,
-            message: "Discarded".into(),
+            message: undo::message_with_undo("Discarded", recorded),
         })
     })
 }
@@ -197,22 +190,20 @@ pub fn apply_patch(
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         git_cli::run_git_with_stdin(path, &args, &format!("{patch}\n"))?;
         let repo_key = path.to_string_lossy().to_string();
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let mut undo_payload = json!({ "mode": mode });
-            if patch.len() <= 256_000 {
-                undo_payload = json!({ "mode": mode, "patch": patch });
-            } else {
-                log::warn!(
-                    "skipping undo payload for large patch ({} bytes)",
-                    patch.len()
-                );
-            }
-            let _ = undo::push_entry(&db, &repo_key, kind, label, undo_payload);
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let mut undo_payload = json!({ "mode": mode });
+        if patch.len() <= 256_000 {
+            undo_payload = json!({ "mode": mode, "patch": patch });
+        } else {
+            log::warn!(
+                "skipping undo payload for large patch ({} bytes)",
+                patch.len()
+            );
         }
+        let recorded = undo::try_push_entry(&db, &repo_key, kind, label, undo_payload);
         Ok(MutationOutput {
             ok: true,
-            message: label.into(),
+            message: undo::message_with_undo(label, recorded),
         })
     })
 }
@@ -284,30 +275,28 @@ pub fn checkout_paths_from_revision(
         }
 
         let repo_key = path.to_string_lossy().to_string();
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::push_entry(
-                &db,
-                &repo_key,
-                "cherry_file",
-                "Cherry-picked file(s) from revision",
-                json!({
-                    "paths": input.paths,
-                    "revision": revision,
-                    "target": target,
-                    "stashRef": stash_ref,
-                }),
-            );
-        }
-
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let recorded = undo::try_push_entry(
+            &db,
+            &repo_key,
+            "cherry_file",
+            "Cherry-picked file(s) from revision",
+            json!({
+                "paths": input.paths,
+                "revision": revision,
+                "target": target,
+                "stashRef": stash_ref,
+            }),
+        );
         let n = input.paths.len();
+        let message = if n == 1 {
+            "Cherry-picked file from revision".to_string()
+        } else {
+            format!("Cherry-picked {n} files from revision")
+        };
         Ok(MutationOutput {
             ok: true,
-            message: if n == 1 {
-                "Cherry-picked file from revision".into()
-            } else {
-                format!("Cherry-picked {n} files from revision")
-            },
+            message: undo::message_with_undo(message, recorded),
         })
     })
 }

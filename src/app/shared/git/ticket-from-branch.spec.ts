@@ -1,5 +1,6 @@
 import {
   DEFAULT_TICKET_FROM_BRANCH,
+  branchNameWithTicket,
   branchSegments,
   customPatternError,
   extractBranchTopic,
@@ -97,5 +98,13 @@ describe('ticket from branch', () => {
     );
     expect(extractBranchTopic('team/feature/proj-123', 'proj-123')).toBeNull();
     expect(extractBranchTopic('feature/add-login')).toBe('Add login');
+  });
+
+  it('inserts a ticket key into a branch that does not have one', () => {
+    expect(branchNameWithTicket('feature/login', 'PROJ-123')).toBe('feature/PROJ-123-login');
+    expect(branchNameWithTicket('login', 'PROJ-123')).toBe('PROJ-123-login');
+    expect(branchNameWithTicket('feature/PROJ-123-login', 'PROJ-123')).toBe(
+      'feature/PROJ-123-login',
+    );
   });
 });

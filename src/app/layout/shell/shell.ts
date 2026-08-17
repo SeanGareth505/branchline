@@ -39,6 +39,7 @@ import { FileSearchDialog } from '../../features/search/file-search-dialog/file-
 import { ShortcutOverlay } from '../shortcut-overlay/shortcut-overlay';
 import { ProjectSwitcher } from '../project-switcher/project-switcher';
 import { RepoTabs } from '../repo-tabs/repo-tabs';
+import { RepoAccountBar } from '../repo-account-bar/repo-account-bar';
 import { RepoToolbar } from '../repo-toolbar/repo-toolbar';
 import { StatusBar } from '../status-bar/status-bar';
 import { ToastHost } from '../toast-host/toast-host';
@@ -56,6 +57,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     PageSkeleton,
     Spinner,
     ProjectSwitcher,
+    RepoAccountBar,
     RepoTabs,
     RepoToolbar,
     BrowseShell,

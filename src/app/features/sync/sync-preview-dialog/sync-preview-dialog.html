@@ -19,6 +19,8 @@
 
       @if (loading()) {
         <p class="empty">Loading…</p>
+      } @else if (error()) {
+        <p class="empty error">{{ error() }}</p>
       } @else if (commits().length === 0) {
         <p class="empty">{{ emptyLabel() }}</p>
       } @else {

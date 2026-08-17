@@ -86,8 +86,6 @@
         }
       </div>
 
-      <app-repo-account-bar />
-
       @if (!searching()) {
         <div class="tabs" role="tablist">
           <button
@@ -272,7 +270,7 @@
               @if (filter()) {
                 No matches for “{{ filter() }}”
               } @else {
-                No local repositories for this account
+                No local repositories for {{ store.selectedRepoAccountLabel() || 'this account' }}
               }
             </p>
           } @else {
@@ -381,7 +379,13 @@
               </button>
             </div>
           } @else if (!hostGroups().length) {
-            <p class="empty">No repositories for this account</p>
+            <p class="empty">
+              @if (store.selectedRepoAccountLabel(); as account) {
+                No repositories for {{ account }}
+              } @else {
+                No remote repositories
+              }
+            </p>
             <div class="remote-meta">
               <button type="button" class="text-btn" (click)="refreshRemote()">Refresh</button>
               <button
@@ -395,9 +399,7 @@
             </div>
           } @else {
             <div class="remote-meta">
-              @if (store.repoAccounts().length < 2) {
-                <span>{{ linkedHostLabels() }}</span>
-              }
+              <span>{{ linkedHostLabels() }}</span>
               <div class="remote-actions">
                 <button
                   type="button"

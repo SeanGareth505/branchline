@@ -8,6 +8,7 @@ import { SelectService } from './shared/ui/select-dialog/select.service';
 import { ReleaseDialogService } from './features/release/release-dialog/release-dialog.service';
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 import { resolveShortcuts, shortcutMatches } from './shared/git/shortcuts';
+import { isIgnorableUnhandledError } from './shared/git/git-error';
 
 @Component({
   selector: 'app-root',
@@ -29,6 +30,12 @@ export class App implements OnInit {
     this.tooltips.init();
     this.diagnostics.bindGlobalHandlers();
     void this.store.init().then(() => void this.updates.init());
+  }
+
+  @HostListener('window:unhandledrejection', ['$event'])
+  onUnhandledRejection(event: PromiseRejectionEvent): void {
+    if (isIgnorableUnhandledError(event.reason)) return;
+    this.store.showError(event.reason);
   }
 
   @HostListener('document:contextmenu', ['$event'])

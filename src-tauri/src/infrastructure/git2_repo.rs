@@ -103,6 +103,8 @@ pub struct BranchInfo {
     pub tip_email: Option<String>,
     pub locked: bool,
     pub lock_reason: Option<String>,
+    #[serde(default)]
+    pub jira_key: Option<String>,
 }
 
 pub fn repo_status(path: &Path) -> AppResult<RepoStatus> {
@@ -742,6 +744,7 @@ fn parse_branch_lines(out: &str, branches: &mut Vec<BranchInfo>) {
             tip_email,
             locked: false,
             lock_reason: None,
+            jira_key: None,
         });
     }
 }

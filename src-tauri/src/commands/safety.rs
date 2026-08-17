@@ -225,25 +225,31 @@ pub fn execute_safe_action(
             }
         }
 
-        if outcome.undoable {
+        let mut undoable = outcome.undoable;
+        if undoable {
             if let (Some(action), Some(label), Some(payload)) = (
                 outcome.undo_action.as_deref(),
                 outcome.undo_label.as_deref(),
                 outcome.undo_payload.clone(),
             ) {
                 let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-                let _ = undo::push_entry(&db, &repo_key, action, label, payload);
+                undoable = undo::try_push_entry(&db, &repo_key, action, label, payload);
+            } else {
+                undoable = false;
             }
         }
 
         Ok(ExecuteSafeActionOutput {
             ok: true,
-            message: if outcome.message.is_empty() {
-                "Completed".into()
-            } else {
-                outcome.message
-            },
-            undoable: outcome.undoable,
+            message: undo::message_with_undo(
+                if outcome.message.is_empty() {
+                    "Completed".into()
+                } else {
+                    outcome.message
+                },
+                undoable || !outcome.undoable,
+            ),
+            undoable,
             analysis,
         })
     })

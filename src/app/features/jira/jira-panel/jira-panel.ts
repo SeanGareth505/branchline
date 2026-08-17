@@ -8,10 +8,11 @@ import { TauriService } from '../../../core/tauri.service';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
+import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
 
 @Component({
   selector: 'app-jira-panel',
-  imports: [FormsModule, NgIcon, HelpTip, LoadingBlock],
+  imports: [FormsModule, NgIcon, HelpTip, LoadingBlock, EmptyState],
   templateUrl: './jira-panel.html',
   styleUrl: './jira-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +37,8 @@ export class JiraPanel {
   readonly showingDummy = computed(
     () => this.store.isDummyBackend && !this.store.hasLinkedJira(),
   );
+  readonly needsConnect = computed(() => !this.showingDummy() && !this.store.hasLinkedJira());
+  readonly canLinkCurrent = computed(() => !!this.store.currentLocalBranchName());
   readonly issues = computed(() => this.store.jiraIssues());
   readonly loading = computed(() => this.store.jiraIssuesLoading());
   readonly error = computed(() => this.store.jiraIssuesError());
@@ -44,12 +47,22 @@ export class JiraPanel {
     if (this.showingDummy()) {
       return 'Browser preview — sample issues. Sign in below or link Jira under Settings → Connections.';
     }
-    const jira = this.store
-      .settings()
-      .connections.find(
-        (c) => c.provider === 'jira' && c.enabled && (c.hasToken || c.token.trim()),
-      );
+    if (this.needsConnect()) {
+      return this.connectHint();
+    }
+    const jira = this.store.jiraConnection();
     return `Linked to ${jira?.baseUrl || 'Jira'} as ${jira?.username || 'user'}.`;
+  });
+
+  readonly connectHint = computed(() => {
+    const conn = this.store.jiraConnection();
+    if (conn && (conn.hasToken || conn.token.trim()) && !conn.baseUrl.trim()) {
+      return 'Jira token is saved, but the site URL is missing.';
+    }
+    if (conn && (conn.hasToken || conn.token.trim()) && !conn.username.trim()) {
+      return 'Jira token is saved, but the account email is missing.';
+    }
+    return 'Connect Jira under Settings → Connections to browse issues and attach them to branches.';
   });
 
   readonly statuses = computed(() => this.unique((i) => i.status));
@@ -95,6 +108,7 @@ export class JiraPanel {
   constructor() {
     effect(() => {
       this.store.settings();
+      if (!this.store.hasLinkedJira() && !this.store.isDummyBackend) return;
       void this.store.refreshJiraIssues(this.showingDummy() ? undefined : this.jql());
     });
   }
@@ -162,11 +176,7 @@ export class JiraPanel {
   }
 
   openBrowser(issue: JiraIssue): void {
-    if (!issue.url) {
-      this.store.showWarning('No URL for this issue');
-      return;
-    }
-    window.open(issue.url, '_blank', 'noopener');
+    void this.store.openJiraIssue(issue.key);
   }
 
   async copyKey(issue: JiraIssue): Promise<void> {
@@ -202,6 +212,30 @@ export class JiraPanel {
       return;
     }
     this.store.startWorkFromIssue(issue);
+  }
+
+  linkedBranches(issue: JiraIssue): string[] {
+    return this.store.branchesLinkedToIssue(issue.key);
+  }
+
+  isCurrentLinked(issue: JiraIssue): boolean {
+    const branch = this.store.status()?.branch?.trim();
+    if (!branch || this.store.status()?.isDetached) return false;
+    return this.store.mappedTicketForBranch(branch)?.toLowerCase() === issue.key.toLowerCase();
+  }
+
+  async linkCurrent(issue: JiraIssue): Promise<void> {
+    if (!this.canLinkCurrent()) {
+      this.store.showWarning('Check out a local branch first');
+      return;
+    }
+    await this.store.linkCurrentBranchToIssue(issue);
+  }
+
+  async unlinkCurrent(issue: JiraIssue): Promise<void> {
+    const branch = this.store.status()?.branch?.trim();
+    if (!branch) return;
+    await this.store.unlinkBranchFromJira(branch);
   }
 
   async openTransitions(issue: JiraIssue): Promise<void> {

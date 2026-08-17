@@ -20,6 +20,19 @@ export function hostOwnerFromWebUrl(url: string): string {
   return hostOwnerFromSlug(remoteRepoSlug(url) || '');
 }
 
+export function repoAccountKeyForOwner(
+  owner: string,
+  accounts: RepoAccountOption[],
+  mappings: Record<string, { login: string }>,
+): string | null {
+  const o = owner.trim().toLowerCase();
+  if (!o) return null;
+  const mapped = mappings[o]?.login.trim().toLowerCase() ?? '';
+  if (mapped && accounts.some((account) => account.key === mapped)) return mapped;
+  if (accounts.some((account) => account.key === o)) return o;
+  return null;
+}
+
 export function repoAccountMatchesOwner(
   accountKey: string,
   owner: string,
@@ -36,6 +49,21 @@ export function repoAccountMatchesOwner(
   if (mapped) return false;
   const api = apiUsername.trim().toLowerCase();
   return !!api && api === account;
+}
+
+export function collectWorkspaceAccounts(input: {
+  cliAccounts: { login: string; active: boolean }[];
+  connectionUsernames: string[];
+  owners: string[];
+}): RepoAccountOption[] {
+  const all = collectRepoAccounts(input);
+  const named = new Set(
+    [...input.cliAccounts.map((account) => account.login), ...input.connectionUsernames]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const primary = all.filter((account) => named.has(account.key));
+  return primary.length ? primary : all;
 }
 
 export function collectRepoAccounts(input: {

@@ -38,6 +38,7 @@ export class ReleasePage {
   readonly branch = signal('main');
   readonly pushDefault = signal(true);
   readonly selectedFiles = signal<Record<string, boolean>>({});
+  readonly loadError = signal<string | null>(null);
 
   readonly hasRepo = computed(() => !!this.store.currentRepo());
   readonly busy = computed(() => this.store.releaseBusy());
@@ -84,6 +85,7 @@ export class ReleasePage {
     }
     const status = this.status();
     if (!this.hasRepo()) return 'Open a repository to ship a version.';
+    if (this.loadError()) return this.loadError();
     if (!status) return 'Loading…';
     if (!status.available) {
       return 'Tell Branchline which files hold the version, then you can ship from here.';
@@ -118,6 +120,7 @@ export class ReleasePage {
       if (!path) {
         this.status.set(null);
         this.setupHints.set(null);
+        this.loadError.set(null);
         return;
       }
       void this.load(path);
@@ -135,6 +138,7 @@ export class ReleasePage {
   private async load(path: string): Promise<void> {
     const gen = ++this.loadGen;
     this.loading.set(true);
+    this.loadError.set(null);
     try {
       const status = await this.tauri.getReleaseStatus(path);
       if (gen !== this.loadGen || this.store.view() !== 'release') return;
@@ -155,10 +159,11 @@ export class ReleasePage {
         this.setupHints.set(null);
         void this.store.attachLatestRelease();
       }
-    } catch {
+    } catch (err) {
       if (gen !== this.loadGen) return;
       this.status.set(null);
       this.setupHints.set(null);
+      this.loadError.set(this.store.formatError(err));
     } finally {
       if (gen === this.loadGen) this.loading.set(false);
     }
@@ -201,5 +206,10 @@ export class ReleasePage {
 
   trackLatest(): void {
     void this.store.attachLatestRelease({ force: true });
+  }
+
+  retry(): void {
+    const path = this.store.currentRepo()?.path;
+    if (path) void this.load(path);
   }
 }

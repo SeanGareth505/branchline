@@ -5,7 +5,7 @@
         <h1>Jira</h1>
         <app-help-tip
           heading="Jira"
-          body="Issues linked to this repository. Sign in under Settings → Connections, then filter and open tickets without leaving Branchline."
+          body="Browse issues, start a branch from a ticket, or attach the current branch with Link branch. Right-click a local branch for Link to Jira."
         />
         @if (showingDummy()) {
           <span class="dummy-badge">PREVIEW</span>
@@ -14,7 +14,7 @@
       <p>{{ connectionLabel() }}</p>
     </div>
     <div class="hero-actions">
-      @if (showingDummy()) {
+      @if (showingDummy() || needsConnect()) {
         <button type="button" class="bl-btn bl-btn-primary" (click)="signIn()">
           <ng-icon name="lucideLink" size="14" />
           Sign in
@@ -37,6 +37,7 @@
     </div>
   </header>
 
+  @if (!needsConnect()) {
   <div class="stats">
     <span><strong>{{ stats().total }}</strong> matching</span>
     <span><strong>{{ stats().todo }}</strong> to do</span>
@@ -109,11 +110,24 @@
       Mine
     </label>
   </div>
+  }
 
-  @if (loading()) {
+  @if (needsConnect()) {
+    <app-empty-state
+      title="Connect Jira to link branches"
+      [message]="connectHint()"
+      ctaLabel="Sign in"
+      (cta)="signIn()"
+    />
+  } @else if (loading()) {
     <app-loading-block message="Loading issues…" [compact]="true" />
   } @else if (error(); as err) {
-    <p class="empty error">{{ err }}</p>
+    <app-empty-state
+      title="Could not load Jira issues"
+      [message]="err"
+      ctaLabel="Manage connection"
+      (cta)="goSettings()"
+    />
   } @else {
     <div class="list">
       @for (issue of filtered(); track issue.key) {
@@ -137,13 +151,53 @@
                 <span class="label">{{ label }}</span>
               }
             </div>
+            @if (linkedBranches(issue); as branches) {
+              @if (branches.length) {
+                <p class="linked">
+                  Linked
+                  @for (name of branches; track name) {
+                    <span class="linked-branch">{{ name }}</span>
+                  }
+                </p>
+              }
+            }
           </div>
 
           <div class="actions">
-            <button type="button" class="bl-btn bl-btn-primary" (click)="startWork(issue)" title="Create branch from issue">
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary"
+              (click)="startWork(issue)"
+              [disabled]="!store.currentRepo()"
+              [title]="
+                store.currentRepo()
+                  ? 'Create branch from issue'
+                  : 'Open a repository first'
+              "
+            >
               <ng-icon name="lucideGitBranch" size="14" />
               Start
             </button>
+            @if (isCurrentLinked(issue)) {
+              <button type="button" class="bl-btn" (click)="unlinkCurrent(issue)" title="Remove this Jira link from the current branch">
+                Unlink
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="bl-btn"
+                (click)="linkCurrent(issue)"
+                [disabled]="!canLinkCurrent()"
+                [title]="
+                  canLinkCurrent()
+                    ? 'Attach the current branch to this issue'
+                    : 'Check out a local branch first'
+                "
+              >
+                <ng-icon name="lucideLink" size="14" />
+                Link branch
+              </button>
+            }
             <button type="button" class="bl-btn" (click)="useForCommit(issue)" title="Use key in commit templates">
               Commit
             </button>

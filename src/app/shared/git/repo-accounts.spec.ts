@@ -1,8 +1,10 @@
 import {
   ALL_REPO_ACCOUNTS,
   collectRepoAccounts,
+  collectWorkspaceAccounts,
   hostOwnerFromSlug,
   hostOwnerFromWebUrl,
+  repoAccountKeyForOwner,
   repoAccountMatchesOwner,
   resolveSelectedRepoAccount,
 } from './repo-accounts';
@@ -38,6 +40,45 @@ describe('repo accounts', () => {
     expect(accounts.map((account) => account.key)).toEqual(['demo', 'teammate', 'acme']);
     expect(accounts[0].active).toBe(true);
     expect(accounts[0].cli).toBe(true);
+  });
+
+  it('keeps GitHub logins as workspaces and ignores extra org owners', () => {
+    expect(
+      collectWorkspaceAccounts({
+        cliAccounts: [
+          { login: 'demo', active: true },
+          { login: 'teammate', active: false },
+        ],
+        connectionUsernames: ['demo'],
+        owners: ['demo', 'acme', 'other-org'],
+      }).map((account) => account.key),
+    ).toEqual(['demo', 'teammate']);
+  });
+
+  it('falls back to owners when no GitHub logins exist', () => {
+    expect(
+      collectWorkspaceAccounts({
+        cliAccounts: [],
+        connectionUsernames: [],
+        owners: ['demo', 'teammate'],
+      }).map((account) => account.key),
+    ).toEqual(['demo', 'teammate']);
+  });
+
+  it('maps a repo owner to the matching account chip', () => {
+    const accounts = collectRepoAccounts({
+      cliAccounts: [
+        { login: 'demo', active: true },
+        { login: 'work', active: false },
+      ],
+      connectionUsernames: [],
+      owners: ['acme'],
+    });
+    const mappings = { acme: { login: 'work' } };
+    expect(repoAccountKeyForOwner('demo', accounts, mappings)).toBe('demo');
+    expect(repoAccountKeyForOwner('acme', accounts, mappings)).toBe('work');
+    expect(repoAccountKeyForOwner('other-org', accounts, mappings)).toBeNull();
+    expect(repoAccountKeyForOwner('', accounts, mappings)).toBeNull();
   });
 
   it('defaults to the active login unless All was chosen', () => {

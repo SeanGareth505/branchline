@@ -63,8 +63,17 @@ export class BlameView {
 
   retry(): void {
     const path = this.store.currentRepo()?.path;
+    if (!path) return;
     const file = this.store.selectedDiffPath();
-    if (!path || !file) return;
+    if (!file) {
+      void this.ensureFileSelection(
+        path,
+        this.store.selectedSha(),
+        this.store.compareSha(),
+        this.store.diffSource(),
+      );
+      return;
+    }
     const blameAt = this.store.diffSource() === 'commit' ? this.store.selectedSha() : null;
     void this.load(path, file, blameAt);
   }
@@ -89,10 +98,11 @@ export class BlameView {
       } else {
         this.loading.set(false);
       }
-    } catch {
+    } catch (err) {
       if (token !== this.ensureToken) return;
       this.loading.set(false);
       this.lines.set([]);
+      this.error.set(this.store.formatError(err));
     }
   }
 
@@ -135,7 +145,7 @@ export class BlameView {
     } catch (err) {
       if (token !== this.loadToken) return;
       this.lines.set([]);
-      this.error.set(err instanceof Error ? err.message : 'Blame failed for this file');
+      this.error.set(this.store.formatError(err));
     } finally {
       if (token === this.loadToken) this.loading.set(false);
     }

@@ -26,6 +26,7 @@ export class GitCleanDialog {
   readonly selected = signal<Set<string>>(new Set());
   readonly loading = signal(false);
   readonly busy = signal(false);
+  readonly error = signal<string | null>(null);
   private primed = false;
 
   readonly selectedCount = computed(() => this.selected().size);
@@ -103,13 +104,15 @@ export class GitCleanDialog {
   private async load(): Promise<void> {
     this.loading.set(true);
     this.busy.set(false);
+    this.error.set(null);
     try {
       const list = await this.store.loadCleanPreview();
       this.entries.set(list);
       this.selected.set(new Set(list.map((entry) => entry.path)));
-    } catch {
+    } catch (err) {
       this.entries.set([]);
       this.selected.set(new Set());
+      this.error.set(this.store.formatError(err));
     } finally {
       this.loading.set(false);
     }

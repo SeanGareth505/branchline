@@ -1,6 +1,7 @@
 import {
   extractRemoteUrlFromGitError,
   humanizeGitError,
+  isIgnorableUnhandledError,
   isRemoteAccessError,
 } from './git-error';
 
@@ -59,5 +60,26 @@ describe('git remote errors', () => {
     const message = humanizeGitError('husky - pre-commit script failed (code 1)');
     expect(message.toLowerCase()).toContain('hook');
     expect(message.toLowerCase()).toContain('retry');
+  });
+
+  it('explains local database and disk failures instead of raw prefixes', () => {
+    expect(humanizeGitError('Database error: no such table: repos')).toMatch(/database/i);
+    expect(humanizeGitError('Database error: no such table: repos')).not.toContain('no such table');
+    expect(humanizeGitError('IO error: Permission denied (os error 13)')).toMatch(/disk|permissions/i);
+    expect(humanizeGitError('Background task interrupted: cancelled')).toMatch(/interrupted|try again/i);
+  });
+
+  it('explains a missing Tauri command without dumping the IPC name', () => {
+    const message = humanizeGitError("command get_conflict_sides not found");
+    expect(message.toLowerCase()).toContain('reinstall');
+    expect(message).not.toContain('get_conflict_sides');
+  });
+
+  it('ignores aborted and empty unhandled errors', () => {
+    const abort = new Error('The user aborted a request');
+    abort.name = 'AbortError';
+    expect(isIgnorableUnhandledError(abort)).toBe(true);
+    expect(isIgnorableUnhandledError(new Error('Git error: push failed'))).toBe(false);
+    expect(isIgnorableUnhandledError('')).toBe(true);
   });
 });

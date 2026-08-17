@@ -24,6 +24,7 @@
             <span>Branchline</span>
           </button>
           <app-project-switcher />
+          <app-repo-account-bar />
           <app-repo-tabs />
         </div>
 
@@ -47,7 +48,7 @@
               <ng-icon name="lucideGitPullRequest" size="14" />
               <span>PRs</span>
             </button>
-            @if (store.hasLinkedJira()) {
+            @if (store.hasLinkedJira() || store.isDummyBackend || store.jiraSetupIncomplete()) {
               <button
                 type="button"
                 [class.active]="isActive('jira')"

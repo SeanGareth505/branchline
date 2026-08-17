@@ -257,7 +257,7 @@ export class GithubDeviceLoginDialog {
   }
 
   private formatErr(err: unknown): string {
-    return String((err as { message?: string })?.message ?? err);
+    return this.store.formatError(err);
   }
 
   private reset(): void {

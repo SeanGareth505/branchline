@@ -16,6 +16,10 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { sanitizeBranchName } from '../../../core/workflow-placeholders';
+import {
+  branchNameWithTicket,
+  extractTicketFromBranch,
+} from '../../../shared/git/ticket-from-branch';
 
 @Component({
   selector: 'app-create-branch-dialog',
@@ -38,6 +42,8 @@ export class CreateBranchDialog {
   readonly startRef = signal('');
   readonly startOpen = signal(false);
   readonly startQuery = signal('');
+  readonly jiraKey = signal('');
+  readonly canPickJira = computed(() => this.store.canPickJiraIssues());
 
   readonly prefixMenuPositions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 6 },
@@ -166,6 +172,11 @@ export class CreateBranchDialog {
       this.startQuery.set('');
       const passed = this.store.createBranchStartPoint();
       this.startRef.set(passed || this.currentBranch() || 'HEAD');
+      const fromName = extractTicketFromBranch(
+        suggested || '',
+        settings.ticketFromBranch,
+      );
+      this.jiraKey.set(this.store.activeJiraKey()?.trim() || fromName || '');
     });
   }
 
@@ -260,6 +271,38 @@ export class CreateBranchDialog {
     this.closeStartMenu();
   }
 
+  async pickTicket(): Promise<void> {
+    const issue = await this.store.pickJiraIssue({
+      title: 'Link Jira issue',
+      message: 'This issue is attached when the branch is created.',
+      confirmLabel: 'Use issue',
+      initialKey: this.jiraKey(),
+    });
+    if (!issue) return;
+    this.jiraKey.set(issue.key);
+    const current = this.name().trim();
+    if (!current) {
+      this.name.set(sanitizeBranchName(this.store.branchNameFromIssue(issue)));
+      this.usePrefix.set(false);
+      return;
+    }
+    if (!current.toLowerCase().includes(issue.key.toLowerCase())) {
+      this.name.set(branchNameWithTicket(current, issue.key));
+      this.usePrefix.set(false);
+    }
+  }
+
+  clearTicket(event: Event): void {
+    event.stopPropagation();
+    this.jiraKey.set('');
+  }
+
+  jiraLinkTitle(): string {
+    if (this.jiraKey()) return 'Change the Jira issue for this branch';
+    if (this.canPickJira()) return 'Attach a Jira issue to this new branch';
+    return 'Connect Jira to pick an issue';
+  }
+
   async submit(): Promise<void> {
     if (!this.canCreate()) return;
     this.busy.set(true);
@@ -267,6 +310,7 @@ export class CreateBranchDialog {
       const start = this.startRef().trim() || undefined;
       const ok = await this.store.createBranch(this.preview(), start, this.checkout(), {
         push: this.push() && this.hasRemote(),
+        jiraKey: this.jiraKey().trim() || null,
       });
       if (ok) this.store.closeCreateBranchDialog(true);
     } finally {

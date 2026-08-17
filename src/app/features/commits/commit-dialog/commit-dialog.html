@@ -56,12 +56,27 @@
         </div>
       }
 
-      <div class="workspace">
-        <div
-          class="files-column"
-          [class.has-conflicts]="conflictedCount() > 0"
-          [class.is-busy]="isBusy()"
-        >
+      <as-split
+        class="layout-split"
+        direction="vertical"
+        unit="percent"
+        [gutterSize]="6"
+        (dragEnd)="onComposerSplit($event.sizes)"
+      >
+        <as-split-area [size]="store.splitCommitComposer()[0]" [minSize]="42" [maxSize]="80">
+          <as-split
+            class="workspace"
+            direction="horizontal"
+            unit="percent"
+            [gutterSize]="6"
+            (dragEnd)="onFilesSplit($event.sizes)"
+          >
+            <as-split-area [size]="store.splitCommitFiles()[0]" [minSize]="18" [maxSize]="52">
+              <div
+                class="files-column"
+                [class.has-conflicts]="conflictedCount() > 0"
+                [class.is-busy]="isBusy()"
+              >
           <label class="filter">
             <ng-icon name="lucideSearch" size="14" />
             <input
@@ -289,9 +304,11 @@
               }
             </ul>
           </section>
-        </div>
+              </div>
+            </as-split-area>
 
-        <section class="diff-pane">
+            <as-split-area [size]="store.splitCommitFiles()[1]" [minSize]="40">
+              <section class="diff-pane">
           <header class="diff-head">
             @if (selectedPath(); as path) {
               <div class="diff-meta">
@@ -334,10 +351,13 @@
             "
             (applied)="onPatchApplied()"
           />
-        </section>
-      </div>
+              </section>
+            </as-split-area>
+          </as-split>
+        </as-split-area>
 
-      <section class="composer">
+        <as-split-area [size]="store.splitCommitComposer()[1]" [minSize]="20" [maxSize]="58">
+          <section class="composer">
         <div class="composer-main">
           <div class="type-row">
             @for (t of types(); track t.id) {
@@ -517,6 +537,8 @@
           </div>
         </div>
       </section>
+        </as-split-area>
+      </as-split>
     </div>
   </div>
 }

@@ -10,7 +10,6 @@ import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { EmptyState } from '../../shared/ui/empty-state/empty-state';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
-import { RepoAccountBar } from '../repo-account-bar/repo-account-bar';
 
 type SortMode = 'recent' | 'name';
 
@@ -22,7 +21,7 @@ interface RepoGroup {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [FormsModule, NgIcon, EmptyState, BrandMark, RepoAccountBar],
+  imports: [FormsModule, NgIcon, EmptyState, BrandMark],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

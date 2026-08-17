@@ -84,15 +84,17 @@
         />
         @if (query()) {
           <kbd class="count">{{ filteredCount() }}</kbd>
-        } @else if (totalCount() > 0) {
-          <kbd class="count">{{ totalCount() }}</kbd>
+        } @else if (filteredCount() > 0 || totalCount() > 0) {
+          <kbd class="count">{{ filteredCount() }}</kbd>
         }
       </div>
     </div>
 
     @if (store.repos().length > 0) {
       <div class="library-controls">
-        <app-repo-account-bar />
+        @if (store.selectedRepoAccountLabel(); as account) {
+          <span class="filter-hint">Showing {{ account }}</span>
+        }
         <div class="sort-tabs" role="group" aria-label="Sort repositories">
           <button
             type="button"
@@ -160,14 +162,18 @@
       <p>
         @if (query()) {
           No repositories match “{{ query() }}”.
+        } @else if (store.selectedRepoAccountLabel(); as account) {
+          No repositories for {{ account }}.
         } @else {
-          No repositories for this account.
+          No repositories found.
         }
       </p>
       @if (query()) {
         <button type="button" class="bl-btn" (click)="query.set('')">Clear search</button>
-      } @else {
-        <button type="button" class="bl-btn" (click)="store.selectRepoAccount('*')">Show all</button>
+      } @else if (!store.showingAllRepoAccounts()) {
+        <button type="button" class="bl-btn" (click)="store.selectRepoAccount('*')">
+          Show all accounts
+        </button>
       }
     </div>
   } @else {

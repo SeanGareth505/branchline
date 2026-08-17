@@ -149,6 +149,24 @@ export class CommandPalette {
         },
       },
       {
+        id: 'github-add-account',
+        label: 'Add GitHub account',
+        group: 'Git',
+        run: () => void store.addGithubCliAccount(),
+      },
+      {
+        id: 'github-unlink-account',
+        label: store.selectedRepoAccountLabel()
+          ? `Unlink ${store.selectedRepoAccountLabel()}`
+          : 'Unlink GitHub account',
+        group: 'Git',
+        run: () => {
+          const login = store.selectedRepoAccountLabel() || store.githubGitStatus()?.activeLogin;
+          if (login) void store.logoutGithubCliUser(login);
+          else store.openSettings('connections', 'github-git');
+        },
+      },
+      {
         id: 'connect-github',
         label: 'Connect GitHub',
         group: 'Integrations',
@@ -173,6 +191,17 @@ export class CommandPalette {
         label: 'Connect Jira',
         group: 'Integrations',
         run: () => store.openSettings('connections', 'jira'),
+      },
+      {
+        id: 'link-jira-branch',
+        label: store.canPickJiraIssues()
+          ? 'Link current branch to Jira…'
+          : 'Connect Jira to link a branch…',
+        group: 'Integrations',
+        run: () => {
+          if (store.currentRepo()) void store.pickAndLinkBranchToJira();
+          else store.showWarning('Open a repository first');
+        },
       },
       {
         id: 'test-connections',

@@ -65,6 +65,19 @@ export function humanizeGitError(message: string): string {
   if (!m) return 'Something went wrong';
   if (/^A Git hook /i.test(m)) return m;
 
+  if (/^Database error:/i.test(m)) {
+    return 'Branchline could not read its local database. Restart the app, then retry.';
+  }
+  if (/^IO error:/i.test(m)) {
+    return 'A file on disk could not be read or written. Check permissions, then retry.';
+  }
+  if (/^JSON error:/i.test(m)) {
+    return 'Branchline got data it could not parse. Retry, or restart if it keeps happening.';
+  }
+  if (/Background task interrupted/i.test(m)) {
+    return 'That action was interrupted. Try again.';
+  }
+
   if (
     /npm: command not found|npx: command not found|node: command not found|npm is not recognized|npx is not recognized|node is not recognized/i.test(
       m,
@@ -141,5 +154,24 @@ export function humanizeGitError(message: string): string {
     return 'Git could not reach that URL. Check the remote, then switch this repo to HTTPS or SSH in Remotes.';
   }
 
+  if (
+    /\bcommand ['"]?[\w:-]+['"]? not found\b/i.test(m) &&
+    !/git executable not found|npm: command not found|npx: command not found|node: command not found/i.test(m)
+  ) {
+    return 'This copy of Branchline is missing a command. Restart or reinstall, then retry.';
+  }
+
   return m;
+}
+
+export function isIgnorableUnhandledError(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'name' in err) {
+    const name = String((err as { name?: unknown }).name ?? '');
+    if (name === 'AbortError' || name === 'CanceledError' || name === 'CancelledError') {
+      return true;
+    }
+  }
+  const raw = rawErrorMessage(err);
+  if (!raw) return true;
+  return /^(abort(ed)?(\s|$)|the user aborted|unsubscribed|resizeobserver)/i.test(raw);
 }

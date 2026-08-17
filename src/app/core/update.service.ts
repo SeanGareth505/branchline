@@ -4,6 +4,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { AppStore } from './app.store';
 import { TauriService } from './tauri.service';
+import { rawErrorMessage } from '../shared/git/git-error';
 import {
   extractWhatsNewBody,
   githubReleaseTagUrl,
@@ -230,7 +231,7 @@ export class UpdateService {
   }
 
   private formatError(err: unknown): string {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = rawErrorMessage(err) || String(err ?? '');
     if (/404|not found/i.test(message)) {
       return `${message} — the updater file was missing. Try again, or use Download page.`;
     }

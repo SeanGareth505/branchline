@@ -88,9 +88,12 @@ pub async fn list_branches(
     input: RepoPathInput,
 ) -> AppResult<Vec<git2_repo::BranchInfo>> {
     let path = PathBuf::from(&input.path);
-    let locks = {
+    let (locks, tickets) = {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-        sqlite::list_branch_locks(&db, &input.path)?
+        (
+            sqlite::list_branch_locks(&db, &input.path)?,
+            sqlite::list_branch_tickets(&db, &input.path)?,
+        )
     };
     run_blocking(move || {
         let mut branches = git2_repo::list_branches(&path)?;
@@ -98,10 +101,17 @@ pub async fn list_branches(
             .into_iter()
             .map(|l| (l.branch_name, l.reason))
             .collect();
+        let ticket_map: std::collections::HashMap<String, String> = tickets
+            .into_iter()
+            .map(|t| (t.branch_name, t.issue_key))
+            .collect();
         for branch in &mut branches {
             if let Some(reason) = lock_map.get(&branch.name) {
                 branch.locked = true;
                 branch.lock_reason = reason.clone();
+            }
+            if let Some(key) = ticket_map.get(&branch.name) {
+                branch.jira_key = Some(key.clone());
             }
         }
         Ok(branches)
@@ -130,18 +140,18 @@ pub fn create_branch(
     }
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-        let _ = undo::push_entry(
+        let recorded = undo::try_push_entry(
             &db,
             &input.path,
             "branch_create",
             "Create branch",
             json!({ "name": input.name, "startPoint": start }),
         );
+        Ok(MutationOutput {
+            ok: true,
+            message: undo::message_with_undo(format!("Created branch {}", input.name), recorded),
+        })
     }
-    Ok(MutationOutput {
-        ok: true,
-        message: format!("Created branch {}", input.name),
-    })
 }
 
 #[command]
@@ -204,6 +214,7 @@ pub fn delete_branch(
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
         let _ = sqlite::unlock_branch(&db, &input.path, &input.name);
+        let _ = sqlite::unlink_branch_ticket(&db, &input.path, &input.name);
     }
     Ok(MutationOutput {
         ok: true,
@@ -220,19 +231,21 @@ pub fn rename_branch(
     git_cli::ensure_repo(&path)?;
     ensure_not_locked(&state, &input.path, &input.from)?;
     git_cli::run_git(&path, &["branch", "-m", &input.from, &input.to])?;
-    {
-        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-        let _ = undo::push_entry(
-            &db,
-            &input.path,
-            "branch_rename",
-            "Rename branch",
-            json!({ "from": input.from, "to": input.to }),
-        );
-    }
+    let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+    let recorded = undo::try_push_entry(
+        &db,
+        &input.path,
+        "branch_rename",
+        "Rename branch",
+        json!({ "from": input.from, "to": input.to }),
+    );
+    let _ = sqlite::rename_branch_ticket(&db, &input.path, &input.from, &input.to);
     Ok(MutationOutput {
         ok: true,
-        message: format!("Renamed {} → {}", input.from, input.to),
+        message: undo::message_with_undo(
+            format!("Renamed {} → {}", input.from, input.to),
+            recorded,
+        ),
     })
 }
 

@@ -22,10 +22,11 @@
                   protocol() === 'ssh'
                     ? 'Switch this repo to HTTPS to use this account'
                     : account.ok
-                      ? 'Use this account for HTTPS Git'
+                      ? 'Use this account for HTTPS Git. Right-click to unlink.'
                       : 'This GitHub CLI login is invalid'
                 "
                 (click)="useAccount(account.login)"
+                (contextmenu)="unlink(account.login); $event.preventDefault()"
               >
                 {{ account.login }}
               </button>
@@ -71,9 +72,19 @@
         <button type="button" class="text-btn" [disabled]="busy()" (click)="refresh()">
           Refresh
         </button>
-        <button type="button" class="text-btn" (click)="copyAddAccount()">
+        <button type="button" class="text-btn" [disabled]="busy()" (click)="addAccount()">
           Add account
         </button>
+        @if (activeLogin()) {
+          <button
+            type="button"
+            class="text-btn danger"
+            [disabled]="busy()"
+            (click)="unlink(activeLogin())"
+          >
+            Unlink {{ activeLogin() }}
+          </button>
+        }
       </div>
     </div>
   </section>

@@ -190,12 +190,19 @@ export interface BranchInfo {
   tipEmail: string | null;
   locked: boolean;
   lockReason: string | null;
+  jiraKey?: string | null;
 }
 
 export interface BranchLockInfo {
   branchName: string;
   reason: string | null;
   lockedAt: string;
+}
+
+export interface BranchJiraLink {
+  branchName: string;
+  issueKey: string;
+  linkedAt: string;
 }
 
 export interface DiffFileEntry {
@@ -631,6 +638,7 @@ export interface GithubCliAccount {
 export interface GithubGitStatus {
   sshLogin: string;
   usesGhHelper: boolean;
+  ghAvailable?: boolean;
   accounts: GithubCliAccount[];
   activeLogin: string;
 }
@@ -695,9 +703,13 @@ export interface UiSession {
   prSortKey?: string;
   splitMain?: number[];
   splitNested?: number[];
+  commitSplitFiles?: number[];
+  commitSplitComposer?: number[];
   revisionGridColumns?: RevisionGridColumns;
   openRepoPaths?: string[];
   activeRepoPath?: string | null;
+  activeRepoPathByAccount?: Record<string, string>;
+  repoWebUrls?: Record<string, string | null>;
 }
 
 export interface RevisionGridColumns {

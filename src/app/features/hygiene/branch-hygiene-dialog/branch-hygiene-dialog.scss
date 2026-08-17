@@ -122,6 +122,10 @@ h3 {
   font-size: 0.92rem;
 }
 
+.empty.error {
+  color: var(--git-deleted, #ef4444);
+}
+
 footer {
   display: flex;
   justify-content: flex-end;

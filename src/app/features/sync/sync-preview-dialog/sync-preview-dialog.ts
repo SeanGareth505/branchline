@@ -23,6 +23,7 @@ export class SyncPreviewDialog {
   readonly commits = signal<SyncCommitInfo[]>([]);
   readonly loading = signal(false);
   readonly busy = signal(false);
+  readonly error = signal<string | null>(null);
   private primed = false;
   private loadedKind: 'incoming' | 'outgoing' | null = null;
 
@@ -93,10 +94,12 @@ export class SyncPreviewDialog {
   private async load(kind: 'incoming' | 'outgoing'): Promise<void> {
     this.loading.set(true);
     this.busy.set(false);
+    this.error.set(null);
     try {
       this.commits.set(await this.store.loadSyncCommits(kind));
-    } catch {
+    } catch (err) {
       this.commits.set([]);
+      this.error.set(this.store.formatError(err));
     } finally {
       this.loading.set(false);
     }

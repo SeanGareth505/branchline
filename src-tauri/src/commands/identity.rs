@@ -290,7 +290,9 @@ pub fn set_git_identity(input: SetGitIdentityInput) -> AppResult<GitIdentity> {
     }
 
     if matches!(scope, ConfigScope::Local) {
-        let repo = path.as_deref().unwrap();
+        let repo = path.as_deref().ok_or_else(|| {
+            AppError::msg("Open a repository to set a local identity")
+        })?;
         git_cli::config_set_scoped(Some(repo), "user.name", name, ConfigScope::Local)?;
         git_cli::config_set_scoped(Some(repo), "user.email", email, ConfigScope::Local)?;
     } else {

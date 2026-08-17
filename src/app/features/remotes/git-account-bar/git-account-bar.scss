@@ -96,9 +96,8 @@
   text-decoration: underline;
 }
 
-.text-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
+.text-btn.danger {
+  color: var(--danger, #ef4444);
 }
 
 .seg {

@@ -9,6 +9,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AngularSplitModule } from 'angular-split';
 import { NgIcon } from '@ng-icons/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { CommitShortcutId, FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
@@ -42,7 +43,7 @@ type CommitPhase = 'checking' | 'staging' | 'committing' | 'pushing';
 
 @Component({
   selector: 'app-commit-dialog',
-  imports: [FormsModule, NgIcon, PatchLinesView, Spinner, CommitChecks],
+  imports: [FormsModule, AngularSplitModule, NgIcon, PatchLinesView, Spinner, CommitChecks],
   templateUrl: './commit-dialog.html',
   styleUrl: './commit-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -347,6 +348,16 @@ export class CommitDialog {
     const path = this.selectedPath();
     if (!path) return;
     void this.loadDiff(path, this.selectedStaged());
+  }
+
+  onFilesSplit(sizes: Array<number | '*'>): void {
+    const nums = sizes.filter((s): s is number => typeof s === 'number');
+    if (nums.length >= 2) this.store.setSplitSizes('commitFiles', nums);
+  }
+
+  onComposerSplit(sizes: Array<number | '*'>): void {
+    const nums = sizes.filter((s): s is number => typeof s === 'number');
+    if (nums.length >= 2) this.store.setSplitSizes('commitComposer', nums);
   }
 
   fileName(path: string): string {
@@ -1220,8 +1231,8 @@ export class CommitDialog {
     try {
       const diff = await this.tauri.getDiff(repo, { pathspec: path, staged });
       this.patch.set(diff.unified || 'No textual diff for this file.');
-    } catch {
-      this.patch.set('Could not load diff.');
+    } catch (err) {
+      this.patch.set(this.store.formatError(err) || 'Could not load diff.');
     }
   }
 
