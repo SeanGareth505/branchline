@@ -37,7 +37,7 @@
                 : f.path
             "
           >
-            <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+            <span class="status" [class]="statusClass(f.status)" [title]="statusTitle(f.status)">{{ statusGlyph(f.status) }}</span>
             <span class="name">{{ fileName(f.path) }}</span>
             <span class="dir">{{ fileDir(f.path) }}</span>
             <span class="stats" aria-hidden="true">

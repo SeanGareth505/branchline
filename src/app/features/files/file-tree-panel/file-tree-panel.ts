@@ -277,8 +277,38 @@ export class FileTreePanel {
     if (area === 'untracked' || status === 'untracked') return '?';
     if (status === 'added') return 'A';
     if (status === 'deleted') return 'D';
-    if (status === 'renamed') return 'R';
+    if (status === 'renamed' || status === 'copied') return 'R';
     return 'M';
+  }
+
+  statusTitle(status: FileStatusKind, area: FileArea): string {
+    if (area === 'conflicted') return 'Conflict';
+    if (area === 'staged') return `Staged · ${this.statusKindLabel(status)}`;
+    if (area === 'untracked' || status === 'untracked') return 'Untracked';
+    return this.statusKindLabel(status);
+  }
+
+  private statusKindLabel(status: FileStatusKind): string {
+    switch (status) {
+      case 'added':
+        return 'Added';
+      case 'deleted':
+        return 'Deleted';
+      case 'renamed':
+        return 'Renamed';
+      case 'copied':
+        return 'Copied';
+      case 'untracked':
+        return 'Untracked';
+      case 'conflicted':
+        return 'Conflict';
+      case 'typeChanged':
+        return 'Type changed';
+      case 'ignored':
+        return 'Ignored';
+      default:
+        return 'Modified';
+    }
   }
 
   statusClass(status: FileStatusKind, area: FileArea): string {

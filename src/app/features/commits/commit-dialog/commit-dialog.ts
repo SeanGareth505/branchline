@@ -8,6 +8,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { CdkConnectedOverlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import { FormsModule } from '@angular/forms';
 import { AngularSplitModule } from 'angular-split';
 import { NgIcon } from '@ng-icons/core';
@@ -39,11 +40,20 @@ import {
 import { CommitChecks } from '../commit-checks/commit-checks';
 
 type FileKey = `${'s' | 'u' | 'c'}:${string}`;
+type FilePane = 'unstaged' | 'staged' | 'conflicted';
 type CommitPhase = 'checking' | 'staging' | 'committing' | 'pushing';
 
 @Component({
   selector: 'app-commit-dialog',
-  imports: [FormsModule, AngularSplitModule, NgIcon, PatchLinesView, Spinner, CommitChecks],
+  imports: [
+    FormsModule,
+    AngularSplitModule,
+    NgIcon,
+    PatchLinesView,
+    Spinner,
+    CommitChecks,
+    CdkConnectedOverlay,
+  ],
   templateUrl: './commit-dialog.html',
   styleUrl: './commit-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,11 +86,25 @@ export class CommitDialog {
   readonly addingType = signal(false);
   readonly newTypeDraft = signal('');
   readonly savingType = signal(false);
-  readonly focusPane = signal<'unstaged' | 'staged' | 'conflicted'>('unstaged');
+  readonly focusPane = signal<FilePane>('unstaged');
   readonly selectedFiles = signal<Set<FileKey>>(new Set());
   readonly diffLayout = signal<PatchLinesLayout>('unified');
-  private lastFileIndex: { pane: 'unstaged' | 'staged' | 'conflicted'; index: number } | null =
-    null;
+  readonly fileMenu = signal<{ open: boolean; x: number; y: number; pane: FilePane; path: string }>({
+    open: false,
+    x: 0,
+    y: 0,
+    pane: 'unstaged',
+    path: '',
+  });
+  readonly fileMenuOrigin = computed(() => ({ x: this.fileMenu().x, y: this.fileMenu().y }));
+  readonly fileMenuPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'top' },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'top' },
+  ];
+  private lastFileIndex: { pane: FilePane; index: number } | null = null;
+  private ignoreFileClicksUntil = 0;
+  private secondaryFileGesture = false;
 
   readonly suggestedTicket = computed(() => {
     const picked = this.store.activeJiraKey()?.trim();
@@ -374,6 +398,7 @@ export class CommitDialog {
 
   close(completed = false): void {
     if (this.committing() && !completed) return;
+    this.closeFileMenu();
     this.store.closeCommitModal(completed);
   }
 
@@ -412,23 +437,46 @@ export class CommitDialog {
     }
   }
 
-  fileKey(path: string, pane: 'unstaged' | 'staged' | 'conflicted'): FileKey {
+  statusTitle(status: FileStatusKind): string {
+    switch (status) {
+      case 'untracked':
+        return 'Untracked';
+      case 'added':
+        return 'Added';
+      case 'deleted':
+        return 'Deleted';
+      case 'renamed':
+        return 'Renamed';
+      case 'copied':
+        return 'Copied';
+      case 'conflicted':
+        return 'Conflict';
+      case 'typeChanged':
+        return 'Type changed';
+      case 'ignored':
+        return 'Ignored';
+      default:
+        return 'Modified';
+    }
+  }
+
+  fileKey(path: string, pane: FilePane): FileKey {
     const prefix = pane === 'staged' ? 's' : pane === 'conflicted' ? 'c' : 'u';
     return `${prefix}:${path}`;
   }
 
-  isFileSelected(path: string, pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+  isFileSelected(path: string, pane: FilePane): boolean {
     return this.selectedFiles().has(this.fileKey(path, pane));
   }
 
-  paneFullySelected(pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+  paneFullySelected(pane: FilePane): boolean {
     const list = this.listForPane(pane);
     if (!list.length) return false;
     const selected = this.selectedFiles();
     return list.every((f) => selected.has(this.fileKey(f.path, pane)));
   }
 
-  panePartiallySelected(pane: 'unstaged' | 'staged' | 'conflicted'): boolean {
+  panePartiallySelected(pane: FilePane): boolean {
     const list = this.listForPane(pane);
     if (!list.length) return false;
     const selected = this.selectedFiles();
@@ -464,7 +512,7 @@ export class CommitDialog {
     });
   }
 
-  togglePaneSelectAll(pane: 'unstaged' | 'staged' | 'conflicted', event?: Event): void {
+  togglePaneSelectAll(pane: FilePane, event?: Event): void {
     event?.preventDefault();
     event?.stopPropagation();
     this.focusPane.set(pane);
@@ -487,7 +535,7 @@ export class CommitDialog {
 
   onCheckboxClick(
     entry: FileStatusEntry,
-    pane: 'unstaged' | 'staged' | 'conflicted',
+    pane: FilePane,
     event: MouseEvent,
     index: number,
   ): void {
@@ -509,12 +557,20 @@ export class CommitDialog {
     this.selectFile(entry.path, pane === 'staged');
   }
 
+  onFileMouseDown(event: MouseEvent): void {
+    this.secondaryFileGesture = this.isSecondaryFileGesture(event);
+  }
+
   onFileClick(
     entry: FileStatusEntry,
-    pane: 'unstaged' | 'staged' | 'conflicted',
+    pane: FilePane,
     event: MouseEvent,
     index: number,
   ): void {
+    if (this.shouldIgnoreFileClick(event)) {
+      this.secondaryFileGesture = false;
+      return;
+    }
     this.focusPane.set(pane);
     const key = this.fileKey(entry.path, pane);
     const list = this.listForPane(pane);
@@ -527,7 +583,7 @@ export class CommitDialog {
         const item = list[i];
         if (item) next.add(this.fileKey(item.path, pane));
       }
-    } else if (event.metaKey || event.ctrlKey) {
+    } else if (event.metaKey || (!this.isMac && event.ctrlKey)) {
       next = new Set(
         [...this.selectedFiles()].filter((k) => {
           if (pane === 'staged') return k.startsWith('s:');
@@ -544,6 +600,115 @@ export class CommitDialog {
     this.lastFileIndex = { pane, index };
     this.selectedFiles.set(next);
     this.selectFile(entry.path, pane === 'staged');
+  }
+
+  onFileDblClick(entry: FileStatusEntry, pane: FilePane, event: MouseEvent): void {
+    if (this.shouldIgnoreFileClick(event) || event.button !== 0) {
+      event.preventDefault();
+      this.secondaryFileGesture = false;
+      return;
+    }
+    event.preventDefault();
+    if (this.isBusy()) return;
+    if (pane === 'staged') void this.unstage(entry);
+    else void this.stage(entry);
+  }
+
+  onFileContextMenu(
+    entry: FileStatusEntry,
+    pane: FilePane,
+    event: MouseEvent,
+    index: number,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.secondaryFileGesture = true;
+    this.ignoreFileClicksUntil = performance.now() + 400;
+    this.focusPane.set(pane);
+
+    const key = this.fileKey(entry.path, pane);
+    if (!this.selectedFiles().has(key)) {
+      this.lastFileIndex = { pane, index };
+      this.selectedFiles.set(new Set([key]));
+    }
+    this.selectFile(entry.path, pane === 'staged');
+    this.openFileMenu(event.clientX, event.clientY, pane, entry.path);
+  }
+
+  fileMenuCount(): number {
+    const pane = this.fileMenu().pane;
+    if (pane === 'staged') return this.stagedSelectedCount();
+    if (pane === 'conflicted') return this.conflictedSelectedCount();
+    return this.unstagedSelectedCount();
+  }
+
+  fileMenuLabel(): string {
+    const count = this.fileMenuCount();
+    if (count > 1) return `${count} files`;
+    return this.fileName(this.fileMenu().path);
+  }
+
+  closeFileMenu(): void {
+    if (!this.fileMenu().open) return;
+    this.fileMenu.update((m) => ({ ...m, open: false }));
+  }
+
+  onFileMenuDismiss(event?: Event): void {
+    if (performance.now() < this.ignoreFileClicksUntil) {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      return;
+    }
+    if (event instanceof MouseEvent && (event.type === 'auxclick' || event.button === 2)) return;
+    this.closeFileMenu();
+  }
+
+  runFileMenuStage(): void {
+    this.closeFileMenu();
+    void this.stageSelected();
+  }
+
+  runFileMenuUnstage(): void {
+    this.closeFileMenu();
+    void this.unstageSelected();
+  }
+
+  runFileMenuReset(): void {
+    this.closeFileMenu();
+    void this.resetSelected();
+  }
+
+  runFileMenuDelete(): void {
+    this.closeFileMenu();
+    void this.deleteUntrackedSelected();
+  }
+
+  runFileMenuIgnore(): void {
+    this.closeFileMenu();
+    void this.ignoreSelected();
+  }
+
+  runFileMenuResolve(): void {
+    const path = this.fileMenu().path;
+    this.closeFileMenu();
+    void this.store.openConflictResolver(path);
+  }
+
+  runFileMenuOpen(): void {
+    const paths = [...this.selectedFiles()].map((k) => k.slice(2));
+    this.closeFileMenu();
+    void this.openSelected(paths.length ? paths : undefined);
+  }
+
+  runFileMenuReveal(): void {
+    const path = this.fileMenu().path;
+    this.closeFileMenu();
+    void this.revealSelected(path);
+  }
+
+  runFileMenuCopy(): void {
+    this.closeFileMenu();
+    void this.copySelectedPaths();
   }
 
   selectFile(path: string, staged: boolean): void {
@@ -680,15 +845,15 @@ export class CommitDialog {
     }
   }
 
-  async openSelected(): Promise<void> {
-    const rel = this.selectedPath();
-    if (!rel) return;
-    await this.store.openPathsInEditor([rel]);
+  async openSelected(paths?: string[]): Promise<void> {
+    const list = paths?.length ? paths : this.selectedPath() ? [this.selectedPath()!] : [];
+    if (!list.length) return;
+    await this.store.openPathsInEditor(list);
   }
 
-  async revealSelected(): Promise<void> {
+  async revealSelected(path?: string): Promise<void> {
     const repo = this.store.currentRepo()?.path;
-    const rel = this.selectedPath();
+    const rel = path ?? this.selectedPath();
     if (!repo || !rel) return;
     try {
       await revealItemInDir(`${repo}/${rel}`);
@@ -701,7 +866,7 @@ export class CommitDialog {
     this.diffLayout.set(this.diffLayout() === 'unified' ? 'sideBySide' : 'unified');
   }
 
-  onFileListKey(event: KeyboardEvent, pane: 'unstaged' | 'staged' | 'conflicted'): void {
+  onFileListKey(event: KeyboardEvent, pane: FilePane): void {
     const list = this.listForPane(pane);
     const key = event.key.toLowerCase();
 
@@ -1092,6 +1257,11 @@ export class CommitDialog {
     }
 
     if (event.key === 'Escape') {
+      if (this.fileMenu().open) {
+        event.preventDefault();
+        this.closeFileMenu();
+        return;
+      }
       if (this.prompts.request()) return;
       if (this.committing()) return;
       event.preventDefault();
@@ -1136,7 +1306,7 @@ export class CommitDialog {
     }
   }
 
-  private listForPane(pane: 'unstaged' | 'staged' | 'conflicted'): FileStatusEntry[] {
+  private listForPane(pane: FilePane): FileStatusEntry[] {
     if (pane === 'staged') return this.staged();
     if (pane === 'conflicted') return this.conflicted();
     return this.unstaged();
@@ -1169,6 +1339,7 @@ export class CommitDialog {
     await this.applyPushAfterDefault(settings.pushAfterCommit);
     this.diffLayout.set('unified');
     this.selectedFiles.set(new Set());
+    this.closeFileMenu();
     this.sessionSequence.set([]);
     this.fillScopeFromTicket();
     if (this.scope().trim()) this.noteShortcut('scope');
@@ -1258,5 +1429,27 @@ export class CommitDialog {
     this.sessionSequence.set([]);
     this.cancelAddType();
     this.selectedFiles.set(new Set());
+    this.closeFileMenu();
+  }
+
+  private openFileMenu(x: number, y: number, pane: FilePane, path: string): void {
+    this.fileMenu.set({ open: true, x, y, pane, path });
+  }
+
+  private shouldIgnoreFileClick(event: MouseEvent): boolean {
+    return (
+      this.secondaryFileGesture ||
+      this.isSecondaryFileGesture(event) ||
+      this.fileMenu().open ||
+      performance.now() < this.ignoreFileClicksUntil
+    );
+  }
+
+  private isSecondaryFileGesture(event: MouseEvent): boolean {
+    return event.button === 2 || event.buttons === 2 || this.isMacContextClick(event);
+  }
+
+  private isMacContextClick(event: MouseEvent): boolean {
+    return this.isMac && event.ctrlKey && !event.metaKey;
   }
 }

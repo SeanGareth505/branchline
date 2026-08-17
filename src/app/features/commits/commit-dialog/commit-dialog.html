@@ -114,8 +114,10 @@
                   <li
                     [class.active]="isFileSelected(f.path, 'conflicted')"
                     [class.current]="selectedPath() === f.path && !selectedStaged()"
+                    (mousedown)="onFileMouseDown($event)"
                     (click)="onFileClick(f, 'conflicted', $event, i)"
-                    (dblclick)="stage(f)"
+                    (dblclick)="onFileDblClick(f, 'conflicted', $event)"
+                    (contextmenu)="onFileContextMenu(f, 'conflicted', $event, i)"
                   >
                     <input
                       type="checkbox"
@@ -124,7 +126,7 @@
                       (click)="onCheckboxClick(f, 'conflicted', $event, i)"
                       tabindex="-1"
                     />
-                    <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                    <span class="status" [class]="statusClass(f.status)" [title]="statusTitle(f.status)">{{ statusGlyph(f.status) }}</span>
                     <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
                     <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
                   </li>
@@ -170,8 +172,10 @@
                 <li
                   [class.active]="isFileSelected(f.path, 'unstaged')"
                   [class.current]="selectedPath() === f.path && !selectedStaged()"
+                  (mousedown)="onFileMouseDown($event)"
                   (click)="onFileClick(f, 'unstaged', $event, i)"
-                  (dblclick)="stage(f)"
+                  (dblclick)="onFileDblClick(f, 'unstaged', $event)"
+                  (contextmenu)="onFileContextMenu(f, 'unstaged', $event, i)"
                 >
                   <input
                     type="checkbox"
@@ -180,7 +184,7 @@
                     (click)="onCheckboxClick(f, 'unstaged', $event, i)"
                     tabindex="-1"
                   />
-                  <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                  <span class="status" [class]="statusClass(f.status)" [title]="statusTitle(f.status)">{{ statusGlyph(f.status) }}</span>
                   <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
                   <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
                 </li>
@@ -285,8 +289,10 @@
                 <li
                   [class.active]="isFileSelected(f.path, 'staged')"
                   [class.current]="selectedPath() === f.path && selectedStaged()"
+                  (mousedown)="onFileMouseDown($event)"
                   (click)="onFileClick(f, 'staged', $event, i)"
-                  (dblclick)="unstage(f)"
+                  (dblclick)="onFileDblClick(f, 'staged', $event)"
+                  (contextmenu)="onFileContextMenu(f, 'staged', $event, i)"
                 >
                   <input
                     type="checkbox"
@@ -295,7 +301,7 @@
                     (click)="onCheckboxClick(f, 'staged', $event, i)"
                     tabindex="-1"
                   />
-                  <span class="status" [class]="statusClass(f.status)">{{ statusGlyph(f.status) }}</span>
+                  <span class="status" [class]="statusClass(f.status)" [title]="statusTitle(f.status)">{{ statusGlyph(f.status) }}</span>
                   <span class="name" [title]="f.path">{{ displayPath(f) }}</span>
                   <span class="dir" [title]="f.path">{{ fileDir(f.path) }}</span>
                 </li>
@@ -538,3 +544,60 @@
     </div>
   </div>
 }
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="fileMenuOrigin()"
+  [cdkConnectedOverlayOpen]="store.commitModalOpen() && fileMenu().open"
+  [cdkConnectedOverlayPositions]="fileMenuPositions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  [cdkConnectedOverlayBackdropClass]="'cdk-overlay-transparent-backdrop'"
+  [cdkConnectedOverlayPush]="true"
+  (backdropClick)="onFileMenuDismiss($event)"
+  (overlayOutsideClick)="onFileMenuDismiss($event)"
+>
+  <div class="bl-menu" role="menu" (click)="$event.stopPropagation()">
+    <div class="bl-menu-label">{{ fileMenuLabel() }}</div>
+    @if (fileMenu().pane === 'staged') {
+      <button type="button" [disabled]="isBusy() || !hasStagedSelection()" (click)="runFileMenuUnstage()">
+        Unstage
+        <span class="shortcut">U</span>
+      </button>
+    } @else {
+      <button
+        type="button"
+        [disabled]="isBusy() || (!hasUnstagedSelection() && !hasConflictedSelection())"
+        (click)="runFileMenuStage()"
+      >
+        Stage
+        <span class="shortcut">S</span>
+      </button>
+    }
+    @if (fileMenu().pane === 'conflicted') {
+      <button type="button" [disabled]="isBusy()" (click)="runFileMenuResolve()">Resolve</button>
+    }
+    @if (fileMenu().pane === 'unstaged' && hasDiscardableSelection()) {
+      <button type="button" class="danger" [disabled]="isBusy()" (click)="runFileMenuReset()">
+        Reset
+        <span class="shortcut">R</span>
+      </button>
+    }
+    @if (fileMenu().pane === 'unstaged' && hasUntrackedSelection()) {
+      <button type="button" class="danger" [disabled]="isBusy()" (click)="runFileMenuDelete()">
+        Delete
+        <span class="shortcut">⌫</span>
+      </button>
+      <button type="button" [disabled]="isBusy()" (click)="runFileMenuIgnore()">Ignore</button>
+    }
+    <div class="bl-menu-sep"></div>
+    <button type="button" (click)="runFileMenuOpen()">
+      Open in {{ store.preferredEditorButtonLabel() }}
+    </button>
+    <button type="button" (click)="runFileMenuReveal()">Reveal in Finder</button>
+    <button type="button" (click)="runFileMenuCopy()">
+      Copy path
+      <span class="shortcut">{{ modKey }}C</span>
+    </button>
+  </div>
+</ng-template>
+

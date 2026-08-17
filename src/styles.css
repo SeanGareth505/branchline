@@ -787,7 +787,8 @@ code,
 .bl-tooltip {
   position: fixed;
   z-index: 10000;
-  max-width: 17rem;
+  box-sizing: border-box;
+  max-width: min(36rem, calc(100vw - 16px));
   padding: 0.4rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--glass-border-strong);
@@ -800,6 +801,8 @@ code,
   font-weight: 500;
   line-height: 1.35;
   letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   box-shadow: var(--shadow-float);
   pointer-events: none;
   opacity: 0;

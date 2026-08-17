@@ -155,7 +155,11 @@
               (click)="openDiff(row.path)"
               [title]="row.path + ' — open diff'"
             >
-              <span class="badge" [class]="statusClass(row.file.status, row.file.area)">
+              <span
+                class="badge"
+                [class]="statusClass(row.file.status, row.file.area)"
+                [title]="statusTitle(row.file.status, row.file.area)"
+              >
                 {{ statusGlyph(row.file.status, row.file.area) }}
               </span>
               <ng-icon class="file-icon" name="lucideFileText" size="14" />

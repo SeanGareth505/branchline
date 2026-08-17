@@ -262,6 +262,26 @@ export class DiffViewer {
     }
   }
 
+  statusTitle(status: string): string {
+    const code = status.trim().charAt(0).toUpperCase();
+    switch (code) {
+      case 'A':
+        return 'Added';
+      case 'D':
+        return 'Deleted';
+      case 'R':
+        return 'Renamed';
+      case 'C':
+        return 'Copied';
+      case 'U':
+        return 'Unmerged';
+      case '?':
+        return 'Untracked';
+      default:
+        return 'Modified';
+    }
+  }
+
   statusClass(status: string): string {
     const code = status.trim().charAt(0).toUpperCase();
     switch (code) {
