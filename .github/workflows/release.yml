@@ -119,9 +119,23 @@ jobs:
           cache: npm
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if rustup toolchain install stable --profile minimal --no-self-update; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 8))
+          done
+          rustup default stable
+          target='${{ matrix.rust_target }}'
+          if [ -n "$target" ]; then
+            rustup target add "$target"
+          fi
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
