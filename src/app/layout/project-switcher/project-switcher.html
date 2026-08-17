@@ -86,6 +86,8 @@
         }
       </div>
 
+      <app-repo-account-bar />
+
       @if (!searching()) {
         <div class="tabs" role="tablist">
           <button
@@ -96,7 +98,7 @@
             (click)="setTab('local')"
           >
             Local
-            <span class="tab-count">{{ store.repos().length }}</span>
+            <span class="tab-count">{{ localCount() }}</span>
           </button>
           <button
             type="button"
@@ -108,7 +110,7 @@
           >
             Remote
             @if (signedIn()) {
-              <span class="tab-count">{{ store.hostRepos().length }}</span>
+              <span class="tab-count">{{ hostCount() }}</span>
             }
           </button>
         </div>
@@ -207,26 +209,28 @@
               <div class="section-label">Remote</div>
               @for (group of hostGroups(); track group.key) {
                 <div class="group">
-                  <button
-                    type="button"
-                    class="group-head"
-                    [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
-                    (click)="toggleGroup('host', group.key, $event)"
-                  >
-                    <ng-icon
-                      [name]="
-                        isGroupCollapsed('host', group.key)
-                          ? 'lucideChevronRight'
-                          : 'lucideChevronDown'
-                      "
-                      size="12"
-                    />
-                    <ng-icon name="lucideFolders" size="12" />
-                    <span class="group-label">{{ group.label }}</span>
-                    <span class="group-count">{{ group.repos.length }}</span>
-                  </button>
-                  @if (!isGroupCollapsed('host', group.key)) {
-                    <ul>
+                  @if (!flattenHostGroups()) {
+                    <button
+                      type="button"
+                      class="group-head"
+                      [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
+                      (click)="toggleGroup('host', group.key, $event)"
+                    >
+                      <ng-icon
+                        [name]="
+                          isGroupCollapsed('host', group.key)
+                            ? 'lucideChevronRight'
+                            : 'lucideChevronDown'
+                        "
+                        size="12"
+                      />
+                      <ng-icon name="lucideFolders" size="12" />
+                      <span class="group-label">{{ group.label }}</span>
+                      <span class="group-count">{{ group.repos.length }}</span>
+                    </button>
+                  }
+                  @if (flattenHostGroups() || !isGroupCollapsed('host', group.key)) {
+                    <ul [class.flush]="flattenHostGroups()">
                       @for (repo of group.repos; track repo.id) {
                         <li [class.active]="isActiveHost(repo.id)" [style.--identity]="identityColor(repo.fullName || repo.name)">
                           <button
@@ -264,7 +268,13 @@
           @if (!store.repos().length) {
             <p class="empty">No local repositories yet. Open or clone one.</p>
           } @else if (!localGroups().length) {
-            <p class="empty">No matches for “{{ filter() }}”</p>
+            <p class="empty">
+              @if (filter()) {
+                No matches for “{{ filter() }}”
+              } @else {
+                No local repositories for this account
+              }
+            </p>
           } @else {
             @for (group of localGroups(); track group.key) {
               <div class="group">
@@ -371,7 +381,7 @@
               </button>
             </div>
           } @else if (!hostGroups().length) {
-            <p class="empty">No repositories found</p>
+            <p class="empty">No repositories for this account</p>
             <div class="remote-meta">
               <button type="button" class="text-btn" (click)="refreshRemote()">Refresh</button>
               <button
@@ -385,7 +395,9 @@
             </div>
           } @else {
             <div class="remote-meta">
-              <span>{{ linkedHostLabels() }}</span>
+              @if (store.repoAccounts().length < 2) {
+                <span>{{ linkedHostLabels() }}</span>
+              }
               <div class="remote-actions">
                 <button
                   type="button"
@@ -408,26 +420,28 @@
             </div>
             @for (group of hostGroups(); track group.key) {
               <div class="group">
-                <button
-                  type="button"
-                  class="group-head"
-                  [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
-                  (click)="toggleGroup('host', group.key, $event)"
-                >
-                  <ng-icon
-                    [name]="
-                      isGroupCollapsed('host', group.key)
-                        ? 'lucideChevronRight'
-                        : 'lucideChevronDown'
-                    "
-                    size="12"
-                  />
-                  <ng-icon name="lucideFolders" size="12" />
-                  <span class="group-label">{{ group.label }}</span>
-                  <span class="group-count">{{ group.repos.length }}</span>
-                </button>
-                @if (!isGroupCollapsed('host', group.key)) {
-                  <ul>
+                @if (!flattenHostGroups()) {
+                  <button
+                    type="button"
+                    class="group-head"
+                    [attr.aria-expanded]="!isGroupCollapsed('host', group.key)"
+                    (click)="toggleGroup('host', group.key, $event)"
+                  >
+                    <ng-icon
+                      [name]="
+                        isGroupCollapsed('host', group.key)
+                          ? 'lucideChevronRight'
+                          : 'lucideChevronDown'
+                      "
+                      size="12"
+                    />
+                    <ng-icon name="lucideFolders" size="12" />
+                    <span class="group-label">{{ group.label }}</span>
+                    <span class="group-count">{{ group.repos.length }}</span>
+                  </button>
+                }
+                @if (flattenHostGroups() || !isGroupCollapsed('host', group.key)) {
+                  <ul [class.flush]="flattenHostGroups()">
                     @for (repo of group.repos; track repo.id) {
                       <li [class.active]="isActiveHost(repo.id)" [style.--identity]="identityColor(repo.fullName || repo.name)">
                         <button

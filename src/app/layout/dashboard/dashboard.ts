@@ -10,6 +10,7 @@ import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { EmptyState } from '../../shared/ui/empty-state/empty-state';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
+import { RepoAccountBar } from '../repo-account-bar/repo-account-bar';
 
 type SortMode = 'recent' | 'name';
 
@@ -21,7 +22,7 @@ interface RepoGroup {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [FormsModule, NgIcon, EmptyState, BrandMark],
+  imports: [FormsModule, NgIcon, EmptyState, BrandMark, RepoAccountBar],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,7 +37,10 @@ export class Dashboard {
   readonly collapsedGroups = signal<Record<string, boolean>>({});
 
   readonly filtered = computed(() => {
-    const repos = this.store.repos();
+    const account = this.store.selectedRepoAccountKey();
+    const repos = this.store
+      .repos()
+      .filter((repo) => this.store.localRepoMatchesAccount(repo.path, account));
     const q = this.query().trim();
     let list: RecentRepo[];
     if (!q) {
@@ -71,7 +75,7 @@ export class Dashboard {
 
   readonly continueRepo = computed(() => {
     if (this.query().trim()) return null;
-    const repos = this.store.repos();
+    const repos = this.filtered();
     return repos.find((r) => r.isLast) ?? repos[0] ?? null;
   });
 

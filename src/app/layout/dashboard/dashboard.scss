@@ -278,6 +278,11 @@ h1 {
   animation: rise 480ms var(--ease-out) 160ms both;
 }
 
+.library-controls app-repo-account-bar {
+  flex: 1;
+  min-width: 0;
+}
+
 .sort-tabs {
   display: inline-flex;
   gap: 0.15rem;

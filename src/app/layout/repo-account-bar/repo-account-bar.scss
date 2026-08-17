@@ -1,0 +1,62 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+:host:not(:has(.accounts)) {
+  display: none;
+}
+
+.accounts {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0.12rem;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+
+.accounts::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  max-width: 9.5rem;
+  height: 1.45rem;
+  padding: 0 0.45rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip.all {
+  font-weight: 600;
+}
+
+.chip:hover {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  color: var(--text-secondary);
+}
+
+.chip.on {
+  background: var(--glass-bg-strong);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--glass-border);
+}
+
+.chip.live:not(.on) {
+  color: var(--accent);
+}

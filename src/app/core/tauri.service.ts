@@ -88,6 +88,7 @@ export class TauriService {
   private mockCustomWorkflows: WorkflowInfo[] = [];
   private mockDisabledBuiltinWorkflows = new Set<string>();
   private mockCustomChecks: RepoCheck[] = [];
+  private mockGithubLogin = 'demo';
   private mockGithubReleaseNotes = new Map<string, string>();
   private mockDisabledCheckIds = new Set<string>();
   private mockAnnouncedManagers = false;
@@ -1416,6 +1417,35 @@ export class TauriService {
       } as T;
     }
 
+    if (cmd === 'list_remotes') {
+      const path = (args?.['input'] as { path?: string })?.path ?? '/Users/demo/projects/navigo';
+      const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'navigo';
+      const owner = /lumora/i.test(path) ? 'teammate' : 'demo';
+      const url = `https://github.com/${owner}/${name}.git`;
+      return [
+        { name: 'origin', fetchUrl: url, pushUrl: url },
+      ] as T;
+    }
+
+    if (cmd === 'github_git_status') {
+      const login = this.mockGithubLogin;
+      return {
+        sshLogin: login,
+        usesGhHelper: true,
+        activeLogin: login,
+        accounts: [
+          { login: 'demo', active: login === 'demo', ok: true },
+          { login: 'teammate', active: login === 'teammate', ok: true },
+        ],
+      } as T;
+    }
+
+    if (cmd === 'switch_github_cli_user') {
+      const login = ((args?.['input'] as { login?: string })?.login || 'demo').trim() || 'demo';
+      this.mockGithubLogin = login;
+      return { ok: true, message: `GitHub CLI now uses ${login} for HTTPS` } as T;
+    }
+
     const mocks: Record<string, unknown> = {
       detect_git: {
         installed: true,
@@ -1958,6 +1988,7 @@ export class TauriService {
         hideUntracked: false,
         uiDensity: 'comfortable',
         githubRepoAccounts: {},
+        selectedRepoAccount: '',
         gitFlowMain: 'main',
         gitFlowDevelop: 'develop',
       },
@@ -2083,6 +2114,28 @@ export class TauriService {
           private: false,
           provider: 'github',
           updatedAt: new Date(Date.now() - 3600000).toISOString(),
+        },
+        {
+          id: 'github:4',
+          name: 'atlas',
+          fullName: 'teammate/atlas',
+          cloneUrl: 'https://github.com/teammate/atlas.git',
+          sshUrl: 'git@github.com:teammate/atlas.git',
+          htmlUrl: 'https://github.com/teammate/atlas',
+          private: true,
+          provider: 'github',
+          updatedAt: new Date(Date.now() - 7200000).toISOString(),
+        },
+        {
+          id: 'github:5',
+          name: 'harbor',
+          fullName: 'teammate/harbor',
+          cloneUrl: 'https://github.com/teammate/harbor.git',
+          sshUrl: 'git@github.com:teammate/harbor.git',
+          htmlUrl: 'https://github.com/teammate/harbor',
+          private: false,
+          provider: 'github',
+          updatedAt: new Date(Date.now() - 172800000).toISOString(),
         },
       ],
       list_mock_pull_requests: [
@@ -3325,12 +3378,13 @@ export class TauriService {
           id: 'github',
           provider: 'github',
           label: 'GitHub',
-          enabled: false,
+          enabled: true,
           baseUrl: 'https://api.github.com',
-          username: '',
-          token: '',
+          username: 'demo',
+          token: 'ghp_mock_token_for_browser_preview',
           organization: '',
           project: '',
+          hasToken: true,
         },
         {
           id: 'gitlab',
@@ -3400,6 +3454,7 @@ export class TauriService {
       prTemplates: [],
       prCreateMethod: 'browser' as const,
       githubRepoAccounts: {},
+      selectedRepoAccount: '',
       gitFlowMain: 'main',
       gitFlowDevelop: 'develop',
       pinnedCommits: {},

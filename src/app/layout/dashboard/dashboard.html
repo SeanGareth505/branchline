@@ -92,6 +92,7 @@
 
     @if (store.repos().length > 0) {
       <div class="library-controls">
+        <app-repo-account-bar />
         <div class="sort-tabs" role="group" aria-label="Sort repositories">
           <button
             type="button"
@@ -156,8 +157,18 @@
     </div>
   } @else if (filteredCount() === 0) {
     <div class="no-match">
-      <p>No repositories match “{{ query() }}”.</p>
-      <button type="button" class="bl-btn" (click)="query.set('')">Clear search</button>
+      <p>
+        @if (query()) {
+          No repositories match “{{ query() }}”.
+        } @else {
+          No repositories for this account.
+        }
+      </p>
+      @if (query()) {
+        <button type="button" class="bl-btn" (click)="query.set('')">Clear search</button>
+      } @else {
+        <button type="button" class="bl-btn" (click)="store.selectRepoAccount('*')">Show all</button>
+      }
     </div>
   } @else {
     @if (pinned().length) {

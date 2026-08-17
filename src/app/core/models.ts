@@ -387,6 +387,7 @@ export interface AppSettings {
   prTemplates: SavedPrTemplate[];
   prCreateMethod: PrCreateMethod;
   githubRepoAccounts: Record<string, GithubRepoAccountPref>;
+  selectedRepoAccount: string;
   gitFlowMain: string;
   gitFlowDevelop: string;
   pinnedCommits: Record<string, string[]>;

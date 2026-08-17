@@ -134,6 +134,8 @@ pub struct AppSettings {
     pub pr_create_method: String,
     #[serde(default)]
     pub github_repo_accounts: std::collections::HashMap<String, GithubRepoAccountPref>,
+    #[serde(default)]
+    pub selected_repo_account: String,
     #[serde(default = "default_git_flow_main")]
     pub git_flow_main: String,
     #[serde(default = "default_git_flow_develop")]
@@ -419,6 +421,7 @@ impl Default for AppSettings {
             pr_templates: Vec::new(),
             pr_create_method: default_pr_create_method(),
             github_repo_accounts: std::collections::HashMap::new(),
+            selected_repo_account: String::new(),
             git_flow_main: default_git_flow_main(),
             git_flow_develop: default_git_flow_develop(),
             pinned_commits: std::collections::HashMap::new(),

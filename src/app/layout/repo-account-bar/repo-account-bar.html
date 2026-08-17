@@ -1,0 +1,34 @@
+@if (store.repoAccounts().length > 1) {
+  <div class="accounts" role="tablist" aria-label="Account">
+    <button
+      type="button"
+      class="chip all"
+      role="tab"
+      [class.on]="store.selectedRepoAccountKey() === allKey"
+      [attr.aria-selected]="store.selectedRepoAccountKey() === allKey"
+      (click)="store.selectRepoAccount(allKey)"
+    >
+      All
+    </button>
+    @for (account of store.repoAccounts(); track account.key) {
+      <button
+        type="button"
+        class="chip"
+        role="tab"
+        [class.on]="store.selectedRepoAccountKey() === account.key"
+        [class.live]="account.active"
+        [attr.aria-selected]="store.selectedRepoAccountKey() === account.key"
+        [title]="
+          account.cli
+            ? account.active
+              ? 'GitHub CLI is using this login'
+              : 'Switch GitHub CLI to this login'
+            : 'Show repositories for this owner'
+        "
+        (click)="store.selectRepoAccount(account.key)"
+      >
+        {{ account.label }}
+      </button>
+    }
+  </div>
+}

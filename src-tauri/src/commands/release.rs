@@ -1574,7 +1574,7 @@ fn required_jobs_succeeded(jobs: &[ReleaseDeployJob]) -> bool {
 
 fn live_release_message(tag: &str) -> String {
     format!(
-        "Release {tag} is live — waiting for users to get the update banner (next app launch/check)"
+        "Release {tag} is live on GitHub"
     )
 }
 

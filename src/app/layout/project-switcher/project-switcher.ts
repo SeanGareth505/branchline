@@ -22,6 +22,7 @@ import { AppStore } from '../../core/app.store';
 import type { HostRepository, RecentRepo } from '../../core/models';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
+import { RepoAccountBar } from '../repo-account-bar/repo-account-bar';
 
 type SwitcherTab = 'local' | 'remote' | 'results';
 
@@ -43,7 +44,7 @@ type FlatItem =
 
 @Component({
   selector: 'app-project-switcher',
-  imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
+  imports: [FormsModule, NgIcon, CdkConnectedOverlay, CdkOverlayOrigin, RepoAccountBar],
   templateUrl: './project-switcher.html',
   styleUrl: './project-switcher.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -119,7 +120,10 @@ export class ProjectSwitcher {
 
   readonly localRepos = computed(() => {
     const current = this.store.currentRepo()?.path;
-    const repos = this.store.repos().filter((r) => r.path !== current);
+    const account = this.store.selectedRepoAccountKey();
+    const repos = this.store
+      .repos()
+      .filter((r) => r.path !== current && this.store.localRepoMatchesAccount(r.path, account));
     const q = this.filter().trim();
     if (!q) {
       return [...repos].sort((a, b) => {
@@ -127,7 +131,9 @@ export class ProjectSwitcher {
         return b.lastOpenedAt.localeCompare(a.lastOpenedAt);
       });
     }
-    return this.localFuse().search(q).map((r) => r.item);
+    return this.localFuse().search(q).map((r) => r.item).filter((repo) =>
+      this.store.localRepoMatchesAccount(repo.path, account),
+    );
   });
 
   readonly localCount = computed(() => this.localRepos().length);
@@ -158,10 +164,16 @@ export class ProjectSwitcher {
   });
 
   readonly hostReposFiltered = computed(() => {
-    const repos = this.store.hostRepos();
+    const account = this.store.selectedRepoAccountKey();
+    const repos = this.store
+      .hostRepos()
+      .filter((repo) => this.store.hostRepoMatchesAccount(repo, account));
     const q = this.filter().trim();
     if (!q) return repos;
-    return this.hostFuse().search(q).map((r) => r.item);
+    return this.hostFuse()
+      .search(q)
+      .map((r) => r.item)
+      .filter((repo) => this.store.hostRepoMatchesAccount(repo, account));
   });
 
   readonly hostCount = computed(() => this.hostReposFiltered().length);
@@ -185,6 +197,8 @@ export class ProjectSwitcher {
       .sort((a, b) => a.label.localeCompare(b.label));
   });
 
+  readonly flattenHostGroups = computed(() => this.hostGroups().length <= 1);
+
   readonly resultCount = computed(() => this.localCount() + (this.signedIn() ? this.hostCount() : 0));
 
   readonly flatItems = computed((): FlatItem[] => {
@@ -202,7 +216,7 @@ export class ProjectSwitcher {
     }
     if ((mode === 'remote' || mode === 'results') && this.signedIn()) {
       for (const group of this.hostGroups()) {
-        if (collapsed[`host:${group.key}`]) continue;
+        if (!this.flattenHostGroups() && collapsed[`host:${group.key}`]) continue;
         for (const repo of group.repos) {
           items.push({ kind: 'host', repo });
         }
@@ -234,6 +248,7 @@ export class ProjectSwitcher {
       this.searchInput()?.nativeElement.focus();
     });
 
+    void this.store.refreshGithubGitStatus();
     if (this.tab() === 'remote' && this.signedIn()) {
       void this.store.refreshHostRepositories();
     }

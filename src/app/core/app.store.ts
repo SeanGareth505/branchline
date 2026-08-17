@@ -89,6 +89,15 @@ import { runConfiguredGitTool } from '../shared/git/git-tools';
 import { parseRemoteRef } from '../shared/git/remote-ref';
 import { parseRemoteWebBase, primaryGithubOwner, remoteProtocol, commitWebUrl, compareWebUrl, fileWebUrl } from '../shared/git/repo-links';
 import {
+  ALL_REPO_ACCOUNTS,
+  collectRepoAccounts,
+  hostOwnerFromSlug,
+  hostOwnerFromWebUrl,
+  repoAccountMatchesOwner,
+  resolveSelectedRepoAccount,
+  type RepoAccountOption,
+} from '../shared/git/repo-accounts';
+import {
   humanizeGitError,
   isRemoteAccessError,
   rawErrorMessage,
@@ -353,6 +362,7 @@ export class AppStore {
     prTemplates: [],
     prCreateMethod: 'browser',
     githubRepoAccounts: {},
+    selectedRepoAccount: '',
     gitFlowMain: 'main',
     gitFlowDevelop: 'develop',
     pinnedCommits: {},
@@ -478,6 +488,27 @@ export class AppStore {
   readonly remoteTroubleshootError = signal('');
   readonly githubGitStatus = signal<GithubGitStatus | null>(null);
   readonly githubGitBusy = signal(false);
+  readonly repoAccounts = computed((): RepoAccountOption[] => {
+    const owners = [
+      ...this.hostRepos().map((repo) => hostOwnerFromSlug(repo.fullName || repo.name)),
+      ...Object.values(this.repoWebUrls())
+        .filter((url): url is string => !!url)
+        .map((url) => hostOwnerFromWebUrl(url)),
+    ];
+    return collectRepoAccounts({
+      cliAccounts: this.githubGitStatus()?.accounts ?? [],
+      connectionUsernames: this.linkedGitHosts()
+        .map((conn) => conn.username)
+        .filter(Boolean),
+      owners,
+    });
+  });
+  readonly selectedRepoAccountKey = computed(() =>
+    resolveSelectedRepoAccount(this.settings().selectedRepoAccount, this.repoAccounts(), [
+      this.githubGitStatus()?.activeLogin ?? '',
+      this.githubApiUsername(),
+    ]),
+  );
   private githubGitStatusAt = 0;
   private static readonly GITHUB_GIT_STATUS_TTL_MS = 30_000;
   private readonly repoWebUrlInflight = new Map<string, Promise<string | null>>();
@@ -922,6 +953,7 @@ export class AppStore {
         return;
       }
       this.repos.set(await this.tauri.listRecentRepos());
+      void this.refreshGithubGitStatus();
       const sessionPaths = Array.isArray(session.openRepoPaths)
         ? session.openRepoPaths.filter((p): p is string => typeof p === 'string' && !!p.trim())
         : [];
@@ -1764,6 +1796,52 @@ export class AppStore {
         (c.hasToken || c.token.trim()) &&
         (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
     );
+  }
+
+  githubApiUsername(): string {
+    return (
+      this.settings().connections.find(
+        (conn) => conn.provider === 'github' && this.isConnectionLinked(conn),
+      )?.username ?? ''
+    );
+  }
+
+  localRepoMatchesAccount(path: string, accountKey = this.selectedRepoAccountKey()): boolean {
+    const url = this.repoWebUrl(path);
+    return repoAccountMatchesOwner(
+      accountKey,
+      url ? hostOwnerFromWebUrl(url) : '',
+      this.settings().githubRepoAccounts,
+      this.githubApiUsername(),
+    );
+  }
+
+  hostRepoMatchesAccount(
+    repo: HostRepository,
+    accountKey = this.selectedRepoAccountKey(),
+  ): boolean {
+    return repoAccountMatchesOwner(
+      accountKey,
+      hostOwnerFromSlug(repo.fullName || repo.name),
+      this.settings().githubRepoAccounts,
+      this.githubApiUsername(),
+    );
+  }
+
+  selectRepoAccount(key: string): void {
+    const next = key.trim().toLowerCase() || ALL_REPO_ACCOUNTS;
+    if (this.settings().selectedRepoAccount.trim().toLowerCase() !== next) {
+      void this.saveSettings({ selectedRepoAccount: next });
+    }
+    if (next === ALL_REPO_ACCOUNTS) return;
+    const cli = (this.githubGitStatus()?.accounts ?? []).find(
+      (account) => account.login.toLowerCase() === next,
+    );
+    const mapped = this.settings().githubRepoAccounts[next]?.login.trim() ?? '';
+    const login = cli?.login || mapped;
+    if (login && login !== this.githubGitStatus()?.activeLogin) {
+      void this.switchGithubCliUser(login, { silent: true });
+    }
   }
 
   async refreshHostRepositories(
@@ -7790,7 +7868,7 @@ export class AppStore {
           this.releaseBusy.set(false);
           const doneMessage =
             result.message.trim() ||
-            `Release ${tag} is live — waiting for users to get the update banner (next app launch/check)`;
+            `Release ${tag} is live on GitHub`;
           this.applyReleaseProgress(
             {
               path,
@@ -8628,6 +8706,7 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     prTemplates: normalizePrTemplates(raw.prTemplates),
     prCreateMethod: raw.prCreateMethod === 'cli' ? 'cli' : 'browser',
     githubRepoAccounts: normalizeGithubRepoAccounts(raw.githubRepoAccounts),
+    selectedRepoAccount: (raw.selectedRepoAccount ?? '').trim(),
     gitFlowMain: (raw.gitFlowMain ?? 'main').trim() || 'main',
     gitFlowDevelop: (raw.gitFlowDevelop ?? 'develop').trim() || 'develop',
     pinnedCommits: normalizePinnedCommits(raw.pinnedCommits),
