@@ -80,10 +80,10 @@
     [gutterSize]="4"
     (dragEnd)="onMainSplit($event.sizes)"
   >
-    <as-split-area [size]="store.splitMain()[0]" [minSize]="12" [maxSize]="30">
+    <as-split-area [size]="store.splitMain()[0]" [minSize]="12" [maxSize]="48">
       <app-refs-panel />
     </as-split-area>
-    <as-split-area [size]="store.splitMain()[1]" [minSize]="70">
+    <as-split-area [size]="store.splitMain()[1]" [minSize]="52">
       <as-split
         [direction]="'vertical'"
         [gutterSize]="4"

@@ -294,82 +294,18 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
-                  <div class="row-meta">
-                    @if (row.branch.isCurrent && store.changeCount(); as n) {
-                      <span
-                        class="sync-chip row-sync"
-                        data-kind="dirty"
-                        [title]="n + ' uncommitted change' + (n === 1 ? '' : 's')"
-                      >
-                        {{ n }}
-                      </span>
-                    }
-                    @if (row.branch.isCurrent && syncLabel(); as sync) {
-                      @if (sync.kind !== 'synced') {
-                        @if (sync.kind === 'publish') {
-                          <button
-                            type="button"
-                            class="sync-chip row-sync"
-                            [attr.data-kind]="sync.kind"
-                            [title]="sync.tooltip"
-                            (click)="revealUpstream(row.branch, $event)"
-                          >
-                            {{ sync.short }}
-                          </button>
-                        } @else {
-                          <span
-                            class="sync-chip row-sync"
-                            [attr.data-kind]="sync.kind"
-                            [title]="sync.statusTooltip"
-                          >
-                            {{ sync.short }}
-                          </span>
-                        }
-                      }
-                    }
-                    @if (ticketLabel(row.branch.name); as ticket) {
-                      <button
-                        type="button"
-                        class="ticket-chip"
-                        [class.mapped]="!!mappedTicket(row.branch.name)"
-                        [title]="
-                          mappedTicket(row.branch.name)
-                            ? 'Linked to ' + ticket + ' — click to open'
-                            : ticket + ' from branch name — click to open'
-                        "
-                        (click)="openLinkedJira(row.branch.name, $event)"
-                      >
-                        {{ ticket }}
-                      </button>
-                    }
-                    @if (row.branch.locked) {
-                      <span
-                        class="lock-badge"
-                        [title]="
-                          row.branch.lockReason
-                            ? 'Locked: ' + row.branch.lockReason
-                            : 'Locked — push, rename, and delete blocked'
-                        "
-                      >
-                        <ng-icon name="lucideLock" size="10" />
-                      </span>
-                    }
-                    @if (row.branch.upstream) {
-                      <button
-                        type="button"
-                        class="upstream-chip"
-                        [class.gone]="row.branch.upstreamGone"
-                        [title]="
-                          row.branch.upstreamGone
-                            ? 'Upstream gone — click to look for it'
-                            : 'Show upstream ' + row.branch.upstream
-                        "
-                        (click)="revealUpstream(row.branch, $event)"
-                      >
-                        <ng-icon name="lucideCloud" size="10" />
-                      </button>
-                    }
-                  </div>
+                  @if (row.branch.locked) {
+                    <span
+                      class="lock-badge"
+                      [title]="
+                        row.branch.lockReason
+                          ? 'Locked: ' + row.branch.lockReason
+                          : 'Locked — push, rename, and delete blocked'
+                      "
+                    >
+                      <ng-icon name="lucideLock" size="10" />
+                    </span>
+                  }
                 </div>
                 @if (!row.branch.isCurrent && !row.branch.locked) {
                   <button
@@ -492,17 +428,6 @@
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
                     <span class="label"><span class="label-text">{{ row.name }}</span></span>
                   </button>
-                  @if (ticketLabel(row.branch.name); as ticket) {
-                    <button
-                      type="button"
-                      class="ticket-chip"
-                      [class.mapped]="!!mappedTicket(row.branch.name)"
-                      [title]="ticket + ' — click to open'"
-                      (click)="openLinkedJira(row.branch.name, $event)"
-                    >
-                      {{ ticket }}
-                    </button>
-                  }
                 </div>
               }
               </ng-container>
@@ -515,7 +440,7 @@
       @if (showRemoteFilterHint()) {
         <section class="group kind-remote">
           <div class="remote-filter-hint">
-            No matching remote-tracking branch. Matching locals may be unpublished — check the cloud chip on a branch or Remote URLs below.
+            No matching remote-tracking branch. Matching locals may be unpublished — check Remote URLs below, or publish from the branch menu.
           </div>
         </section>
       }
