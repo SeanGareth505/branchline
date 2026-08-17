@@ -51,12 +51,12 @@ export class UpdateService {
   }
 
   async init(): Promise<void> {
-    if (this.tauri.isDummyBackend) return;
     try {
       this.currentVersion.set(await getVersion());
     } catch {
       this.currentVersion.set('');
     }
+    if (this.tauri.isDummyBackend) return;
     await this.maybeShowWhatsNew();
     await this.checkForUpdates({ silent: true });
   }

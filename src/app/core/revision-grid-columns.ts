@@ -73,7 +73,7 @@ export function normalizeSplitSizes(kind: SplitKind, sizes: number[]): number[] 
   const b = Number(sizes[1]);
   if (!Number.isFinite(a) || !Number.isFinite(b) || a + b <= 0) return [...fallback];
   let left = (a / (a + b)) * 100;
-  if (kind === 'main') left = Math.min(48, Math.max(12, left));
+  if (kind === 'main') left = Math.min(72, Math.max(12, left));
   else if (kind === 'nested') left = Math.min(78, Math.max(45, left));
   else if (kind === 'commitFiles') left = Math.min(52, Math.max(18, left));
   else left = Math.min(80, Math.max(42, left));

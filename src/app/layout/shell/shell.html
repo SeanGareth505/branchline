@@ -23,6 +23,16 @@
             <app-brand-mark [size]="18" />
             <span>Branchline</span>
           </button>
+          @if (updates.currentVersion(); as version) {
+            <button
+              type="button"
+              class="app-version"
+              [title]="'Branchline ' + version + ' — open About'"
+              (click)="store.openSettings('about')"
+            >
+              v{{ version }}
+            </button>
+          }
           <app-project-switcher />
           <app-repo-account-bar />
           <app-repo-tabs />

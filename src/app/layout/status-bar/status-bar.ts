@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
+import { UpdateService } from '../../core/update.service';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { describeBranchSync } from '../../shared/git/branch-sync';
 import { remoteProtocol } from '../../shared/git/repo-links';
@@ -15,6 +16,7 @@ import { Spinner } from '../../shared/ui/spinner/spinner';
 })
 export class StatusBar {
   readonly store = inject(AppStore);
+  readonly updates = inject(UpdateService);
 
   readonly repoColor = computed(() => {
     const repo = this.store.currentRepo();
@@ -85,6 +87,10 @@ export class StatusBar {
 
   openGitAccounts(): void {
     this.store.revealRefsGroup('remotes');
+  }
+
+  openAbout(): void {
+    this.store.openSettings('about');
   }
 
   isActionable(): boolean {

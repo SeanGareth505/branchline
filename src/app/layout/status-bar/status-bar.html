@@ -118,6 +118,16 @@
     }
   </div>
   <div class="right">
+    @if (updates.currentVersion(); as version) {
+      <button
+        type="button"
+        class="meta action"
+        [title]="'Branchline ' + version + ' — open About'"
+        (click)="openAbout()"
+      >
+        v{{ version }}
+      </button>
+    }
     <button
       type="button"
       class="bl-btn quiet"

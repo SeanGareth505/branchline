@@ -54,7 +54,7 @@ describe('revision grid columns', () => {
 
   it('keeps split panes in a professional range', () => {
     expect(normalizeSplitSizes('main', [16, 84])).toEqual([16, 84]);
-    expect(normalizeSplitSizes('main', [80, 20])[0]).toBe(48);
+    expect(normalizeSplitSizes('main', [80, 20])[0]).toBe(72);
     expect(normalizeSplitSizes('main', [4, 96])[0]).toBe(12);
     expect(normalizeSplitSizes('nested', [90, 10])[0]).toBe(78);
     expect(normalizeSplitSizes('nested', [20, 80])[0]).toBe(45);
