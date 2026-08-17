@@ -1,6 +1,7 @@
 <div
   class="patch-lines"
   [class.busy]="patchBusy()"
+  [style.--ln-digits]="lineNoDigits()"
   tabindex="0"
   (focus)="onFocus()"
   (blur)="onBlur($event)"
@@ -108,7 +109,8 @@
                   (click)="onDiffLineClick(line.index, $event)"
                   (contextmenu)="onDiffLineContextMenu(line.index, $event)"
                 >
-                  {{ line.text }}
+                  <span class="ln old" aria-hidden="true">{{ lineNo(line.oldNo) }}</span>
+                  <span class="code">{{ line.text }}</span>
                 </div>
               }
             } @else {
@@ -150,7 +152,8 @@
                   (click)="onDiffLineClick(line.index, $event)"
                   (contextmenu)="onDiffLineContextMenu(line.index, $event)"
                 >
-                  {{ line.text }}
+                  <span class="ln new" aria-hidden="true">{{ lineNo(line.newNo) }}</span>
+                  <span class="code">{{ line.text }}</span>
                 </div>
               }
             } @else {
@@ -199,14 +202,18 @@
               (click)="onDiffLineClick(line.index, $event)"
               (contextmenu)="onDiffLineContextMenu(line.index, $event)"
             >
-              @if (wordSpansFor(line.index); as spans) {
-                <span class="wd-gutter">{{ line.text.charAt(0) }}</span>
-                @for (span of spans; track $index) {
-                  <span [class.wd-add]="span.kind === 'insert'" [class.wd-del]="span.kind === 'delete'">{{ span.text }}</span>
+              <span class="ln old" aria-hidden="true">{{ lineNo(line.oldNo) }}</span>
+              <span class="ln new" aria-hidden="true">{{ lineNo(line.newNo) }}</span>
+              <span class="code">
+                @if (wordSpansFor(line.index); as spans) {
+                  <span class="wd-gutter">{{ line.text.charAt(0) }}</span>
+                  @for (span of spans; track $index) {
+                    <span [class.wd-add]="span.kind === 'insert'" [class.wd-del]="span.kind === 'delete'">{{ span.text }}</span>
+                  }
+                } @else {
+                  {{ line.text }}
                 }
-              } @else {
-                {{ line.text }}
-              }
+              </span>
             </div>
           }
         </div>

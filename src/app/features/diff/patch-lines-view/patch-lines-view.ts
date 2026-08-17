@@ -124,9 +124,22 @@ export class PatchLinesView implements OnDestroy {
     return buildWordSpanMap(this.displayLines());
   });
 
+  readonly lineNoDigits = computed(() => {
+    let max = 0;
+    for (const line of this.displayLines()) {
+      if (line.oldNo) max = Math.max(max, line.oldNo);
+      if (line.newNo) max = Math.max(max, line.newNo);
+    }
+    return Math.max(2, String(max || 1).length);
+  });
+
   trackLine = (_: number, line: { index: number }) => line.index;
   trackFallback = (index: number) => index;
   trackSideRow = (index: number) => index;
+
+  lineNo(value: number | null | undefined): string {
+    return value ? String(value) : '';
+  }
 
   wordSpansFor(index: number): DiffSpan[] | undefined {
     return this.wordSpanMap()?.get(index);

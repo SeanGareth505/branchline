@@ -6,6 +6,8 @@ export interface DiffLine {
   kind: DiffLineKind;
   selectable: boolean;
   hunkId: string | null;
+  oldNo: number | null;
+  newNo: number | null;
 }
 
 export interface DiffHunk {
@@ -26,6 +28,18 @@ export interface ParsedDiff {
 
 const HUNK_RE = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s@@/;
 
+function diffLine(
+  index: number,
+  text: string,
+  kind: DiffLineKind,
+  selectable: boolean,
+  hunkId: string | null,
+  oldNo: number | null,
+  newNo: number | null,
+): DiffLine {
+  return { index, text: text || ' ', kind, selectable, hunkId, oldNo, newNo };
+}
+
 export function parseUnifiedDiff(raw: string): ParsedDiff {
   let normalized = raw.replace(/\r\n/g, '\n');
   if (normalized.endsWith('\n')) normalized = normalized.slice(0, -1);
@@ -35,6 +49,8 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
   const preambleIndexes: number[] = [];
   let current: DiffHunk | null = null;
   let hunkSeq = 0;
+  let oldLine = 1;
+  let newLine = 1;
 
   texts.forEach((text, index) => {
     let kind: DiffLineKind = 'ctx';
@@ -46,6 +62,7 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
     ) {
       kind = 'conflict';
     } else if (text.startsWith('@@')) kind = 'hunk';
+    else if (text.startsWith('\\')) kind = 'meta';
     else if (text.startsWith('+') && !text.startsWith('+++')) kind = 'add';
     else if (text.startsWith('-') && !text.startsWith('---')) kind = 'del';
     else if (
@@ -66,28 +83,29 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
     if (kind === 'hunk') {
       const match = text.match(HUNK_RE);
       hunkSeq += 1;
+      oldLine = match ? Number(match[1]) : 1;
+      newLine = match ? Number(match[2]) : 1;
       current = {
         id: `h${hunkSeq}`,
         header: text,
         headerIndex: index,
-        oldStart: match ? Number(match[1]) : 1,
-        newStart: match ? Number(match[2]) : 1,
+        oldStart: oldLine,
+        newStart: newLine,
         lineIndexes: [],
       };
       hunks.push(current);
-      lines.push({
-        index,
-        text: text || ' ',
-        kind,
-        selectable: false,
-        hunkId: current.id,
-      });
+      lines.push(diffLine(index, text, kind, false, current.id, null, null));
       return;
     }
 
     if (kind === 'meta' && !current) {
       preambleIndexes.push(index);
-      lines.push({ index, text: text || ' ', kind, selectable: false, hunkId: null });
+      lines.push(diffLine(index, text, kind, false, null, null, null));
+      return;
+    }
+
+    if (text.startsWith('\\')) {
+      lines.push(diffLine(index, text, 'meta', false, current?.id ?? null, null, null));
       return;
     }
 
@@ -95,23 +113,28 @@ export function parseUnifiedDiff(raw: string): ParsedDiff {
       if (kind === 'add' || kind === 'del' || kind === 'ctx') {
         current.lineIndexes.push(index);
       }
-      lines.push({
-        index,
-        text: text || ' ',
-        kind: kind === 'meta' ? 'ctx' : kind,
-        selectable: kind === 'add' || kind === 'del',
-        hunkId: current.id,
-      });
+      const displayKind = kind === 'meta' ? 'ctx' : kind;
+      let oldNo: number | null = null;
+      let newNo: number | null = null;
+      if (displayKind === 'del') {
+        oldNo = oldLine;
+        oldLine += 1;
+      } else if (displayKind === 'add') {
+        newNo = newLine;
+        newLine += 1;
+      } else {
+        oldNo = oldLine;
+        newNo = newLine;
+        oldLine += 1;
+        newLine += 1;
+      }
+      lines.push(
+        diffLine(index, text, displayKind, kind === 'add' || kind === 'del', current.id, oldNo, newNo),
+      );
       return;
     }
 
-    lines.push({
-      index,
-      text: text || ' ',
-      kind,
-      selectable: false,
-      hunkId: current?.id ?? null,
-    });
+    lines.push(diffLine(index, text, kind, false, current?.id ?? null, null, null));
   });
 
   return { lines, hunks, preambleIndexes, hasHunks: hunks.length > 0 };

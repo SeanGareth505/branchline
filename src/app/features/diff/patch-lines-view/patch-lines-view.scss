@@ -130,7 +130,8 @@
 }
 
 .pline {
-  display: block;
+  display: flex;
+  align-items: stretch;
   width: 100%;
   height: 100%;
   margin: 0;
@@ -139,12 +140,34 @@
   text-align: left;
   color: inherit;
   font: inherit;
-  padding: 0 0.75rem;
+  padding: 0;
   white-space: pre;
   overflow: hidden;
-  text-overflow: ellipsis;
   cursor: default;
   user-select: none;
+}
+
+.ln {
+  flex: 0 0 auto;
+  width: calc(var(--ln-digits, 2) * 1ch + 0.7rem);
+  padding: 0 0.3rem;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  opacity: 0.78;
+}
+
+.ln.new {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.75rem 0 0.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pline.inert {
@@ -158,6 +181,13 @@
 .pline.selectable:hover:not(.selected) {
   filter: brightness(1.06);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.pline.hunk-line,
+.pline.spacer,
+.pline:not(:has(.code)) {
+  display: block;
+  padding: 0 0.75rem;
 }
 
 .pline.selected {
