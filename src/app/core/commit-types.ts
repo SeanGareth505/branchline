@@ -149,21 +149,6 @@ export function lintConventionalMessage(
         rule: 'subject-empty',
         message: `Add a summary after ${parsed.type}:`,
       });
-    } else {
-      if (parsed.summary.endsWith('.')) {
-        issues.push({
-          level: 'error',
-          rule: 'subject-full-stop',
-          message: 'Do not end the summary with a period',
-        });
-      }
-      if (/^[A-Z]/.test(parsed.summary)) {
-        issues.push({
-          level: 'error',
-          rule: 'subject-case',
-          message: `Use lowercase: ${parsed.summary[0].toLowerCase()}${parsed.summary.slice(1)}`,
-        });
-      }
     }
   }
 

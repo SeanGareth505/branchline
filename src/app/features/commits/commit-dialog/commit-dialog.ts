@@ -16,10 +16,8 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { CommitShortcutId, FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
 import {
-  DEFAULT_COMMIT_TYPES,
   formatConventionalHead,
   lintConventionalMessage,
-  mergeCommitTypes,
   normalizeCommitTypeId,
   parseConventionalSubject,
   suggestCommitType,
@@ -121,12 +119,6 @@ export class CommitDialog {
 
   readonly jiraKeyHint = computed(() => this.suggestedTicket());
 
-  readonly usesCommitlint = computed(() =>
-    (this.store.repoChecks()?.checks ?? []).some(
-      (c) => c.trigger === 'commit-msg' && /commitlint/i.test(`${c.command} ${c.name}`),
-    ),
-  );
-
   readonly suggestedType = computed(() => {
     const status = this.store.status();
     return suggestCommitType({
@@ -140,9 +132,7 @@ export class CommitDialog {
   });
 
   readonly types = computed(() => {
-    const configured = this.usesCommitlint()
-      ? mergeCommitTypes(this.store.settings().commitTypes, DEFAULT_COMMIT_TYPES)
-      : this.store.settings().commitTypes;
+    const configured = this.store.settings().commitTypes;
     const current = this.commitType();
     if (current && !configured.some((t) => t.id === current)) {
       return [...configured, { id: current, label: current, description: '' }];
@@ -237,6 +227,21 @@ export class CommitDialog {
     if (phase === 'committing') return this.amend() ? 'Amending commit…' : 'Creating commit…';
     if (phase === 'pushing') return 'Pushing to remote…';
     if (this.filesBusy()) return 'Updating staged files…';
+    if (this.committing()) return 'Working…';
+    return null;
+  });
+
+  readonly busyDetail = computed(() => {
+    const phase = this.commitPhase();
+    if (phase === 'checking') return 'Hooks and repo checks are running in the background.';
+    if (phase === 'staging') return 'Adding unstaged files to the index.';
+    if (phase === 'committing') {
+      return this.amend()
+        ? 'Rewriting the latest commit with your message.'
+        : 'Writing the commit. This can take a moment if hooks run.';
+    }
+    if (phase === 'pushing') return 'Publishing the new commit to the remote.';
+    if (this.committing()) return 'Please wait — the repository is busy.';
     return null;
   });
 
@@ -246,6 +251,7 @@ export class CommitDialog {
     if (phase === 'staging') return 'Staging…';
     if (phase === 'committing') return this.amend() ? 'Amending…' : 'Committing…';
     if (phase === 'pushing') return 'Pushing…';
+    if (this.committing()) return 'Working…';
     return this.amend() ? 'Amend' : 'Commit';
   });
 
@@ -261,8 +267,8 @@ export class CommitDialog {
         })
       : subject;
     const len = line.length;
-    const max = this.usesCommitlint() ? 100 : 72;
-    if (!subject) return this.usesCommitlint() ? 'Lowercase summary, like add login' : 'Write a short summary';
+    const max = 72;
+    if (!subject) return 'Write a short summary';
     if (len <= 50) return `${len}/50 ideal`;
     if (len <= 72) return `${len}/72 ok`;
     if (len <= max) return `${len}/${max}`;
@@ -281,11 +287,11 @@ export class CommitDialog {
           subject,
         })
       : subject;
-    return line.length > (this.usesCommitlint() ? 100 : 72);
+    return line.length > 72;
   });
 
   readonly lintIssues = computed(() => {
-    const requireType = this.usesCommitlint() || !!this.commitType();
+    const requireType = !!this.commitType();
     if (!requireType && !this.subject().trim()) return [];
     return lintConventionalMessage(this.messagePreview(), {
       requireType,
@@ -1151,9 +1157,11 @@ export class CommitDialog {
     }
 
     this.committing.set(true);
+    this.commitPhase.set(needsStageAll ? 'staging' : 'committing');
+    (document.activeElement as HTMLElement | null)?.blur();
+    await this.paintBusy();
     try {
       if (needsStageAll) {
-        this.commitPhase.set('staging');
         await this.stageAll();
         if (this.stagedCount() === 0) {
           this.store.showWarning('Nothing was staged');
@@ -1168,6 +1176,7 @@ export class CommitDialog {
         : ['pre-commit', 'commit-msg'];
       if (!skipChecks && this.store.enabledChecks(checkTriggers).length) {
         this.commitPhase.set('checking');
+        await this.paintBusy();
         const ok = await this.store.runRepoChecks(checkTriggers, {
           commitMessage: this.messagePreview(),
           silent: true,
@@ -1179,6 +1188,7 @@ export class CommitDialog {
       }
 
       this.commitPhase.set('committing');
+      await this.paintBusy();
       const skipGitHooks =
         skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']);
       const commit = await this.store.createCommit(
@@ -1196,6 +1206,7 @@ export class CommitDialog {
       }
       if (willPush) {
         this.commitPhase.set('pushing');
+        await this.paintBusy();
         const pushed = await this.store.pushRemote({
           toast: false,
           runChecks: false,
@@ -1230,6 +1241,12 @@ export class CommitDialog {
     }
   }
 
+  private paintBusy(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
+
   private async runFilesOp(fn: () => Promise<void>): Promise<void> {
     if (this.filesBusy()) return;
     const nestedUnderCommit = this.committing();
@@ -1252,7 +1269,7 @@ export class CommitDialog {
 
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
-      void this.commit();
+      if (!this.committing()) void this.commit();
       return;
     }
 
@@ -1344,7 +1361,6 @@ export class CommitDialog {
     this.fillScopeFromTicket();
     if (this.scope().trim()) this.noteShortcut('scope');
     await this.store.loadRepoChecks();
-    this.applySuggestedType();
 
     const status = this.store.status();
     const firstConflict = status?.conflicted[0]?.path ?? null;
@@ -1405,15 +1421,6 @@ export class CommitDialog {
     const q = this.fileFilter().trim().toLowerCase();
     if (!q) return files;
     return files.filter((f) => f.path.toLowerCase().includes(q));
-  }
-
-  private applySuggestedType(): void {
-    if (this.commitType() || !this.usesCommitlint()) return;
-    const suggested = this.suggestedType();
-    if (!suggested) return;
-    this.commitType.set(suggested);
-    this.noteShortcut('type');
-    this.fillScopeFromTicket();
   }
 
   private resetForm(): void {

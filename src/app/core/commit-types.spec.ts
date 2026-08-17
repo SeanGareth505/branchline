@@ -26,17 +26,15 @@ describe('conventional commit subject', () => {
 });
 
 describe('conventional lint and suggestions', () => {
-  it('requires a type and lowercase summary', () => {
+  it('requires a type when asked, and allows any summary case', () => {
     expect(
       lintConventionalMessage('wip', { requireType: true, types: DEFAULT_COMMIT_TYPES }).map(
         (i) => i.rule,
       ),
     ).toContain('type-empty');
     expect(
-      lintConventionalMessage('fix: Add login', { requireType: true, types: DEFAULT_COMMIT_TYPES }).map(
-        (i) => i.rule,
-      ),
-    ).toContain('subject-case');
+      lintConventionalMessage('fix: Add login', { requireType: true, types: DEFAULT_COMMIT_TYPES }),
+    ).toEqual([]);
     expect(
       lintConventionalMessage('fix: add login', { requireType: true, types: DEFAULT_COMMIT_TYPES }),
     ).toEqual([]);

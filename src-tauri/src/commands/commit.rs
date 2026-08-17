@@ -1,7 +1,7 @@
 use crate::domain::undo;
 use crate::infrastructure::git_cli;
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -27,15 +27,18 @@ pub struct CreateCommitOutput {
     pub message: String,
 }
 
-#[command]
-pub fn create_commit(
-    state: State<'_, AppState>,
-    input: CreateCommitInput,
-) -> AppResult<CreateCommitOutput> {
+struct CreatedCommit {
+    output: CreateCommitOutput,
+    amend: bool,
+    previous_head: Option<String>,
+    repo_key: String,
+}
+
+fn create_commit_inner(input: CreateCommitInput) -> AppResult<CreatedCommit> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let amend = input.amend.unwrap_or(false);
         let allow_empty = input.allow_empty.unwrap_or(true);
-        let message = input.message.trim();
+        let message = input.message.trim().to_string();
         if message.is_empty() && !allow_empty {
             return Err(AppError::msg("Commit message is required"));
         }
@@ -60,37 +63,49 @@ pub fn create_commit(
             args.push("");
         } else {
             args.push("-m");
-            args.push(message);
+            args.push(message.as_str());
         }
         git_cli::run_git(path, &args)?;
 
         let sha = git_cli::run_git(path, &["rev-parse", "HEAD"])?;
         let short_sha = git_cli::run_git(path, &["rev-parse", "--short", "HEAD"])?;
-        let repo_key = path.to_string_lossy().to_string();
 
-        {
-            let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            let _ = undo::try_push_entry(
-                &db,
-                &repo_key,
-                "commit",
-                if amend {
-                    "Amend commit"
-                } else {
-                    "Create commit"
-                },
-                json!({
-                    "sha": sha,
-                    "amend": amend,
-                    "previousHead": previous_head,
-                }),
-            );
-        }
-
-        Ok(CreateCommitOutput {
-            sha,
-            short_sha,
-            message: message.to_string(),
+        Ok(CreatedCommit {
+            output: CreateCommitOutput {
+                sha,
+                short_sha,
+                message,
+            },
+            amend,
+            previous_head,
+            repo_key: path.to_string_lossy().to_string(),
         })
     })
+}
+
+#[command]
+pub async fn create_commit(
+    state: State<'_, AppState>,
+    input: CreateCommitInput,
+) -> AppResult<CreateCommitOutput> {
+    let created = run_blocking(move || create_commit_inner(input)).await?;
+    {
+        let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        let _ = undo::try_push_entry(
+            &db,
+            &created.repo_key,
+            "commit",
+            if created.amend {
+                "Amend commit"
+            } else {
+                "Create commit"
+            },
+            json!({
+                "sha": created.output.sha,
+                "amend": created.amend,
+                "previousHead": created.previous_head,
+            }),
+        );
+    }
+    Ok(created.output)
 }

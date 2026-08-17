@@ -293,18 +293,18 @@ pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
     })
 }
 
-#[command]
-pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<MutationOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let branch = input
-        .branch
-        .as_deref()
+fn resolve_push_branch(path: &PathBuf, requested: Option<&str>) -> AppResult<String> {
+    git_cli::ensure_repo(path)?;
+    Ok(requested
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
-        .unwrap_or(git2_repo::current_branch(&path)?);
-    ensure_not_locked(&state, &input.path, &branch)?;
+        .unwrap_or(git2_repo::current_branch(path)?))
+}
+
+fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOutput> {
+    let path = PathBuf::from(&input.path);
+    git_cli::ensure_repo(&path)?;
     let remote = input
         .remote
         .as_deref()
@@ -343,4 +343,16 @@ pub fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<M
             },
         })
     })
+}
+
+#[command]
+pub async fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<MutationOutput> {
+    let repo_path = input.path.clone();
+    let requested_branch = input.branch.clone();
+    let branch = run_blocking(move || {
+        resolve_push_branch(&PathBuf::from(&repo_path), requested_branch.as_deref())
+    })
+    .await?;
+    ensure_not_locked(&state, &input.path, &branch)?;
+    run_blocking(move || push_inner(input, branch)).await
 }

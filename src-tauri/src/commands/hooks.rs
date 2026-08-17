@@ -1,6 +1,6 @@
 use crate::infrastructure::{git_cli, sqlite};
 use crate::state::AppState;
-use crate::{AppError, AppResult};
+use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
@@ -295,19 +295,22 @@ pub fn set_check_enabled(
 }
 
 #[command]
-pub fn run_repo_check(input: RunCheckInput) -> AppResult<RunCheckOutput> {
-    let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let command = input.command.trim();
-    if command.is_empty() {
-        return Err(AppError::msg("Command is required"));
-    }
-    let trigger = input
-        .trigger
-        .as_deref()
-        .map(normalize_trigger)
-        .unwrap_or_else(|| "pre-commit".into());
-    run_shell_command(&path, command, &trigger, input.commit_message.as_deref())
+pub async fn run_repo_check(input: RunCheckInput) -> AppResult<RunCheckOutput> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        git_cli::ensure_repo(&path)?;
+        let command = input.command.trim();
+        if command.is_empty() {
+            return Err(AppError::msg("Command is required"));
+        }
+        let trigger = input
+            .trigger
+            .as_deref()
+            .map(normalize_trigger)
+            .unwrap_or_else(|| "pre-commit".into());
+        run_shell_command(&path, command, &trigger, input.commit_message.as_deref())
+    })
+    .await
 }
 
 fn list_repo_checks_inner(path: &Path, state: &State<'_, AppState>) -> AppResult<RepoChecksOutput> {
