@@ -96,6 +96,10 @@ pub struct BranchInfo {
     pub is_remote: bool,
     pub upstream: Option<String>,
     pub upstream_gone: bool,
+    #[serde(default)]
+    pub ahead: i32,
+    #[serde(default)]
+    pub behind: i32,
     pub tip_sha: Option<String>,
     pub tip_short_sha: Option<String>,
     pub tip_subject: Option<String>,
@@ -690,6 +694,21 @@ pub fn list_branches(path: &Path) -> AppResult<Vec<BranchInfo>> {
     Ok(branches)
 }
 
+fn parse_upstream_track(track: &str) -> (i32, i32) {
+    let digits_after = |needle: &str| -> i32 {
+        let Some(idx) = track.find(needle) else {
+            return 0;
+        };
+        track[idx + needle.len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0)
+    };
+    (digits_after("ahead "), digits_after("behind "))
+}
+
 fn parse_branch_lines(out: &str, branches: &mut Vec<BranchInfo>) {
     for line in out.lines() {
         if line.trim().is_empty() {
@@ -711,6 +730,7 @@ fn parse_branch_lines(out: &str, branches: &mut Vec<BranchInfo>) {
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let track = parts.get(4).copied().unwrap_or("");
+        let (ahead, behind) = parse_upstream_track(track);
         let tip_short = parts
             .get(5)
             .filter(|s| !s.is_empty())
@@ -737,6 +757,8 @@ fn parse_branch_lines(out: &str, branches: &mut Vec<BranchInfo>) {
             is_remote,
             upstream,
             upstream_gone: track.contains("[gone]"),
+            ahead,
+            behind,
             tip_sha,
             tip_short_sha: tip_short,
             tip_subject,
@@ -841,6 +863,16 @@ pub fn ahead_behind(path: &Path) -> (i32, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_upstream_track_reads_ahead_and_behind() {
+        assert_eq!(parse_upstream_track(""), (0, 0));
+        assert_eq!(parse_upstream_track("[gone]"), (0, 0));
+        assert_eq!(parse_upstream_track("[ahead 1]"), (1, 0));
+        assert_eq!(parse_upstream_track("[behind 2]"), (0, 2));
+        assert_eq!(parse_upstream_track("[ahead 1, behind 1]"), (1, 1));
+        assert_eq!(parse_upstream_track("[ahead 12, behind 3]"), (12, 3));
+    }
 
     #[test]
     fn parse_remote_tracking_name_splits_remote_and_branch() {

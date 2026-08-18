@@ -183,6 +183,8 @@ export interface BranchInfo {
   isRemote: boolean;
   upstream: string | null;
   upstreamGone: boolean;
+  ahead: number;
+  behind: number;
   tipSha: string | null;
   tipShortSha: string | null;
   tipSubject: string | null;

@@ -77,6 +77,45 @@
     </div>
   }
 
+  @if (findOpen()) {
+    <div class="find-bar" role="search" aria-label="Find in diff">
+      <label class="find-label">
+        <span>Find</span>
+        <input
+          #findInput
+          type="search"
+          [value]="findQuery()"
+          (input)="onFindQueryChange($any($event.target).value)"
+          placeholder="Type to search…"
+          aria-label="Search text"
+        />
+      </label>
+      <div class="find-actions">
+        <button
+          type="button"
+          class="bl-btn quiet"
+          (click)="prevFind()"
+          [disabled]="!findMatches().length"
+          title="Previous match"
+        >
+          Prev
+        </button>
+        <button
+          type="button"
+          class="bl-btn quiet"
+          (click)="nextFind()"
+          [disabled]="!findMatches().length"
+          title="Next match"
+        >
+          Next
+        </button>
+        <button type="button" class="bl-btn quiet" (click)="closeFind()" title="Close">
+          Close
+        </button>
+      </div>
+    </div>
+  }
+
   @if (!patch()) {
     <p class="patch-empty">{{ emptyMessage() }}</p>
   } @else if (parsedDiff(); as diff) {
@@ -103,6 +142,8 @@
                   [attr.data-kind]="line.kind"
                   [class.selectable]="interactive() && line.selectable"
                   [class.selected]="isLineSelected(line.index)"
+                  [class.find-hit]="findOpen() && findMatchSet().has(line.index)"
+                  [class.find-current]="findOpen() && findCurrentLine() === line.index"
                   [class.inert]="!interactive() || !line.selectable"
                   (mousedown)="onDiffLineMouseDown(line.index, $event)"
                   (mouseenter)="onDiffLineMouseEnter(line.index)"
@@ -110,7 +151,15 @@
                   (contextmenu)="onDiffLineContextMenu(line.index, $event)"
                 >
                   <span class="ln old" aria-hidden="true">{{ lineNo(line.oldNo) }}</span>
-                  <span class="code">{{ line.text }}</span>
+                  <span class="code">
+                    @if (findOpen() && findMatchSet().has(line.index)) {
+                      @for (seg of highlightSegments(line.text); track $index) {
+                        <span class="find-seg" [class.hit]="seg.hit">{{ seg.text }}</span>
+                      }
+                    } @else {
+                      {{ line.text }}
+                    }
+                  </span>
                 </div>
               }
             } @else {
@@ -146,6 +195,8 @@
                   [attr.data-kind]="line.kind"
                   [class.selectable]="interactive() && line.selectable"
                   [class.selected]="isLineSelected(line.index)"
+                  [class.find-hit]="findOpen() && findMatchSet().has(line.index)"
+                  [class.find-current]="findOpen() && findCurrentLine() === line.index"
                   [class.inert]="!interactive() || !line.selectable"
                   (mousedown)="onDiffLineMouseDown(line.index, $event)"
                   (mouseenter)="onDiffLineMouseEnter(line.index)"
@@ -153,7 +204,15 @@
                   (contextmenu)="onDiffLineContextMenu(line.index, $event)"
                 >
                   <span class="ln new" aria-hidden="true">{{ lineNo(line.newNo) }}</span>
-                  <span class="code">{{ line.text }}</span>
+                  <span class="code">
+                    @if (findOpen() && findMatchSet().has(line.index)) {
+                      @for (seg of highlightSegments(line.text); track $index) {
+                        <span class="find-seg" [class.hit]="seg.hit">{{ seg.text }}</span>
+                      }
+                    } @else {
+                      {{ line.text }}
+                    }
+                  </span>
                 </div>
               }
             } @else {
@@ -196,6 +255,8 @@
               [attr.data-kind]="line.kind"
               [class.selectable]="interactive() && line.selectable"
               [class.selected]="isLineSelected(line.index)"
+              [class.find-hit]="findOpen() && findMatchSet().has(line.index)"
+              [class.find-current]="findOpen() && findCurrentLine() === line.index"
               [class.inert]="!interactive() || !line.selectable"
               (mousedown)="onDiffLineMouseDown(line.index, $event)"
               (mouseenter)="onDiffLineMouseEnter(line.index)"
@@ -209,6 +270,10 @@
                   <span class="wd-gutter">{{ line.text.charAt(0) }}</span>
                   @for (span of spans; track $index) {
                     <span [class.wd-add]="span.kind === 'insert'" [class.wd-del]="span.kind === 'delete'">{{ span.text }}</span>
+                  }
+                } @else if (findOpen() && findMatchSet().has(line.index)) {
+                  @for (seg of highlightSegments(line.text); track $index) {
+                    <span class="find-seg" [class.hit]="seg.hit">{{ seg.text }}</span>
                   }
                 } @else {
                   {{ line.text }}

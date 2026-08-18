@@ -1350,12 +1350,58 @@ export class RefsPanel {
     if (wt) {
       return `${branch.name} (checked out in another worktree) · Click to show tip · Double-click to switch here`;
     }
+    const ahead = this.branchAhead(branch);
+    const behind = this.branchBehind(branch);
     if (branch.upstream) {
-      return branch.upstreamGone
-        ? `${branch.name} · upstream gone (${branch.upstream}) · Click to show tip · Double-click to checkout`
-        : `${branch.name} · tracks ${branch.upstream} · Click to show tip · Double-click to checkout`;
+      if (branch.upstreamGone) {
+        return `${branch.name} · upstream gone (${branch.upstream}) · ${this.branchTipSuffix(branch)} · Click to show tip · Double-click to checkout`;
+      }
+      const counts =
+        ahead > 0 || behind > 0
+          ? ` · ${behind}↓ ${ahead}↑ vs ${branch.upstream}`
+          : ` · in sync with ${branch.upstream}`;
+      return `${branch.name}${counts} · ${this.branchTipSuffix(branch)} · Click to show tip · Double-click to checkout`;
     }
-    return `${branch.name} · Click to show tip · Double-click to checkout`;
+    return `${branch.name} · ${this.branchTipSuffix(branch)} · Click to show tip · Double-click to checkout`;
+  }
+
+  private branchTipSuffix(branch: BranchInfo): string {
+    const sha = branch.tipShortSha?.trim();
+    const subject = branch.tipSubject?.trim();
+    const author = branch.tipAuthor?.trim();
+    const parts: string[] = [];
+    if (sha) parts.push(sha);
+    if (subject) parts.push(subject);
+    if (author) parts.push(`by ${author}`);
+    return parts.length ? parts.join(' · ') : 'no recent changes';
+  }
+
+  branchAhead(branch: BranchInfo): number {
+    if (branch.isCurrent) {
+      const status = this.store.status();
+      if (status && status.branch === branch.name) return status.ahead;
+    }
+    return branch.ahead ?? 0;
+  }
+
+  branchBehind(branch: BranchInfo): number {
+    if (branch.isCurrent) {
+      const status = this.store.status();
+      if (status && status.branch === branch.name) return status.behind;
+    }
+    return branch.behind ?? 0;
+  }
+
+  branchAheadTitle(branch: BranchInfo): string {
+    const n = this.branchAhead(branch);
+    const up = branch.upstream ? shortUpstream(branch.upstream) : 'remote';
+    return `${n} commit${n === 1 ? '' : 's'} ahead of ${up} (not pushed)`;
+  }
+
+  branchBehindTitle(branch: BranchInfo): string {
+    const n = this.branchBehind(branch);
+    const up = branch.upstream ? shortUpstream(branch.upstream) : 'remote';
+    return `${n} commit${n === 1 ? '' : 's'} behind ${up}`;
   }
 
   upstreamLabel(branch: BranchInfo): string | null {

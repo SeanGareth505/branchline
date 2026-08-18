@@ -292,7 +292,18 @@
                     [title]="branchTitle(row.branch)"
                   >
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
-                    <span class="label"><span class="label-text">{{ row.name }}</span></span>
+                    <span class="label">
+                      <span class="label-text">{{ row.name }}</span>
+                      @if (row.branch.tipShortSha) {
+                        <span class="row-sha" [title]="row.branch.tipSubject ?? row.branch.tipShortSha">{{ row.branch.tipShortSha }}</span>
+                      }
+                      @if (row.branch.tipAuthor) {
+                        <span
+                          class="row-author"
+                          [title]="'Last commit by ' + row.branch.tipAuthor"
+                        >{{ row.branch.tipAuthor.slice(0, 1) }}</span>
+                      }
+                    </span>
                   </button>
                   @if (row.branch.locked) {
                     <span
@@ -307,6 +318,29 @@
                     </span>
                   }
                 </div>
+                @if (row.branch.upstreamGone || branchAhead(row.branch) > 0 || branchBehind(row.branch) > 0) {
+                  <span class="row-meta" (click)="$event.stopPropagation()">
+                    @if (row.branch.upstreamGone) {
+                      <span class="sync-chip" data-kind="gone" title="Upstream was deleted (prune/gone)">
+                        gone
+                      </span>
+                    }
+                    @if (branchBehind(row.branch) > 0) {
+                      <span
+                        class="sync-chip"
+                        data-kind="behind"
+                        [title]="branchBehindTitle(row.branch)"
+                      >↓{{ branchBehind(row.branch) }}</span>
+                    }
+                    @if (branchAhead(row.branch) > 0) {
+                      <span
+                        class="sync-chip"
+                        data-kind="ahead"
+                        [title]="branchAheadTitle(row.branch)"
+                      >↑{{ branchAhead(row.branch) }}</span>
+                    }
+                  </span>
+                }
                 @if (!row.branch.isCurrent && !row.branch.locked) {
                   <button
                     type="button"
@@ -426,7 +460,18 @@
                     [title]="branchTitle(row.branch)"
                   >
                     <ng-icon class="leaf-icon" name="lucideGitBranch" size="12" />
-                    <span class="label"><span class="label-text">{{ row.name }}</span></span>
+                    <span class="label">
+                      <span class="label-text">{{ row.name }}</span>
+                      @if (row.branch.tipShortSha) {
+                        <span class="row-sha" [title]="row.branch.tipSubject ?? row.branch.tipShortSha">{{ row.branch.tipShortSha }}</span>
+                      }
+                      @if (row.branch.tipAuthor) {
+                        <span
+                          class="row-author"
+                          [title]="'Last commit by ' + row.branch.tipAuthor"
+                        >{{ row.branch.tipAuthor.slice(0, 1) }}</span>
+                      }
+                    </span>
                   </button>
                 </div>
               }

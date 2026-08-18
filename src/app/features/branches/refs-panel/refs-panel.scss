@@ -316,14 +316,52 @@
 
 .sync-chip {
   flex-shrink: 0;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  padding: 0.08rem 0.34rem;
+  padding: 0.02rem 0.28rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
   white-space: nowrap;
+  line-height: 1.2;
+}
+
+.row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  margin-left: 0.1rem;
+}
+
+.row-sha {
+  flex-shrink: 0;
+  margin-left: 0.35rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.row-author {
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.ref-row .label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ref-row:not(.current):not(.locked) .row-meta {
+  margin-right: 1.05rem;
 }
 
 .sync-chip[data-kind='ahead'] {
@@ -354,6 +392,11 @@
 .sync-chip[data-kind='dirty'] {
   color: var(--git-modified);
   background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+}
+
+.sync-chip[data-kind='gone'] {
+  color: var(--danger, #ef4444);
+  background: color-mix(in srgb, var(--danger, #ef4444) 12%, transparent);
 }
 
 .sync-chip.row-sync {
@@ -830,14 +873,6 @@ button.sync-chip:hover {
 
 .name .label {
   min-width: 0;
-}
-
-.row-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.12rem;
-  flex-shrink: 0;
-  margin-left: 0.15rem;
 }
 
 .ref-row > .icon {

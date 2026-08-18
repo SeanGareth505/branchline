@@ -4,6 +4,7 @@ import { NgIcon } from '@ng-icons/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { AppStore } from '../../../core/app.store';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import type { HostRepository } from '../../../core/models';
 
 @Component({
   selector: 'app-clone-dialog',
@@ -27,8 +28,23 @@ export class CloneDialog {
       if (!this.store.cloneDialogOpen()) return;
       const prefill = this.store.cloneDialogUrl().trim();
       if (prefill) this.url.set(prefill);
+      if (this.store.hostRepos().length === 0 && this.store.hasLinkedPrHost()) {
+        void this.store.refreshHostRepositories();
+      }
     });
   }
+
+  readonly hostSuggestions = computed(() => {
+    const q = this.url().trim().toLowerCase();
+    const repos = this.store.hostRepos();
+    if (!q) return repos.slice(0, 8);
+    const match = repos.filter((repo) => {
+      const name = (repo.fullName || repo.name || '').toLowerCase();
+      const cloneUrl = (repo.cloneUrl || '').toLowerCase();
+      return name.includes(q) || cloneUrl.includes(q);
+    });
+    return match.slice(0, 8);
+  });
 
   readonly folderName = computed(() => {
     const raw = this.url().trim().replace(/\/$/, '');
@@ -101,5 +117,10 @@ export class CloneDialog {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  pickHostRepo(repo: HostRepository): void {
+    if (!repo.cloneUrl) return;
+    this.url.set(repo.cloneUrl);
   }
 }

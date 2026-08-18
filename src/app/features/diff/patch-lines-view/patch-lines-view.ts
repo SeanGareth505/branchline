@@ -48,6 +48,7 @@ export class PatchLinesView implements OnDestroy {
   private readonly overlay = inject(Overlay);
   private readonly vcr = inject(ViewContainerRef);
   private readonly menuTpl = viewChild.required<TemplateRef<unknown>>('lineMenuTpl');
+  private readonly viewport = viewChild(CdkVirtualScrollViewport);
   private overlayRef: OverlayRef | null = null;
 
   private readonly isMac =
@@ -132,6 +133,89 @@ export class PatchLinesView implements OnDestroy {
     }
     return Math.max(2, String(max || 1).length);
   });
+
+  readonly findOpen = signal(false);
+  readonly findQuery = signal('');
+  readonly findActive = signal(0);
+  readonly findInput = viewChild<HTMLInputElement>('findInput');
+
+  readonly findMatches = computed(() => {
+    const q = this.findQuery().trim().toLowerCase();
+    if (!q) return [] as number[];
+    const lines = this.displayLines();
+    const matches: number[] = [];
+    for (const line of lines) {
+      if (line.kind === 'hunk') continue;
+      if (line.text.toLowerCase().includes(q)) matches.push(line.index);
+    }
+    return matches;
+  });
+
+  readonly findMatchSet = computed(() => new Set(this.findMatches()));
+  readonly findCurrentLine = computed(() => this.findMatches()[this.findActive()] ?? null);
+
+  openFind(): void {
+    if (this.findOpen()) return;
+    this.findOpen.set(true);
+    this.findActive.set(0);
+    queueMicrotask(() => {
+      const el = this.findInput();
+      el?.focus();
+      el?.select();
+    });
+  }
+
+  closeFind(): void {
+    this.findOpen.set(false);
+  }
+
+  onFindQueryChange(value: string): void {
+    this.findQuery.set(value);
+    this.findActive.set(0);
+  }
+
+  private scrollToLineIndex(lineIndex: number): void {
+    const viewport = this.viewport();
+    if (!viewport) return;
+    viewport.checkViewportSize();
+    viewport.scrollToIndex(lineIndex);
+  }
+
+  nextFind(): void {
+    const matches = this.findMatches();
+    if (!matches.length) return;
+    const next = (this.findActive() + 1) % matches.length;
+    this.findActive.set(next);
+    this.scrollToLineIndex(matches[next]);
+  }
+
+  prevFind(): void {
+    const matches = this.findMatches();
+    if (!matches.length) return;
+    const prev = (this.findActive() - 1 + matches.length) % matches.length;
+    this.findActive.set(prev);
+    this.scrollToLineIndex(matches[prev]);
+  }
+
+  highlightSegments(text: string): { text: string; hit: boolean }[] {
+    const q = this.findQuery().trim();
+    if (!q) return [{ text, hit: false }];
+    const qLower = q.toLowerCase();
+    const lower = text.toLowerCase();
+    const out: { text: string; hit: boolean }[] = [];
+    let i = 0;
+    while (i < text.length) {
+      const idx = lower.indexOf(qLower, i);
+      if (idx === -1) {
+        out.push({ text: text.slice(i), hit: false });
+        break;
+      }
+      if (idx > i) out.push({ text: text.slice(i, idx), hit: false });
+      out.push({ text: text.slice(idx, idx + q.length), hit: true });
+      i = idx + q.length;
+    }
+    return out;
+  }
 
   trackLine = (_: number, line: { index: number }) => line.index;
   trackFallback = (index: number) => index;
@@ -446,8 +530,7 @@ export class PatchLinesView implements OnDestroy {
 
   @HostListener('document:keydown', ['$event'])
   onKey(event: KeyboardEvent): void {
-    if (!this.captureKeys() || !this.interactive()) return;
-    if (!this.focused && !this.menuOpen()) return;
+    if (!this.captureKeys()) return;
     const target = event.target as HTMLElement | null;
     const typing =
       target?.tagName === 'INPUT' ||
@@ -456,6 +539,37 @@ export class PatchLinesView implements OnDestroy {
     if (typing) return;
 
     const key = event.key.toLowerCase();
+    const meta = event.metaKey || event.ctrlKey;
+    if (meta && key === 'f' && this.focused) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openFind();
+      return;
+    }
+
+    if (this.findOpen()) {
+      if (key === 'escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeFind();
+        return;
+      }
+      if (key === 'enter' || key === 'n') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.nextFind();
+        return;
+      }
+      if (key === 'p') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.prevFind();
+        return;
+      }
+    }
+
+    if (!this.interactive()) return;
+    if (!this.focused && !this.menuOpen()) return;
     if (key === 'escape') {
       if (this.menuOpen()) {
         event.preventDefault();

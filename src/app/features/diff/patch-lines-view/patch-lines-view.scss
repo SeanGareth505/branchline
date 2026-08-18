@@ -101,6 +101,68 @@
   font-weight: 650;
 }
 
+.find-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+}
+
+.find-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.find-label input {
+  min-width: min(32rem, 45vw);
+  flex: 1 1 auto;
+  padding: 0.2rem 0.45rem;
+  border-radius: 7px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-base) 35%, transparent);
+  color: var(--text-primary);
+  outline: none;
+  font: inherit;
+}
+
+.find-label input:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+}
+
+.find-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.find-seg {
+  white-space: pre;
+}
+
+.find-seg.hit {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 3px;
+  padding: 0 0.05rem;
+}
+
+.pline.find-hit {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.pline.find-current {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent) !important;
+}
+
 .patch-empty {
   margin: 2rem 1rem;
   text-align: center;

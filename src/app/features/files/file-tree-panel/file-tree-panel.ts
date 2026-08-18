@@ -57,6 +57,8 @@ type FlatRow =
 export class FileTreePanel {
   readonly store = inject(AppStore);
   readonly query = signal('');
+  readonly commitMessage = signal('');
+  readonly committing = signal(false);
   readonly filter = signal<FilterChip>('all');
   readonly collapsed = signal<Set<string>>(new Set());
   readonly rowHeight = 32;
@@ -157,9 +159,34 @@ export class FileTreePanel {
   });
 
   readonly selectedPath = computed(() => this.store.selectedDiffPath());
+  readonly stagedCount = computed(() => this.store.status()?.staged.length ?? 0);
+  readonly conflictedCount = computed(() => this.store.status()?.conflicted.length ?? 0);
+  readonly canQuickCommit = computed(
+    () =>
+      !this.committing() &&
+      this.stagedCount() > 0 &&
+      this.conflictedCount() === 0 &&
+      !!this.commitMessage().trim(),
+  );
 
   setFilter(chip: FilterChip): void {
     this.filter.set(chip);
+  }
+
+  async quickCommit(): Promise<void> {
+    const message = this.commitMessage().trim();
+    if (!message || this.stagedCount() === 0 || this.conflictedCount() > 0 || this.committing()) return;
+    this.committing.set(true);
+    try {
+      const result = await this.store.createCommit(message, false, false);
+      if (result.ok) this.commitMessage.set('');
+    } finally {
+      this.committing.set(false);
+    }
+  }
+
+  openCommitOptions(): void {
+    void this.store.openCommitModal();
   }
 
   toggleDir(path: string): void {

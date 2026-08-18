@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, HostListener, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnInit, effect, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AppStore } from './core/app.store';
 import { DiagnosticsService } from './core/diagnostics.service';
+import { TauriService } from './core/tauri.service';
 import { UpdateService } from './core/update.service';
 import { PromptService } from './shared/ui/prompt-dialog/prompt.service';
 import { SelectService } from './shared/ui/select-dialog/select.service';
@@ -20,18 +22,48 @@ import { applyWindowControlSide } from './core/window-controls';
 })
 export class App implements OnInit {
   private readonly store = inject(AppStore);
+  private readonly tauri = inject(TauriService);
   private readonly updates = inject(UpdateService);
   private readonly diagnostics = inject(DiagnosticsService);
   private readonly tooltips = inject(TooltipService);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
   private readonly releaseDialog = inject(ReleaseDialogService);
+  private static readonly AUTO_FETCH_INTERVAL_MS = 5 * 60_000;
 
   ngOnInit(): void {
     applyWindowControlSide();
     this.tooltips.init();
     this.diagnostics.bindGlobalHandlers();
+    this.bindWindowTitle();
     void this.store.init().then(() => void this.updates.init());
+  }
+
+  private bindWindowTitle(): void {
+    effect(() => {
+      const repo = this.store.currentRepo();
+      const branch = this.store.status()?.branch?.trim();
+      const view = this.store.view();
+      const title = repo
+        ? `${repo.name}${branch ? ` — ${branch}` : ''} · Branchline`
+        : view === 'onboarding'
+          ? 'Set up Git · Branchline'
+          : 'Branchline';
+      document.title = title;
+      if (!this.tauri.isDummyBackend) {
+        void getCurrentWindow().setTitle(title).catch(() => undefined);
+      }
+    });
+    effect((onCleanup) => {
+      const enabled = this.store.settings().autoFetchOnOpen;
+      const repo = this.store.currentRepo();
+      if (!enabled || !repo || this.tauri.isDummyBackend) return;
+      const timer = window.setInterval(() => {
+        if (!this.store.currentRepo() || this.store.remoteBusy() || this.store.actionBusy() || this.store.loading()) return;
+        void this.store.fetchWithSavedOptions();
+      }, App.AUTO_FETCH_INTERVAL_MS);
+      onCleanup(() => window.clearInterval(timer));
+    });
   }
 
   @HostListener('window:unhandledrejection', ['$event'])

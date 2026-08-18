@@ -91,6 +91,44 @@
     }
   </div>
 
+  <div class="quick-commit" [class.disabled]="store.repoStatusPending() || conflictedCount() > 0">
+    <label>
+      <span>Commit message</span>
+      <input
+        type="text"
+        placeholder="Quick commit message…"
+        [ngModel]="commitMessage()"
+        (ngModelChange)="commitMessage.set($event)"
+        (keydown.enter)="$event.preventDefault(); canQuickCommit() && quickCommit()"
+      />
+    </label>
+    <div class="quick-commit-actions">
+      <button
+        type="button"
+        class="bl-btn bl-btn-primary"
+        [disabled]="!canQuickCommit()"
+        (click)="quickCommit()"
+        [title]="
+          conflictedCount() > 0
+            ? 'Resolve conflicts before committing'
+            : stagedCount() === 0
+              ? 'Stage files first'
+              : 'Create commit'
+        "
+      >
+        {{ committing() ? 'Committing…' : 'Commit' }}
+      </button>
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="openCommitOptions()"
+        title="Open full commit dialog"
+      >
+        More options…
+      </button>
+    </div>
+  </div>
+
   <cdk-virtual-scroll-viewport
     class="tree"
     role="tree"

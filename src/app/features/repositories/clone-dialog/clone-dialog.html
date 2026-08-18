@@ -27,6 +27,45 @@
           autofocus
         />
       </label>
+      @if (store.hasLinkedPrHost()) {
+        <div class="host-picks">
+          <div class="head">
+            <span>From connected account</span>
+            <button
+              type="button"
+              class="bl-btn"
+              [disabled]="store.hostReposLoading()"
+              (click)="store.refreshHostRepositories(undefined, { force: true })"
+            >
+              {{ store.hostReposLoading() ? 'Refreshing…' : 'Refresh' }}
+            </button>
+          </div>
+          @if (store.hostReposError(); as err) {
+            <p class="error">{{ err }}</p>
+          } @else if (hostSuggestions().length === 0) {
+            <p class="empty">
+              {{ store.hostReposLoading() ? 'Loading repositories…' : 'No repositories found.' }}
+            </p>
+          } @else {
+            <ul class="repo-list">
+              @for (repo of hostSuggestions(); track repo.id) {
+                <li>
+                  <button
+                    type="button"
+                    class="repo-item"
+                    [class.active]="url() === repo.cloneUrl"
+                    (click)="pickHostRepo(repo)"
+                    [title]="repo.cloneUrl"
+                  >
+                    <span class="name">{{ repo.fullName || repo.name }}</span>
+                    <span class="url">{{ repo.cloneUrl }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      }
 
       <label>
         Parent folder
