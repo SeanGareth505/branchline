@@ -409,6 +409,7 @@ export class AppStore {
     () => this.repoStatusPending() && this.repoGraphPending(),
   );
   readonly busyMessage = computed(() => {
+    if (this.repoAccountSwitching()) return 'Switching account…';
     if (this.loading()) return this.loadingLabel();
     return null;
   });
@@ -506,6 +507,7 @@ export class AppStore {
   readonly remoteTroubleshootError = signal('');
   readonly githubGitStatus = signal<GithubGitStatus | null>(null);
   readonly githubGitBusy = signal(false);
+  readonly repoAccountSwitching = signal(false);
   readonly repoAccounts = computed((): RepoAccountOption[] => {
     const owners = [
       ...this.hostRepos().map((repo) => hostOwnerFromSlug(repo.fullName || repo.name)),
@@ -542,6 +544,7 @@ export class AppStore {
     return tabs.filter((repo) => this.localRepoMatchesAccount(repo.path, account));
   });
   private githubGitStatusAt = 0;
+  private repoAccountSwitchGen = 0;
   private githubGitPollTimer: number | null = null;
   private static readonly GITHUB_GIT_STATUS_TTL_MS = 30_000;
   private readonly repoWebUrlInflight = new Map<string, Promise<string | null>>();
@@ -1942,39 +1945,54 @@ export class AppStore {
     );
   }
 
-  selectRepoAccount(key: string, opts?: { syncWorkspace?: boolean }): void {
+  async selectRepoAccount(key: string, opts?: { syncWorkspace?: boolean }): Promise<void> {
     const next = key.trim().toLowerCase() || ALL_REPO_ACCOUNTS;
     const prev = this.selectedRepoAccountKey();
-    if (prev !== next) {
-      const currentPath = this.currentRepo()?.path ?? null;
-      const byAccount = { ...(this.readSession().activeRepoPathByAccount ?? {}) };
-      if (currentPath) byAccount[prev] = currentPath;
-      this.patchSession({
-        openRepoPaths: this.openRepos().map((r) => r.path),
-        activeRepoPath: currentPath,
-        activeRepoPathByAccount: byAccount,
-        repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
-          ...this.openRepos().map((r) => r.path),
-          ...this.repos().map((r) => r.path),
-        ]),
-      });
-    }
+    if (prev === next) return;
+
+    const gen = ++this.repoAccountSwitchGen;
+    const currentPath = this.currentRepo()?.path ?? null;
+    const byAccount = { ...(this.readSession().activeRepoPathByAccount ?? {}) };
+    if (currentPath) byAccount[prev] = currentPath;
+    this.patchSession({
+      openRepoPaths: this.openRepos().map((r) => r.path),
+      activeRepoPath: currentPath,
+      activeRepoPathByAccount: byAccount,
+      repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
+        ...this.openRepos().map((r) => r.path),
+        ...this.repos().map((r) => r.path),
+      ]),
+    });
     if (this.settings().selectedRepoAccount.trim().toLowerCase() !== next) {
       this.settings.update((current) => ({ ...current, selectedRepoAccount: next }));
       void this.saveSettings({ selectedRepoAccount: next });
     }
-    if (next !== ALL_REPO_ACCOUNTS) {
-      const cli = (this.githubGitStatus()?.accounts ?? []).find(
-        (account) => account.login.toLowerCase() === next,
-      );
-      const mapped = this.settings().githubRepoAccounts[next]?.login.trim() ?? '';
-      const login = cli?.login || mapped;
-      if (login && login !== this.githubGitStatus()?.activeLogin) {
-        void this.switchGithubCliUser(login, { silent: true });
+
+    this.repoAccountSwitching.set(true);
+    try {
+      if (next !== ALL_REPO_ACCOUNTS) {
+        const cli = (this.githubGitStatus()?.accounts ?? []).find(
+          (account) => account.login.toLowerCase() === next,
+        );
+        const mapped = this.settings().githubRepoAccounts[next]?.login.trim() ?? '';
+        const login = cli?.login || mapped;
+        const active = this.githubGitStatus()?.activeLogin ?? '';
+        if (login && login.toLowerCase() !== active.toLowerCase()) {
+          await this.switchGithubCliUser(login, {
+            silent: true,
+            skipBusy: true,
+            deferStatusRefresh: true,
+          });
+        }
       }
-    }
-    if (opts?.syncWorkspace !== false && prev !== next) {
-      void this.syncAccountWorkspace(next);
+      if (gen !== this.repoAccountSwitchGen) return;
+      if (opts?.syncWorkspace !== false) {
+        await this.syncAccountWorkspace(next);
+      }
+    } finally {
+      if (gen === this.repoAccountSwitchGen) {
+        this.repoAccountSwitching.set(false);
+      }
     }
   }
 
@@ -2037,7 +2055,7 @@ export class AppStore {
       this.settings().githubRepoAccounts,
     );
     if (key && key !== this.selectedRepoAccountKey()) {
-      this.selectRepoAccount(key, { syncWorkspace: false });
+      void this.selectRepoAccount(key, { syncWorkspace: false });
     }
   }
 
@@ -5742,13 +5760,22 @@ export class AppStore {
     }
   }
 
-  async switchGithubCliUser(login: string, opts?: { silent?: boolean }): Promise<boolean> {
-    this.githubGitBusy.set(true);
+  async switchGithubCliUser(
+    login: string,
+    opts?: { silent?: boolean; skipBusy?: boolean; deferStatusRefresh?: boolean },
+  ): Promise<boolean> {
+    const manageBusy = !opts?.skipBusy;
+    if (manageBusy) this.githubGitBusy.set(true);
     try {
       const result = await this.tauri.switchGithubCliUser(login);
-      await this.refreshGithubGitStatus({ force: true });
       if (result.ok) {
+        this.patchGithubActiveLogin(login);
         this.rememberGithubRepoAccount({ login });
+        if (opts?.deferStatusRefresh) {
+          void this.refreshGithubGitStatus({ force: true });
+        } else {
+          await this.refreshGithubGitStatus({ force: true });
+        }
         if (!opts?.silent) this.showSuccess(result.message);
       } else if (!opts?.silent) {
         this.showWarning(result.message);
@@ -5758,8 +5785,25 @@ export class AppStore {
       if (!opts?.silent) this.showError(err);
       return false;
     } finally {
-      this.githubGitBusy.set(false);
+      if (manageBusy) this.githubGitBusy.set(false);
     }
+  }
+
+  private patchGithubActiveLogin(login: string): void {
+    const target = login.trim().toLowerCase();
+    if (!target) return;
+    this.githubGitStatus.update((status) => {
+      if (!status) return status;
+      return {
+        ...status,
+        activeLogin: login.trim(),
+        accounts: status.accounts.map((account) => ({
+          ...account,
+          active: account.login.toLowerCase() === target,
+        })),
+      };
+    });
+    this.githubGitStatusAt = Date.now();
   }
 
   async addGithubCliAccount(): Promise<boolean> {
@@ -5809,7 +5853,7 @@ export class AppStore {
       const selected = this.selectedRepoAccountKey();
       if (selected === name.toLowerCase()) {
         const next = remaining[0]?.login || ALL_REPO_ACCOUNTS;
-        this.selectRepoAccount(next, { syncWorkspace: true });
+        void this.selectRepoAccount(next, { syncWorkspace: true });
       }
       this.showSuccess(result.message);
       return true;
@@ -5851,7 +5895,7 @@ export class AppStore {
             window.clearInterval(this.githubGitPollTimer);
             this.githubGitPollTimer = null;
           }
-          this.selectRepoAccount(added.login);
+          void this.selectRepoAccount(added.login);
           this.showSuccess(`Added ${added.login}`);
           return;
         }
@@ -5893,7 +5937,7 @@ export class AppStore {
   }
 
   private async applyGithubRepoAccount(opts?: { silent?: boolean }): Promise<void> {
-    if (this.githubGitBusy()) return;
+    if (this.githubGitBusy() || this.repoAccountSwitching()) return;
     await this.refreshGithubGitStatus();
     const owner = this.githubOwnerForCurrentRepo();
     if (!owner) return;

@@ -13,7 +13,11 @@
   >
     <ng-icon name="lucideUser" size="13" />
     <span class="label">{{ selectedLabel() }}</span>
-    <ng-icon name="lucideChevronsUpDown" size="12" class="chevron" />
+    @if (busy()) {
+      <app-spinner size="sm" label="Switching account" class="chevron" />
+    } @else {
+      <ng-icon name="lucideChevronsUpDown" size="12" class="chevron" />
+    }
   </button>
 
   <ng-template

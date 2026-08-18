@@ -1,31 +1,35 @@
 <div class="browse">
-  @if (store.syncingRepo() || store.remoteBusy() || store.releasingLocally()) {
+  @if (store.syncingRepo() || store.remoteBusy() || store.releasingLocally() || store.repoAccountSwitching()) {
     <div
       class="sync-bar"
       role="status"
       aria-live="polite"
       [attr.aria-label]="
-        store.releasingLocally()
-          ? 'Releasing version'
-          : store.remoteBusy() === 'fetch'
-            ? 'Fetching from remote'
-            : store.remoteBusy() === 'pull'
-              ? 'Pulling from remote'
-              : store.remoteBusy() === 'push'
-                ? 'Pushing to remote'
-                : store.remoteBusy() === 'merge'
-                  ? 'Merging'
-                  : store.remoteBusy() === 'rebase'
-                    ? 'Rebasing'
-                    : store.repoContentPending()
-                      ? 'Loading repository'
-                      : 'Refreshing repository'
+        store.repoAccountSwitching()
+          ? 'Switching GitHub account'
+          : store.releasingLocally()
+            ? 'Releasing version'
+            : store.remoteBusy() === 'fetch'
+              ? 'Fetching from remote'
+              : store.remoteBusy() === 'pull'
+                ? 'Pulling from remote'
+                : store.remoteBusy() === 'push'
+                  ? 'Pushing to remote'
+                  : store.remoteBusy() === 'merge'
+                    ? 'Merging'
+                    : store.remoteBusy() === 'rebase'
+                      ? 'Rebasing'
+                      : store.repoContentPending()
+                        ? 'Loading repository'
+                        : 'Refreshing repository'
       "
     >
       <span class="sync-track" aria-hidden="true"></span>
       <app-spinner size="sm" [label]="store.busyMessage() || 'Working'" />
       <span class="sync-label">
-        @if (store.releasingLocally()) {
+        @if (store.repoAccountSwitching()) {
+          Switching account…
+        } @else if (store.releasingLocally()) {
           Releasing…
         } @else if (store.remoteBusy() === 'fetch') {
           Fetching…

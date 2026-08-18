@@ -7,10 +7,11 @@ import {
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../core/app.store';
 import { ALL_REPO_ACCOUNTS } from '../../shared/git/repo-accounts';
+import { Spinner } from '../../shared/ui/spinner/spinner';
 
 @Component({
   selector: 'app-repo-account-bar',
-  imports: [NgIcon, CdkConnectedOverlay, CdkOverlayOrigin],
+  imports: [NgIcon, CdkConnectedOverlay, CdkOverlayOrigin, Spinner],
   templateUrl: './repo-account-bar.html',
   styleUrl: './repo-account-bar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,7 +28,7 @@ export class RepoAccountBar {
   readonly accounts = computed(() => this.store.repoAccounts());
   readonly visible = computed(() => this.accounts().length > 1);
   readonly canAdd = computed(() => !!this.store.githubGitStatus()?.ghAvailable);
-  readonly busy = computed(() => this.store.githubGitBusy());
+  readonly busy = computed(() => this.store.repoAccountSwitching() || this.store.githubGitBusy());
   readonly selectedKey = computed(() => this.store.selectedRepoAccountKey());
   readonly selectedLabel = computed(() => {
     if (this.store.showingAllRepoAccounts()) return 'All accounts';
@@ -53,8 +54,8 @@ export class RepoAccountBar {
 
   choose(key: string): void {
     this.closeMenu();
-    if (key === this.selectedKey()) return;
-    this.store.selectRepoAccount(key);
+    if (key === this.selectedKey() || this.busy()) return;
+    void this.store.selectRepoAccount(key);
   }
 
   toggleMenu(): void {

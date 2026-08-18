@@ -4,7 +4,7 @@
       @if (variant() !== 'settings') {
         <strong>GitHub for this repo</strong>
       }
-      <span>{{ summary() }}</span>
+      <span>{{ busy() ? 'Switching GitHub account…' : summary() }}</span>
     </div>
     <div class="controls">
       <div class="cluster">
