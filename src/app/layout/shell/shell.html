@@ -2,7 +2,12 @@
   class="shell"
   [class.dummy-backend]="store.isDummyBackend"
   [class.update-available]="updates.bannerVisible()"
+  [class.macos-onboarding]="macosTrafficLights && store.view() === 'onboarding'"
 >
+  @if (macosTrafficLights && store.view() === 'onboarding') {
+    <div class="macos-traffic-spacer" data-tauri-drag-region></div>
+  }
+
   @if (store.isDummyBackend) {
     <div class="dummy-banner" role="status">
       <strong>DUMMY DATA</strong>
@@ -16,7 +21,7 @@
   <app-update-banner />
 
   @if (store.view() !== 'onboarding') {
-    <header class="chrome">
+    <header class="chrome" data-tauri-drag-region>
       <div class="chrome-nav">
         <div class="chrome-left">
           <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home" title="Go to repository view">

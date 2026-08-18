@@ -6,12 +6,19 @@
     },
     "windows": [
       {
+        "acceptFirstMouse": true,
         "fullscreen": false,
         "height": 900,
+        "hiddenTitle": true,
         "minHeight": 680,
         "minWidth": 1024,
         "resizable": true,
         "title": "Branchline",
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 14
+        },
         "width": 1440
       }
     ]

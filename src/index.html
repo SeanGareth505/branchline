@@ -23,6 +23,14 @@
                 ? 'dark'
                 : 'light';
           document.documentElement.setAttribute('data-theme', resolved);
+          var platform = navigator.platform || '';
+          var ua = navigator.userAgent || '';
+          var controls = /Mac|iPhone|iPad|iPod/i.test(platform + ' ' + ua)
+            ? 'macos'
+            : /Win/i.test(platform + ' ' + ua)
+              ? 'windows'
+              : 'other';
+          document.documentElement.setAttribute('data-window-controls', controls);
           var accent = localStorage.getItem('branchline.accent');
           if (accent) document.documentElement.style.setProperty('--accent', accent);
         } catch (_) {}

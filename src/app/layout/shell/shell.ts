@@ -47,6 +47,7 @@ import { ToastHost } from '../toast-host/toast-host';
 import { UpdateBanner } from '../../features/updates/update-banner/update-banner';
 import { WhatsNewDialog } from '../../features/updates/whats-new-dialog/whats-new-dialog';
 import { UpdateService } from '../../core/update.service';
+import { detectWindowControlSide } from '../../core/window-controls';
 
 type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
 
@@ -106,6 +107,8 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
 export class Shell {
   readonly store = inject(AppStore);
   readonly updates = inject(UpdateService);
+  readonly windowControls = detectWindowControlSide();
+  readonly macosTrafficLights = this.windowControls === 'macos';
   private readonly releaseDialog = inject(ReleaseDialogService);
   readonly releasePromptOpen = computed(() => !!this.releaseDialog.request());
 

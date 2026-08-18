@@ -106,6 +106,8 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-fast: 140ms;
   --duration-med: 220ms;
+  --window-controls-left: 0px;
+  --window-controls-right: 0px;
   color-scheme: light;
 }
 
@@ -204,6 +206,10 @@ body {
   font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+
+html[data-window-controls='macos'] {
+  --window-controls-left: 5rem;
 }
 
 body {

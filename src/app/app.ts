@@ -9,6 +9,7 @@ import { ReleaseDialogService } from './features/release/release-dialog/release-
 import { TooltipService } from './shared/ui/tooltip/tooltip.service';
 import { resolveShortcuts, shortcutMatches } from './shared/git/shortcuts';
 import { isIgnorableUnhandledError } from './shared/git/git-error';
+import { applyWindowControlSide } from './core/window-controls';
 
 @Component({
   selector: 'app-root',
@@ -27,6 +28,7 @@ export class App implements OnInit {
   private readonly releaseDialog = inject(ReleaseDialogService);
 
   ngOnInit(): void {
+    applyWindowControlSide();
     this.tooltips.init();
     this.diagnostics.bindGlobalHandlers();
     void this.store.init().then(() => void this.updates.init());
