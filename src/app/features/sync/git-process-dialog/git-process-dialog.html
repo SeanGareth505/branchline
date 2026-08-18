@@ -1,0 +1,80 @@
+@if (store.gitProcess(); as process) {
+  <div
+    class="backdrop"
+    (click)="!process.running && close()"
+    role="presentation"
+  >
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-labelledby]="'git-process-title'"
+      [attr.aria-busy]="process.running"
+    >
+      @if (process.running) {
+        <span class="busy-track" aria-hidden="true"></span>
+      }
+
+      <header>
+        <div class="copy">
+          <h2 id="git-process-title">{{ process.title }}</h2>
+          <p class="command">{{ process.command }}</p>
+        </div>
+        <div class="header-actions">
+          @if (process.running) {
+            <app-spinner size="sm" [label]="process.title" />
+          }
+          <button
+            type="button"
+            class="bl-btn icon"
+            (click)="copyOutput()"
+            [disabled]="!process.output.trim()"
+            aria-label="Copy output"
+            title="Copy output"
+          >
+            <ng-icon name="lucideCopy" size="15" />
+          </button>
+          <button
+            type="button"
+            class="bl-btn icon"
+            (click)="close()"
+            [disabled]="process.running"
+            aria-label="Close"
+            title="Close"
+          >
+            <ng-icon name="lucideX" size="16" />
+          </button>
+        </div>
+      </header>
+
+      <pre
+        #log
+        class="log"
+        [class.ok]="process.ok === true"
+        [class.fail]="process.ok === false"
+        tabindex="0"
+      >{{ process.output }}</pre>
+
+      <footer>
+        <label class="keep">
+          <input
+            type="checkbox"
+            [ngModel]="store.settings().keepGitProcessOpen"
+            (ngModelChange)="onKeepOpen($event)"
+          />
+          Keep dialog open after process exits
+        </label>
+        <button
+          type="button"
+          class="bl-btn"
+          [class.bl-btn-primary]="!process.running"
+          [disabled]="process.running"
+          (click)="close()"
+        >
+          {{ process.running ? 'Running…' : 'Close' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

@@ -73,6 +73,8 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub confirm_remove_remote: bool,
     #[serde(default)]
+    pub keep_git_process_open: bool,
+    #[serde(default)]
     pub sign_off_by_default: bool,
     #[serde(default)]
     pub push_after_commit: bool,
@@ -396,6 +398,7 @@ impl Default for AppSettings {
             confirm_abort_operation: true,
             confirm_abort_second: true,
             confirm_remove_remote: true,
+            keep_git_process_open: false,
             sign_off_by_default: false,
             push_after_commit: true,
             my_branches_only: false,

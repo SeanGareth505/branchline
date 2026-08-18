@@ -365,6 +365,7 @@ export interface AppSettings {
   confirmAbortOperation: boolean;
   confirmAbortSecond: boolean;
   confirmRemoveRemote: boolean;
+  keepGitProcessOpen: boolean;
   signOffByDefault: boolean;
   pushAfterCommit: boolean;
   myBranchesOnly: boolean;

@@ -245,7 +245,11 @@ fn fold_name_email_counts(counts: HashMap<(String, String), i32>) -> HashMap<Str
 }
 
 #[command]
-pub fn get_git_identity(input: Option<ListIdentityContextsInput>) -> AppResult<GitIdentity> {
+pub async fn get_git_identity(input: Option<ListIdentityContextsInput>) -> AppResult<GitIdentity> {
+    run_blocking(move || git_identity_inner(input)).await
+}
+
+pub(crate) fn git_identity_inner(input: Option<ListIdentityContextsInput>) -> AppResult<GitIdentity> {
     let path = input
         .and_then(|i| i.path)
         .map(|p| p.trim().to_string())

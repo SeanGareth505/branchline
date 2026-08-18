@@ -38,20 +38,24 @@ pub struct SwitchGithubCliUserInput {
 }
 
 #[command]
-pub fn github_git_status() -> AppResult<GithubGitStatus> {
+pub async fn github_git_status() -> AppResult<GithubGitStatus> {
+    crate::run_blocking(|| Ok(github_git_status_inner())).await
+}
+
+fn github_git_status_inner() -> GithubGitStatus {
     let accounts = gh_accounts();
     let active_login = accounts
         .iter()
         .find(|account| account.active)
         .map(|account| account.login.clone())
         .unwrap_or_default();
-    Ok(GithubGitStatus {
+    GithubGitStatus {
         ssh_login: ssh_github_login(),
         uses_gh_helper: uses_gh_credential_helper(),
         gh_available: gh_command().is_some(),
         accounts,
         active_login,
-    })
+    }
 }
 
 #[command]
@@ -376,7 +380,7 @@ fn ssh_github_login() -> String {
             "-o",
             "BatchMode=yes",
             "-o",
-            "ConnectTimeout=8",
+            "ConnectTimeout=2",
             "-o",
             "StrictHostKeyChecking=accept-new",
             "-T",

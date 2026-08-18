@@ -2017,6 +2017,7 @@ export class TauriService {
         confirmAbortOperation: true,
         confirmAbortSecond: true,
         confirmRemoveRemote: true,
+        keepGitProcessOpen: false,
         signOffByDefault: false,
         pushAfterCommit: true,
         myBranchesOnly: false,
@@ -2936,6 +2937,19 @@ export class TauriService {
       return hits as T;
     }
 
+    if (cmd === 'fetch' || cmd === 'push' || cmd === 'pull' || cmd === 'pull_with_options') {
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      const messages: Record<string, string> = {
+        fetch:
+          'From github.com:demo/navigo\n   a1b2c3d..e4f5a6b  main       -> origin/main',
+        push:
+          'Enumerating objects: 9, done.\nCounting objects: 100% (9/9), done.\nWriting objects: 100% (3/3), 412 bytes | 412.00 KiB/s, done.\nTo github.com:demo/navigo.git\n   a1b2c3d..e4f5a6b  main -> main',
+        pull: 'Already up to date.',
+        pull_with_options: 'Already up to date.',
+      };
+      return { ok: true, message: messages[cmd] ?? 'Done' } as T;
+    }
+
     if (cmd in mocks) {
       return mocks[cmd] as T;
     }
@@ -3498,6 +3512,7 @@ export class TauriService {
       confirmAbortOperation: true,
       confirmAbortSecond: true,
       confirmRemoveRemote: true,
+      keepGitProcessOpen: false,
       signOffByDefault: false,
       pushAfterCommit: true,
       myBranchesOnly: false,

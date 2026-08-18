@@ -17,8 +17,8 @@ pub struct RepoStatusInput {
 pub async fn get_repo_status(input: RepoStatusInput) -> AppResult<RepoStatus> {
     run_blocking(move || {
         let path = PathBuf::from(&input.path);
-        git_cli::with_repo_lock(&path, |resolved| {
-            git2_repo::repo_status_with(resolved, input.hide_untracked)
+        git_cli::resolve_repo_path(&path).and_then(|resolved| {
+            git2_repo::repo_status_with(&resolved, input.hide_untracked)
         })
     })
     .await

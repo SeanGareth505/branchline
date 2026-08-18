@@ -250,8 +250,20 @@ fn optional_remote(remote: Option<&str>) -> Option<&str> {
     remote.map(str::trim).filter(|s| !s.is_empty())
 }
 
+pub fn combine_git_output(stdout: &str, stderr: &str) -> String {
+    let out = stdout.trim_end();
+    let err = stderr.trim_end();
+    if out.is_empty() {
+        err.to_string()
+    } else if err.is_empty() {
+        out.to_string()
+    } else {
+        format!("{err}\n{out}")
+    }
+}
+
 pub fn pull_args(remote: Option<&str>, rebase: bool) -> Vec<String> {
-    let mut args = vec!["pull".to_string()];
+    let mut args = vec!["pull".to_string(), "--progress".to_string()];
     if rebase {
         args.push("--rebase".to_string());
     }
@@ -267,7 +279,7 @@ pub fn fetch_args(
     prune: bool,
     tags: bool,
 ) -> Vec<String> {
-    let mut args = vec!["fetch".to_string()];
+    let mut args = vec!["fetch".to_string(), "--progress".to_string()];
     if all_remotes {
         args.push("--all".to_string());
     }
@@ -579,29 +591,45 @@ mod tests {
 
     #[test]
     fn pull_without_remote_lets_git_use_configured_upstream() {
-        assert_eq!(pull_args(None, false), vec!["pull"]);
-        assert_eq!(pull_args(Some(""), false), vec!["pull"]);
-        assert_eq!(pull_args(Some("  "), true), vec!["pull", "--rebase"]);
+        assert_eq!(pull_args(None, false), vec!["pull", "--progress"]);
+        assert_eq!(pull_args(Some(""), false), vec!["pull", "--progress"]);
+        assert_eq!(
+            pull_args(Some("  "), true),
+            vec!["pull", "--progress", "--rebase"]
+        );
     }
 
     #[test]
     fn pull_with_named_remote_does_not_assume_origin() {
         assert_eq!(
             pull_args(Some("upstream"), false),
-            vec!["pull", "upstream"]
+            vec!["pull", "--progress", "upstream"]
         );
         assert_eq!(
             pull_args(Some("origin"), true),
-            vec!["pull", "--rebase", "origin"]
+            vec!["pull", "--progress", "--rebase", "origin"]
         );
     }
 
     #[test]
     fn fetch_without_remote_lets_git_use_configured_upstream() {
-        assert_eq!(fetch_args(None, false, false, false), vec!["fetch"]);
+        assert_eq!(
+            fetch_args(None, false, false, false),
+            vec!["fetch", "--progress"]
+        );
         assert_eq!(
             fetch_args(Some("upstream"), false, false, false),
-            vec!["fetch", "upstream"]
+            vec!["fetch", "--progress", "upstream"]
+        );
+    }
+
+    #[test]
+    fn combine_stdout_and_stderr() {
+        assert_eq!(combine_git_output("pushed", ""), "pushed");
+        assert_eq!(combine_git_output("", "writing objects"), "writing objects");
+        assert_eq!(
+            combine_git_output("to origin\n", "enumerating objects\n"),
+            "enumerating objects\nto origin"
         );
     }
 
@@ -609,11 +637,11 @@ mod tests {
     fn fetch_all_prune_and_tags_flags() {
         assert_eq!(
             fetch_args(Some("origin"), true, true, false),
-            vec!["fetch", "--all", "--prune"]
+            vec!["fetch", "--progress", "--all", "--prune"]
         );
         assert_eq!(
             fetch_args(Some("origin"), false, true, true),
-            vec!["fetch", "--prune", "--tags", "origin"]
+            vec!["fetch", "--progress", "--prune", "--tags", "origin"]
         );
     }
 

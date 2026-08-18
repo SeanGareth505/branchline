@@ -65,8 +65,8 @@ pub async fn get_commit_log(input: CommitLogInput) -> AppResult<Vec<CommitInfo>>
     run_blocking(move || {
         let path = PathBuf::from(&input.path);
         let limit = input.limit.unwrap_or(200).clamp(1, 5000);
-        git_cli::with_repo_lock(&path, |resolved| {
-            git2_repo::commit_log(resolved, limit, input.first_parent.unwrap_or(false))
+        git_cli::resolve_repo_path(&path).and_then(|resolved| {
+            git2_repo::commit_log(&resolved, limit, input.first_parent.unwrap_or(false))
         })
     })
     .await

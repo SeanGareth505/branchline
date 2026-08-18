@@ -146,13 +146,19 @@ struct StoredAll {
 }
 
 #[command]
-pub fn list_repo_checks(
+pub async fn list_repo_checks(
     state: State<'_, AppState>,
     input: RepoPathInput,
 ) -> AppResult<RepoChecksOutput> {
     let path = PathBuf::from(&input.path);
-    git_cli::ensure_repo(&path)?;
-    let detected = detect_repo_checks(&path)?;
+    let detected = run_blocking({
+        let path = path.clone();
+        move || {
+            git_cli::ensure_repo(&path)?;
+            detect_repo_checks(&path)
+        }
+    })
+    .await?;
 
     let db = state
         .db

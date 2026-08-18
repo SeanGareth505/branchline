@@ -1,0 +1,164 @@
+:host {
+  display: contents;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: color-mix(in srgb, #020617 52%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.dialog {
+  position: relative;
+  overflow: hidden;
+  width: min(640px, 100%);
+  max-height: min(72vh, 560px);
+  padding: 1rem 1.1rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+  animation: process-in 180ms var(--ease-out, ease-out);
+}
+
+@keyframes process-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.busy-track {
+  position: absolute;
+  inset: 0 auto auto 0;
+  height: 2px;
+  width: 35%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 70%, transparent),
+    transparent
+  );
+  animation: process-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes process-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.copy {
+  min-width: 0;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.command {
+  margin: 0.28rem 0 0;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.icon {
+  padding: 0.3rem;
+  min-width: 1.9rem;
+  justify-content: center;
+}
+
+.log {
+  margin: 0;
+  flex: 1;
+  min-height: 12rem;
+  max-height: 36vh;
+  overflow: auto;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-control, 8px);
+  background: color-mix(in srgb, var(--bg-base) 78%, transparent);
+  color: var(--text-primary);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log.ok {
+  border-color: color-mix(in srgb, #22c55e 32%, var(--glass-border));
+}
+
+.log.fail {
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 38%, var(--glass-border));
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.keep {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.keep input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .busy-track {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}

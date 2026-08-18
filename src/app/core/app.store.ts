@@ -113,6 +113,7 @@ import {
   isAlreadyUpToDateMessage,
   summarizeGitToastMessage,
 } from '../shared/git/git-toast';
+import { appendGitProcessOutput, gitProcessTitle } from '../shared/git/git-process-output';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
@@ -184,6 +185,14 @@ export function normalizeSettingsSection(raw: unknown): SettingsSection {
 
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
 export type RemoteBusyKind = 'fetch' | 'pull' | 'push' | 'merge' | 'rebase';
+export interface GitProcessState {
+  kind: RemoteBusyKind;
+  title: string;
+  command: string;
+  output: string;
+  running: boolean;
+  ok: boolean | null;
+}
 export type AutomationSection = 'workflows' | 'checks';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
 export type NotificationCategory =
@@ -345,6 +354,7 @@ export class AppStore {
     confirmAbortOperation: true,
     confirmAbortSecond: true,
     confirmRemoveRemote: true,
+    keepGitProcessOpen: false,
     signOffByDefault: false,
     pushAfterCommit: true,
     myBranchesOnly: false,
@@ -401,6 +411,8 @@ export class AppStore {
   readonly refreshingRepo = signal(false);
   readonly syncingRepo = signal(false);
   readonly remoteBusy = signal<RemoteBusyKind | null>(null);
+  readonly gitProcess = signal<GitProcessState | null>(null);
+  private gitProcessCloseTimer: number | null = null;
   readonly actionBusy = signal<string | null>(null);
   readonly repoStatusPending = computed(() => this.syncingRepo() && !this.status());
   readonly repoRefsPending = computed(() => this.syncingRepo() && this.branches().length === 0);
@@ -578,6 +590,7 @@ export class AppStore {
   private sessionSaveTimer: number | null = null;
   private sessionOverlay: UiSession = {};
   private restoringSession = false;
+  private repoBooting = false;
   private repoCacheTimer: number | null = null;
   private lastRepoCacheFp = '';
   private repoDiskCache: Record<string, RepoCacheEntry> | null = null;
@@ -1010,20 +1023,17 @@ export class AppStore {
       this.restoreReleaseActivity();
       this.restoreReleaseNotesDraft();
       this.startWorktreePoll();
-      scheduleIdleWork(() => this.readRepoDiskCache());
-      try {
-        this.identity.set(await this.tauri.getGitIdentity(this.currentRepo()?.path ?? null));
-      } catch {
-        this.identity.set(null);
-      }
+      this.readRepoDiskCache();
       const onboarding = await this.tauri.getOnboardingStatus();
       if (!onboarding.completed && !onboarding.skipped) {
         this.view.set('onboarding');
+        void this.refreshIdentity();
         return;
       }
       this.repos.set(await this.tauri.listRecentRepos());
       this.restoreSessionRepoWebUrls(session);
-      await this.refreshGithubGitStatus();
+      void this.refreshGithubGitStatus();
+      void this.refreshIdentity();
       const sessionPaths = Array.isArray(session.openRepoPaths)
         ? session.openRepoPaths.filter((p): p is string => typeof p === 'string' && !!p.trim())
         : [];
@@ -1584,30 +1594,35 @@ export class AppStore {
     this.currentRepo.set(stub);
     this.upsertOpenRepo(stub);
     this.cancelCommitApply();
-    this.clearWorkingState();
-    this.syncingRepo.set(true);
-    this.restoreCachedRepo(normalized, false);
+    this.repoBooting = true;
+    const hadCache = this.restoreCachedRepo(normalized, true);
+    if (!hadCache) this.clearWorkingState();
+    this.syncingRepo.set(!hadCache);
 
     const summaryPromise = switching
       ? this.tauri.focusRepository(normalized).then((summary) => this.mergeFocusedSummary(summary))
       : this.tauri.openRepository(normalized);
-    void this.refreshRepo();
+    void this.refreshRepo().finally(() => {
+      if (this.repoLoadGen === gen) this.repoBooting = false;
+    });
     this.resumeReleaseTrackingIfNeeded();
     if (this.hasLinkedPrHost()) void this.refreshPullRequests('open');
-    requestAnimationFrame(() => {
+    if (!hadCache) {
       requestAnimationFrame(() => {
-        if (this.repoLoadStale(gen, normalized) || this.commits().length > 0) return;
-        if (this.repoSnapshots.has(normalizeCachePath(normalized))) {
-          this.restoreCachedRepo(normalized, true);
-          return;
-        }
-        this.commitApplyCancel = scheduleIdleWork(() => {
-          this.commitApplyCancel = null;
+        requestAnimationFrame(() => {
           if (this.repoLoadStale(gen, normalized) || this.commits().length > 0) return;
-          this.hydrateRepoCache(normalized, true);
+          if (this.repoSnapshots.has(normalizeCachePath(normalized))) {
+            this.restoreCachedRepo(normalized, true);
+            return;
+          }
+          this.commitApplyCancel = scheduleIdleWork(() => {
+            this.commitApplyCancel = null;
+            if (this.repoLoadStale(gen, normalized) || this.commits().length > 0) return;
+            this.hydrateRepoCache(normalized, true);
+          });
         });
       });
-    });
+    }
 
     try {
       const summary = await summaryPromise;
@@ -1624,7 +1639,6 @@ export class AppStore {
         this.alignSelectedAccountToRepo(normalized);
       });
       void this.applyGithubRepoAccount({ silent: true });
-      if (!this.refreshInFlight) void this.refreshRepo();
       if (this.repoLoadStale(gen, normalized)) return;
       this.persistOpenRepos();
       if (!switching && (this.isDummyBackend || this.isDummyRepoPath(normalized))) {
@@ -2841,7 +2855,9 @@ export class AppStore {
     const prev = this.status();
     const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, logLimit),
+      this.tauri.getCommitLog(path, logLimit, {
+        firstParent: this.historyFilter().firstParent,
+      }),
       this.tauri.listBranches(path),
     ]);
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
@@ -2867,7 +2883,9 @@ export class AppStore {
     this.snapshotCurrentRepo();
     void this.refreshCommitStatuses();
     void this.refreshSecondaryLists(path, { includeLfs: opts?.notify === true });
-    void this.warmCommitLog(path);
+    scheduleIdleWork(() => {
+      void this.warmCommitLog(path);
+    }, 1200);
     if (opts?.notify) {
       const changed =
         status.staged.length + status.unstaged.length + status.untracked.length;
@@ -2913,7 +2931,9 @@ export class AppStore {
     const logLimit = COMMIT_LOG_INITIAL;
     const [status, commits, branches] = await Promise.all([
       this.tauri.getRepoStatus(path, this.statusFetchOpts()),
-      this.tauri.getCommitLog(path, logLimit),
+      this.tauri.getCommitLog(path, logLimit, {
+        firstParent: this.historyFilter().firstParent,
+      }),
       this.tauri.listBranches(path),
     ]);
     if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
@@ -3008,7 +3028,9 @@ export class AppStore {
     }
     const gen = this.commitLogWarmGen;
     try {
-      const commits = await this.tauri.getCommitLog(path, target);
+      const commits = await this.tauri.getCommitLog(path, target, {
+        firstParent: this.historyFilter().firstParent,
+      });
       if (gen !== this.commitLogWarmGen) return;
       if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return;
       this.commitLogLimit.set(Math.max(this.commitLogLimit(), target));
@@ -3076,20 +3098,85 @@ export class AppStore {
     return true;
   }
 
-  armRemoteBusy(kind: RemoteBusyKind): boolean {
+  armRemoteBusy(kind: RemoteBusyKind, command?: string): boolean {
     if (this.remoteBusy() || this.actionBusy() || this.loading()) return false;
     this.remoteBusy.set(kind);
+    this.openGitProcess(kind, command || `git ${kind}`);
     this.appRef.tick();
     return true;
   }
 
-  private async beginRemoteBusy(kind: RemoteBusyKind): Promise<boolean> {
+  private async beginRemoteBusy(kind: RemoteBusyKind, command?: string): Promise<boolean> {
     if (this.actionBusy() || this.loading()) return false;
     const current = this.remoteBusy();
     if (current && current !== kind) return false;
     this.remoteBusy.set(kind);
+    this.openGitProcess(kind, command || `git ${kind}`);
     await this.paintBusy();
     return this.remoteBusy() === kind;
+  }
+
+  openGitProcess(kind: RemoteBusyKind, command: string): void {
+    this.clearGitProcessCloseTimer();
+    const current = this.gitProcess();
+    if (current?.running && current.kind === kind) {
+      if (command && command !== current.command) {
+        this.gitProcess.set({ ...current, command });
+      }
+      return;
+    }
+    this.gitProcess.set({
+      kind,
+      title: gitProcessTitle(kind),
+      command,
+      output: `${command}\n\n`,
+      running: true,
+      ok: null,
+    });
+  }
+
+  finishGitProcess(ok: boolean, extra?: string): void {
+    this.clearGitProcessCloseTimer();
+    this.gitProcess.update((current) => {
+      if (!current || !current.running) return current;
+      let output = current.output;
+      if (extra?.trim()) {
+        const chunk = extra.endsWith('\n') ? extra : `${extra}\n`;
+        output = appendGitProcessOutput(output, chunk);
+      }
+      if (!output.endsWith('\n')) output += '\n';
+      output += ok ? '\nDone.\n' : '\nFailed.\n';
+      return { ...current, running: false, ok, output };
+    });
+    if (ok && !this.settings().keepGitProcessOpen) {
+      this.gitProcessCloseTimer = window.setTimeout(() => {
+        this.gitProcessCloseTimer = null;
+        if (!this.settings().keepGitProcessOpen) this.closeGitProcess();
+      }, 700);
+    }
+  }
+
+  closeGitProcess(): void {
+    if (this.gitProcess()?.running) return;
+    this.clearGitProcessCloseTimer();
+    this.gitProcess.set(null);
+  }
+
+  setKeepGitProcessOpen(value: boolean): void {
+    if (this.settings().keepGitProcessOpen === value) return;
+    this.settings.update((current) => ({ ...current, keepGitProcessOpen: value }));
+    void this.saveSettings({ keepGitProcessOpen: value });
+  }
+
+  private clearGitProcessCloseTimer(): void {
+    if (this.gitProcessCloseTimer == null) return;
+    window.clearTimeout(this.gitProcessCloseTimer);
+    this.gitProcessCloseTimer = null;
+  }
+
+  private endRemoteBusy(ok: boolean, output?: string): void {
+    this.remoteBusy.set(null);
+    this.finishGitProcess(ok, output);
   }
 
   private async bindReleaseProgressListener(): Promise<void> {
@@ -3769,6 +3856,7 @@ export class AppStore {
               this.refreshQueued = true;
               return;
             }
+            if (this.repoBooting) return;
             if (this.refreshInFlight || this.workingTreeRefreshInFlight) {
               this.refreshQueued = true;
               return;
@@ -5143,7 +5231,9 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path || !branch.trim()) return false;
     const remote = this.pushRemoteName();
-    if (!(await this.beginRemoteBusy('push'))) return false;
+    if (!(await this.beginRemoteBusy('push', `git push -u ${remote} ${branch.trim()}`))) return false;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() =>
         this.tauri.push(path, {
@@ -5153,17 +5243,20 @@ export class AppStore {
         }),
       );
       await this.refreshRepo();
-      this.showToast(result.message || `Pushed ${branch.trim()} to ${remote}`, {
+      output = result.message || `Pushed ${branch.trim()} to ${remote}`;
+      this.showToast(output, {
         kind: 'success',
         durationMs: 3200,
         category: 'push',
       });
+      ok = true;
       return true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
       return false;
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -5230,7 +5323,12 @@ export class AppStore {
 
   async fetchWithSavedOptions(): Promise<void> {
     const s = this.settings();
-    this.armRemoteBusy('fetch');
+    const command = this.fetchCommand({
+      allRemotes: s.fetchAllRemotes,
+      prune: s.fetchPrune,
+      tags: s.fetchTags,
+    });
+    this.armRemoteBusy('fetch', command);
     await this.fetchRemote(undefined, {
       allRemotes: s.fetchAllRemotes,
       prune: s.fetchPrune,
@@ -5244,13 +5342,21 @@ export class AppStore {
   ): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) {
-      if (this.remoteBusy() === 'fetch') this.remoteBusy.set(null);
+      if (this.remoteBusy() === 'fetch') this.endRemoteBusy(false);
       return;
     }
-    if (!(await this.beginRemoteBusy('fetch'))) return;
     const allRemotes = opts?.allRemotes ?? false;
     const prune = opts?.prune ?? false;
     const tags = opts?.tags ?? false;
+    const command = this.fetchCommand({
+      remote: remote?.trim() || this.pushRemoteName(),
+      allRemotes,
+      prune,
+      tags,
+    });
+    if (!(await this.beginRemoteBusy('fetch', command))) return;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.runRemoteWithAccountRetry(() =>
         this.withRepoMutation(() =>
@@ -5263,19 +5369,36 @@ export class AppStore {
         ),
       );
       await this.refreshRepo();
+      output = result.message || 'Fetched from remote';
       if (opts?.toast !== false) {
         this.toastGitIntegrate(
-          result.message || 'Fetched from remote',
+          output,
           'Fetched from remote',
           allRemotes ? 'all remotes' : remote?.trim() || this.pushRemoteName() || null,
           'fetch',
         );
       }
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
+  }
+
+  private fetchCommand(opts: {
+    remote?: string | null;
+    allRemotes?: boolean;
+    prune?: boolean;
+    tags?: boolean;
+  }): string {
+    const parts = ['git', 'fetch', '--progress'];
+    if (opts.allRemotes) parts.push('--all');
+    if (opts.prune) parts.push('--prune');
+    if (opts.tags) parts.push('--tags');
+    if (!opts.allRemotes && opts.remote?.trim()) parts.push(opts.remote.trim());
+    return parts.join(' ');
   }
 
   async fetchAllRecent(): Promise<void> {
@@ -5315,19 +5438,24 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     const remote = name.trim();
     if (!path || !remote) return;
-    if (!(await this.beginRemoteBusy('fetch'))) return;
+    if (!(await this.beginRemoteBusy('fetch', `git fetch --prune ${remote}`))) return;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() => this.tauri.pruneRemote(path, remote));
       await this.refreshRepo();
-      this.showToast(result.message || `Pruned ${remote}`, {
+      output = result.message || `Pruned ${remote}`;
+      this.showToast(output, {
         kind: 'success',
         durationMs: 3200,
         category: 'fetch',
       });
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -5339,7 +5467,9 @@ export class AppStore {
       this.showWarning('No remotes configured');
       return;
     }
-    if (!(await this.beginRemoteBusy('fetch'))) return;
+    if (!(await this.beginRemoteBusy('fetch', 'git remote prune'))) return;
+    let ok = false;
+    let output = '';
     try {
       let lastMessage = '';
       for (const remote of remotes) {
@@ -5347,27 +5477,35 @@ export class AppStore {
         lastMessage = result.message || `Pruned ${remote.name}`;
       }
       await this.refreshRepo();
-      this.showToast(lastMessage || 'Pruned remotes', {
+      output = lastMessage || 'Pruned remotes';
+      this.showToast(output, {
         kind: 'success',
         durationMs: 3200,
         category: 'fetch',
       });
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
   async pullRemote(rebase = false): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) {
-      if (this.remoteBusy() === 'pull') this.remoteBusy.set(null);
+      if (this.remoteBusy() === 'pull') this.endRemoteBusy(false);
       return;
     }
-    if (!(await this.beginRemoteBusy('pull'))) return;
+    const remote = this.pushRemoteName();
+    const command = rebase
+      ? `git pull --progress --rebase ${remote}`.trim()
+      : `git pull --progress ${remote}`.trim();
+    if (!(await this.beginRemoteBusy('pull', command))) return;
+    let ok = false;
+    let output = '';
     try {
-      const remote = this.pushRemoteName();
       const result = await this.runRemoteWithAccountRetry(() =>
         this.withRepoMutation(() =>
           rebase
@@ -5376,25 +5514,29 @@ export class AppStore {
         ),
       );
       if (!result.ok) {
+        output = result.message;
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
+      output = result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote');
       this.toastGitIntegrate(
-        result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote'),
+        output,
         rebase ? 'Pulled with rebase' : 'Pulled from remote',
         this.status()?.upstream ?? this.pushRemoteName() ?? null,
         'pull',
       );
+      ok = true;
     } catch (err) {
       const message = rawErrorMessage(err);
+      output = message;
       if (message.toLowerCase().includes('conflict')) {
         await this.handleConflictResult({ ok: false, message });
         return;
       }
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -5436,12 +5578,27 @@ export class AppStore {
 
     const pushOpts = await this.preparePushOptions(status);
     if (!pushOpts) return false;
-    if (!(await this.beginRemoteBusy('push'))) return false;
+    const remote = this.pushRemoteName();
+    const branch = status?.branch?.trim() || '';
+    const command = [
+      'git',
+      'push',
+      '--progress',
+      pushOpts.setUpstream ? '-u' : '',
+      remote,
+      branch,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    if (!(await this.beginRemoteBusy('push', command))) return false;
+    let ok = false;
+    let output = '';
     try {
       if (opts?.runChecks !== false && !opts?.skipHooks) {
-        const ok = await this.runRepoChecks(['pre-push'], { silent: true });
-        if (!ok) {
-          this.showError(this.lastFailedCheckMessage('Push checks failed'));
+        const checksOk = await this.runRepoChecks(['pre-push'], { silent: true });
+        if (!checksOk) {
+          output = this.lastFailedCheckMessage('Push checks failed');
+          this.showError(output);
           return false;
         }
       }
@@ -5451,22 +5608,25 @@ export class AppStore {
         this.withRepoMutation(() =>
           this.tauri.push(path, {
             ...pushOpts,
-            remote: this.pushRemoteName(),
+            remote,
             skipHooks,
           }),
         ),
       );
       await this.refreshRepo();
+      output = result.message || 'Pushed to remote';
       if (opts?.toast !== false) {
-        this.showToast(result.message || 'Pushed to remote', {
+        this.showToast(output, {
           kind: 'success',
           durationMs: 3200,
           category: 'push',
         });
       }
+      ok = true;
       return true;
     } catch (err) {
       const raw = rawErrorMessage(err);
+      output = raw;
       if (/non-fast-forward|rejected|fetch first/i.test(raw)) {
         await this.openForcePushSafety(status?.branch);
         return false;
@@ -5474,7 +5634,7 @@ export class AppStore {
       this.showError(err);
       return false;
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -5553,20 +5713,30 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return;
     const remote = this.pushRemoteName(branch);
+    const name = branch?.trim() || '';
+    const command = ['git', 'push', '--progress', '--force-with-lease', remote, name]
+      .filter(Boolean)
+      .join(' ');
+    if (!(await this.beginRemoteBusy('push', command))) return;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() =>
         this.tauri.push(path, {
           forceWithLease: true,
           remote,
-          branch: branch?.trim() || undefined,
+          branch: name || undefined,
         }),
       );
       await this.refreshRepo();
-      this.showToast(result.message || `Force-pushed ${branch ?? 'branch'} with lease`, {
+      output = result.message || `Force-pushed ${branch ?? 'branch'} with lease`;
+      this.showToast(output, {
         kind: 'success',
         category: 'push',
       });
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       if (this.isForceWithLeaseRejected(err)) {
         this.showWarning(
           'Force-with-lease refused — the remote moved since your last fetch. Fetch first, then try again.',
@@ -5575,6 +5745,8 @@ export class AppStore {
         return;
       }
       this.showError(err);
+    } finally {
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -6233,7 +6405,9 @@ export class AppStore {
     this.loadingMoreCommits.set(true);
     this.commitLogWarmGen++;
     try {
-      const commits = await this.tauri.getCommitLog(path, next);
+      const commits = await this.tauri.getCommitLog(path, next, {
+        firstParent: this.historyFilter().firstParent,
+      });
       this.commitLogLimit.set(next);
       this.commitLogHasMore.set(commits.length >= next && next < COMMIT_LOG_MAX);
       this.setCommitsIfChanged(commits, next);
@@ -6907,19 +7081,25 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     const source = name.trim();
     if (!path || !source) return;
-    if (!(await this.beginRemoteBusy('merge'))) return;
+    if (!(await this.beginRemoteBusy('merge', `git merge ${source}`))) return;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, source, noFf));
       if (!result.ok) {
+        output = result.message;
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
-      this.toastGitIntegrate(result.message, `Merged ${source}`, source);
+      output = result.message || `Merged ${source}`;
+      this.toastGitIntegrate(output, `Merged ${source}`, source);
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -6931,27 +7111,38 @@ export class AppStore {
       this.showWarning('No base branch to merge from');
       return;
     }
-    if (!(await this.beginRemoteBusy('fetch'))) return;
+    const remote = parseRemoteRef(base.ref)?.remote;
+    const command = remote
+      ? `git fetch --progress ${remote} && git merge ${base.ref}`
+      : `git merge ${base.ref}`;
+    if (!(await this.beginRemoteBusy('fetch', command))) return;
+    let ok = false;
+    let output = '';
     try {
-      const remote = parseRemoteRef(base.ref)?.remote;
       if (remote) {
-        await this.runRemoteWithAccountRetry(() =>
+        const fetched = await this.runRemoteWithAccountRetry(() =>
           this.withRepoMutation(() => this.tauri.fetch(path, { remote })),
         );
+        if (fetched.message) output = fetched.message;
       }
       this.remoteBusy.set('merge');
+      this.openGitProcess('merge', `git merge ${base.ref}`);
       await this.paintBusy();
       const result = await this.withRepoMutation(() => this.tauri.mergeBranch(path, base.ref));
       if (!result.ok) {
+        output = [output, result.message].filter(Boolean).join('\n');
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
+      output = [output, result.message || `Merged ${base.label}`].filter(Boolean).join('\n');
       this.toastGitIntegrate(result.message, `Merged ${base.label}`, base.label);
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -6959,19 +7150,25 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     const target = onto.trim();
     if (!path || !target) return;
-    if (!(await this.beginRemoteBusy('rebase'))) return;
+    if (!(await this.beginRemoteBusy('rebase', `git rebase ${target}`))) return;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() => this.tauri.rebaseOnto(path, target));
       if (!result.ok) {
+        output = result.message;
         await this.handleConflictResult(result);
         return;
       }
       await this.refreshRepo();
-      this.toastGitIntegrate(result.message, `Rebased onto ${target}`, target);
+      output = result.message || `Rebased onto ${target}`;
+      this.toastGitIntegrate(output, `Rebased onto ${target}`, target);
+      ok = true;
     } catch (err) {
+      output = rawErrorMessage(err);
       this.showError(err);
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -6995,24 +7192,40 @@ export class AppStore {
 
     const pushOpts = await this.preparePushOptions(this.status(), branch);
     if (!pushOpts) return false;
-    if (!(await this.beginRemoteBusy('push'))) return false;
+    const remote = this.pushRemoteName(branch);
+    const command = [
+      'git',
+      'push',
+      '--progress',
+      pushOpts.setUpstream ? '-u' : '',
+      remote,
+      branch,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    if (!(await this.beginRemoteBusy('push', command))) return false;
+    let ok = false;
+    let output = '';
     try {
       const result = await this.withRepoMutation(() =>
         this.tauri.push(path, {
           ...pushOpts,
-          remote: this.pushRemoteName(branch),
+          remote,
           branch,
         }),
       );
       await this.refreshRepo();
-      this.showToast(result.message || `Pushed ${branch}`, {
+      output = result.message || `Pushed ${branch}`;
+      this.showToast(output, {
         kind: 'success',
         durationMs: 3200,
         category: 'push',
       });
+      ok = true;
       return true;
     } catch (err) {
       const raw = rawErrorMessage(err);
+      output = raw;
       if (/non-fast-forward|rejected|fetch first/i.test(raw)) {
         await this.openForcePushSafety(branch);
         return false;
@@ -7020,7 +7233,7 @@ export class AppStore {
       this.showError(err);
       return false;
     } finally {
-      this.remoteBusy.set(null);
+      this.endRemoteBusy(ok, output);
     }
   }
 
@@ -9449,6 +9662,7 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     confirmAbortOperation: raw.confirmAbortOperation ?? true,
     confirmAbortSecond: raw.confirmAbortSecond ?? true,
     confirmRemoveRemote: raw.confirmRemoveRemote ?? true,
+    keepGitProcessOpen: raw.keepGitProcessOpen ?? false,
     signOffByDefault: raw.signOffByDefault ?? false,
     pushAfterCommit: raw.pushAfterCommit ?? true,
     myBranchesOnly: raw.myBranchesOnly ?? false,

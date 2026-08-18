@@ -1,5 +1,5 @@
 use crate::commands::git_detect::detect_git;
-use crate::commands::identity::get_git_identity;
+use crate::commands::identity::git_identity_inner;
 use crate::infrastructure::{git_cli, sqlite};
 use crate::state::AppState;
 use crate::AppResult;
@@ -67,7 +67,7 @@ fn default_tools_ok() -> bool {
 
 fn build_items() -> Vec<OnboardingChecklistItem> {
     let git = detect_git().ok();
-    let identity = get_git_identity(None).ok();
+    let identity = git_identity_inner(None).ok();
 
     let git_status = if git.as_ref().map(|g| g.installed).unwrap_or(false) {
         ChecklistStatus::Verified
@@ -155,6 +155,13 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> AppResult<Onboarding
         .lock()
         .map_err(|e| crate::AppError::msg(e.to_string()))?;
     let stored = sqlite::get_onboarding(&db)?;
+    if stored.completed || stored.skipped {
+        return Ok(OnboardingStatusOutput {
+            completed: stored.completed,
+            skipped: stored.skipped,
+            items: vec![],
+        });
+    }
     let items = build_items();
     let _ = sqlite::set_onboarding_checklist(&db, &serde_json::to_string(&items)?);
     Ok(OnboardingStatusOutput {

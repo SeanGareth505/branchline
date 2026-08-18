@@ -146,9 +146,12 @@ pub async fn open_repository(
 }
 
 #[command]
-pub fn peek_repository(input: PathInput) -> AppResult<RepoSummary> {
-    let path = PathBuf::from(&input.path);
-    light_summary(&path, &input.path)
+pub async fn peek_repository(input: PathInput) -> AppResult<RepoSummary> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        light_summary(&path, &input.path)
+    })
+    .await
 }
 
 #[command]

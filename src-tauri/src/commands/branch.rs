@@ -102,8 +102,8 @@ pub async fn list_branches(
         )
     };
     run_blocking(move || {
-        git_cli::with_repo_lock(&path, |resolved| {
-            let mut branches = git2_repo::list_branches(resolved)?;
+        git_cli::resolve_repo_path(&path).and_then(|resolved| {
+            let mut branches = git2_repo::list_branches(&resolved)?;
             let lock_map: std::collections::HashMap<String, Option<String>> = locks
                 .into_iter()
                 .map(|l| (l.branch_name, l.reason))
@@ -268,14 +268,15 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
         );
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let (stdout, stderr) = git_cli::run_git_out_err(path, &refs)?;
-        let message = if stdout.is_empty() && stderr.is_empty() {
-            "Already up to date".into()
-        } else if stdout.is_empty() {
-            stderr
-        } else {
-            stdout
-        };
-        Ok(MutationOutput { ok: true, message })
+        let message = git_cli::combine_git_output(&stdout, &stderr);
+        Ok(MutationOutput {
+            ok: true,
+            message: if message.is_empty() {
+                "Already up to date".into()
+            } else {
+                message
+            },
+        })
     })
 }
 
@@ -283,11 +284,19 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
 pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let args = git_cli::pull_args(input.remote.as_deref(), false);
-        match git_cli::run_git_strings(path, &args) {
-            Ok(out) => Ok(MutationOutput {
-                ok: true,
-                message: if out.is_empty() { "Pulled".into() } else { out },
-            }),
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        match git_cli::run_git_out_err(path, &refs) {
+            Ok((stdout, stderr)) => {
+                let message = git_cli::combine_git_output(&stdout, &stderr);
+                Ok(MutationOutput {
+                    ok: true,
+                    message: if message.is_empty() {
+                        "Pulled".into()
+                    } else {
+                        message
+                    },
+                })
+            }
             Err(e) => {
                 let msg = e.to_string();
                 if msg.to_lowercase().contains("conflict") {
@@ -328,8 +337,9 @@ fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOut
     let needs_upstream = !git2_repo::branch_has_upstream(&path, &branch);
     let set_upstream = needs_upstream && input.set_upstream.unwrap_or(true);
 
-    let mut args = Vec::with_capacity(7);
+    let mut args = Vec::with_capacity(8);
     args.push("push");
+    args.push("--progress");
     if input.force_with_lease.unwrap_or(false) {
         args.push("--force-with-lease");
     }
@@ -343,7 +353,8 @@ fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOut
     args.push(branch.as_str());
 
     git_cli::with_repo_lock(&path, |path| {
-        let out = git_cli::run_git(path, &args)?;
+        let (stdout, stderr) = git_cli::run_git_out_err(path, &args)?;
+        let out = git_cli::combine_git_output(&stdout, &stderr);
         Ok(MutationOutput {
             ok: true,
             message: if !out.is_empty() {

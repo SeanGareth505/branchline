@@ -136,20 +136,24 @@ pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let rebase = input.rebase.unwrap_or(false);
         let args = git_cli::pull_args(input.remote.as_deref(), rebase);
-        let result = git_cli::run_git_strings(path, &args);
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let result = git_cli::run_git_out_err(path, &refs);
         match result {
-            Ok(out) => Ok(MutationOutput {
-                ok: true,
-                message: if out.is_empty() {
-                    if rebase {
-                        "Pulled with rebase".into()
+            Ok((stdout, stderr)) => {
+                let out = git_cli::combine_git_output(&stdout, &stderr);
+                Ok(MutationOutput {
+                    ok: true,
+                    message: if out.is_empty() {
+                        if rebase {
+                            "Pulled with rebase".into()
+                        } else {
+                            "Pulled".into()
+                        }
                     } else {
-                        "Pulled".into()
-                    }
-                } else {
-                    out
-                },
-            }),
+                        out
+                    },
+                })
+            }
             Err(e) => {
                 let msg = e.to_string();
                 if msg.to_lowercase().contains("conflict") {
