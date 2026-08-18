@@ -3725,7 +3725,7 @@ export class AppStore {
     ];
     if (willPush) {
       phases.push({ phase: 'pushing', message: 'Pushing commit and tags to origin…', delay: 320 });
-      phases.push({ phase: 'deploying', message: 'Waiting for installer builds to start…', delay: 400 });
+      phases.push({ phase: 'deploying', message: 'Waiting for GitHub to report installer jobs…', delay: 400 });
       phases.push({ phase: 'ci', message: 'Building release artifacts…', delay: 500 });
       phases.push({ phase: 'publishing', message: 'Publishing GitHub release…', delay: 400 });
     }
@@ -8721,7 +8721,7 @@ export class AppStore {
           path,
           tag,
           current.nextVersion,
-          'Still building after an hour — refresh to keep watching, or open the GitHub release.',
+          'Still building after an hour — refresh if GitHub already finished, or open the GitHub release.',
         );
         return;
       }
@@ -9180,8 +9180,8 @@ function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
     steps.push({
       id: 'deploying',
       phase: 'deploying',
-      label: 'Start builds',
-      message: 'Wait until installer jobs appear',
+      label: 'GitHub Actions',
+      message: 'Watch GitHub until installer jobs appear',
       status: 'pending',
     });
     steps.push({

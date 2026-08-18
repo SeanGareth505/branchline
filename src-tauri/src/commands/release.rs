@@ -1453,6 +1453,12 @@ struct GhWorkflowRun {
 }
 
 #[derive(Debug, Deserialize)]
+struct GhReleaseAsset {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhReleaseView {
     #[serde(default)]
@@ -1461,6 +1467,31 @@ struct GhReleaseView {
     is_draft: Option<bool>,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    assets: Vec<GhReleaseAsset>,
+}
+
+struct ReleaseSight {
+    url: Option<String>,
+    has_installers: bool,
+}
+
+fn installer_asset_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".dmg")
+        || lower.ends_with(".exe")
+        || lower.ends_with(".msi")
+        || lower.ends_with(".appimage")
+        || lower.ends_with(".deb")
+        || lower.ends_with(".rpm")
+        || lower.ends_with(".apk")
+        || lower.contains("latest.json")
+}
+
+fn assets_have_installers(assets: &[GhReleaseAsset]) -> bool {
+    assets
+        .iter()
+        .any(|asset| asset.name.as_deref().is_some_and(installer_asset_name))
 }
 
 fn github_pages_url(owner: &str, repo: &str) -> String {
@@ -1594,12 +1625,25 @@ fn evaluate_deploy(
     tag: &str,
     release_url: Option<String>,
     run: Option<WorkflowSnapshot>,
+    has_installers: bool,
 ) -> PollReleaseDeployOutput {
     let Some(run) = run else {
+        if has_installers {
+            if let Some(url) = release_url {
+                return urls.output(
+                    "success",
+                    "done",
+                    &live_release_message(tag),
+                    None,
+                    Some(url),
+                    Vec::new(),
+                );
+            }
+        }
         return urls.output(
             "pending",
             "deploying",
-            "Waiting for installer builds to start…",
+            "Waiting for GitHub to report installer jobs…",
             None,
             release_url,
             Vec::new(),
@@ -1649,7 +1693,7 @@ fn evaluate_deploy(
         let message = if release_url.is_some() {
             "Still building remaining installers…"
         } else if run.jobs.is_empty() {
-            "Waiting for installer builds to start…"
+            "Waiting for GitHub to report installer jobs…"
         } else {
             "Building installers…"
         };
@@ -1682,10 +1726,22 @@ fn evaluate_deploy(
             run.jobs,
         );
     }
+    if has_installers {
+        if let Some(url) = release_url {
+            return urls.output(
+                "success",
+                "done",
+                &live_release_message(tag),
+                run.run_url,
+                Some(url),
+                run.jobs,
+            );
+        }
+    }
     urls.output(
         "pending",
         "deploying",
-        "Waiting for installer builds…",
+        "Waiting for GitHub to report installer jobs…",
         run.run_url,
         release_url,
         run.jobs,
@@ -1791,21 +1847,32 @@ fn gh_list_runs(gh: &str, repo: &str, tag: &str) -> Option<Vec<GhWorkflowRun>> {
     }
 }
 
-fn fetch_gh_release_url(gh: &str, repo: &str, tag: &str) -> Option<String> {
-    Command::new(gh)
-        .args(["release", "view", tag, "-R", repo, "--json", "url,isDraft"])
+fn fetch_gh_release_sight(gh: &str, repo: &str, tag: &str) -> ReleaseSight {
+    let viewed = Command::new(gh)
+        .args([
+            "release",
+            "view",
+            tag,
+            "-R",
+            repo,
+            "--json",
+            "url,isDraft,assets",
+        ])
         .output()
         .ok()
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|raw| serde_json::from_str::<GhReleaseView>(&raw).ok())
-        .and_then(|r| {
-            if r.is_draft.unwrap_or(false) {
-                None
-            } else {
-                r.url
-            }
-        })
+        .and_then(|raw| serde_json::from_str::<GhReleaseView>(&raw).ok());
+    match viewed {
+        Some(release) if !release.is_draft.unwrap_or(false) => ReleaseSight {
+            url: release.url,
+            has_installers: assets_have_installers(&release.assets),
+        },
+        _ => ReleaseSight {
+            url: None,
+            has_installers: false,
+        },
+    }
 }
 
 #[derive(Clone)]
@@ -1967,14 +2034,23 @@ fn poll_deploy_with_gh(
     let (owner, repo_name) = repo.split_once('/')?;
     let urls = DeployUrls::for_repo(owner, repo_name);
     let cached = cached_deploy_run(repo, tag);
-    let release_url = cached
-        .as_ref()
-        .and_then(|entry| entry.release_url.clone())
-        .or_else(|| fetch_gh_release_url(&gh, repo, tag));
+    let sight = fetch_gh_release_sight(&gh, repo, tag);
+    let release_url = sight.url.clone().or_else(|| {
+        cached
+            .as_ref()
+            .and_then(|entry| entry.release_url.clone())
+    });
+    let has_installers = sight.has_installers;
     if let Some(cached) = &cached {
         if let Some(snapshot) = fetch_run_snapshot_with_gh(&gh, repo, cached.run_id) {
             remember_deploy_run(repo, tag, cached.run_id, release_url.clone());
-            return Some(evaluate_deploy(&urls, tag, release_url, Some(snapshot)));
+            return Some(evaluate_deploy(
+                &urls,
+                tag,
+                release_url,
+                Some(snapshot),
+                has_installers,
+            ));
         }
     }
     let runs = gh_list_runs(&gh, repo, tag)?;
@@ -1999,35 +2075,65 @@ fn poll_deploy_with_gh(
             .map(|id| fetch_run_jobs_with_gh(&gh, repo, id))
             .unwrap_or_default(),
     });
-    Some(evaluate_deploy(&urls, tag, release_url, snapshot))
+    Some(evaluate_deploy(
+        &urls,
+        tag,
+        release_url,
+        snapshot,
+        has_installers,
+    ))
 }
 
-fn fetch_release_url(
+fn fetch_release_sight(
     client: &reqwest::blocking::Client,
     base: &str,
     token: &str,
     full: &str,
     tag: &str,
-) -> Option<String> {
-    let resp = client
+) -> ReleaseSight {
+    let empty = ReleaseSight {
+        url: None,
+        has_installers: false,
+    };
+    let Some(resp) = client
         .get(format!("{base}/repos/{full}/releases/tags/{tag}"))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "Branchline")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .bearer_auth(token)
         .send()
-        .ok()?;
+        .ok()
+    else {
+        return empty;
+    };
     if !resp.status().is_success() {
-        return None;
+        return empty;
     }
-    let value = resp.json::<Value>().ok()?;
+    let Some(value) = resp.json::<Value>().ok() else {
+        return empty;
+    };
     if value.get("draft").and_then(|v| v.as_bool()) == Some(true) {
-        return None;
+        return empty;
     }
-    value
+    let url = value
         .get("html_url")
         .and_then(|v| v.as_str())
-        .map(str::to_string)
+        .map(str::to_string);
+    let has_installers = value
+        .get("assets")
+        .and_then(|v| v.as_array())
+        .is_some_and(|assets| {
+            assets.iter().any(|asset| {
+                asset
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(installer_asset_name)
+            })
+        });
+    ReleaseSight {
+        url,
+        has_installers,
+    }
 }
 
 fn fetch_workflow_runs(
@@ -2108,21 +2214,42 @@ fn poll_deploy_with_api(
     let token = connection.token.trim();
     let client = reqwest::blocking::Client::new();
     let cached = cached_deploy_run(&full, tag);
-    let release_url = cached
-        .as_ref()
-        .and_then(|entry| entry.release_url.clone())
-        .or_else(|| fetch_release_url(&client, base, token, &full, tag));
+    let sight = fetch_release_sight(&client, base, token, &full, tag);
+    let release_url = sight.url.clone().or_else(|| {
+        cached
+            .as_ref()
+            .and_then(|entry| entry.release_url.clone())
+    });
+    let has_installers = sight.has_installers;
     if let Some(cached) = &cached {
         if let Some(snapshot) =
             fetch_run_snapshot_with_api(&client, base, token, owner, repo, cached.run_id)
         {
             remember_deploy_run(&full, tag, cached.run_id, release_url.clone());
-            return Ok(evaluate_deploy(&urls, tag, release_url, Some(snapshot)));
+            return Ok(evaluate_deploy(
+                &urls,
+                tag,
+                release_url,
+                Some(snapshot),
+                has_installers,
+            ));
         }
     }
     let runs = match fetch_workflow_runs(&client, base, token, &full, tag) {
         Ok(runs) => runs,
         Err(_) => {
+            if has_installers {
+                if let Some(url) = release_url {
+                    return Ok(urls.output(
+                        "success",
+                        "done",
+                        &live_release_message(tag),
+                        None,
+                        Some(url),
+                        Vec::new(),
+                    ));
+                }
+            }
             return Ok(urls.output(
                 "unavailable",
                 "deploying",
@@ -2167,7 +2294,13 @@ fn poll_deploy_with_api(
                 .unwrap_or_default(),
         }
     });
-    Ok(evaluate_deploy(&urls, tag, release_url, snapshot))
+    Ok(evaluate_deploy(
+        &urls,
+        tag,
+        release_url,
+        snapshot,
+        has_installers,
+    ))
 }
 
 fn poll_release_deploy_blocking(
@@ -2510,6 +2643,14 @@ mod tests {
         }
     }
 
+    fn eval(
+        tag: &str,
+        release_url: Option<String>,
+        run: Option<WorkflowSnapshot>,
+    ) -> PollReleaseDeployOutput {
+        evaluate_deploy(&urls(), tag, release_url, run, false)
+    }
+
     #[test]
     fn tag_matches_head_branch_and_title() {
         assert!(tag_matches_run("v0.7.4", Some("v0.7.4"), None, None, None));
@@ -2581,8 +2722,7 @@ mod tests {
                 },
             ],
         };
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.7.36",
             Some("https://github.com/acme/branchline/releases/tag/v0.7.36".into()),
             Some(snapshot),
@@ -2593,8 +2733,7 @@ mod tests {
 
     #[test]
     fn deploy_stays_running_if_release_exists_before_ci_finishes() {
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.7.4",
             Some("https://github.com/acme/branchline/releases/tag/v0.7.4".into()),
             Some(run("in_progress", "")),
@@ -2606,8 +2745,7 @@ mod tests {
 
     #[test]
     fn deploy_is_live_only_after_workflow_success_and_release() {
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.7.4",
             Some("https://github.com/acme/branchline/releases/tag/v0.7.4".into()),
             Some(run("completed", "success")),
@@ -2617,15 +2755,39 @@ mod tests {
     }
 
     #[test]
+    fn deploy_waits_when_workflow_is_missing() {
+        let result = eval(
+            "v0.8.15",
+            Some("https://github.com/acme/branchline/releases/tag/v0.8.15".into()),
+            None,
+        );
+        assert_eq!(result.status, "pending");
+        assert_eq!(result.phase, "deploying");
+    }
+
+    #[test]
+    fn deploy_is_live_when_installers_exist_without_a_matched_run() {
+        let result = evaluate_deploy(
+            &urls(),
+            "v0.8.15",
+            Some("https://github.com/acme/branchline/releases/tag/v0.8.15".into()),
+            None,
+            true,
+        );
+        assert_eq!(result.status, "success");
+        assert_eq!(result.phase, "done");
+    }
+
+    #[test]
     fn deploy_waits_to_publish_when_build_succeeds_without_release() {
-        let result = evaluate_deploy(&urls(), "v0.7.4", None, Some(run("completed", "success")));
+        let result = eval("v0.7.4", None, Some(run("completed", "success")));
         assert_eq!(result.status, "running");
         assert_eq!(result.phase, "publishing");
     }
 
     #[test]
     fn deploy_reports_workflow_failure() {
-        let result = evaluate_deploy(&urls(), "v0.7.4", None, Some(run("completed", "failure")));
+        let result = eval("v0.7.4", None, Some(run("completed", "failure")));
         assert_eq!(result.status, "failure");
         assert_eq!(result.phase, "error");
     }
@@ -2657,8 +2819,7 @@ mod tests {
                 },
             ],
         };
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.7.5",
             Some("https://github.com/acme/branchline/releases/tag/v0.7.5".into()),
             Some(snapshot),
@@ -2694,8 +2855,7 @@ mod tests {
                 },
             ],
         };
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.7.8",
             Some("https://github.com/acme/branchline/releases/tag/v0.7.8".into()),
             Some(snapshot),
@@ -2717,7 +2877,7 @@ mod tests {
                 job("Linux", "completed", "skipped"),
             ],
         };
-        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
+        let result = eval("v0.8.0", None, Some(snapshot));
         assert_eq!(result.status, "failure");
         assert_eq!(result.phase, "error");
         assert!(result.message.contains("create-release"));
@@ -2734,15 +2894,14 @@ mod tests {
                 job("Windows", "in_progress", ""),
             ],
         };
-        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
+        let result = eval("v0.8.0", None, Some(snapshot));
         assert_eq!(result.status, "running");
         assert_eq!(result.phase, "ci");
     }
 
     #[test]
     fn deploy_fails_on_startup_failure() {
-        let result = evaluate_deploy(
-            &urls(),
+        let result = eval(
             "v0.8.0",
             None,
             Some(run("completed", "startup_failure")),
@@ -2759,7 +2918,7 @@ mod tests {
             run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
             jobs: vec![job("create-release", "completed", "failure")],
         };
-        let result = evaluate_deploy(&urls(), "v0.8.0", None, Some(snapshot));
+        let result = eval("v0.8.0", None, Some(snapshot));
         assert_eq!(result.status, "failure");
         assert_eq!(result.phase, "error");
     }

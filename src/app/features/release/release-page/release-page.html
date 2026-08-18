@@ -9,45 +9,26 @@
         />
         @if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
+        } @else if (store.releasingLocally()) {
+          <span class="live-badge">In progress</span>
+        } @else if (activity()?.needsRefresh) {
+          <span class="watch-badge">Paused</span>
+        } @else if (
+          activity()?.phase === 'deploying' ||
+          activity()?.phase === 'ci' ||
+          activity()?.phase === 'publishing'
+        ) {
+          <span class="watch-badge">Watching GitHub</span>
         } @else if (busy()) {
           <span class="live-badge">In progress</span>
         } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
           <span class="done-badge">Live</span>
-        } @else if (activity()?.needsRefresh) {
-          <span class="live-badge">Paused</span>
         }
       </div>
       <p>{{ subtitle() }}</p>
     </div>
     @if (hasRepo() && configured()) {
       <div class="hero-actions">
-        @if (canRefreshDeploy()) {
-          <button
-            type="button"
-            class="bl-btn"
-            title="Reload installer build status from GitHub"
-            [disabled]="refreshLocked() || store.releaseDeployChecking()"
-            (click)="refreshDeploy()"
-          >
-            <ng-icon
-              name="lucideRefreshCw"
-              size="14"
-              [class.spin]="store.releaseDeployChecking()"
-            />
-            Refresh
-          </button>
-        }
-        @if (deployUrl(); as deploy) {
-          <button
-            type="button"
-            class="bl-btn"
-            title="Open this deploy on GitHub Actions"
-            (click)="openDeploy()"
-          >
-            <ng-icon name="lucideExternalLink" size="14" />
-            Open deploy
-          </button>
-        }
         @if (!activity()) {
           <button
             type="button"
@@ -61,7 +42,7 @@
         <button
           type="button"
           class="bl-btn bl-btn-primary"
-          [disabled]="busy()"
+          [disabled]="busy() || store.releasingLocally()"
           (click)="startRelease()"
         >
           <ng-icon name="lucideRocket" size="14" />

@@ -48,6 +48,8 @@ import { UpdateBanner } from '../../features/updates/update-banner/update-banner
 import { WhatsNewDialog } from '../../features/updates/whats-new-dialog/whats-new-dialog';
 import { UpdateService } from '../../core/update.service';
 import { detectWindowControlSide } from '../../core/window-controls';
+import { handleTitlebarMouseDown } from '../../core/window-chrome';
+import { TauriService } from '../../core/tauri.service';
 
 type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
 
@@ -107,6 +109,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
 export class Shell {
   readonly store = inject(AppStore);
   readonly updates = inject(UpdateService);
+  private readonly tauri = inject(TauriService);
   readonly windowControls = detectWindowControlSide();
   readonly macosTrafficLights = this.windowControls === 'macos';
   private readonly releaseDialog = inject(ReleaseDialogService);
@@ -194,4 +197,9 @@ export class Shell {
       ? `Ship versions, track release progress — ${label}`
       : 'Ship versions, track release progress';
   });
+
+  onTitlebarMouseDown(event: MouseEvent): void {
+    if (this.tauri.isDummyBackend) return;
+    handleTitlebarMouseDown(event);
+  }
 }

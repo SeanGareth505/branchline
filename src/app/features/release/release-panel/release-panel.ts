@@ -27,12 +27,12 @@ import {
 type ArtifactStatus = 'success' | 'failure' | 'pending' | 'queued' | 'unknown';
 type JobFilter = 'all' | 'queued' | 'building' | 'ready' | 'failed';
 
-interface ReleaseLinkCard {
+interface ToolbarAction {
   id: string;
   label: string;
-  hint: string;
-  url: string;
-  icon: string;
+  primary: boolean;
+  icon: string | null;
+  title: string;
 }
 
 interface JobChildView {
@@ -67,6 +67,8 @@ interface ProgressStepView {
   artifacts: ArtifactView[];
   actionUrl: string | null;
   actionLabel: string;
+  waitingRemote: boolean;
+  stale: boolean;
 }
 
 @Component({
@@ -127,6 +129,29 @@ export class ReleasePanel {
     return !!activity?.tag && !!activity.willPush && !activity.needsPush;
   });
 
+  readonly watchingGithub = computed(() => {
+    const activity = this.activity();
+    if (!activity || activity.needsRefresh || activity.needsPush) return false;
+    return (
+      activity.phase === 'deploying' ||
+      activity.phase === 'ci' ||
+      activity.phase === 'publishing'
+    );
+  });
+
+  readonly githubWaitEmpty = computed(() => {
+    return this.watchingGithub() && this.deployJobs().length === 0;
+  });
+
+  readonly githubWatchStale = computed(() => {
+    if (!this.githubWaitEmpty()) return false;
+    const activity = this.activity();
+    const step = activity?.steps.find((item) => item.phase === 'deploying');
+    const start = step?.at ?? activity?.startedAt;
+    if (!start) return false;
+    return this.now() - start > 90_000;
+  });
+
   readonly refreshLocked = computed(() => {
     const phase = this.activity()?.phase;
     if (!this.busy()) return false;
@@ -162,43 +187,88 @@ export class ReleasePanel {
     return activity.releaseUrl?.trim() || tagWebUrl(this.originUrl(), tag);
   });
 
-  readonly linkCards = computed((): ReleaseLinkCard[] => {
+  readonly toolbarActions = computed((): ToolbarAction[] => {
     const activity = this.activity();
     if (!activity) return [];
-    const cards: ReleaseLinkCard[] = [];
+    const actions: ToolbarAction[] = [];
+
+    if (this.showPushFallback()) {
+      actions.push({
+        id: 'push',
+        label: 'Push release',
+        primary: true,
+        icon: 'lucideUpload',
+        title: 'Push the release tag to origin',
+      });
+    }
+
+    if (this.canRefreshDeploy() && (this.githubWatchStale() || this.trackingPaused())) {
+      actions.push({
+        id: 'refresh',
+        label: 'Refresh status',
+        primary: true,
+        icon: 'lucideRefreshCw',
+        title: 'Reload installer build status from GitHub',
+      });
+    }
+
     const deploy = this.deployUrl();
-    if (deploy) {
-      cards.push({
+    if (deploy && !this.shippedLive()) {
+      const hasDeployRun = !!activity.deployRunUrl?.trim();
+      actions.push({
         id: 'deploy',
-        label: activity.deployRunUrl ? 'Open deploy' : 'Open Actions',
-        hint: activity.deployRunUrl
+        label: hasDeployRun ? 'Open deploy' : 'Open Actions',
+        primary: !this.showPushFallback() && !this.githubWatchStale() && !this.trackingPaused(),
+        icon: hasDeployRun ? 'lucideExternalLink' : 'lucideWorkflow',
+        title: hasDeployRun
           ? 'Open this installer run on GitHub Actions'
           : 'Open the release workflow on GitHub Actions',
-        url: deploy,
-        icon: 'lucideWorkflow',
       });
     }
+
     const release = this.githubReleaseUrl();
-    if (release && (activity.releaseUrl || activity.phase === 'publishing' || activity.phase === 'done')) {
-      cards.push({
+    if (release && (activity.releaseUrl || activity.phase === 'done')) {
+      actions.push({
         id: 'release',
         label: 'Open release',
-        hint: activity.tag,
-        url: release,
+        primary: false,
         icon: 'lucideTag',
+        title: activity.tag,
       });
     }
+
     const pageUrl = activity.websiteUrl?.trim();
     if (pageUrl && (activity.releaseUrl || activity.phase === 'done')) {
-      cards.push({
+      actions.push({
         id: 'website',
         label: 'Download page',
-        hint: 'Updates & installers',
-        url: pageUrl,
+        primary: false,
         icon: 'lucideGlobe',
+        title: 'Updates and installers',
       });
     }
-    return cards;
+
+    if (this.trackingPaused() && !this.githubLinked()) {
+      actions.push({
+        id: 'github',
+        label: 'Link GitHub',
+        primary: false,
+        icon: 'lucideGithub',
+        title: 'Connect GitHub to keep tracking this release',
+      });
+    }
+
+    if (this.shippedLive()) {
+      actions.push({
+        id: 'updates',
+        label: 'Check for updates',
+        primary: false,
+        icon: 'lucideDownload',
+        title: 'Check for a newer Branchline build',
+      });
+    }
+
+    return actions;
   });
 
   readonly deployJobs = computed(() => this.activity()?.deployJobs ?? []);
@@ -272,17 +342,23 @@ export class ReleasePanel {
     const origin = this.originUrl();
     return activity.steps.map((step, index) => {
       const action = stepOpenAction(step, activity, origin);
+      const waitingRemote =
+        step.status === 'active' &&
+        (step.phase === 'ci' || step.phase === 'deploying' || step.phase === 'publishing');
+      const stale = waitingRemote && this.githubWatchStale();
       return {
         id: step.id,
         status: step.status,
-        label: step.label,
-        detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
-        stateLabel: stepStateLabel(step.status),
+        label: step.phase === 'deploying' ? 'GitHub Actions' : step.label,
+        detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : '', stale),
+        stateLabel: stepStateLabel(step.status, waitingRemote, stale),
         duration: stepDuration(activity.steps, index, now),
         when: formatClock(step.at),
         artifacts: nestId === step.id ? artifacts : [],
         actionUrl: action?.url ?? null,
         actionLabel: action?.label ?? '',
+        waitingRemote,
+        stale,
       };
     });
   });
@@ -321,7 +397,8 @@ export class ReleasePanel {
     if (!activity) return 'idle';
     if (activity.phase === 'error') return 'failure';
     if (activity.phase === 'done' && !activity.needsRefresh) return 'success';
-    if (activity.needsRefresh) return 'paused';
+    if (activity.needsRefresh || this.githubWatchStale()) return 'paused';
+    if (this.githubWaitEmpty()) return 'watching';
     if (activity.phase === 'ci' || activity.phase === 'deploying' || activity.phase === 'publishing') {
       return 'running';
     }
@@ -340,6 +417,12 @@ export class ReleasePanel {
     if (activity.needsRefresh) {
       return `Tracking paused for ${activity.productName} ${activity.nextVersion}`;
     }
+    if (this.githubWatchStale()) {
+      return `GitHub may already have finished`;
+    }
+    if (this.githubWaitEmpty()) {
+      return `Waiting on GitHub for ${activity.productName} ${activity.nextVersion}`;
+    }
     if (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') {
       return `Building ${activity.productName} ${activity.nextVersion}`;
     }
@@ -352,6 +435,8 @@ export class ReleasePanel {
     if (activity.phase === 'done' && !activity.needsRefresh) return 'Complete';
     if (activity.phase === 'error') return 'Failed';
     if (activity.needsRefresh) return 'Paused — refresh to continue';
+    if (this.githubWatchStale()) return 'Status may be behind GitHub';
+    if (this.githubWaitEmpty()) return 'Watching GitHub';
     return phaseLabel(activity.phase);
   });
 
@@ -379,25 +464,6 @@ export class ReleasePanel {
     return activity.message || '';
   });
 
-  readonly primaryActions = computed((): { id: string; label: string; primary: boolean }[] => {
-    const actions: { id: string; label: string; primary: boolean }[] = [];
-    if (this.showPushFallback()) {
-      actions.push({ id: 'push', label: 'Push release', primary: true });
-    }
-    if (this.deployUrl() && !this.shippedLive()) {
-      actions.push({ id: 'deploy', label: 'Open deploy', primary: !this.showPushFallback() });
-    }
-    if (this.githubReleaseUrl() && (this.activity()?.releaseUrl || this.activity()?.phase === 'done')) {
-      actions.push({ id: 'release', label: 'Open release', primary: false });
-    }
-    if (this.trackingPaused()) {
-      if (!this.githubLinked()) {
-        actions.push({ id: 'github', label: 'Link GitHub', primary: false });
-      }
-    }
-    return actions;
-  });
-
   readonly finalStatus = computed(() => {
     const activity = this.activity();
     if (!activity) return '';
@@ -406,6 +472,12 @@ export class ReleasePanel {
     }
     if (activity.needsRefresh) {
       return activity.message || 'Refresh to keep watching the installer builds.';
+    }
+    if (this.githubWatchStale()) {
+      return 'No installer jobs here yet. If Actions already finished, refresh to catch up.';
+    }
+    if (this.githubWaitEmpty()) {
+      return 'The tag is on origin. GitHub usually reports jobs within a minute.';
     }
     if (activity.phase === 'done' && activity.needsPush) {
       return 'Tagged locally. Push to origin to publish.';
@@ -466,6 +538,7 @@ export class ReleasePanel {
     else if (id === 'updates') this.checkForUpdates();
     else if (id === 'deploy') this.openLink(this.deployUrl());
     else if (id === 'release') this.openLink(this.githubReleaseUrl());
+    else if (id === 'website') this.openLink(this.activity()?.websiteUrl);
   }
 
   async copyTag(): Promise<void> {
@@ -573,6 +646,7 @@ function stepDetail(
   step: ReleaseActivityStep,
   activity: ReleaseActivity,
   jobSummary: string,
+  stale: boolean,
 ): string {
   if (step.status === 'pending') return step.message;
   if (step.phase === 'bumping' && activity.currentVersion !== activity.nextVersion) {
@@ -588,7 +662,10 @@ function stepDetail(
     return `Pushed ${activity.tag} to origin`;
   }
   if (step.phase === 'ci' || step.phase === 'deploying') {
-    return jobSummary || step.message;
+    if (jobSummary) return jobSummary;
+    if (stale) return 'If GitHub already finished, refresh to sync this list';
+    if (step.status === 'active') return 'Waiting for GitHub to report installer jobs';
+    return step.message;
   }
   if (step.phase === 'publishing' && (activity.releaseUrl || step.status === 'done')) {
     return 'GitHub release is live';
@@ -596,7 +673,13 @@ function stepDetail(
   return step.message;
 }
 
-function stepStateLabel(status: ReleaseActivityStep['status']): string {
+function stepStateLabel(
+  status: ReleaseActivityStep['status'],
+  waitingRemote: boolean,
+  stale: boolean,
+): string {
+  if (stale) return 'Check GitHub';
+  if (waitingRemote && status === 'active') return 'Waiting on GitHub';
   switch (status) {
     case 'done':
       return 'Done';
@@ -687,7 +770,7 @@ function phaseLabel(phase: ReleasePhase): string {
     case 'pushing':
       return 'Pushing to origin…';
     case 'deploying':
-      return 'Waiting for installer builds…';
+      return 'Watching GitHub…';
     case 'ci':
       return 'Building installers…';
     case 'publishing':

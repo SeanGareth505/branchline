@@ -50,6 +50,7 @@
   flex-wrap: wrap;
 }
 
+.watch-badge,
 .live-badge,
 .done-badge,
 .error-badge {
@@ -60,6 +61,12 @@
   letter-spacing: 0.06em;
   padding: 0.2rem 0.45rem;
   border-radius: 6px;
+}
+
+.watch-badge {
+  color: var(--swatch-3);
+  background: color-mix(in srgb, var(--swatch-3) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--swatch-3) 30%, transparent);
 }
 
 .live-badge {

@@ -5,7 +5,7 @@
   [class.macos-onboarding]="macosTrafficLights && store.view() === 'onboarding'"
 >
   @if (macosTrafficLights && store.view() === 'onboarding') {
-    <div class="macos-traffic-spacer" data-tauri-drag-region></div>
+    <div class="macos-traffic-spacer" (mousedown)="onTitlebarMouseDown($event)"></div>
   }
 
   @if (store.isDummyBackend) {
@@ -21,8 +21,11 @@
   <app-update-banner />
 
   @if (store.view() !== 'onboarding') {
-    <header class="chrome" data-tauri-drag-region>
-      <div class="chrome-nav">
+    <header class="chrome">
+      <div class="chrome-nav" (mousedown)="onTitlebarMouseDown($event)">
+        @if (macosTrafficLights) {
+          <div class="chrome-drag-lead" aria-hidden="true"></div>
+        }
         <div class="chrome-left">
           <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home" title="Go to repository view">
             <app-brand-mark [size]="18" />

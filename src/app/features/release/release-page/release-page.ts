@@ -17,10 +17,6 @@ import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { ReleasePanel } from '../release-panel/release-panel';
-import {
-  actionsWebUrl,
-  releaseWorkflowWebUrl,
-} from '../../../shared/git/repo-links';
 
 @Component({
   selector: 'app-release-page',
@@ -49,35 +45,6 @@ export class ReleasePage {
   readonly activity = computed(() => this.store.releaseActivity());
   readonly configured = computed(() => !!this.status()?.available);
 
-  readonly canRefreshDeploy = computed(() => {
-    const activity = this.activity();
-    return !!activity?.tag && !!activity.willPush && !activity.needsPush;
-  });
-
-  readonly deployUrl = computed(() => {
-    const activity = this.activity();
-    if (!activity?.willPush || activity.needsPush) return null;
-    return (
-      activity.deployRunUrl?.trim() ||
-      activity.actionsPageUrl?.trim() ||
-      releaseWorkflowWebUrl(this.store.originFetchUrl() ?? '') ||
-      actionsWebUrl(this.store.originFetchUrl() ?? '')
-    );
-  });
-
-  readonly refreshLocked = computed(() => {
-    const phase = this.activity()?.phase;
-    if (!this.busy()) return false;
-    return (
-      phase === 'preparing' ||
-      phase === 'bumping' ||
-      phase === 'staging' ||
-      phase === 'committing' ||
-      phase === 'tagging' ||
-      phase === 'pushing'
-    );
-  });
-
   readonly subtitle = computed(() => {
     const activity = this.activity();
     if (
@@ -91,6 +58,18 @@ export class ReleasePage {
     }
     if (activity?.needsRefresh) {
       return activity.message || 'Refresh to keep watching the installer builds.';
+    }
+    if (
+      activity &&
+      !activity.needsPush &&
+      (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') &&
+      !(activity.deployJobs ?? []).length
+    ) {
+      const started = activity.steps.find((step) => step.phase === 'deploying')?.at ?? activity.startedAt;
+      if (started && Date.now() - started > 90_000) {
+        return 'No installer jobs yet. Refresh if GitHub already finished.';
+      }
+      return 'Tag is on origin. Waiting for GitHub to report installer jobs.';
     }
     if (activity?.phase === 'error') {
       return activity.message || 'The last release failed.';
@@ -213,16 +192,6 @@ export class ReleasePage {
 
   startRelease(): void {
     void this.store.startReleaseFlow();
-  }
-
-  refreshDeploy(): void {
-    void this.store.refreshReleaseDeploy();
-  }
-
-  openDeploy(): void {
-    const url = this.deployUrl();
-    if (!url) return;
-    void this.tauri.openExternalUrl(url);
   }
 
   trackLatest(): void {

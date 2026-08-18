@@ -75,6 +75,7 @@
 }
 
 .chrome-nav {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -82,6 +83,16 @@
   min-height: 2.55rem;
   padding: 0.25rem calc(0.75rem + var(--window-controls-right, 0px)) 0.25rem
     calc(0.75rem + var(--window-controls-left, 0px));
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.chrome-drag-lead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--window-controls-left);
   -webkit-app-region: drag;
   app-region: drag;
 }

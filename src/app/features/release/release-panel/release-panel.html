@@ -1,5 +1,5 @@
 <div class="release">
-  @if (busy()) {
+  @if (store.releasingLocally()) {
     <div class="busy-strip" role="status" aria-live="polite">
       <span class="busy-track" aria-hidden="true"></span>
       <span class="busy-label">{{ statusLabel() }}</span>
@@ -17,7 +17,7 @@
           <p>{{ statusDetail() }}</p>
         </div>
         <div class="status-meta">
-            @if (canRefreshDeploy()) {
+            @if (canRefreshDeploy() && !githubWatchStale() && !trackingPaused()) {
               <button
                 type="button"
                 class="tag-btn"
@@ -33,17 +33,6 @@
                 Refresh
               </button>
             }
-            @if (deployUrl(); as deploy) {
-              <button
-                type="button"
-                class="tag-btn"
-                title="Open this deploy on GitHub Actions"
-                (click)="openLink(deploy)"
-              >
-                <ng-icon name="lucideExternalLink" size="11" />
-                Open deploy
-              </button>
-            }
             <button type="button" class="tag-btn mono" (click)="copyTag()" [title]="'Copy ' + activity.tag">
               {{ activity.tag }}
               <ng-icon name="lucideCopy" size="11" />
@@ -51,42 +40,42 @@
         </div>
       </div>
 
-      @if (linkCards().length || shippedLive()) {
-        <div class="link-chips">
-          @for (card of linkCards(); track card.id) {
-            <button
-              type="button"
-              class="link-chip"
-              (click)="openLink(card.url)"
-              [title]="card.hint"
-            >
-              <ng-icon [name]="card.icon" size="12" />
-              <span>{{ card.label }}</span>
-            </button>
-          }
-          @if (shippedLive()) {
-            <button
-              type="button"
-              class="link-chip"
-              title="Check for a newer Branchline build"
-              (click)="checkForUpdates()"
-            >
-              <ng-icon name="lucideDownload" size="12" />
-              <span>Check for updates</span>
-            </button>
-          }
+      @if (githubWatchStale() || trackingPaused()) {
+        <div class="watch-note" [attr.data-state]="trackingPaused() ? 'paused' : 'stale'">
+          <ng-icon name="lucideCircleAlert" size="15" />
+          <div class="watch-note-copy">
+            <p class="watch-note-title">
+              {{ trackingPaused() ? 'Tracking paused' : 'GitHub may already be done' }}
+            </p>
+            <p>
+              {{
+                trackingPaused()
+                  ? (activity.message || 'Refresh to pull the latest installer status from GitHub.')
+                  : 'Branchline has not seen installer jobs yet. Refresh to sync, or open Actions to confirm.'
+              }}
+            </p>
+          </div>
         </div>
       }
 
-      @if (primaryActions().length) {
-        <div class="status-actions">
-          @for (action of primaryActions(); track action.id) {
+      @if (toolbarActions().length) {
+        <div class="status-toolbar">
+          @for (action of toolbarActions(); track action.id) {
             <button
               type="button"
               class="bl-btn"
               [class.bl-btn-primary]="action.primary"
+              [title]="action.title"
+              [disabled]="action.id === 'refresh' && (refreshLocked() || store.releaseDeployChecking())"
               (click)="runAction(action.id)"
             >
+              @if (action.icon) {
+                <ng-icon
+                  [name]="action.icon"
+                  size="14"
+                  [class.spin]="action.id === 'refresh' && store.releaseDeployChecking()"
+                />
+              }
               {{ action.label }}
             </button>
           }
@@ -105,7 +94,11 @@
         </div>
         <ol class="timeline">
           @for (step of progressSteps(); track step.id) {
-            <li [class]="step.status">
+            <li
+              [class]="step.status"
+              [class.waiting-remote]="step.waitingRemote"
+              [class.stale]="step.stale"
+            >
               <span class="marker" aria-hidden="true">
                 @if (step.status === 'done') {
                   <ng-icon name="lucideCheck" size="11" />
