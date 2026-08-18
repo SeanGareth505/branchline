@@ -12,7 +12,7 @@
   <div class="layout" [class.repos-layout]="section() === 'repos'">
     <nav class="nav bl-panel" aria-label="Settings sections">
       @for (item of sections; track item.id) {
-        @if (item.id === 'appearance' || item.id === 'about') {
+        @if (item.id === 'appearance' || item.id === 'help') {
           <div class="nav-gap" aria-hidden="true"></div>
         }
         <button
@@ -1059,6 +1059,9 @@
           </article>
         }
 
+        @case ('help') {
+          <app-help-page />
+        }
         @case ('about') {
           <article class="bl-panel block">
             <h2 class="block-title">Branchline</h2>
@@ -1138,6 +1141,7 @@
               servers.
             </p>
             <div class="setting-control update-actions">
+              <button type="button" class="bl-btn" (click)="setSection('help')">Help guide</button>
               <button type="button" class="bl-btn" (click)="openLicense()">License</button>
               <button type="button" class="bl-btn" (click)="openPrivacy()">Privacy</button>
               <button type="button" class="bl-btn" (click)="openSource()">Source</button>

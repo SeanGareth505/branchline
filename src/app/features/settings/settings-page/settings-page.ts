@@ -29,6 +29,7 @@ import {
 } from '../../../shared/git/shortcuts';
 import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
 import { GitAccountBar } from '../../remotes/git-account-bar/git-account-bar';
+import { HelpPage } from '../../help/help-page/help-page';
 
 type ConfirmationKey =
   | 'confirmForcePush'
@@ -44,7 +45,7 @@ type ConfirmationKey =
 
 @Component({
   selector: 'app-settings-page',
-  imports: [FormsModule, NgIcon, HelpTip, Dashboard, TicketFromBranch, GitAccountBar],
+  imports: [FormsModule, NgIcon, HelpTip, Dashboard, TicketFromBranch, GitAccountBar, HelpPage],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -125,6 +126,12 @@ export class SettingsPage implements OnInit {
       label: 'Connections',
       hint: 'Git hosts, Jira, SSH keys, and credentials',
       help: 'GitHub accounts, Jira, SSH keys, and credentials used to talk to remotes and issue trackers.',
+    },
+    {
+      id: 'help',
+      label: 'Help',
+      hint: 'Guide to Branchline features and workflows',
+      help: 'Full reference for navigation, Git workflows, connections, and keyboard shortcuts.',
     },
     {
       id: 'about',

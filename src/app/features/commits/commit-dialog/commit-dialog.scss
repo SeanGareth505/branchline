@@ -265,38 +265,35 @@
   padding: 0;
 }
 
-.conflict-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.4rem 0.75rem;
-  background: color-mix(in srgb, var(--git-conflict) 16%, transparent);
-  color: var(--git-conflict);
-  font-size: 12px;
-  font-weight: 650;
-  border-bottom: 1px solid color-mix(in srgb, var(--git-conflict) 28%, transparent);
-}
-
-.conflict-strip span {
-  min-width: 0;
-}
-
+.conflict-strip,
 .check-strip {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.4rem 0.75rem;
-  background: color-mix(in srgb, #ef4444 12%, transparent);
-  color: #ef4444;
   font-size: 12px;
   font-weight: 650;
+}
+
+.conflict-strip {
+  background: color-mix(in srgb, var(--git-conflict) 16%, transparent);
+  color: var(--git-conflict);
+  border-bottom: 1px solid color-mix(in srgb, var(--git-conflict) 28%, transparent);
+}
+
+.check-strip {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
   border-bottom: 1px solid color-mix(in srgb, #ef4444 28%, transparent);
 }
 
-.check-strip span {
+.conflict-strip span,
+.check-strip > span {
   min-width: 0;
+}
+
+.check-strip > span {
+  color: #ef4444;
 }
 
 .check-strip-actions {

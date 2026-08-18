@@ -160,6 +160,7 @@ export type SettingsSection =
   | 'git'
   | 'notifications'
   | 'connections'
+  | 'help'
   | 'about';
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
@@ -168,6 +169,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   'git',
   'notifications',
   'connections',
+  'help',
   'about',
 ];
 

@@ -1,0 +1,362 @@
+<div class="help">
+  <nav class="toc" aria-label="Help topics">
+    @for (topic of topics; track topic.id) {
+      <button
+        type="button"
+        class="toc-item"
+        [class.active]="activeTopic() === topic.id"
+        (click)="scrollTo(topic.id)"
+      >
+        {{ topic.label }}
+      </button>
+    }
+  </nav>
+
+  <div class="sections">
+    <article id="help-overview" class="bl-panel block section">
+      <h2>Overview</h2>
+      <p>
+        Branchline is a desktop Git client. It runs as a native app (Tauri) and talks to Git on your
+        machine — your repos, credentials, and tokens stay local.
+      </p>
+      <p>
+        The main workflow is: open a repository, browse branches and history, review changes, commit,
+        sync with remotes, and open pull requests. Settings covers appearance, Git defaults,
+        notifications, and connections to GitHub, GitLab, Azure DevOps, and Jira.
+      </p>
+      <h3>Top navigation</h3>
+      <ul>
+        <li><strong>Branchline</strong> — return to the repository picker or your open repo.</li>
+        <li><strong>Repo</strong> — branches, commit graph, diff, and file tree.</li>
+        <li><strong>PRs</strong> — pull requests for the current repository.</li>
+        <li><strong>Jira</strong> — linked issues when Jira is connected (optional).</li>
+        <li><strong>Release</strong> — version bumps, tags, and release tracking.</li>
+        <li><strong>Identity / Automation</strong> — visible in Advanced mode only.</li>
+        <li><strong>Settings</strong> — preferences, connections, updates, and this guide.</li>
+      </ul>
+      <p class="hint">
+        Press <strong>⌘K</strong> (Ctrl+K on Windows/Linux) anywhere to open the command palette —
+        it can jump to views, run Git actions, and open settings sections.
+      </p>
+    </article>
+
+    <article id="help-repos" class="bl-panel block section">
+      <h2>Repositories</h2>
+      <p>
+        When no repo is open, or from Settings → Repos, you can open an existing folder, clone from a
+        URL, or initialize a new repository.
+      </p>
+      <ul>
+        <li><strong>Open</strong> — pick a local folder that already contains a <code>.git</code> directory.</li>
+        <li><strong>Clone</strong> — download a remote repository into a folder on your machine.</li>
+        <li><strong>Init</strong> — create a new empty Git repository in a folder.</li>
+        <li><strong>Recent repos</strong> — quick access to repositories you opened before.</li>
+        <li><strong>Repo tabs</strong> — keep several repositories open and switch between them.</li>
+      </ul>
+      <p>
+        The status bar at the bottom shows the current branch, sync state (ahead/behind), and the app
+        version. Click the version to open About and updates.
+      </p>
+    </article>
+
+    <article id="help-browse" class="bl-panel block section">
+      <h2>Repo view</h2>
+      <p>
+        The Repo view is a three-part workspace you can resize by dragging the splitters.
+      </p>
+      <ul>
+        <li><strong>Left panel</strong> — branches, remotes, tags, stash, worktrees, and more.</li>
+        <li><strong>Center</strong> — the commit graph (revision grid).</li>
+        <li><strong>Bottom</strong> — detail tabs for the current selection.</li>
+      </ul>
+      <h3>Bottom tabs</h3>
+      <dl class="dl">
+        <div class="dl-row">
+          <dt>Commit</dt>
+          <dd>Message, author, and metadata for the selected commit.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Diff</dt>
+          <dd>Code changes for the selected commit or working tree.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Files</dt>
+          <dd>File tree of changes; stage and unstage from here.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Blame</dt>
+          <dd>Line-by-line authorship (Advanced mode).</dd>
+        </div>
+        <div class="dl-row">
+          <dt>History</dt>
+          <dd>Commits that touched the selected file (Advanced mode).</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Reflog</dt>
+          <dd>Recent HEAD moves — checkouts, resets, amends (Advanced mode).</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Console</dt>
+          <dd>Run raw Git commands against the repo (Advanced mode).</dd>
+        </div>
+      </dl>
+      <p>
+        <strong>Simple mode</strong> (Settings → Appearance) hides Advanced-only tabs and top-level
+        views like Identity and Automation so the UI stays focused on everyday Git work.
+      </p>
+    </article>
+
+    <article id="help-branches" class="bl-panel block section">
+      <h2>Branches &amp; refs</h2>
+      <p>
+        The left refs panel groups local branches, remote-tracking branches, and tags. Branches with
+        slashes in their name are shown in folders (for example <code>feature/login</code>).
+      </p>
+      <h3>Branch interactions</h3>
+      <ul>
+        <li><strong>Single-click</strong> — select that branch's tip commit in the graph and open the Diff tab.</li>
+        <li><strong>Double-click</strong> — check out the branch (switch your working tree to it).</li>
+        <li><strong>Right-click</strong> — context menu for merge, rebase, delete, rename, upstream, and more.</li>
+      </ul>
+      <h3>Visual indicators</h3>
+      <dl class="dl">
+        <div class="dl-row">
+          <dt>Blue left bar (solid)</dt>
+          <dd>The branch you currently have checked out.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Blue left bar (lighter)</dt>
+          <dd>This branch's tip is the commit selected in the graph — not that the branch row itself is selected. If two branches share the same commit, both show the bar.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Tree guides</dt>
+          <dd>Gray lines connecting folder groups — not selection marks.</dd>
+        </div>
+      </dl>
+      <h3>Other ref sections</h3>
+      <ul>
+        <li><strong>Remotes</strong> — configured remotes and fetch/push URLs.</li>
+        <li><strong>Tags</strong> — named pointers to commits, often used for releases.</li>
+        <li><strong>Stash</strong> — saved work-in-progress snapshots.</li>
+        <li><strong>Worktrees</strong> — additional checkouts of the same repo in other folders.</li>
+        <li><strong>Submodules</strong> — nested repositories referenced by the parent repo.</li>
+        <li><strong>LFS</strong> — large files tracked by Git LFS.</li>
+      </ul>
+    </article>
+
+    <article id="help-graph" class="bl-panel block section">
+      <h2>Commit graph</h2>
+      <p>
+        The revision grid shows commit history as a graph with branch lanes. Click a commit to select
+        it — the Commit and Diff tabs update to match.
+      </p>
+      <ul>
+        <li><strong>Focus mode</strong> (Settings → Appearance) dims commits outside the current branch lineage so you can follow one line of history.</li>
+        <li><strong>Compare</strong> — select one commit, then compare it to another to see a range diff.</li>
+        <li><strong>Multi-select</strong> — hold modifier while clicking to select multiple commits (for example when cherry-picking a range).</li>
+      </ul>
+      <p>
+        Branch labels on the graph show where refs point. The graph scrolls to reveal a commit when you
+        click a branch or use "Show in graph" from elsewhere in the app.
+      </p>
+    </article>
+
+    <article id="help-changes" class="bl-panel block section">
+      <h2>Commits &amp; changes</h2>
+      <p>
+        Uncommitted work appears in the Files tab with a change count badge. Stage files, review diffs,
+        then commit.
+      </p>
+      <ul>
+        <li><strong>Commit dialog</strong> — open with the toolbar button or <strong>⌘⇧C</strong>. Supports commit types, templates, sign-off, and amend.</li>
+        <li><strong>Commit checks</strong> — optional pre-commit validation rules (Automation → Checks).</li>
+        <li><strong>Conflict resolution</strong> — when a merge or rebase conflicts, a banner guides you through resolving files.</li>
+        <li><strong>Operations in progress</strong> — merge, rebase, cherry-pick, and bisect show banners and next-step actions in the status bar.</li>
+      </ul>
+      <p>
+        Many Git operations are available from the command palette, branch context menus, or dedicated
+        dialogs: cherry-pick, interactive rebase, stash, git clean, git flow, branch hygiene, and
+        publish to GitHub.
+      </p>
+    </article>
+
+    <article id="help-sync" class="bl-panel block section">
+      <h2>Fetch, pull &amp; push</h2>
+      <p>
+        Sync controls live in the repo toolbar and status bar. Branchline uses your system Git — SSH
+        keys or credential helpers — for fetch, pull, and push.
+      </p>
+      <ul>
+        <li><strong>Fetch</strong> — download new commits from remotes without changing your working tree (<strong>⌘⇧F</strong>).</li>
+        <li><strong>Pull</strong> — fetch then merge or rebase (default chosen in Settings → Git).</li>
+        <li><strong>Push</strong> — upload local commits. Unpublished branches can be pushed with upstream tracking set.</li>
+        <li><strong>Sync preview</strong> — review incoming and outgoing commits before pulling or pushing.</li>
+      </ul>
+      <p>
+        The status bar shows ahead/behind counts relative to the upstream branch. Click the GitHub
+        chip to switch HTTPS vs SSH or pick a GitHub CLI account for this repo.
+      </p>
+      <p class="hint">
+        GitHub OAuth login in Branchline powers API features (repo list, pull requests, Actions).
+        Clone, fetch, pull, and push still go through system Git — connecting GitHub in Settings does
+        not replace your SSH key or credential helper for Git protocol operations.
+      </p>
+    </article>
+
+    <article id="help-prs" class="bl-panel block section">
+      <h2>Pull requests</h2>
+      <p>
+        The PRs view lists open, closed, and draft pull requests for the current repository when
+        GitHub (or another supported host) is connected.
+      </p>
+      <ul>
+        <li><strong>Create PR</strong> — open a pull request from your current branch, with optional templates.</li>
+        <li><strong>PR detail</strong> — title, description, checks, reviews, and linked commits.</li>
+        <li><strong>Browser vs CLI</strong> — create via the host website or GitHub CLI, depending on your setup.</li>
+      </ul>
+      <p>
+        Connect GitHub under Settings → Connections. Organization repos may require OAuth approval
+        for the Branchline app before API access works.
+      </p>
+    </article>
+
+    <article id="help-release" class="bl-panel block section">
+      <h2>Release</h2>
+      <p>
+        The Release view helps you bump version numbers, create tags, and track deployment status for
+        projects that ship tagged releases.
+      </p>
+      <ul>
+        <li><strong>Version bump</strong> — increment semver in project files.</li>
+        <li><strong>Tag &amp; push</strong> — create an annotated tag and push it to the remote.</li>
+        <li><strong>Changelog</strong> — extract commit messages between tags or branches for release notes.</li>
+        <li><strong>CI tracking</strong> — follow GitHub Actions workflow runs tied to the release.</li>
+      </ul>
+    </article>
+
+    <article id="help-integrations" class="bl-panel block section">
+      <h2>Connections</h2>
+      <p>Settings → Connections links Branchline to external services.</p>
+      <dl class="dl">
+        <div class="dl-row">
+          <dt>GitHub</dt>
+          <dd>Device login for API access — repos, PRs, and Actions. Separate from Git SSH/HTTPS credentials.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>GitLab / Azure</dt>
+          <dd>Personal access tokens for API features on those hosts.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Jira</dt>
+          <dd>Link issues, create branches from tickets, and show ticket keys parsed from branch names.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>SSH</dt>
+          <dd>Generate or inspect SSH keys used by system Git for remotes.</dd>
+        </div>
+      </dl>
+      <p>
+        First-run onboarding walks through identity, remotes, and optional SSH setup. You can reopen
+        any step from Settings later.
+      </p>
+    </article>
+
+    <article id="help-advanced" class="bl-panel block section">
+      <h2>Advanced</h2>
+      <p>These areas appear when Simple mode is off (Settings → Appearance).</p>
+      <h3>Identity</h3>
+      <p>
+        Manage Git author profiles — global vs per-repository identity, signing keys, and which profile
+        applies when you commit.
+      </p>
+      <h3>Automation</h3>
+      <p>
+        One-click workflow sequences (fetch, pull, create branch, and more) with placeholders like
+        <code>{{ '{' }}date{{ '}' }}</code> and <code>{{ '{' }}ticket{{ '}' }}</code>. Commit Checks define rules that run before a
+        commit is allowed.
+      </p>
+      <h3>Inspect tools</h3>
+      <p>
+        Blame, per-file history, reflog, and the Git console give deeper visibility into repository
+        state beyond everyday commit and diff review.
+      </p>
+    </article>
+
+    <article id="help-settings" class="bl-panel block section">
+      <h2>Settings</h2>
+      <dl class="dl">
+        <div class="dl-row">
+          <dt>Repos</dt>
+          <dd>Open, clone, init, and manage recent repositories.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Appearance</dt>
+          <dd>Theme, accent color, Simple vs Advanced mode, focus mode, and UI density.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Git</dt>
+          <dd>Author identity, signing, pull/push defaults, safety confirmations, commit types, and external diff/merge tools.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Notifications</dt>
+          <dd>In-app toasts and optional desktop alerts for Git and PR events.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Connections</dt>
+          <dd>Git hosts, Jira, SSH, and stored credentials.</dd>
+        </div>
+        <div class="dl-row">
+          <dt>About</dt>
+          <dd>Version, check for updates, license, privacy, diagnostics, and report a problem.</dd>
+        </div>
+      </dl>
+      <p>
+        Small <strong>ⓘ</strong> icons throughout the app open contextual tips for that specific
+        screen. This Help page is the full reference; those tips cover one feature at a time.
+      </p>
+    </article>
+
+    <article id="help-shortcuts" class="bl-panel block section">
+      <h2>Shortcuts</h2>
+      <p>Press <strong>?</strong> anywhere to open the keyboard shortcut overlay.</p>
+      <dl class="dl">
+        <div class="dl-row">
+          <dt>⌘K</dt>
+          <dd>Command palette</dd>
+        </div>
+        <div class="dl-row">
+          <dt>⌘⇧C</dt>
+          <dd>Commit</dd>
+        </div>
+        <div class="dl-row">
+          <dt>⌘⇧F</dt>
+          <dd>Fetch</dd>
+        </div>
+        <div class="dl-row">
+          <dt>⌘P</dt>
+          <dd>Search files in the repository</dd>
+        </div>
+        <div class="dl-row">
+          <dt>⌘Z</dt>
+          <dd>Undo last toast action</dd>
+        </div>
+        <div class="dl-row">
+          <dt>F5</dt>
+          <dd>Refresh repository</dd>
+        </div>
+        <div class="dl-row">
+          <dt>?</dt>
+          <dd>Shortcut list</dd>
+        </div>
+        <div class="dl-row">
+          <dt>Esc</dt>
+          <dd>Close dialogs</dd>
+        </div>
+      </dl>
+      <p>
+        Customize shortcuts in Settings → Appearance. On Windows and Linux, <strong>⌘</strong> means
+        <strong>Ctrl</strong>.
+      </p>
+    </article>
+  </div>
+</div>

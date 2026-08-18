@@ -101,6 +101,12 @@ export class CommandPalette {
         run: () => store.openSettings('about'),
       },
       {
+        id: 'help',
+        label: 'Open Help guide',
+        group: 'Navigate',
+        run: () => store.openSettings('help'),
+      },
+      {
         id: 'check-updates',
         label: 'Check for updates',
         group: 'App',
