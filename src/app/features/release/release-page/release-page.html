@@ -29,7 +29,7 @@
     </div>
     @if (hasRepo() && configured()) {
       <div class="hero-actions">
-        @if (!activity()) {
+        @if (!store.releasingLocally()) {
           <button
             type="button"
             class="bl-btn"
@@ -57,15 +57,15 @@
       <p class="empty-title">Open a repository</p>
       <p class="empty-hint">Pick a repo, then come back here to ship a version.</p>
     </div>
-  } @else if (loading()) {
+  } @else if (loading() && !activity()) {
     <app-loading-block message="Loading release settings…" />
-  } @else if (loadError()) {
+  } @else if (loadError() && !activity()) {
     <div class="empty bl-glass">
       <p class="empty-title">Couldn’t load release settings</p>
       <p class="empty-hint">{{ loadError() }}</p>
       <button type="button" class="bl-btn" (click)="retry()">Try again</button>
     </div>
-  } @else if (!configured()) {
+  } @else if (!configured() && !activity()) {
     <div class="setup bl-glass">
       <div class="setup-copy">
         <h2>Set up once</h2>

@@ -131,7 +131,8 @@ export class ReleasePage {
 
   private async load(path: string): Promise<void> {
     const gen = ++this.loadGen;
-    this.loading.set(true);
+    const blocking = !this.status() && !this.activity();
+    if (blocking) this.loading.set(true);
     this.loadError.set(null);
     try {
       const status = await this.tauri.getReleaseStatus(path);

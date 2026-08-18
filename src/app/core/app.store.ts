@@ -1594,9 +1594,9 @@ export class AppStore {
     this.currentRepo.set(stub);
     this.upsertOpenRepo(stub);
     this.cancelCommitApply();
+    this.clearWorkingState();
     this.repoBooting = true;
     const hadCache = this.restoreCachedRepo(normalized, true);
-    if (!hadCache) this.clearWorkingState();
     this.syncingRepo.set(!hadCache);
 
     const summaryPromise = switching
@@ -2897,6 +2897,7 @@ export class AppStore {
         { kind: 'success', durationMs: 2500, category: 'general' },
       );
     }
+    if (this.view() === 'release') void this.attachLatestRelease();
   }
 
   private async refreshRepoMeta(path: string): Promise<void> {
@@ -3487,10 +3488,16 @@ export class AppStore {
 
   private resumeReleaseTrackingIfNeeded(): void {
     const activity = this.visibleReleaseActivity();
-    if (!activity?.tag || !activity.willPush || activity.needsPush) return;
-    if (activity.phase === 'done' || activity.phase === 'error') return;
     const path = this.currentRepo()?.path;
     if (!path) return;
+    if (!activity?.tag || !activity.willPush || activity.needsPush) {
+      if (this.view() === 'release') void this.attachLatestRelease();
+      return;
+    }
+    if (activity.phase === 'done' || activity.phase === 'error') {
+      void this.attachLatestRelease();
+      return;
+    }
     void this.watchReleaseDeploy(path, activity.tag, { immediate: true });
   }
 
@@ -3597,9 +3604,9 @@ export class AppStore {
   }
 
   async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
-    if (this.view() !== 'release' && options?.force !== true) return false;
     const path = this.currentRepo()?.path;
     if (!path) return false;
+    if (this.releasingLocally()) return false;
     if (this.releaseAttachInFlight && this.releaseAttachPath === path) {
       return this.releaseAttachInFlight;
     }
@@ -3618,10 +3625,10 @@ export class AppStore {
     const path = this.currentRepo()?.path;
     if (!path) return false;
     const force = options?.force === true;
+    if (this.releasingLocally()) return false;
     if (this.releaseBusy() && !force) return false;
     try {
       const status = await this.tauri.getReleaseStatus(path);
-      if (!force && this.view() !== 'release') return false;
       const version = status.currentVersion?.trim();
       const cfg = status.config;
       if (!status.available || !version || !cfg) {
@@ -3630,15 +3637,13 @@ export class AppStore {
       }
       const tag = `${cfg.tagPrefix}${version}`;
       const current = this.releaseActivity();
-      if (
-        current &&
-        sameRepoPath(current.path, path) &&
-        current.tag === tag &&
-        !force &&
-        !current.needsRefresh
-      ) {
+      const sameTag =
+        !!current && sameRepoPath(current.path, path) && current.tag === tag;
+      const onRelease = this.view() === 'release';
+      if (!force && !onRelease && sameTag) return false;
+      if (sameTag && !force && current && !current.needsRefresh) {
         if (
-          this.view() === 'release' &&
+          onRelease &&
           current.willPush &&
           !current.needsPush &&
           current.phase !== 'done' &&
@@ -3651,7 +3656,7 @@ export class AppStore {
       if (!force && this.readDismissedReleaseTag() === tag) return false;
 
       const result = await this.tauri.pollReleaseDeploy(path, tag);
-      if (!force && this.view() !== 'release') return false;
+      if (!force && !onRelease && sameTag) return false;
       this.seedAttachedReleaseActivity({
         path,
         productName: cfg.productName,
@@ -3672,7 +3677,6 @@ export class AppStore {
         this.releaseBusy.set(false);
         return true;
       }
-      if (this.view() !== 'release' && !force) return true;
       this.releaseBusy.set(true);
       void this.watchReleaseDeploy(path, tag);
       return true;
@@ -8725,6 +8729,20 @@ export class AppStore {
     this.releaseDeployChecking.set(true);
     if (this.lastReleaseNoticeKey.endsWith(':paused')) this.lastReleaseNoticeKey = '';
     this.openReleaseTab();
+    if (!this.releasingLocally()) {
+      const attached = await this.attachLatestRelease({ force: true });
+      if (attached) {
+        const next = this.releaseActivity();
+        const watching =
+          !!next &&
+          next.willPush &&
+          !next.needsPush &&
+          next.phase !== 'done' &&
+          next.phase !== 'error';
+        if (!watching) this.releaseDeployChecking.set(false);
+        return;
+      }
+    }
     void this.watchReleaseDeploy(path, activity.tag, { immediate: true });
   }
 

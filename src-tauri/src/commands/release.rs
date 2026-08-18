@@ -1,7 +1,7 @@
 use crate::commands::settings::{load_settings_with_tokens, ConnectionConfig};
 use crate::infrastructure::git_cli;
 use crate::state::AppState;
-use crate::AppResult;
+use crate::{run_blocking, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -689,57 +689,63 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
 }
 
 #[command]
-pub fn get_release_status(input: ReleaseRepoInput) -> AppResult<ReleaseStatusOutput> {
-    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
-        let cfg_path = config_path(path);
-        if !cfg_path.exists() {
-            return Ok(ReleaseStatusOutput {
-                available: false,
-                message: "Add release.config.json to enable Release for this repo.".into(),
-                config: None,
-                current_version: None,
-                current_branch: git_cli::run_git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
-                    .ok()
-                    .map(|s| s.trim().to_string()),
-                dirty: git_cli::run_git(path, &["status", "--porcelain"])
-                    .map(|s| !s.trim().is_empty())
-                    .unwrap_or(false),
-            });
-        }
-        let cfg = load_config(path)?;
-        let product_name = infer_product_name(path, &cfg);
-        let current = current_version(path, &cfg).ok();
-        let current_branch = git_cli::run_git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
-            .ok()
-            .map(|s| s.trim().to_string());
-        let dirty = git_cli::run_git(path, &["status", "--porcelain"])
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false);
-        Ok(ReleaseStatusOutput {
-            available: true,
-            message: format!(
-                "{} release ready{}",
-                product_name,
-                current
-                    .as_deref()
-                    .map(|v| format!(" (currently {v})"))
-                    .unwrap_or_default()
-            ),
-            config: Some(ReleaseConfigInfo {
-                product_name,
-                tag_prefix: cfg.tag_prefix,
-                branch: cfg.branch,
-                require_clean: cfg.require_clean,
-                push_default: cfg.push,
-                commit_message: cfg.commit_message,
-                tag_message: cfg.tag_message,
-                files: cfg.files.iter().map(|f| f.path.clone()).collect(),
-                config_path: cfg_path.to_string_lossy().to_string(),
-            }),
-            current_version: current,
-            current_branch,
-            dirty,
-        })
+pub async fn get_release_status(input: ReleaseRepoInput) -> AppResult<ReleaseStatusOutput> {
+    run_blocking(move || {
+        let path = PathBuf::from(&input.path);
+        git_cli::resolve_repo_path(&path).and_then(|resolved| get_release_status_inner(&resolved))
+    })
+    .await
+}
+
+fn get_release_status_inner(path: &Path) -> AppResult<ReleaseStatusOutput> {
+    let cfg_path = config_path(path);
+    if !cfg_path.exists() {
+        return Ok(ReleaseStatusOutput {
+            available: false,
+            message: "Add release.config.json to enable Release for this repo.".into(),
+            config: None,
+            current_version: None,
+            current_branch: git_cli::run_git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
+                .ok()
+                .map(|s| s.trim().to_string()),
+            dirty: git_cli::run_git(path, &["status", "--porcelain"])
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false),
+        });
+    }
+    let cfg = load_config(path)?;
+    let product_name = infer_product_name(path, &cfg);
+    let current = current_version(path, &cfg).ok();
+    let current_branch = git_cli::run_git(path, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .ok()
+        .map(|s| s.trim().to_string());
+    let dirty = git_cli::run_git(path, &["status", "--porcelain"])
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    Ok(ReleaseStatusOutput {
+        available: true,
+        message: format!(
+            "{} release ready{}",
+            product_name,
+            current
+                .as_deref()
+                .map(|v| format!(" (currently {v})"))
+                .unwrap_or_default()
+        ),
+        config: Some(ReleaseConfigInfo {
+            product_name,
+            tag_prefix: cfg.tag_prefix,
+            branch: cfg.branch,
+            require_clean: cfg.require_clean,
+            push_default: cfg.push,
+            commit_message: cfg.commit_message,
+            tag_message: cfg.tag_message,
+            files: cfg.files.iter().map(|f| f.path.clone()).collect(),
+            config_path: cfg_path.to_string_lossy().to_string(),
+        }),
+        current_version: current,
+        current_branch,
+        dirty,
     })
 }
 
