@@ -61,6 +61,7 @@ import type {
   TestConnectionInput,
   TestConnectionOutput,
 } from './models';
+import { mergeUiSession } from './ui-session';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
 import { NotificationService } from './notification.service';
@@ -589,6 +590,9 @@ export class AppStore {
   readonly revisionGridColumns = signal<RevisionGridColumns>({ ...COL_DEFAULT });
   private sessionSaveTimer: number | null = null;
   private sessionOverlay: UiSession = {};
+  private settingsWrite: Promise<void> = Promise.resolve();
+  private sessionPersistReady = false;
+  private workspaceCleared = false;
   private restoringSession = false;
   private repoBooting = false;
   private repoCacheTimer: number | null = null;
@@ -775,6 +779,7 @@ export class AppStore {
       this.pauseBackgroundReleaseWork();
     }
     this.view.set(view);
+    if (view === 'release') this.resumeInProgressReleaseWatch();
     if (view !== 'onboarding' && !this.restoringSession) {
       this.patchSession({ view });
     }
@@ -887,6 +892,7 @@ export class AppStore {
 
   patchSession(partial: Partial<UiSession>, opts?: { flush?: boolean }): void {
     this.sessionOverlay = { ...this.readSession(), ...partial };
+    if (!this.sessionPersistReady) return;
     if (this.sessionSaveTimer !== null) {
       window.clearTimeout(this.sessionSaveTimer);
       this.sessionSaveTimer = null;
@@ -910,17 +916,28 @@ export class AppStore {
   }
 
   private persistSessionToDisk(): void {
-    void this.tauri.saveSettings(this.settingsWithSession()).catch((err) => {
+    if (!this.sessionPersistReady) return;
+    void this.saveSettings({}).catch((err) => {
       void this.diagnostics.record('session.save', rawErrorMessage(err) || 'Session save failed');
     });
   }
 
   private flushSession(): void {
+    if (!this.sessionPersistReady) return;
     if (this.sessionSaveTimer !== null) {
       window.clearTimeout(this.sessionSaveTimer);
       this.sessionSaveTimer = null;
     }
     this.persistSessionToDisk();
+  }
+
+  private bindSessionFlush(): void {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('beforeunload', () => this.flushSession());
+    window.addEventListener('pagehide', () => this.flushSession());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.flushSession();
+    });
   }
 
   private applySession(session: UiSession): void {
@@ -1000,6 +1017,7 @@ export class AppStore {
       return;
     }
     this.view.set(view);
+    if (view === 'release') this.resumeInProgressReleaseWatch();
   }
 
   async init(): Promise<void> {
@@ -1013,8 +1031,6 @@ export class AppStore {
       const session = this.readSession();
       this.applySession(session);
       if (typeof window !== 'undefined') {
-        window.addEventListener('beforeunload', () => this.flushSession());
-        window.addEventListener('pagehide', () => this.flushSession());
         this.bindConflictFocusWatch();
         this.bindWorktreeFocusWatch();
       }
@@ -1028,9 +1044,11 @@ export class AppStore {
       if (!onboarding.completed && !onboarding.skipped) {
         this.view.set('onboarding');
         void this.refreshIdentity();
+        this.sessionPersistReady = true;
+        this.bindSessionFlush();
         return;
       }
-      this.repos.set(await this.tauri.listRecentRepos());
+      await this.loadRecentRepos();
       this.restoreSessionRepoWebUrls(session);
       void this.refreshGithubGitStatus();
       void this.refreshIdentity();
@@ -1079,10 +1097,15 @@ export class AppStore {
       } finally {
         this.restoringSession = false;
       }
+      this.sessionPersistReady = true;
       this.persistOpenRepos();
+      this.bindSessionFlush();
       this.restoreView(session, hasRepo);
     } catch (err) {
       this.showError(err);
+      await this.loadRecentRepos();
+      this.sessionPersistReady = true;
+      this.bindSessionFlush();
       this.goHome();
     }
   }
@@ -1577,6 +1600,7 @@ export class AppStore {
       }
     }
 
+    this.workspaceCleared = false;
     const alreadyOpen = this.openRepos().some((r) => sameRepoPath(r.path, normalized));
     const switching =
       alreadyOpen && !!this.currentRepo() && !sameRepoPath(this.currentRepo()!.path, normalized);
@@ -1680,6 +1704,7 @@ export class AppStore {
     this.dropRepoSnapshot(path);
     this.openRepos.set(tabs);
     this.pruneRepoSnapshots();
+    if (!tabs.length) this.workspaceCleared = true;
     this.persistOpenRepos();
 
     if (!closingCurrent) {
@@ -1710,6 +1735,7 @@ export class AppStore {
     this.clearWorkingState();
     this.currentRepo.set(null);
     this.openRepos.set([]);
+    this.workspaceCleared = true;
     this.persistOpenRepos();
     this.goHome();
     this.nextAction.set('Open a repository');
@@ -1829,23 +1855,33 @@ export class AppStore {
   }
 
   private persistOpenRepos(): void {
-    if (this.restoringSession) return;
+    if (this.restoringSession || !this.sessionPersistReady) return;
+    const paths = this.openRepos().map((r) => r.path);
+    if (!paths.length && !this.workspaceCleared) return;
     const account = this.selectedRepoAccountKey();
     const currentPath = this.currentRepo()?.path ?? null;
     const byAccount = { ...(this.readSession().activeRepoPathByAccount ?? {}) };
     if (currentPath) byAccount[account] = currentPath;
     this.patchSession(
       {
-        openRepoPaths: this.openRepos().map((r) => r.path),
+        openRepoPaths: paths,
         activeRepoPath: currentPath,
         activeRepoPathByAccount: byAccount,
         repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
-          ...this.openRepos().map((r) => r.path),
+          ...paths,
           ...this.repos().map((r) => r.path),
         ]),
       },
       { flush: true },
     );
+  }
+
+  private async loadRecentRepos(): Promise<void> {
+    try {
+      this.repos.set(await this.tauri.listRecentRepos());
+    } catch (err) {
+      this.showError(err);
+    }
   }
 
   private clearWorkingState(): void {
@@ -2155,7 +2191,16 @@ export class AppStore {
         await this.ensureRepoWebUrl(path);
       }
     };
-    void Promise.all(Array.from({ length: Math.min(limit, missing.length) }, () => worker()));
+    void Promise.all(Array.from({ length: Math.min(limit, missing.length) }, () => worker())).then(
+      () => {
+        this.patchSession({
+          repoWebUrls: persistRepoWebUrls(this.repoWebUrls(), [
+            ...this.openRepos().map((r) => r.path),
+            ...this.repos().map((r) => r.path),
+          ]),
+        });
+      },
+    );
   }
 
   private async loadRepoWebUrl(path: string): Promise<string | null> {
@@ -3486,6 +3531,22 @@ export class AppStore {
     this.stopReleaseDeployPoll();
   }
 
+  private resumeInProgressReleaseWatch(): void {
+    const activity = this.visibleReleaseActivity();
+    const path = this.currentRepo()?.path;
+    if (!path || !activity?.tag || !activity.willPush || activity.needsPush || activity.needsRefresh) {
+      return;
+    }
+    if (
+      activity.phase === 'done' ||
+      activity.phase === 'error' ||
+      activity.phase === 'idle'
+    ) {
+      return;
+    }
+    void this.watchReleaseDeploy(path, activity.tag, { immediate: true });
+  }
+
   private resumeReleaseTrackingIfNeeded(): void {
     const activity = this.visibleReleaseActivity();
     const path = this.currentRepo()?.path;
@@ -4298,19 +4359,49 @@ export class AppStore {
 
   async saveSettings(partial: Partial<AppSettings>): Promise<void> {
     const enablingSimple = partial.simpleMode === true && !this.settings().simpleMode;
+    const run = this.settingsWrite.then(() => this.writeSettings(partial));
+    this.settingsWrite = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    await run;
+    if (enablingSimple) this.constrainSimpleMode();
+  }
+
+  private async writeSettings(partial: Partial<AppSettings>): Promise<void> {
+    const stored = this.settings();
+    const storedSession =
+      stored.layout && typeof stored.layout['session'] === 'object' && stored.layout['session']
+        ? (stored.layout['session'] as UiSession)
+        : {};
+    const liveSession = this.readSession();
     const current = this.settingsWithSession();
+    const session = this.workspaceCleared
+      ? liveSession
+      : mergeUiSession(storedSession, liveSession);
     const next = normalizeSettings({
       ...current,
       ...partial,
       connections: partial.connections ?? current.connections,
-      layout: partial.layout ?? current.layout,
+      layout: {
+        ...(current.layout ?? {}),
+        ...(partial.layout ?? {}),
+        session,
+      },
     });
     const saved = await this.tauri.saveSettings(next);
-    this.settings.set(normalizeSettings(saved));
-    this.sessionOverlay = {};
+    const live = this.workspaceCleared
+      ? this.readSession()
+      : mergeUiSession(session, this.readSession());
+    this.settings.set(
+      normalizeSettings({
+        ...saved,
+        layout: { ...(saved.layout ?? {}), session: live },
+      }),
+    );
+    this.sessionOverlay = live;
     this.myBranchesOnly.set(saved.myBranchesOnly);
     this.applyTheme(saved);
-    if (enablingSimple) this.constrainSimpleMode();
   }
 
   private constrainSimpleMode(): void {

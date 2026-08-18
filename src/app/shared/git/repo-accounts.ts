@@ -102,11 +102,11 @@ export function resolveSelectedRepoAccount(
   fallbacks: string[],
 ): string {
   const value = saved.trim().toLowerCase();
-  if (value === ALL_REPO_ACCOUNTS) return ALL_REPO_ACCOUNTS;
-  if (value && accounts.some((account) => account.key === value)) return value;
+  if (!value || value === ALL_REPO_ACCOUNTS) return ALL_REPO_ACCOUNTS;
+  if (accounts.some((account) => account.key === value)) return value;
   for (const fallback of fallbacks) {
     const key = fallback.trim().toLowerCase();
     if (key && accounts.some((account) => account.key === key)) return key;
   }
-  return accounts[0]?.key ?? ALL_REPO_ACCOUNTS;
+  return ALL_REPO_ACCOUNTS;
 }

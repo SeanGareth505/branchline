@@ -30,9 +30,18 @@ export type UpdatePhase =
 
 @Injectable({ providedIn: 'root' })
 export class UpdateService {
+  private static readonly CHECK_THROTTLE_MS = 20_000;
+  private static readonly PERIODIC_MS = 5 * 60_000;
   private readonly tauri = inject(TauriService);
   private readonly injector = inject(Injector);
   private pending: Update | null = null;
+  private checkInFlight: Promise<boolean> | null = null;
+  private lastCheckAt = 0;
+  private lastNotifiedVersion = '';
+  private watchedVersion: string | null = null;
+  private recheckTimer: number | null = null;
+  private watchTimer: number | null = null;
+  private listenersBound = false;
 
   readonly phase = signal<UpdatePhase>('idle');
   readonly currentVersion = signal('');
@@ -58,10 +67,26 @@ export class UpdateService {
     }
     if (this.tauri.isDummyBackend) return;
     await this.maybeShowWhatsNew();
-    await this.checkForUpdates({ silent: true });
+    this.bindBackgroundChecks();
+    await this.checkForUpdates({ silent: true, force: true });
   }
 
-  async checkForUpdates(options: { silent?: boolean } = {}): Promise<boolean> {
+  watchUntilAvailable(version: string): void {
+    const target = normalizeAppVersion(version);
+    if (!target || this.tauri.isDummyBackend) return;
+    if (normalizeAppVersion(this.currentVersion()) === target) return;
+    if (
+      normalizeAppVersion(this.availableVersion()) === target &&
+      (this.bannerVisible() || this.phase() === 'available' || this.phase() === 'ready')
+    ) {
+      return;
+    }
+    this.watchedVersion = target;
+    this.clearWatchTimer();
+    void this.pollWatchedVersion(0);
+  }
+
+  async checkForUpdates(options: { silent?: boolean; force?: boolean } = {}): Promise<boolean> {
     if (this.tauri.isDummyBackend) {
       if (!options.silent) {
         this.errorMessage.set('Updates are only available in the desktop app.');
@@ -69,11 +94,35 @@ export class UpdateService {
       }
       return false;
     }
+    if (this.phase() === 'downloading' || this.phase() === 'installing') {
+      return !!this.pending;
+    }
+    if (this.checkInFlight) return this.checkInFlight;
+    const now = Date.now();
+    if (
+      !options.force &&
+      options.silent &&
+      this.lastCheckAt > 0 &&
+      now - this.lastCheckAt < UpdateService.CHECK_THROTTLE_MS
+    ) {
+      return !!this.pending;
+    }
 
-    this.phase.set('checking');
-    this.errorMessage.set(null);
+    this.checkInFlight = this.runCheck(options).finally(() => {
+      this.checkInFlight = null;
+    });
+    return this.checkInFlight;
+  }
+
+  private async runCheck(options: { silent?: boolean; force?: boolean }): Promise<boolean> {
+    const hadPending = !!this.pending;
+    if (!options.silent || !hadPending) {
+      this.phase.set('checking');
+      this.errorMessage.set(null);
+    }
     try {
       const update = await check();
+      this.lastCheckAt = Date.now();
       if (!update) {
         this.pending = null;
         this.availableVersion.set(null);
@@ -88,8 +137,7 @@ export class UpdateService {
       this.releaseNotes.set(update.body?.trim() ?? '');
       this.phase.set('available');
 
-      const current = this.currentVersion().trim();
-      if (current && update.version.replace(/^v/, '') === current.replace(/^v/, '')) {
+      if (normalizeAppVersion(update.version) === normalizeAppVersion(this.currentVersion())) {
         this.pending = null;
         this.availableVersion.set(null);
         this.releaseNotes.set('');
@@ -98,33 +146,79 @@ export class UpdateService {
         return false;
       }
 
-      const dismissed = this.readDismissedVersion();
-      const showBanner = !options.silent || dismissed !== update.version;
-      if (showBanner) {
-        this.bannerVisible.set(true);
-      }
-      if (options.silent && showBanner) {
+      const dismissed = normalizeAppVersion(this.readDismissedVersion());
+      const next = normalizeAppVersion(update.version);
+      const showBanner = !options.silent || dismissed !== next;
+      if (showBanner) this.bannerVisible.set(true);
+      if (showBanner && this.lastNotifiedVersion !== next) {
+        this.lastNotifiedVersion = next;
         this.store.notifyEvent(
           'updates',
           'Update available',
-          `Branchline ${update.version} is ready to install`,
-          { toast: false, desktop: true },
+          `Branchline ${next} is ready to install`,
+          { toast: true, desktop: true },
         );
       }
       return true;
     } catch (err) {
-      this.pending = null;
-      this.availableVersion.set(null);
       if (options.silent) {
-        this.errorMessage.set(null);
-        this.phase.set('idle');
+        if (!hadPending) this.phase.set('idle');
         return false;
       }
+      this.pending = null;
+      this.availableVersion.set(null);
       this.errorMessage.set(this.formatError(err));
       this.phase.set('error');
       this.bannerVisible.set(false);
       return false;
     }
+  }
+
+  private bindBackgroundChecks(): void {
+    if (this.listenersBound || typeof window === 'undefined') return;
+    this.listenersBound = true;
+    const onVisible = (): void => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void this.checkForUpdates({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    const tick = (): void => {
+      this.recheckTimer = window.setTimeout(() => {
+        void this.checkForUpdates({ silent: true });
+        tick();
+      }, UpdateService.PERIODIC_MS);
+    };
+    tick();
+  }
+
+  private async pollWatchedVersion(attempt: number): Promise<void> {
+    const target = this.watchedVersion;
+    if (!target) return;
+    if (normalizeAppVersion(this.currentVersion()) === target) {
+      this.watchedVersion = null;
+      return;
+    }
+    const found = await this.checkForUpdates({ silent: true, force: true });
+    if (found && normalizeAppVersion(this.availableVersion()) === target) {
+      this.watchedVersion = null;
+      return;
+    }
+    if (attempt >= 10) {
+      this.watchedVersion = null;
+      return;
+    }
+    const delays = [8_000, 15_000, 30_000, 45_000, 60_000];
+    const delay = delays[Math.min(attempt, delays.length - 1)]!;
+    this.watchTimer = window.setTimeout(() => {
+      void this.pollWatchedVersion(attempt + 1);
+    }, delay);
+  }
+
+  private clearWatchTimer(): void {
+    if (this.watchTimer == null) return;
+    window.clearTimeout(this.watchTimer);
+    this.watchTimer = null;
   }
 
   dismissBanner(): void {

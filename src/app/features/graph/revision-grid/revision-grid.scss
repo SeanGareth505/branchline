@@ -400,28 +400,28 @@
 
 .graph-svg .edge {
   fill: none;
-  stroke-width: var(--edge-w, 2.8);
+  stroke-width: var(--edge-w, 2);
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  opacity: 0.94;
+  opacity: 0.88;
 }
 
 .graph-svg .edge.merge-parent {
-  stroke-width: calc(var(--edge-w, 2.8) * 0.82);
+  stroke-width: calc(var(--edge-w, 2) * 0.82);
   stroke-dasharray: 4 3;
   opacity: 1;
 }
 
 .graph-svg .edge.lineage {
-  stroke-width: calc(var(--edge-w, 2.8) * 1.18);
+  stroke-width: calc(var(--edge-w, 2) * 1.12);
   opacity: 1;
   filter: brightness(1.15);
 }
 
 .graph-svg.dashed .edge {
   stroke-dasharray: 3.5 3;
-  stroke-width: calc(var(--edge-w, 2.8) * 0.8);
+  stroke-width: calc(var(--edge-w, 2) * 0.8);
 }
 
 .graph-svg .node {

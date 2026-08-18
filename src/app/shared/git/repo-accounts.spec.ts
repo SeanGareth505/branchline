@@ -81,7 +81,7 @@ describe('repo accounts', () => {
     expect(repoAccountKeyForOwner('', accounts, mappings)).toBeNull();
   });
 
-  it('defaults to the active login unless All was chosen', () => {
+  it('keeps All accounts until one is explicitly saved', () => {
     const accounts = collectRepoAccounts({
       cliAccounts: [
         { login: 'demo', active: true },
@@ -90,10 +90,12 @@ describe('repo accounts', () => {
       connectionUsernames: [],
       owners: ['acme'],
     });
-    expect(resolveSelectedRepoAccount('', accounts, ['demo'])).toBe('demo');
+    expect(resolveSelectedRepoAccount('', accounts, ['demo'])).toBe(ALL_REPO_ACCOUNTS);
     expect(resolveSelectedRepoAccount(ALL_REPO_ACCOUNTS, accounts, ['demo'])).toBe(
       ALL_REPO_ACCOUNTS,
     );
     expect(resolveSelectedRepoAccount('teammate', accounts, ['demo'])).toBe('teammate');
+    expect(resolveSelectedRepoAccount('gone', accounts, ['demo'])).toBe('demo');
+    expect(resolveSelectedRepoAccount('gone', accounts, [])).toBe(ALL_REPO_ACCOUNTS);
   });
 });

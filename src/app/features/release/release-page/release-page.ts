@@ -65,10 +65,6 @@ export class ReleasePage {
       (activity.phase === 'deploying' || activity.phase === 'ci' || activity.phase === 'publishing') &&
       !(activity.deployJobs ?? []).length
     ) {
-      const started = activity.steps.find((step) => step.phase === 'deploying')?.at ?? activity.startedAt;
-      if (started && Date.now() - started > 90_000) {
-        return 'No installer jobs yet. Refresh if GitHub already finished.';
-      }
       return 'Tag is on origin. Waiting for GitHub to report installer jobs.';
     }
     if (activity?.phase === 'error') {

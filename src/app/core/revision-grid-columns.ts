@@ -13,7 +13,7 @@ export const COL_MIN: Record<GridColId, number> = {
 };
 
 export const COL_MAX: Record<GridColId, number> = {
-  graph: 400,
+  graph: 96,
   message: 640,
   author: 200,
   date: 140,

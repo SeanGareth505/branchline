@@ -68,7 +68,6 @@ interface ProgressStepView {
   actionUrl: string | null;
   actionLabel: string;
   waitingRemote: boolean;
-  stale: boolean;
 }
 
 @Component({
@@ -82,7 +81,8 @@ export class ReleasePanel {
   readonly store = inject(AppStore);
   private readonly updates = inject(UpdateService);
   private readonly now = signal(Date.now());
-  private promptedUpdate = false;
+  private promptedVersion = '';
+  private autoSyncedTag: string | null = null;
   private readonly expandedJobs = signal(new Set<string>());
   readonly jobFilter = signal<JobFilter>('all');
 
@@ -143,7 +143,7 @@ export class ReleasePanel {
     return this.watchingGithub() && this.deployJobs().length === 0;
   });
 
-  readonly githubWatchStale = computed(() => {
+  private readonly githubWatchStale = computed(() => {
     if (!this.githubWaitEmpty()) return false;
     const activity = this.activity();
     const step = activity?.steps.find((item) => item.phase === 'deploying');
@@ -202,7 +202,7 @@ export class ReleasePanel {
       });
     }
 
-    if (this.canRefreshDeploy() && (this.githubWatchStale() || this.trackingPaused())) {
+    if (this.canRefreshDeploy() && this.trackingPaused()) {
       actions.push({
         id: 'refresh',
         label: 'Refresh status',
@@ -218,7 +218,7 @@ export class ReleasePanel {
       actions.push({
         id: 'deploy',
         label: hasDeployRun ? 'Open deploy' : 'Open Actions',
-        primary: !this.showPushFallback() && !this.githubWatchStale() && !this.trackingPaused(),
+        primary: !this.showPushFallback() && !this.trackingPaused(),
         icon: hasDeployRun ? 'lucideExternalLink' : 'lucideWorkflow',
         title: hasDeployRun
           ? 'Open this installer run on GitHub Actions'
@@ -345,20 +345,19 @@ export class ReleasePanel {
       const waitingRemote =
         step.status === 'active' &&
         (step.phase === 'ci' || step.phase === 'deploying' || step.phase === 'publishing');
-      const stale = waitingRemote && this.githubWatchStale();
       return {
         id: step.id,
         status: step.status,
         label: step.phase === 'deploying' ? 'GitHub Actions' : step.label,
-        detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : '', stale),
-        stateLabel: stepStateLabel(step.status, waitingRemote, stale),
+        detail: stepDetail(step, activity, nestId === step.id ? this.jobSummary() : ''),
+        stateLabel: stepStateLabel(step.status, waitingRemote),
         duration: stepDuration(activity.steps, index, now),
-        when: formatClock(step.at),
+        when:
+          step.status === 'done' || step.status === 'error' ? formatClock(step.at) : '',
         artifacts: nestId === step.id ? artifacts : [],
         actionUrl: action?.url ?? null,
         actionLabel: action?.label ?? '',
         waitingRemote,
-        stale,
       };
     });
   });
@@ -397,7 +396,7 @@ export class ReleasePanel {
     if (!activity) return 'idle';
     if (activity.phase === 'error') return 'failure';
     if (activity.phase === 'done' && !activity.needsRefresh) return 'success';
-    if (activity.needsRefresh || this.githubWatchStale()) return 'paused';
+    if (activity.needsRefresh) return 'paused';
     if (this.githubWaitEmpty()) return 'watching';
     if (activity.phase === 'ci' || activity.phase === 'deploying' || activity.phase === 'publishing') {
       return 'running';
@@ -417,9 +416,6 @@ export class ReleasePanel {
     if (activity.needsRefresh) {
       return `Tracking paused for ${activity.productName} ${activity.nextVersion}`;
     }
-    if (this.githubWatchStale()) {
-      return `GitHub may already have finished`;
-    }
     if (this.githubWaitEmpty()) {
       return `Waiting on GitHub for ${activity.productName} ${activity.nextVersion}`;
     }
@@ -435,7 +431,6 @@ export class ReleasePanel {
     if (activity.phase === 'done' && !activity.needsRefresh) return 'Complete';
     if (activity.phase === 'error') return 'Failed';
     if (activity.needsRefresh) return 'Paused — refresh to continue';
-    if (this.githubWatchStale()) return 'Status may be behind GitHub';
     if (this.githubWaitEmpty()) return 'Watching GitHub';
     return phaseLabel(activity.phase);
   });
@@ -473,9 +468,6 @@ export class ReleasePanel {
     if (activity.needsRefresh) {
       return activity.message || 'Refresh to keep watching the installer builds.';
     }
-    if (this.githubWatchStale()) {
-      return 'No installer jobs here yet. If Actions already finished, refresh to catch up.';
-    }
     if (this.githubWaitEmpty()) {
       return 'The tag is on origin. GitHub usually reports jobs within a minute.';
     }
@@ -501,9 +493,21 @@ export class ReleasePanel {
       onCleanup(() => window.clearInterval(id));
     });
     effect(() => {
-      if (!this.shippedLive() || this.promptedUpdate) return;
-      this.promptedUpdate = true;
-      void this.updates.checkForUpdates({ silent: true });
+      if (!this.shippedLive()) return;
+      const version = this.activity()?.nextVersion?.trim();
+      if (!version || this.promptedVersion === version) return;
+      this.promptedVersion = version;
+      this.updates.watchUntilAvailable(version);
+    });
+    effect(() => {
+      if (!this.githubWatchStale() || !this.canRefreshDeploy()) {
+        if (!this.githubWatchStale()) this.autoSyncedTag = null;
+        return;
+      }
+      const tag = this.activity()?.tag?.trim();
+      if (!tag || this.autoSyncedTag === tag) return;
+      this.autoSyncedTag = tag;
+      queueMicrotask(() => this.refreshDeploy());
     });
   }
 
@@ -646,7 +650,6 @@ function stepDetail(
   step: ReleaseActivityStep,
   activity: ReleaseActivity,
   jobSummary: string,
-  stale: boolean,
 ): string {
   if (step.status === 'pending') return step.message;
   if (step.phase === 'bumping' && activity.currentVersion !== activity.nextVersion) {
@@ -663,7 +666,6 @@ function stepDetail(
   }
   if (step.phase === 'ci' || step.phase === 'deploying') {
     if (jobSummary) return jobSummary;
-    if (stale) return 'If GitHub already finished, refresh to sync this list';
     if (step.status === 'active') return 'Waiting for GitHub to report installer jobs';
     return step.message;
   }
@@ -676,9 +678,7 @@ function stepDetail(
 function stepStateLabel(
   status: ReleaseActivityStep['status'],
   waitingRemote: boolean,
-  stale: boolean,
 ): string {
-  if (stale) return 'Check GitHub';
   if (waitingRemote && status === 'active') return 'Waiting on GitHub';
   switch (status) {
     case 'done':

@@ -17,7 +17,7 @@
           <p>{{ statusDetail() }}</p>
         </div>
         <div class="status-meta">
-            @if (canRefreshDeploy() && !githubWatchStale() && !trackingPaused()) {
+            @if (canRefreshDeploy() && !trackingPaused()) {
               <button
                 type="button"
                 class="tag-btn"
@@ -40,20 +40,12 @@
         </div>
       </div>
 
-      @if (githubWatchStale() || trackingPaused()) {
-        <div class="watch-note" [attr.data-state]="trackingPaused() ? 'paused' : 'stale'">
+      @if (trackingPaused()) {
+        <div class="watch-note" data-state="paused">
           <ng-icon name="lucideCircleAlert" size="15" />
           <div class="watch-note-copy">
-            <p class="watch-note-title">
-              {{ trackingPaused() ? 'Tracking paused' : 'GitHub may already be done' }}
-            </p>
-            <p>
-              {{
-                trackingPaused()
-                  ? (activity.message || 'Refresh to pull the latest installer status from GitHub.')
-                  : 'Branchline has not seen installer jobs yet. Refresh to sync, or open Actions to confirm.'
-              }}
-            </p>
+            <p class="watch-note-title">Tracking paused</p>
+            <p>{{ activity.message || 'Refresh to pull the latest installer status from GitHub.' }}</p>
           </div>
         </div>
       }
@@ -97,7 +89,6 @@
             <li
               [class]="step.status"
               [class.waiting-remote]="step.waitingRemote"
-              [class.stale]="step.stale"
             >
               <span class="marker" aria-hidden="true">
                 @if (step.status === 'done') {
@@ -110,12 +101,19 @@
                 <div class="step-row">
                   <span class="step-label">{{ step.label }}</span>
                   <span class="step-meta">
-                    {{ step.stateLabel }}
+                    <span class="step-state">{{ step.stateLabel }}</span>
                     @if (step.when) {
                       <span class="step-when">{{ step.when }}</span>
                     }
                     @if (step.duration) {
                       <span class="step-time">{{ step.duration }}</span>
+                    }
+                  </span>
+                </div>
+                @if (step.detail || step.actionUrl) {
+                  <div class="step-sub" [class.has-action]="!!step.actionUrl">
+                    @if (step.detail) {
+                      <p class="step-detail">{{ step.detail }}</p>
                     }
                     @if (step.actionUrl) {
                       <button
@@ -128,10 +126,7 @@
                         {{ step.actionLabel }}
                       </button>
                     }
-                  </span>
-                </div>
-                @if (step.detail) {
-                  <p class="step-detail">{{ step.detail }}</p>
+                  </div>
                 }
                 @if (step.artifacts.length) {
                   @if (showJobFilters()) {

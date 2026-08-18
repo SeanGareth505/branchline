@@ -16,7 +16,7 @@ describe('revision grid columns', () => {
     expect(COL_DEFAULT.date).toBe(108);
     expect(COL_MAX.date).toBeLessThanOrEqual(140);
     expect(COL_MAX.author).toBeLessThanOrEqual(200);
-    expect(COL_MAX.graph).toBe(400);
+    expect(COL_MAX.graph).toBe(96);
   });
 
   it('clamps oversized saved widths from older sessions', () => {

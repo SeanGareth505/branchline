@@ -284,13 +284,17 @@
 }
 
 .step-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.6rem;
+  column-gap: 0.75rem;
 }
 
 .step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -304,14 +308,18 @@
 
 .step-meta {
   display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: flex-end;
-  gap: 0.25rem;
-  flex-shrink: 0;
+  gap: 0.4rem;
+  min-width: 0;
   font-size: 11px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.step-state {
+  flex-shrink: 0;
 }
 
 .timeline > li.active .step-meta {
@@ -328,21 +336,34 @@
 }
 
 .step-time {
-  margin-left: 0.3rem;
   opacity: 0.8;
 }
 
 .step-when {
-  margin-left: 0.35rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+}
+
+.step-sub {
+  margin: 0.12rem 0 0;
+}
+
+.step-sub.has-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.6rem;
+}
+
+.step-sub.has-action .step-open {
+  grid-column: 2;
+  justify-self: end;
 }
 
 .step-open {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  margin-left: 0.35rem;
   height: 1.35rem;
   padding: 0 0.4rem;
   border: 1px solid var(--glass-border);
@@ -351,6 +372,7 @@
   color: var(--text-secondary);
   font-size: 10.5px;
   font-weight: 650;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -361,7 +383,8 @@
 }
 
 .step-detail {
-  margin: 0.12rem 0 0;
+  margin: 0;
+  min-width: 0;
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-muted);

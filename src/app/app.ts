@@ -31,39 +31,37 @@ export class App implements OnInit {
   private readonly releaseDialog = inject(ReleaseDialogService);
   private static readonly AUTO_FETCH_INTERVAL_MS = 5 * 60_000;
 
+  private readonly windowTitle = effect(() => {
+    const repo = this.store.currentRepo();
+    const branch = this.store.status()?.branch?.trim();
+    const view = this.store.view();
+    const title = repo
+      ? `${repo.name}${branch ? ` — ${branch}` : ''} · Branchline`
+      : view === 'onboarding'
+        ? 'Set up Git · Branchline'
+        : 'Branchline';
+    document.title = title;
+    if (!this.tauri.isDummyBackend) {
+      void getCurrentWindow().setTitle(title).catch(() => undefined);
+    }
+  });
+
+  private readonly autoFetch = effect((onCleanup) => {
+    const enabled = this.store.settings().autoFetchOnOpen;
+    const repo = this.store.currentRepo();
+    if (!enabled || !repo || this.tauri.isDummyBackend) return;
+    const timer = window.setInterval(() => {
+      if (!this.store.currentRepo() || this.store.remoteBusy() || this.store.actionBusy() || this.store.loading()) return;
+      void this.store.fetchWithSavedOptions();
+    }, App.AUTO_FETCH_INTERVAL_MS);
+    onCleanup(() => window.clearInterval(timer));
+  });
+
   ngOnInit(): void {
     applyWindowControlSide();
     this.tooltips.init();
     this.diagnostics.bindGlobalHandlers();
-    this.bindWindowTitle();
     void this.store.init().then(() => void this.updates.init());
-  }
-
-  private bindWindowTitle(): void {
-    effect(() => {
-      const repo = this.store.currentRepo();
-      const branch = this.store.status()?.branch?.trim();
-      const view = this.store.view();
-      const title = repo
-        ? `${repo.name}${branch ? ` — ${branch}` : ''} · Branchline`
-        : view === 'onboarding'
-          ? 'Set up Git · Branchline'
-          : 'Branchline';
-      document.title = title;
-      if (!this.tauri.isDummyBackend) {
-        void getCurrentWindow().setTitle(title).catch(() => undefined);
-      }
-    });
-    effect((onCleanup) => {
-      const enabled = this.store.settings().autoFetchOnOpen;
-      const repo = this.store.currentRepo();
-      if (!enabled || !repo || this.tauri.isDummyBackend) return;
-      const timer = window.setInterval(() => {
-        if (!this.store.currentRepo() || this.store.remoteBusy() || this.store.actionBusy() || this.store.loading()) return;
-        void this.store.fetchWithSavedOptions();
-      }, App.AUTO_FETCH_INTERVAL_MS);
-      onCleanup(() => window.clearInterval(timer));
-    });
   }
 
   @HostListener('window:unhandledrejection', ['$event'])
