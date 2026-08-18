@@ -282,6 +282,30 @@
   min-width: 0;
 }
 
+.check-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 650;
+  border-bottom: 1px solid color-mix(in srgb, #ef4444 28%, transparent);
+}
+
+.check-strip span {
+  min-width: 0;
+}
+
+.check-strip-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 .layout-split {
   flex: 1;
   min-height: 0;
@@ -956,19 +980,6 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-}
-
-app-commit-checks {
-  margin-bottom: auto;
-  min-width: 0;
-  flex: 0 1 auto;
-  max-height: min(28%, 8.5rem);
-  overflow: hidden;
-}
-
-app-commit-checks.is-empty {
-  max-height: none;
-  overflow: visible;
 }
 
 .options {

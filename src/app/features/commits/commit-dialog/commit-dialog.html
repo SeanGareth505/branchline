@@ -57,6 +57,16 @@
         </div>
       }
 
+      @if (checkFailure(); as message) {
+        <div class="check-strip" role="alert">
+          <span>{{ message }}</span>
+          <div class="check-strip-actions">
+            <button type="button" class="bl-btn" (click)="openChecks()">View log</button>
+            <button type="button" class="bl-btn" (click)="skipCommitChecks()">Skip checks</button>
+          </div>
+        </div>
+      }
+
       <as-split
         class="layout-split"
         direction="vertical"

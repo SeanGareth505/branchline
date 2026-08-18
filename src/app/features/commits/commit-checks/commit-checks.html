@@ -1,57 +1,106 @@
-<section class="checks" [class.is-empty]="checks().length === 0">
-  <header>
-    <div class="title">
-      <ng-icon name="lucideListChecks" size="14" />
-      <h3>Checks</h3>
-      @if (managers().length) {
-        <span class="src">{{ managers()[0].label }}</span>
-      }
-    </div>
+<button
+  type="button"
+  class="checks-btn"
+  [attr.data-status]="tone()"
+  [attr.aria-expanded]="detailsOpen()"
+  aria-haspopup="dialog"
+  title="Open commit checks"
+  (click)="openDetails()"
+>
+  <span class="mark" aria-hidden="true">
+    @if (tone() === 'running') {
+      <app-spinner size="sm" label="Running checks" />
+    } @else {
+      <ng-icon [name]="iconFor(tone())" size="14" />
+    }
+  </span>
+  <span class="copy">
+    <span class="label">Checks</span>
     <span class="summary">{{ summary() }}</span>
-  </header>
+  </span>
+  <ng-icon class="chevron" name="lucideChevronRight" size="14" />
+</button>
 
-  @if (checks().length === 0) {
-    <p class="empty">No commit checks yet. Add a script, or open a repo with Husky.</p>
-  } @else {
-    <ul>
-      @for (c of checks(); track c.id) {
-        <li [attr.data-status]="statusOf(c)" [class.off]="!c.enabled">
-          <button type="button" class="row" (click)="toggleOutput(c)">
-            <span class="mark" aria-hidden="true">
-              @if (statusOf(c) === 'running') {
-                <app-spinner size="sm" [label]="c.name" />
-              } @else {
-                <ng-icon [name]="iconFor(statusOf(c))" size="14" />
-              }
-            </span>
-            <span class="meta">
-              <span class="name">{{ c.name }}</span>
-              @if (c.sourceLabel !== managers()[0]?.label) {
-                <span class="from">{{ c.sourceLabel }}</span>
-              }
-            </span>
-            @if (!c.enabled) {
-              <span class="off-label">off</span>
+@if (detailsOpen()) {
+  <div class="backdrop bl-backdrop" (click)="closeDetails()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="commit-checks-title"
+    >
+      <header>
+        <div class="copy">
+          <p class="eyebrow">Commit</p>
+          <h2 id="commit-checks-title">Checks</h2>
+          <p>
+            @if (managers().length) {
+              {{ managers()[0].label }} runs before the commit{{ pushIncluded() ? ' or push' : '' }}.
+            } @else {
+              Run a script before the commit, or skip if you need to land this as-is.
             }
-          </button>
-          @if (expandedId() === c.id && (outputOf(c) || c.command)) {
-            <pre class="log">{{ outputOf(c) || c.command }}</pre>
-          }
-        </li>
-      }
-    </ul>
-  }
+          </p>
+        </div>
+        <button type="button" class="bl-btn icon" (click)="closeDetails()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="16" />
+        </button>
+      </header>
 
-  <div class="foot">
-    <label class="skip" [class.on]="skip()">
-      <input type="checkbox" [ngModel]="skip()" (ngModelChange)="skip.set($event)" />
-      Skip checks
-    </label>
-    <div class="actions">
-      <button type="button" class="bl-btn quiet" (click)="addScript()">Add script</button>
-      <button type="button" class="bl-btn quiet" (click)="manage()">Manage</button>
+      @if (tone() === 'fail') {
+        <div class="fail-banner" role="alert">
+          <ng-icon name="lucideCircleAlert" size="14" />
+          <span>{{ failMessage() }}</span>
+        </div>
+      }
+
+      @if (checks().length === 0) {
+        <p class="empty">No commit checks yet. Add a script, or open a repo with Husky.</p>
+      } @else {
+        <ul>
+          @for (c of checks(); track c.id) {
+            <li [attr.data-status]="statusOf(c)" [class.off]="!c.enabled">
+              <button type="button" class="row" (click)="toggleOutput(c)">
+                <span class="mark" aria-hidden="true">
+                  @if (statusOf(c) === 'running') {
+                    <app-spinner size="sm" [label]="c.name" />
+                  } @else {
+                    <ng-icon [name]="iconFor(statusOf(c))" size="14" />
+                  }
+                </span>
+                <span class="meta">
+                  <span class="name">{{ c.name }}</span>
+                  @if (c.sourceLabel !== managers()[0]?.label) {
+                    <span class="from">{{ c.sourceLabel }}</span>
+                  }
+                </span>
+                @if (!c.enabled) {
+                  <span class="off-label">off</span>
+                } @else {
+                  <span class="state">{{ statusLabel(statusOf(c)) }}</span>
+                }
+              </button>
+              @if (expandedId() === c.id && (outputOf(c) || c.command)) {
+                <pre class="log">{{ outputOf(c) || c.command }}</pre>
+              }
+            </li>
+          }
+        </ul>
+      }
+
+      <footer>
+        <label class="skip" [class.on]="skip()">
+          <input type="checkbox" [ngModel]="skip()" (ngModelChange)="skip.set($event)" />
+          Skip checks
+        </label>
+        <div class="actions">
+          <button type="button" class="bl-btn" (click)="addScript()">Add script</button>
+          <button type="button" class="bl-btn" (click)="manage()">Manage</button>
+          <button type="button" class="bl-btn bl-btn-primary" (click)="closeDetails()">Done</button>
+        </div>
+      </footer>
     </div>
   </div>
-</section>
+}
 
 <app-check-script-dialog />

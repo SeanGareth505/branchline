@@ -15,6 +15,10 @@ import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { branchLeafName, isMainlineBranch } from '../../../shared/git/mainline-branch';
 import { defaultPrTitle, fallbackPrTitle } from '../../../shared/git/pr-title';
+import {
+  defaultPrDescription,
+  fallbackPrDescription,
+} from '../../../shared/git/pr-description';
 
 @Component({
   selector: 'app-create-pr-dialog',
@@ -40,7 +44,8 @@ export class CreatePrDialog {
   readonly loadingTemplates = signal(false);
   readonly busy = signal(false);
   private titleTouched = false;
-  private titleToken = 0;
+  private bodyTouched = false;
+  private draftToken = 0;
 
   readonly savedTemplates = computed(() => this.store.settings().prTemplates);
   readonly hostReady = computed(() => this.store.hasLinkedPrHost());
@@ -81,16 +86,17 @@ export class CreatePrDialog {
       const branch = status?.branch ?? '';
       const preferred = this.store.createPrPreferredHead()?.trim();
       const head = preferred || branch;
+      const base = this.defaultBase(head);
       this.titleTouched = false;
+      this.bodyTouched = false;
       this.body.set('');
       this.head.set(head);
-      this.base.set(this.defaultBase(head));
+      this.base.set(base);
       this.draft.set(false);
       this.method.set(this.store.settings().prCreateMethod);
       this.selectedId.set('blank');
       this.busy.set(false);
       this.title.set(fallbackPrTitle(head));
-      void this.refreshTitle();
       void this.loadRepoTemplates();
     });
   }
@@ -103,7 +109,8 @@ export class CreatePrDialog {
   selectTemplate(id: string): void {
     this.selectedId.set(id);
     if (id === 'blank') {
-      this.body.set('');
+      this.bodyTouched = false;
+      void this.refreshDraft();
       return;
     }
     const repo = this.repoTemplates().find((t) => t.id === id);
@@ -123,17 +130,22 @@ export class CreatePrDialog {
 
   onHeadChange(value: string): void {
     this.head.set(value);
-    void this.refreshTitle();
+    void this.refreshDraft();
   }
 
   onBaseChange(value: string): void {
     this.base.set(value);
-    void this.refreshTitle();
+    void this.refreshDraft();
   }
 
   onTitleChange(value: string): void {
     this.titleTouched = true;
     this.title.set(value);
+  }
+
+  onBodyChange(value: string): void {
+    this.bodyTouched = true;
+    this.body.set(value);
   }
 
   async saveCurrentTemplate(): Promise<void> {
@@ -181,21 +193,35 @@ export class CreatePrDialog {
     }
   }
 
-  private async refreshTitle(): Promise<void> {
-    if (this.titleTouched) return;
+  private async refreshDraft(): Promise<void> {
     const head = this.head().trim();
     const base = this.base().trim();
-    this.title.set(fallbackPrTitle(head));
+    if (!this.titleTouched) {
+      this.title.set(fallbackPrTitle(head));
+    }
+    if (!this.bodyTouched && this.selectedId() === 'blank') {
+      this.body.set(fallbackPrDescription(head, base));
+    }
     const path = this.store.currentRepo()?.path;
     if (!path || !head || !base || head === base) return;
-    const token = ++this.titleToken;
+    const token = ++this.draftToken;
     try {
       const commits = await this.tauri.getCommitRange(path, base, head, 100);
-      if (token !== this.titleToken || this.titleTouched) return;
-      this.title.set(defaultPrTitle(commits, head));
+      if (token !== this.draftToken) return;
+      if (!this.titleTouched) {
+        this.title.set(defaultPrTitle(commits, head));
+      }
+      if (!this.bodyTouched && this.selectedId() === 'blank') {
+        this.body.set(defaultPrDescription(commits, head, base));
+      }
     } catch {
-      if (token !== this.titleToken || this.titleTouched) return;
-      this.title.set(fallbackPrTitle(head));
+      if (token !== this.draftToken) return;
+      if (!this.titleTouched) {
+        this.title.set(fallbackPrTitle(head));
+      }
+      if (!this.bodyTouched && this.selectedId() === 'blank') {
+        this.body.set(fallbackPrDescription(head, base));
+      }
     }
   }
 
@@ -222,12 +248,19 @@ export class CreatePrDialog {
       const templates = await this.tauri.listPrTemplates(path);
       this.repoTemplates.set(templates);
       const auto = templates.find((t) => t.name === 'Repo default') ?? templates[0];
-      if (auto && this.selectedId() === 'blank' && !this.body().trim()) {
+      if (auto && this.selectedId() === 'blank' && !this.bodyTouched) {
         this.selectedId.set(auto.id);
         this.body.set(auto.body);
+        return;
+      }
+      if (this.selectedId() === 'blank' && !this.bodyTouched) {
+        await this.refreshDraft();
       }
     } catch {
       this.repoTemplates.set([]);
+      if (this.selectedId() === 'blank' && !this.bodyTouched) {
+        await this.refreshDraft();
+      }
     } finally {
       this.loadingTemplates.set(false);
     }

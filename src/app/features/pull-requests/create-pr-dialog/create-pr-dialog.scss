@@ -60,7 +60,7 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
   gap: 0.65rem;
-  align-items: end;
+  align-items: center;
 }
 
 .branches .field {
@@ -71,12 +71,15 @@ h3 {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  min-height: 2.375rem;
+  padding: 0.6rem 2rem 0.6rem 0.65rem;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .arrow {
-  padding-bottom: 0.55rem;
+  align-self: center;
   color: var(--text-muted);
   font-weight: 700;
 }
@@ -101,13 +104,13 @@ h3 {
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-radius: 8px;
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.65rem;
   font: inherit;
+  line-height: 1.35;
 }
 
 .field input {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-height: 2.375rem;
 }
 
 .field textarea {

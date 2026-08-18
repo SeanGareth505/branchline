@@ -88,8 +88,10 @@
         </div>
         @if (loadingTemplates()) {
           <p class="hint">Looking for PULL_REQUEST_TEMPLATE.md…</p>
-        } @else if (!repoTemplates().length && !savedTemplates().length) {
-          <p class="hint">No repo template found. Write one below and save it for next time.</p>
+        }         @else if (!repoTemplates().length && !savedTemplates().length) {
+          <p class="hint">No repo template found. Description suggested from branch commits.</p>
+        } @else if (selectedId() === 'blank' && body().trim()) {
+          <p class="hint">Description suggested from commits between branches.</p>
         }
       </section>
 
@@ -108,7 +110,7 @@
         <textarea
           rows="9"
           [ngModel]="body()"
-          (ngModelChange)="body.set($event)"
+          (ngModelChange)="onBodyChange($event)"
           placeholder="What changed, why, and how to test it"
         ></textarea>
       </label>

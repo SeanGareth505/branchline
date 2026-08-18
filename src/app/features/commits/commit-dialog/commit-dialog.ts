@@ -223,6 +223,13 @@ export class CommitDialog {
     return triggers;
   });
 
+  readonly checkFailure = computed(() => {
+    const panel = this.commitChecks();
+    if (!panel || panel.skip()) return null;
+    if (!panel.failedChecks().length) return null;
+    return panel.failMessage();
+  });
+
   readonly busyLabel = computed(() => {
     const phase = this.commitPhase();
     if (phase === 'checking') return 'Running checks…';
@@ -414,6 +421,14 @@ export class CommitDialog {
     if (this.committing() && !completed) return;
     this.closeFileMenu();
     this.store.closeCommitModal(completed);
+  }
+
+  openChecks(): void {
+    this.commitChecks()?.openDetails();
+  }
+
+  skipCommitChecks(): void {
+    this.commitChecks()?.skip.set(true);
   }
 
   statusClass(status: FileStatusKind): string {
@@ -1207,7 +1222,7 @@ export class CommitDialog {
           silent: true,
         });
         if (!ok) {
-          this.store.showError('Checks failed — fix them or skip checks to commit');
+          this.commitChecks()?.openDetails();
           return;
         }
       }
@@ -1305,6 +1320,10 @@ export class CommitDialog {
         return;
       }
       if (this.prompts.request()) return;
+      if (this.commitChecks()?.closeTop()) {
+        event.preventDefault();
+        return;
+      }
       if (this.committing()) return;
       event.preventDefault();
       this.close();
