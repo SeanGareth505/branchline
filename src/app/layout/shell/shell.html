@@ -18,7 +18,7 @@
     </div>
   }
 
-  <app-update-banner />
+  <app-update-banner (mousedown)="onTitlebarMouseDown($event)" />
 
   @if (store.view() !== 'onboarding') {
     <header class="chrome">

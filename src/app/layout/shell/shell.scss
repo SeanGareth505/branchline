@@ -102,8 +102,8 @@
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .chrome-left app-project-switcher {
@@ -146,8 +146,8 @@
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
   flex-shrink: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .chrome-views button {
@@ -240,6 +240,11 @@
   gap: 0.3rem;
   flex-shrink: 0;
   justify-self: end;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.chrome-nav :is(button, a, input, select, textarea, label, [contenteditable='true']) {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }

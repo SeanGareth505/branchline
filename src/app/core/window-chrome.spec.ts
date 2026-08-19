@@ -12,13 +12,23 @@ describe('window-chrome', () => {
     button.remove();
   });
 
-  it('treats chrome tool regions as no-drag targets', () => {
+  it('treats repository tool regions as no-drag targets', () => {
+    const host = document.createElement('div');
+    host.className = 'chrome-tools';
+    const child = document.createElement('span');
+    host.append(child);
+    document.body.append(host);
+    expect(isNoDragTitlebarTarget(child)).toBeTrue();
+    host.remove();
+  });
+
+  it('allows non-interactive navigation regions to drag', () => {
     const host = document.createElement('div');
     host.className = 'chrome-left';
     const child = document.createElement('span');
     host.append(child);
     document.body.append(host);
-    expect(isNoDragTitlebarTarget(child)).toBeTrue();
+    expect(isNoDragTitlebarTarget(child)).toBeFalse();
     host.remove();
   });
 

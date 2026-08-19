@@ -3,7 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 const INTERACTIVE_TITLEBAR =
   'button, a, input, select, textarea, label, [contenteditable="true"]';
 
-const NO_DRAG_TITLEBAR = '.chrome-left, .chrome-views, .chrome-right, .chrome-tools';
+const NO_DRAG_TITLEBAR = '.chrome-tools, [data-window-drag="false"]';
 
 export function isInteractiveTitlebarTarget(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(INTERACTIVE_TITLEBAR);

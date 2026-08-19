@@ -33,6 +33,7 @@ export type UpdatePhase =
 export class UpdateService {
   private static readonly CHECK_THROTTLE_MS = 20_000;
   private static readonly PERIODIC_MS = 5 * 60_000;
+  private static readonly WATCH_MAX_ATTEMPTS = 45;
   private readonly tauri = inject(TauriService);
   private readonly injector = inject(Injector);
   private pending: Update | null = null;
@@ -214,7 +215,7 @@ export class UpdateService {
       this.watchedVersion = null;
       return;
     }
-    if (attempt >= 10) {
+    if (attempt >= UpdateService.WATCH_MAX_ATTEMPTS) {
       this.watchedVersion = null;
       return;
     }
