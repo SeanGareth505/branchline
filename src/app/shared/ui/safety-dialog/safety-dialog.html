@@ -2,6 +2,7 @@
   <div class="backdrop" (click)="store.closeSafety()">
     <div
       class="dialog bl-glass-dialog"
+      [class.detailed]="isForcePush(safety)"
       [attr.data-severity]="safety.severity"
       (click)="$event.stopPropagation()"
       role="dialog"
@@ -9,13 +10,7 @@
       [attr.aria-labelledby]="'safety-title'"
     >
       <header>
-        <div class="heading">
-          <span class="severity" [attr.data-severity]="safety.severity">
-            <ng-icon name="lucideCircleAlert" size="14" />
-            {{ severityLabel(safety.severity) }}
-          </span>
-          <h2 id="safety-title">{{ safety.title }}</h2>
-        </div>
+        <h2 id="safety-title">{{ safety.title }}</h2>
         <button
           type="button"
           class="bl-btn icon"
@@ -30,23 +25,23 @@
 
       <p class="consequence">{{ safety.consequence }}</p>
 
-      @if (safety.advice) {
-        <p class="advice">{{ safety.advice }}</p>
-      }
-
-      <ul class="checks">
-        @for (check of safety.checks; track check.id) {
-          <li [class.ok]="check.ok" [class.bad]="!check.ok">
-            <span class="mark">{{ check.ok ? '✓' : '!' }}</span>
-            <div>
-              <strong>{{ check.label }}</strong>
-              <span>{{ check.detail }}</span>
-            </div>
-          </li>
-        }
-      </ul>
-
       @if (isForcePush(safety)) {
+        @if (safety.advice) {
+          <p class="advice">{{ safety.advice }}</p>
+        }
+
+        <ul class="checks">
+          @for (check of safety.checks; track check.id) {
+            <li [class.ok]="check.ok" [class.bad]="!check.ok">
+              <span class="mark">{{ check.ok ? '✓' : '!' }}</span>
+              <div>
+                <strong>{{ check.label }}</strong>
+                <span>{{ check.detail }}</span>
+              </div>
+            </li>
+          }
+        </ul>
+
         <fieldset class="modes">
           <legend>How do you want to push?</legend>
           <label class="mode" [class.active]="pushMode() === 'lease'">
@@ -82,37 +77,75 @@
             Fetch first, then re-check
           </button>
         }
-      }
 
-      <button type="button" class="linkish" (click)="toggleCommand()">
-        {{ showCommand() ? 'Hide' : 'Show' }} git command
-      </button>
-      @if (showCommand()) {
-        <pre class="mono">{{ activeCommand(safety) }}</pre>
-      }
+        <button type="button" class="linkish" (click)="toggleCommand()">
+          {{ showCommand() ? 'Hide' : 'Show' }} git command
+        </button>
+        @if (showCommand()) {
+          <pre class="mono">{{ activeCommand(safety) }}</pre>
+        }
 
-      @if (!safety.blocked) {
-        <label class="confirm" [class.on]="acknowledged()">
-          <input
-            type="checkbox"
-            [ngModel]="acknowledged()"
-            (ngModelChange)="acknowledged.set($event)"
-          />
-          <span class="tick" aria-hidden="true">
-            <ng-icon name="lucideCheck" size="12" />
-          </span>
-          <span class="confirm-copy">
-            @for (part of confirmParts(safety); track $index) {
-              @if (part.kind === 'text') {
-                <span>{{ part.value }}</span>
-              } @else {
-                <code [class.mainline]="isMainlineTarget(part.value)">{{ part.value }}</code>
-              }
+        @if (!safety.blocked) {
+          <label class="confirm" [class.on]="acknowledged()">
+            <input
+              type="checkbox"
+              [ngModel]="acknowledged()"
+              (ngModelChange)="acknowledged.set($event)"
+            />
+            <span class="tick" aria-hidden="true">
+              <ng-icon name="lucideCheck" size="12" />
+            </span>
+            <span class="confirm-copy">{{ safety.confirmPrompt }}</span>
+          </label>
+
+          @if (needsTyped(safety)) {
+            <label class="typed">
+              <span>Type <code>{{ safety.target }}</code> to confirm</span>
+              <input
+                type="text"
+                [ngModel]="typedConfirm()"
+                (ngModelChange)="typedConfirm.set($event)"
+                [placeholder]="safety.target ?? 'confirm'"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+          }
+        } @else {
+          <p class="blocked-note">This action is blocked until the failed checks above are resolved.</p>
+        }
+
+        <footer>
+          <button type="button" class="bl-btn" (click)="store.closeSafety()" [disabled]="busy()">
+            Cancel
+          </button>
+          <div class="actions">
+            @if (showProceed(safety)) {
+              <button
+                type="button"
+                class="bl-btn bl-btn-danger"
+                [disabled]="!canRunProceed(safety)"
+                (click)="run(false)"
+              >
+                Push with --force
+              </button>
             }
-          </span>
-        </label>
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary"
+              [disabled]="!canRunRecommended(safety)"
+              (click)="run(true)"
+            >
+              Push with --force-with-lease
+            </button>
+          </div>
+        </footer>
+      } @else {
+        @if (safety.advice) {
+          <p class="simple-advice">{{ safety.advice }}</p>
+        }
 
-        @if (needsTyped(safety)) {
+        @if (!safety.blocked && needsTyped(safety)) {
           <label class="typed">
             <span>Type <code>{{ safety.target }}</code> to confirm</span>
             <input
@@ -125,37 +158,25 @@
             />
           </label>
         }
-      } @else {
-        <p class="blocked-note">This action is blocked until the failed checks above are resolved.</p>
-      }
 
-      <footer>
-        <button type="button" class="bl-btn" (click)="store.closeSafety()" [disabled]="busy()">
-          Cancel
-        </button>
-        <div class="actions">
-          @if (showProceed(safety)) {
-            <button
-              type="button"
-              class="bl-btn bl-btn-danger"
-              [disabled]="!canRunProceed(safety)"
-              (click)="run(false)"
-            >
-              {{ isForcePush(safety) ? 'Push with --force' : safety.proceedLabel }}
+        <footer class="simple-footer">
+          @if (!safety.blocked) {
+            <button type="button" class="bl-btn" (click)="store.closeSafety()" [disabled]="busy()">
+              Cancel
             </button>
           }
           <button
             type="button"
-            class="bl-btn bl-btn-primary"
+            class="bl-btn"
+            [class.bl-btn-danger]="safety.severity !== 'info' && !safety.blocked"
+            [class.bl-btn-primary]="safety.severity === 'info' || safety.blocked"
             [disabled]="!canRunRecommended(safety)"
             (click)="run(true)"
           >
-            {{
-              isForcePush(safety) ? 'Push with --force-with-lease' : safety.recommendedLabel
-            }}
+            {{ safety.recommendedLabel }}
           </button>
-        </div>
-      </footer>
+        </footer>
+      }
     </div>
   </div>
 }

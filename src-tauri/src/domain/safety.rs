@@ -91,10 +91,12 @@ fn analyze_delete_branch(
     let current = git2_repo::current_branch(path).unwrap_or_default();
     let is_current = !branch.is_empty() && branch == current;
     let merged = !branch.is_empty() && git2_repo::is_branch_merged(path, &branch);
-    let has_upstream = !branch.is_empty() && git2_repo::branch_has_upstream(path, &branch);
+    let gone = !branch.is_empty() && git2_repo::branch_upstream_gone(path, &branch);
+    let has_upstream =
+        !gone && !branch.is_empty() && git2_repo::branch_has_upstream(path, &branch);
     let protected = is_protected_branch(&branch);
 
-    let checks = vec![
+    let mut checks = vec![
         SafetyCheck {
             id: "not_current".into(),
             label: "Not the current branch".into(),
@@ -144,23 +146,37 @@ fn analyze_delete_branch(
             ok: !has_upstream,
             detail: if has_upstream {
                 "A remote branch may still exist — delete remote separately if needed".into()
+            } else if gone {
+                "Remote-tracking branch is already gone".into()
             } else {
                 "Local-only branch".into()
             },
         },
     ];
+    if gone {
+        checks.push(SafetyCheck {
+            id: "remote_gone".into(),
+            label: "Remote branch already deleted".into(),
+            ok: true,
+            detail: "Git still needs -D because the old upstream ref is missing".into(),
+        });
+    }
 
     let blocked = is_current || locked;
-    let severity = if blocked || protected {
+    let severity = if blocked || protected || (!merged && !gone) {
         "danger"
-    } else if merged {
-        "warning"
     } else {
-        "danger"
+        "warning"
     };
 
     let (recommended_label, recommended_action, proceed_label) = if blocked {
         ("Close".into(), "keep".into(), "Close".into())
+    } else if gone && merged {
+        (
+            "Delete leftover local branch".into(),
+            "delete_gone".into(),
+            "Delete leftover local branch".into(),
+        )
     } else if merged {
         (
             "Delete local branch".into(),
@@ -183,12 +199,17 @@ fn analyze_delete_branch(
         format!(
             "Deleting '{branch}' can disrupt the whole team. Prefer renaming or archiving if you only need a different default. Type the branch name to continue."
         )
+    } else if gone && merged {
+        "The remote already deleted this branch. Git will not accept -d because the old upstream is missing.".into()
+    } else if gone {
+        "The remote branch is gone, but this local branch has commits not in HEAD.".into()
     } else if merged {
         "Prefer deleting only after the branch is merged or you no longer need it.".into()
     } else {
         "Consider creating a backup branch or cherry-picking commits you still need.".into()
     };
 
+    let recommend_force = gone || !merged;
     SafetyAnalysis {
         action: SafetyAction::DeleteBranch,
         title: format!("Delete branch '{branch}'?"),
@@ -198,6 +219,8 @@ fn analyze_delete_branch(
             format!("Branch '{branch}' is locked and cannot be deleted until unlocked.")
         } else if protected {
             format!("Delete local branch '{branch}'. This is a common default/mainline branch.")
+        } else if gone {
+            format!("Delete leftover local branch '{branch}'. The remote-tracking branch is already gone.")
         } else if merged {
             format!("Delete local branch '{branch}'. Work appears merged into HEAD.")
         } else {
@@ -208,7 +231,10 @@ fn analyze_delete_branch(
         recommended_label,
         recommended_action,
         proceed_label,
-        git_command: format!("git branch -d {branch}"),
+        git_command: format!(
+            "git branch {} {branch}",
+            if recommend_force { "-D" } else { "-d" }
+        ),
         proceed_git_command: format!("git branch -D {branch}"),
         confirm_prompt: format!("I understand I am deleting local branch '{branch}'"),
         require_typed_confirm: !blocked && protected,
@@ -619,6 +645,16 @@ fn analyze_delete_tag(path: &Path, target: Option<String>) -> SafetyAnalysis {
     }
 }
 
+fn local_delete_flag(analysis: &SafetyAnalysis) -> &'static str {
+    let merged = analysis.checks.iter().any(|c| c.id == "merged" && c.ok);
+    let gone = analysis.checks.iter().any(|c| c.id == "remote_gone");
+    if merged && !gone {
+        "-d"
+    } else {
+        "-D"
+    }
+}
+
 pub fn execute(
     path: &Path,
     analysis: &SafetyAnalysis,
@@ -648,12 +684,7 @@ pub fn execute(
                         chrono::Utc::now().format("%Y%m%d-%H%M%S")
                     );
                     git_cli::run_git(path, &["branch", &backup, &branch])?;
-                    let flag = if analysis.checks.iter().any(|c| c.id == "merged" && c.ok) {
-                        "-d"
-                    } else {
-                        "-D"
-                    };
-                    git_cli::run_git(path, &["branch", flag, &branch])?;
+                    git_cli::run_git(path, &["branch", local_delete_flag(analysis), &branch])?;
                     return Ok(ExecuteOutcome {
                         message: format!("Deleted '{branch}' (backup: {backup})"),
                         undoable: false,
@@ -662,25 +693,15 @@ pub fn execute(
                         undo_payload: None,
                     });
                 }
-                let flag = if analysis.checks.iter().any(|c| c.id == "merged" && c.ok) {
-                    "-d"
-                } else {
-                    "-D"
-                };
-                let msg = git_cli::run_git(path, &["branch", flag, &branch])?;
+                let msg = git_cli::run_git(path, &["branch", local_delete_flag(analysis), &branch])?;
                 return Ok(outcome_msg(msg));
             }
             if analysis.recommended_action == "keep" {
                 return Ok(outcome_msg("Kept branch — nothing deleted"));
             }
-            let flag = if analysis.checks.iter().any(|c| c.id == "merged" && c.ok) {
-                "-d"
-            } else {
-                "-D"
-            };
             Ok(outcome_msg(git_cli::run_git(
                 path,
-                &["branch", flag, &branch],
+                &["branch", local_delete_flag(analysis), &branch],
             )?))
         }
         SafetyAction::HardReset => {

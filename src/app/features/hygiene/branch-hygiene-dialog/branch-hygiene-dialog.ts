@@ -29,7 +29,6 @@ export class BranchHygieneDialog {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
   readonly entries = signal<BranchHygieneEntry[]>([]);
-  readonly selected = signal<Set<string>>(new Set());
   readonly loading = signal(false);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
@@ -54,14 +53,15 @@ export class BranchHygieneDialog {
     }));
   });
 
-  readonly selectedCount = computed(() => this.selected().size);
-  readonly hasSafeBranches = computed(() =>
-    this.entries().some((entry) => entry.reason === 'merged' || entry.reason === 'gone'),
+  readonly safeCount = computed(
+    () => this.entries().filter((entry) => entry.safeToDelete).length,
   );
-  readonly canSubmit = computed(
-    () => !this.loading() && !this.busy() && this.selectedCount() > 0,
+  readonly canDeleteSafe = computed(
+    () => !this.loading() && !this.busy() && this.safeCount() > 0,
   );
-  readonly submitLabel = computed(() => (this.busy() ? 'Deleting…' : 'Delete selected'));
+  readonly canDeleteAll = computed(
+    () => !this.loading() && !this.busy() && this.entries().length > 0,
+  );
 
   constructor() {
     effect(() => {
@@ -81,41 +81,18 @@ export class BranchHygieneDialog {
     this.store.closeBranchHygieneDialog();
   }
 
-  isSelected(name: string): boolean {
-    return this.selected().has(name);
-  }
-
-  toggle(name: string, event: Event): void {
-    const checked = (event.target as HTMLInputElement).checked;
-    this.selected.update((set) => {
-      const next = new Set(set);
-      if (checked) next.add(name);
-      else next.delete(name);
-      return next;
-    });
-  }
-
-  selectMergedAndGone(): void {
-    this.selected.update((set) => {
-      const next = new Set(set);
-      for (const entry of this.entries()) {
-        if (entry.reason === 'merged' || entry.reason === 'gone') next.add(entry.name);
-      }
-      return next;
-    });
-  }
-
-  async submit(): Promise<void> {
-    if (!this.canSubmit()) return;
-    const chosen = this.entries().filter((entry) => this.selected().has(entry.name));
+  async submit(mode: 'safe' | 'all'): Promise<void> {
+    if (mode === 'safe' && !this.canDeleteSafe()) return;
+    if (mode === 'all' && !this.canDeleteAll()) return;
+    const chosen =
+      mode === 'safe' ? this.entries().filter((entry) => entry.safeToDelete) : this.entries();
     if (!chosen.length) return;
-    const force = chosen.some((entry) => entry.reason !== 'merged' && entry.reason !== 'gone');
-    if (force) {
+    if (mode === 'all') {
       const n = chosen.length;
       const ok = await this.prompts.ask({
-        title: 'Delete unmerged branches?',
-        message: `Force-delete ${n} local branch${n === 1 ? '' : 'es'}. Commits that only exist on those branches may be hard to recover.`,
-        confirmLabel: 'Delete',
+        title: 'Delete all local branches?',
+        message: `Force-delete all ${n} listed local branch${n === 1 ? '' : 'es'}, including unmerged branches. Commits that only exist on those branches may be hard to recover.`,
+        confirmLabel: 'Delete all',
         cancelLabel: 'Cancel',
         confirmOnly: true,
         required: false,
@@ -126,7 +103,7 @@ export class BranchHygieneDialog {
     try {
       await this.store.deleteLocalBranches(
         chosen.map((entry) => entry.name),
-        force,
+        mode === 'all',
       );
       this.store.closeBranchHygieneDialog();
     } finally {
@@ -150,16 +127,8 @@ export class BranchHygieneDialog {
     try {
       const list = await this.store.loadBranchHygiene();
       this.entries.set(list);
-      this.selected.set(
-        new Set(
-          list
-            .filter((entry) => entry.reason === 'merged' || entry.reason === 'gone')
-            .map((entry) => entry.name),
-        ),
-      );
     } catch (err) {
       this.entries.set([]);
-      this.selected.set(new Set());
       this.error.set(this.store.formatError(err));
     } finally {
       this.loading.set(false);

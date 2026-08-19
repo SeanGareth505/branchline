@@ -17,6 +17,7 @@ pub struct BranchHygieneEntry {
     pub name: String,
     pub reason: String,
     pub detail: String,
+    pub safe_to_delete: bool,
     pub tip_sha: String,
     pub tip_short_sha: String,
 }
@@ -451,6 +452,16 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         let committerdate: i64 = parts[3].parse().unwrap_or(0);
         let track = parts.get(4).copied().unwrap_or("");
         let gone = track.contains("[gone]");
+        let safe_to_delete = git_cli::run_git_allow_fail(
+            &path,
+            &[
+                "merge-base",
+                "--is-ancestor",
+                &format!("refs/heads/{name}"),
+                "HEAD",
+            ],
+        )
+        .0;
         let (reason, detail) = if gone {
             (
                 "gone",
@@ -461,17 +472,7 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
                 },
             )
         } else {
-            let ancestor = git_cli::run_git_allow_fail(
-                &path,
-                &[
-                    "merge-base",
-                    "--is-ancestor",
-                    &format!("refs/heads/{name}"),
-                    "HEAD",
-                ],
-            )
-            .0;
-            if ancestor {
+            if safe_to_delete {
                 ("merged", "Merged into HEAD".to_string())
             } else if committerdate > 0 && committerdate < stale_before {
                 let days = ((now - committerdate) / 86_400).max(1);
@@ -484,6 +485,7 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
             name: name.to_string(),
             reason: reason.into(),
             detail,
+            safe_to_delete,
             tip_sha,
             tip_short_sha,
         });

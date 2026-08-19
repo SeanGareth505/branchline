@@ -112,6 +112,7 @@ export interface BranchHygieneEntry {
   name: string;
   reason: 'merged' | 'gone' | 'stale' | string;
   detail: string;
+  safeToDelete: boolean;
   tipSha?: string;
   tipShortSha?: string;
 }

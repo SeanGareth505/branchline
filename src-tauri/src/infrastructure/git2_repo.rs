@@ -848,6 +848,21 @@ pub fn branch_has_upstream(path: &Path, branch: &str) -> bool {
     branch_upstream_name(path, branch).is_some()
 }
 
+pub fn branch_upstream_gone(path: &Path, branch: &str) -> bool {
+    if branch.is_empty() {
+        return false;
+    }
+    let (ok, out, _) = git_cli::run_git_allow_fail(
+        path,
+        &[
+            "for-each-ref",
+            "--format=%(upstream:track)",
+            &format!("refs/heads/{branch}"),
+        ],
+    );
+    ok && out.contains("[gone]")
+}
+
 pub fn configured_remote(path: &Path, branch: &str) -> Option<String> {
     let upstream = branch_upstream_name(path, branch)?;
     parse_remote_tracking_name(&upstream).map(|(remote, _)| remote)

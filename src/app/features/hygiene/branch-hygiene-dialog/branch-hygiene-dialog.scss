@@ -54,20 +54,10 @@ h3 {
   color: var(--text-muted);
 }
 
-.helper {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
+.choice {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0;
-  cursor: pointer;
-}
-
-.helper:hover {
-  text-decoration: underline;
 }
 
 .list {
@@ -87,12 +77,10 @@ h3 {
 .row {
   display: flex;
   align-items: flex-start;
-  gap: 0.55rem;
   padding: 0.55rem 0.65rem;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: var(--glass-bg);
-  cursor: pointer;
 }
 
 .row-body {
@@ -102,9 +90,32 @@ h3 {
   min-width: 0;
 }
 
+.name-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 .name {
   color: var(--text-primary);
   font-size: 0.9rem;
+}
+
+.safety {
+  flex: 0 0 auto;
+  padding: 0.08rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--git-added, #22c55e) 14%, transparent);
+  color: var(--git-added, #22c55e);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.safety.unsafe {
+  background: color-mix(in srgb, var(--git-deleted, #ef4444) 14%, transparent);
+  color: var(--git-deleted, #ef4444);
 }
 
 .meta {

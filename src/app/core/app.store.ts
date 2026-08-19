@@ -8101,9 +8101,14 @@ export class AppStore {
   async deleteLocalBranches(names: string[], force: boolean): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path || !names.length) return;
+    const gone = new Set(
+      this.localBranches()
+        .filter((branch) => branch.upstreamGone)
+        .map((branch) => branch.name),
+    );
     try {
       for (const name of names) {
-        await this.tauri.deleteBranch(path, name, force);
+        await this.tauri.deleteBranch(path, name, force || gone.has(name));
       }
       await this.refreshRepo();
       this.showToast(`Deleted ${names.length} local branch${names.length === 1 ? '' : 'es'}`, {
@@ -9199,7 +9204,7 @@ export class AppStore {
       if (ok === null) return;
     }
 
-    const force = mode === 'all';
+    const force = mode === 'all' || mode === 'gone';
     let deleted = 0;
     const skipped: string[] = [];
     for (const branch of selected) {
@@ -9214,8 +9219,8 @@ export class AppStore {
     await this.refreshRepo();
     if (deleted === 0 && skipped.length > 0) {
       this.showWarning(
-        mode === 'merged' || mode === 'gone'
-          ? 'Nothing deleted — remaining branches are unmerged. Choose “All except current” to force-delete them.'
+        mode === 'merged'
+          ? 'Nothing deleted — remaining branches are unmerged. Choose “All except current” or “Upstream gone” to force-delete them.'
           : `Could not delete ${skipped.length} branch${skipped.length === 1 ? '' : 'es'}.`,
       );
       return;
@@ -9224,9 +9229,7 @@ export class AppStore {
     const parts = [`Deleted ${deleted} local branch${deleted === 1 ? '' : 'es'}`];
     if (skipped.length > 0) {
       parts.push(
-        mode === 'merged' || mode === 'gone'
-          ? `skipped ${skipped.length} unmerged`
-          : `failed ${skipped.length}`,
+        mode === 'merged' ? `skipped ${skipped.length} unmerged` : `failed ${skipped.length}`,
       );
     }
     this.showToast(parts.join(' · '), { kind: 'success' });

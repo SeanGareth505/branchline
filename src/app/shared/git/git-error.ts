@@ -111,6 +111,12 @@ export function humanizeGitError(message: string): string {
     return 'Local changes would be overwritten. Commit or stash them, then retry.';
   }
 
+  if (/is not fully merged/i.test(m)) {
+    const branch = m.match(/the branch '([^']+)' is not fully merged/i)?.[1]?.trim();
+    const name = branch ? `'${branch}'` : 'that branch';
+    return `Git refused to delete ${name} with a safe delete because it is not fully merged. Force-delete it if you no longer need those commits.`;
+  }
+
   if (/please commit your changes or stash them/i.test(m)) {
     return 'Uncommitted changes are blocking this. Commit or stash, then retry.';
   }

@@ -24,24 +24,20 @@
       } @else if (entries().length === 0) {
         <p class="empty">Nothing to clean up</p>
       } @else {
-        @if (hasSafeBranches()) {
-          <button type="button" class="helper" (click)="selectMergedAndGone()">
-            Select all merged and gone
-          </button>
-        }
+        <p class="choice">Delete only branches merged into HEAD, or force-delete every listed branch.</p>
         <div class="list">
           @for (group of groups(); track group.reason) {
             <section class="group">
               <h3>{{ group.label }}</h3>
               @for (entry of group.entries; track entry.name) {
-                <label class="row">
-                  <input
-                    type="checkbox"
-                    [checked]="isSelected(entry.name)"
-                    (change)="toggle(entry.name, $event)"
-                  />
+                <div class="row">
                   <span class="row-body">
-                    <span class="name">{{ entry.name }}</span>
+                    <span class="name-line">
+                      <span class="name">{{ entry.name }}</span>
+                      <span class="safety" [class.unsafe]="!entry.safeToDelete">
+                        {{ entry.safeToDelete ? 'safe' : 'unmerged' }}
+                      </span>
+                    </span>
                     @if (entry.detail || entry.tipShortSha) {
                       <span class="meta">
                         @if (entry.tipShortSha) {
@@ -53,7 +49,7 @@
                       </span>
                     }
                   </span>
-                </label>
+                </div>
               }
             </section>
           }
@@ -65,10 +61,18 @@
         <button
           type="button"
           class="bl-btn bl-btn-primary"
-          [disabled]="!canSubmit()"
-          (click)="submit()"
+          [disabled]="!canDeleteSafe()"
+          (click)="submit('safe')"
         >
-          {{ submitLabel() }}
+          {{ busy() ? 'Deleting…' : 'Delete safe (' + safeCount() + ')' }}
+        </button>
+        <button
+          type="button"
+          class="bl-btn danger"
+          [disabled]="!canDeleteAll()"
+          (click)="submit('all')"
+        >
+          Delete all ({{ entries().length }})
         </button>
       </footer>
     </div>

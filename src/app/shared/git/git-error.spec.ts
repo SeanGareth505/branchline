@@ -40,6 +40,16 @@ describe('git remote errors', () => {
     expect(isRemoteAccessError('git@github.com: Permission denied (publickey).')).toBe(true);
   });
 
+  it('explains a not-fully-merged branch delete without dumping extra git lines', () => {
+    const message = humanizeGitError(
+      "error: the branch 'sotf/feature/sotf-1685-fix' is not fully merged.\nIf you are sure you want to delete it, run 'git branch -D sotf/feature/sotf-1685-fix'.",
+    );
+    expect(message.toLowerCase()).toContain('force-delete');
+    expect(message).toContain('sotf/feature/sotf-1685-fix');
+    expect(message).not.toContain('more line');
+    expect(message).not.toContain('If you are sure');
+  });
+
   it('explains rejected pushes without dropping the cause', () => {
     const message = humanizeGitError(
       '! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs',

@@ -3,11 +3,8 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { SafetyAnalysis } from '../../../core/models';
-import { isMainlineBranch } from '../../git/mainline-branch';
 
 type PushMode = 'lease' | 'force';
-
-type ConfirmPart = { kind: 'text' | 'target'; value: string };
 
 @Component({
   selector: 'app-safety-dialog',
@@ -63,28 +60,6 @@ export class SafetyDialog {
     return safety.requireTypedConfirm;
   }
 
-  confirmParts(safety: SafetyAnalysis): ConfirmPart[] {
-    const prompt = safety.confirmPrompt;
-    const target = safety.target?.trim();
-    if (!target) return [{ kind: 'text', value: prompt }];
-
-    const quoted = `'${target}'`;
-    const index = prompt.indexOf(quoted);
-    if (index < 0) return [{ kind: 'text', value: prompt }];
-
-    const parts: ConfirmPart[] = [];
-    const before = prompt.slice(0, index).replace(/\s+$/, ' ');
-    const after = prompt.slice(index + quoted.length);
-    if (before) parts.push({ kind: 'text', value: before });
-    parts.push({ kind: 'target', value: target });
-    if (after) parts.push({ kind: 'text', value: after });
-    return parts;
-  }
-
-  isMainlineTarget(name: string): boolean {
-    return isMainlineBranch(name);
-  }
-
   typedOk(safety: SafetyAnalysis): boolean {
     if (!this.needsTyped(safety)) return true;
     const expected = (safety.target ?? '').trim();
@@ -97,7 +72,7 @@ export class SafetyDialog {
     if (forRecommended && this.isSafeKeep(safety)) return true;
     if (safety.blocked) return false;
     if (!forRecommended && !safety.canProceed) return false;
-    if (!this.acknowledged()) return false;
+    if (this.isForcePush(safety) && !this.acknowledged()) return false;
     return this.typedOk(safety);
   }
 
@@ -119,17 +94,6 @@ export class SafetyDialog {
     return safety.proceedLabel !== safety.recommendedLabel;
   }
 
-  severityLabel(severity: string): string {
-    switch (severity) {
-      case 'danger':
-        return 'High risk';
-      case 'warning':
-        return 'Caution';
-      default:
-        return 'Review';
-    }
-  }
-
   async run(recommended: boolean): Promise<void> {
     const safety = this.store.safety();
     if (!safety) return;
@@ -141,7 +105,7 @@ export class SafetyDialog {
         confirmationPhrase: this.typedConfirm().trim() || undefined,
         allowBareForce:
           !recommended && this.isForcePush(safety) && this.pushMode() === 'force',
-        acknowledged: this.acknowledged(),
+        acknowledged: this.isForcePush(safety) ? this.acknowledged() : true,
       });
     } finally {
       this.busy.set(false);
