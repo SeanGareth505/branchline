@@ -536,6 +536,13 @@ export class RefsPanel {
     return !this.collapsedFolders().has(path);
   }
 
+  folderContainsCurrent(path: string): boolean {
+    const current = this.currentBranch()?.name;
+    if (!current || !path.startsWith('local:')) return false;
+    const folder = path.slice('local:'.length);
+    return !!folder && current.startsWith(`${folder}/`);
+  }
+
   toggleFolder(path: string, event?: Event): void {
     event?.stopPropagation();
     if (this.query().trim()) return;

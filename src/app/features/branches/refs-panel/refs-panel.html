@@ -252,6 +252,7 @@
               <div
                 class="ref-row folder"
                 [class.zero]="row.branchCount === 0"
+                [class.contains-current]="folderContainsCurrent(row.path)"
                 [attr.data-depth]="row.depth"
                 [style.--depth]="row.depth"
               >
@@ -265,6 +266,9 @@
                   <ng-icon class="chev" [name]="row.open ? 'lucideChevronDown' : 'lucideChevronRight'" size="12" />
                   <ng-icon class="folder-icon" [name]="row.open ? 'lucideFolderOpen' : 'lucideFolder'" size="13" />
                   <span class="label"><span class="label-text">{{ row.name }}</span></span>
+                  @if (folderContainsCurrent(row.path)) {
+                    <span class="sync-chip" data-kind="publish" [title]="'Current branch: ' + currentBranch()?.name">current</span>
+                  }
                   <span class="count">{{ row.branchCount }}</span>
                 </button>
               </div>

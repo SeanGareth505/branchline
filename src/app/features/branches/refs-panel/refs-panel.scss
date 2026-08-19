@@ -706,6 +706,15 @@ button.sync-chip:hover {
   color: var(--text-secondary);
 }
 
+.folder.contains-current {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.folder.contains-current .folder-icon {
+  color: var(--accent);
+}
+
 .folder-btn .label,
 .name .label {
   flex: 1;

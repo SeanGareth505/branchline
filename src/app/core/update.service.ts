@@ -11,6 +11,7 @@ import {
   normalizeAppVersion,
   shouldShowWhatsNew,
 } from './whats-new';
+import { isUpdaterManifestReady } from './update-readiness';
 
 const DISMISS_KEY = 'branchline.update.dismissedVersion';
 const LAST_SEEN_KEY = 'branchline.update.lastSeenVersion';
@@ -124,6 +125,15 @@ export class UpdateService {
       const update = await check();
       this.lastCheckAt = Date.now();
       if (!update) {
+        this.pending = null;
+        this.availableVersion.set(null);
+        this.releaseNotes.set('');
+        this.bannerVisible.set(false);
+        this.phase.set('idle');
+        return false;
+      }
+      if (!isUpdaterManifestReady(update.rawJson)) {
+        await update.close();
         this.pending = null;
         this.availableVersion.set(null);
         this.releaseNotes.set('');
