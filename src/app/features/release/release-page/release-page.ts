@@ -14,13 +14,12 @@ import type {
   ReleaseStatusOutput,
 } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
-import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { ReleasePanel } from '../release-panel/release-panel';
 
 @Component({
   selector: 'app-release-page',
-  imports: [FormsModule, NgIcon, HelpTip, LoadingBlock, ReleasePanel],
+  imports: [FormsModule, NgIcon, LoadingBlock, ReleasePanel],
   templateUrl: './release-page.html',
   styleUrl: './release-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

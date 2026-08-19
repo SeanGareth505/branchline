@@ -3,10 +3,6 @@
     <div>
       <div class="title-row">
         <h1>Release</h1>
-        <app-help-tip
-          heading="Release"
-          body="Bump, commit, and tag from one place. Progress shows each Git step, then installer builds, until the version is live."
-        />
         @if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
         } @else if (store.releasingLocally()) {
