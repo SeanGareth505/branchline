@@ -266,6 +266,8 @@ pub fn pull_args(remote: Option<&str>, rebase: bool) -> Vec<String> {
     let mut args = vec!["pull".to_string(), "--progress".to_string()];
     if rebase {
         args.push("--rebase".to_string());
+    } else {
+        args.push("--no-rebase".to_string());
     }
     if let Some(r) = optional_remote(remote) {
         args.push(r.to_string());
@@ -591,8 +593,14 @@ mod tests {
 
     #[test]
     fn pull_without_remote_lets_git_use_configured_upstream() {
-        assert_eq!(pull_args(None, false), vec!["pull", "--progress"]);
-        assert_eq!(pull_args(Some(""), false), vec!["pull", "--progress"]);
+        assert_eq!(
+            pull_args(None, false),
+            vec!["pull", "--progress", "--no-rebase"]
+        );
+        assert_eq!(
+            pull_args(Some(""), false),
+            vec!["pull", "--progress", "--no-rebase"]
+        );
         assert_eq!(
             pull_args(Some("  "), true),
             vec!["pull", "--progress", "--rebase"]
@@ -603,7 +611,7 @@ mod tests {
     fn pull_with_named_remote_does_not_assume_origin() {
         assert_eq!(
             pull_args(Some("upstream"), false),
-            vec!["pull", "--progress", "upstream"]
+            vec!["pull", "--progress", "--no-rebase", "upstream"]
         );
         assert_eq!(
             pull_args(Some("origin"), true),

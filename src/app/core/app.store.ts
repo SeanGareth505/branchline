@@ -5184,7 +5184,7 @@ export class AppStore {
         const rebase = this.settings().defaultPullAction === 'rebase';
         const args = rebase
           ? ['pull', '--rebase', remote, branch]
-          : ['pull', remote, branch];
+          : ['pull', '--no-rebase', remote, branch];
         const pulled = await this.tauri.runGitCommand(path, args);
         await this.refreshRepo();
         if (!pulled.ok) {
@@ -5204,7 +5204,7 @@ export class AppStore {
             const rebase = this.settings().defaultPullAction === 'rebase';
             const args = rebase
               ? ['pull', '--rebase', remote, branch]
-              : ['pull', remote, branch];
+              : ['pull', '--no-rebase', remote, branch];
             const pulled = await this.tauri.runGitCommand(path, args);
             await this.refreshRepo();
             if (!pulled.ok) {
@@ -5596,16 +5596,14 @@ export class AppStore {
     const remote = this.pushRemoteName();
     const command = rebase
       ? `git pull --progress --rebase ${remote}`.trim()
-      : `git pull --progress ${remote}`.trim();
+      : `git pull --progress --no-rebase ${remote}`.trim();
     if (!(await this.beginRemoteBusy('pull', command))) return;
     let ok = false;
     let output = '';
     try {
       const result = await this.runRemoteWithAccountRetry(() =>
         this.withRepoMutation(() =>
-          rebase
-            ? this.tauri.pullWithOptions(path, { rebase: true, remote })
-            : this.tauri.pull(path, remote),
+          this.tauri.pullWithOptions(path, { rebase, remote }),
         ),
       );
       if (!result.ok) {

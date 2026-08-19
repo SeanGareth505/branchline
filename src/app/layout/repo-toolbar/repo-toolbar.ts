@@ -30,7 +30,8 @@ export class RepoToolbar {
   readonly pullLabel = computed(() => {
     const action = this.store.settings().defaultPullAction;
     if (action === 'fetch') return 'Fetch';
-    return 'Pull';
+    if (action === 'rebase') return 'Pull and rebase';
+    return 'Pull and merge';
   });
 
   readonly pullTitle = computed(() => {
