@@ -799,13 +799,13 @@ fn run_release_blocking(app: AppHandle, input: ReleasePreviewInput) -> AppResult
                 preview.will_push,
             )?;
             let message = format!(
-                "Releasing {} in the background — Branchline may reload once if tauri:dev is running, then installers will build for {}",
+                "Finishing {} in the background — waiting for the tag to reach origin before tracking installers for {}",
                 preview.tag, preview.product_name
             );
             emit_release_progress(
                 &app,
                 path,
-                "deploying",
+                "pushing",
                 &message,
                 Some(&preview.next_version),
                 Some(&preview.tag),
@@ -1662,6 +1662,21 @@ fn evaluate_deploy(
     if required_jobs_succeeded(&run.jobs) {
         if let Some(url) = release_url.clone() {
             if !jobs_failed {
+                if workflow_is_running(&run.status)
+                    || run
+                        .jobs
+                        .iter()
+                        .any(|job| optional_job_name(&job.name) && job_is_active(job))
+                {
+                    return urls.output(
+                        "running",
+                        "publishing",
+                        "Publishing stable download files…",
+                        run.run_url,
+                        Some(url),
+                        run.jobs,
+                    );
+                }
                 return urls.output(
                     "success",
                     "done",
@@ -1694,6 +1709,14 @@ fn evaluate_deploy(
             release_url,
             run.jobs,
         );
+    }
+    if jobs_active {
+        let message = if release_url.is_some() {
+            "Still building remaining installers…"
+        } else {
+            "Building installers…"
+        };
+        return urls.output("running", "ci", message, run.run_url, release_url, run.jobs);
     }
     if workflow_is_running(&run.status) {
         let message = if release_url.is_some() {
@@ -2318,6 +2341,19 @@ fn poll_release_deploy_blocking(
     let (owner, repo) = resolve_github_repo(&path)?;
     let full = format!("{owner}/{repo}");
     let tag_sha = git_cli::run_git(&path, &["rev-parse", &format!("{tag}^{{commit}}")]).ok();
+    let remote_tag = format!("refs/tags/{tag}");
+    let (tag_pushed, output, _) =
+        git_cli::run_git_allow_fail(&path, &["ls-remote", "--tags", "origin", &remote_tag]);
+    if !tag_pushed || output.trim().is_empty() {
+        return Ok(DeployUrls::for_repo(&owner, &repo).output(
+            "pending",
+            "pushing",
+            &format!("Waiting for {tag} to reach origin…"),
+            None,
+            None,
+            Vec::new(),
+        ));
+    }
     if let Some(result) = poll_deploy_with_gh(&full, &tag, tag_sha.as_deref()) {
         return Ok(result);
     }
@@ -2693,7 +2729,7 @@ mod tests {
     }
 
     #[test]
-    fn deploy_is_live_when_required_jobs_succeed_before_workflow_finishes() {
+    fn deploy_publishes_when_required_jobs_succeed_before_workflow_finishes() {
         let snapshot = WorkflowSnapshot {
             status: "in_progress".into(),
             conclusion: "".into(),
@@ -2733,8 +2769,15 @@ mod tests {
             Some("https://github.com/acme/branchline/releases/tag/v0.7.36".into()),
             Some(snapshot),
         );
-        assert_eq!(result.status, "success");
-        assert_eq!(result.phase, "done");
+        assert_eq!(result.status, "running");
+        assert_eq!(result.phase, "publishing");
+    }
+
+    #[test]
+    fn deploy_tracks_active_jobs_when_workflow_status_is_stale() {
+        let result = eval("v0.7.4", None, Some(run("", "")));
+        assert_eq!(result.status, "running");
+        assert_eq!(result.phase, "ci");
     }
 
     #[test]

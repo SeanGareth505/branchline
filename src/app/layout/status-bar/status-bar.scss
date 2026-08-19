@@ -200,9 +200,12 @@
 .right .bl-btn {
   padding: 0.2rem 0.5rem;
   font-size: 12px;
+  box-shadow: none;
+}
+
+.right .bl-btn:not(.bl-btn-primary) {
   border-color: transparent;
   background: transparent;
-  box-shadow: none;
 }
 
 .right .bl-btn.focus-on {

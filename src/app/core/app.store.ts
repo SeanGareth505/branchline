@@ -8602,7 +8602,7 @@ export class AppStore {
           if (preview.willPush) {
             this.applyReleaseProgress({
               path,
-              phase: 'deploying',
+              phase: backgroundFinish ? 'pushing' : 'deploying',
               message: result.message,
               version: preview.nextVersion,
               tag: preview.tag,

@@ -209,7 +209,7 @@ body {
 }
 
 html[data-window-controls='macos'] {
-  --window-controls-left: 6.25rem;
+  --window-controls-left: 4rem;
 }
 
 body {
