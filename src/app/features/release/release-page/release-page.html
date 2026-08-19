@@ -33,10 +33,10 @@
           <button
             type="button"
             class="bl-btn"
-            [disabled]="store.releaseAttaching()"
+            [disabled]="findingLatest()"
             (click)="trackLatest()"
           >
-            {{ store.releaseAttaching() ? 'Looking…' : 'Find latest' }}
+            {{ findingLatest() ? 'Finding latest…' : 'Find latest' }}
           </button>
         }
         <button

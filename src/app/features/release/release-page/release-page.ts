@@ -33,6 +33,7 @@ export class ReleasePage {
   readonly setupHints = signal<ReleaseSetupHintsOutput | null>(null);
   readonly loading = signal(false);
   readonly setupBusy = signal(false);
+  readonly findingLatest = signal(false);
 
   readonly productName = signal('');
   readonly branch = signal('main');
@@ -191,8 +192,14 @@ export class ReleasePage {
     void this.store.startReleaseFlow();
   }
 
-  trackLatest(): void {
-    void this.store.attachLatestRelease({ force: true });
+  async trackLatest(): Promise<void> {
+    if (this.findingLatest()) return;
+    this.findingLatest.set(true);
+    try {
+      await this.store.attachLatestRelease({ force: true });
+    } finally {
+      this.findingLatest.set(false);
+    }
   }
 
   retry(): void {
