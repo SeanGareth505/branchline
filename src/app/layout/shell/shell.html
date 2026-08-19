@@ -78,7 +78,6 @@
               @if (releaseNavStatus(); as status) {
                 <span
                   class="nav-dot"
-                  [class.live]="status === 'running'"
                   [attr.data-status]="status"
                   [attr.aria-label]="releaseNavLabel()"
                 ></span>
