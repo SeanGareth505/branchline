@@ -4,9 +4,8 @@ use crate::state::AppState;
 use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::path::PathBuf;
-use tauri::command;
-use tauri::State;
+use std::path::{Path, PathBuf};
+use tauri::{command, AppHandle, Emitter, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,6 +74,35 @@ pub struct RemoteActionInput {
 pub struct MutationOutput {
     pub ok: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitProcessOutputEvent {
+    path: String,
+    kind: String,
+    chunk: String,
+}
+
+pub(crate) fn run_git_with_process_output(
+    app: &AppHandle,
+    path: &Path,
+    args: &[&str],
+    kind: &str,
+) -> AppResult<(String, String)> {
+    let app = app.clone();
+    let event_path = path.to_string_lossy().to_string();
+    let event_kind = kind.to_string();
+    git_cli::run_git_out_err_stream(path, args, move |chunk| {
+        let _ = app.emit(
+            "git-process-output",
+            GitProcessOutputEvent {
+                path: event_path.clone(),
+                kind: event_kind.clone(),
+                chunk,
+            },
+        );
+    })
 }
 
 fn ensure_not_locked(state: &AppState, repo_path: &str, branch_name: &str) -> AppResult<()> {
@@ -258,7 +286,7 @@ pub fn rename_branch(
 }
 
 #[command]
-pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
+pub fn fetch(app: AppHandle, input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let args = git_cli::fetch_args(
             input.remote.as_deref(),
@@ -267,7 +295,7 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
             input.tags,
         );
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let (stdout, stderr) = git_cli::run_git_out_err(path, &refs)?;
+        let (stdout, stderr) = run_git_with_process_output(&app, path, &refs, "fetch")?;
         let message = git_cli::combine_git_output(&stdout, &stderr);
         Ok(MutationOutput {
             ok: true,
@@ -281,11 +309,11 @@ pub fn fetch(input: RemoteActionInput) -> AppResult<MutationOutput> {
 }
 
 #[command]
-pub fn pull(input: RemoteActionInput) -> AppResult<MutationOutput> {
+pub fn pull(app: AppHandle, input: RemoteActionInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let args = git_cli::pull_args(input.remote.as_deref(), false);
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        match git_cli::run_git_out_err(path, &refs) {
+        match run_git_with_process_output(&app, path, &refs, "pull") {
             Ok((stdout, stderr)) => {
                 let message = git_cli::combine_git_output(&stdout, &stderr);
                 Ok(MutationOutput {
@@ -323,7 +351,11 @@ fn resolve_push_branch(path: &PathBuf, requested: Option<&str>) -> AppResult<Str
         .unwrap_or(git2_repo::current_branch(path)?))
 }
 
-fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOutput> {
+fn push_inner(
+    app: AppHandle,
+    input: RemoteActionInput,
+    branch: String,
+) -> AppResult<MutationOutput> {
     let path = PathBuf::from(&input.path);
     git_cli::ensure_repo(&path)?;
     let remote = input
@@ -353,7 +385,7 @@ fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOut
     args.push(branch.as_str());
 
     git_cli::with_repo_lock(&path, |path| {
-        let (stdout, stderr) = git_cli::run_git_out_err(path, &args)?;
+        let (stdout, stderr) = run_git_with_process_output(&app, path, &args, "push")?;
         let out = git_cli::combine_git_output(&stdout, &stderr);
         Ok(MutationOutput {
             ok: true,
@@ -369,7 +401,11 @@ fn push_inner(input: RemoteActionInput, branch: String) -> AppResult<MutationOut
 }
 
 #[command]
-pub async fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppResult<MutationOutput> {
+pub async fn push(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: RemoteActionInput,
+) -> AppResult<MutationOutput> {
     let repo_path = input.path.clone();
     let requested_branch = input.branch.clone();
     let branch = run_blocking(move || {
@@ -377,5 +413,5 @@ pub async fn push(state: State<'_, AppState>, input: RemoteActionInput) -> AppRe
     })
     .await?;
     ensure_not_locked(&state, &input.path, &branch)?;
-    run_blocking(move || push_inner(input, branch)).await
+    run_blocking(move || push_inner(app, input, branch)).await
 }

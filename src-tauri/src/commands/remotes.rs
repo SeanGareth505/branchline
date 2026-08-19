@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::command;
+use tauri::{command, AppHandle};
 
-use super::branch::{MutationOutput, RepoPathInput};
+use super::branch::{run_git_with_process_output, MutationOutput, RepoPathInput};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,12 +132,12 @@ pub fn remove_remote(input: RemoveRemoteInput) -> AppResult<MutationOutput> {
 }
 
 #[command]
-pub fn pull_with_options(input: PullInput) -> AppResult<MutationOutput> {
+pub fn pull_with_options(app: AppHandle, input: PullInput) -> AppResult<MutationOutput> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let rebase = input.rebase.unwrap_or(false);
         let args = git_cli::pull_args(input.remote.as_deref(), rebase);
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let result = git_cli::run_git_out_err(path, &refs);
+        let result = run_git_with_process_output(&app, path, &refs, "pull");
         match result {
             Ok((stdout, stderr)) => {
                 let out = git_cli::combine_git_output(&stdout, &stderr);

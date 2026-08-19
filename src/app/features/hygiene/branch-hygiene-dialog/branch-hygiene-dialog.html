@@ -24,7 +24,10 @@
       } @else if (entries().length === 0) {
         <p class="empty">Nothing to clean up</p>
       } @else {
-        <p class="choice">Delete only branches merged into HEAD, or force-delete every listed branch.</p>
+        <p class="choice">
+          Delete branches merged into HEAD or a remaining remote branch, or force-delete every
+          listed branch.
+        </p>
         <div class="list">
           @for (group of groups(); track group.reason) {
             <section class="group">

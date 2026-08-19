@@ -14,6 +14,7 @@ use std::time::Duration;
 pub const MAX_GIT_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const GIT_LOCK_RETRIES: u32 = 8;
 const GIT_LOCK_RETRY_MS: u64 = 40;
+type OutputCallback = Arc<dyn Fn(String) + Send + Sync>;
 
 pub fn git_bin() -> AppResult<String> {
     which::which("git")
@@ -119,7 +120,11 @@ fn enriched_path() -> OsString {
     .clone()
 }
 
-fn read_capped(mut reader: impl Read, max: usize) -> (Vec<u8>, bool) {
+fn read_capped(
+    mut reader: impl Read,
+    max: usize,
+    on_output: Option<OutputCallback>,
+) -> (Vec<u8>, bool) {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 16 * 1024];
     let mut truncated = false;
@@ -127,6 +132,9 @@ fn read_capped(mut reader: impl Read, max: usize) -> (Vec<u8>, bool) {
         match reader.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => {
+                if let Some(emit) = &on_output {
+                    emit(String::from_utf8_lossy(&chunk[..n]).to_string());
+                }
                 if buf.len() >= max {
                     truncated = true;
                     continue;
@@ -149,6 +157,7 @@ fn capture_git(
     cwd: Option<&Path>,
     args: &[&str],
     max_bytes: usize,
+    on_output: Option<OutputCallback>,
 ) -> AppResult<(bool, String, String)> {
     let bin = git_bin()?;
     let mut cmd = Command::new(&bin);
@@ -174,8 +183,9 @@ fn capture_git(
         .take()
         .ok_or_else(|| AppError::git("Failed to capture git stderr"))?;
 
-    let out_handle = thread::spawn(move || read_capped(stdout, max_bytes));
-    let err_handle = thread::spawn(move || read_capped(stderr, max_bytes));
+    let stdout_callback = on_output.clone();
+    let out_handle = thread::spawn(move || read_capped(stdout, max_bytes, stdout_callback));
+    let err_handle = thread::spawn(move || read_capped(stderr, max_bytes, on_output));
 
     let status = child
         .wait()
@@ -201,7 +211,7 @@ fn capture_git(
 }
 
 pub fn run_git_capture(cwd: &Path, args: &[&str]) -> AppResult<(bool, String, String)> {
-    capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES)
+    capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES, None)
 }
 
 pub fn is_lock_contention(stdout: &str, stderr: &str) -> bool {
@@ -229,6 +239,35 @@ pub fn run_git_out_err(cwd: &Path, args: &[&str]) -> AppResult<(String, String)>
     let mut attempt = 0u32;
     loop {
         let (ok, stdout, stderr) = run_git_capture(cwd, args)?;
+        if ok {
+            return Ok((stdout.trim_end().to_string(), stderr.trim_end().to_string()));
+        }
+        if attempt < GIT_LOCK_RETRIES && is_lock_contention(&stdout, &stderr) {
+            attempt += 1;
+            thread::sleep(retry_lock_delay(attempt));
+            continue;
+        }
+        return Err(git_failure(args, &stdout, &stderr));
+    }
+}
+
+pub fn run_git_out_err_stream<F>(
+    cwd: &Path,
+    args: &[&str],
+    on_output: F,
+) -> AppResult<(String, String)>
+where
+    F: Fn(String) + Send + Sync + 'static,
+{
+    let callback: OutputCallback = Arc::new(on_output);
+    let mut attempt = 0u32;
+    loop {
+        let (ok, stdout, stderr) = capture_git(
+            Some(cwd),
+            args,
+            MAX_GIT_OUTPUT_BYTES,
+            Some(callback.clone()),
+        )?;
         if ok {
             return Ok((stdout.trim_end().to_string(), stderr.trim_end().to_string()));
         }
@@ -345,8 +384,8 @@ fn run_git_with_stdin_once(cwd: &Path, args: &[&str], stdin_data: &str) -> AppRe
         .stderr
         .take()
         .ok_or_else(|| AppError::git("Failed to capture git stderr"))?;
-    let out_handle = thread::spawn(move || read_capped(stdout, MAX_GIT_OUTPUT_BYTES));
-    let err_handle = thread::spawn(move || read_capped(stderr, MAX_GIT_OUTPUT_BYTES));
+    let out_handle = thread::spawn(move || read_capped(stdout, MAX_GIT_OUTPUT_BYTES, None));
+    let err_handle = thread::spawn(move || read_capped(stderr, MAX_GIT_OUTPUT_BYTES, None));
 
     let status = child
         .wait()
@@ -373,7 +412,7 @@ fn run_git_with_stdin_once(cwd: &Path, args: &[&str], stdin_data: &str) -> AppRe
 }
 
 pub fn run_git_global(args: &[&str]) -> AppResult<String> {
-    let (ok, stdout, stderr) = capture_git(None, args, MAX_GIT_OUTPUT_BYTES)?;
+    let (ok, stdout, stderr) = capture_git(None, args, MAX_GIT_OUTPUT_BYTES, None)?;
     if ok {
         Ok(stdout.trim_end().to_string())
     } else {
@@ -386,7 +425,7 @@ pub fn run_git_global(args: &[&str]) -> AppResult<String> {
 }
 
 pub fn run_git_allow_fail(cwd: &Path, args: &[&str]) -> (bool, String, String) {
-    match capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES) {
+    match capture_git(Some(cwd), args, MAX_GIT_OUTPUT_BYTES, None) {
         Ok(v) => v,
         Err(e) => (false, String::new(), e.to_string()),
     }
@@ -484,7 +523,7 @@ pub fn config_unset_scoped(repo: Option<&Path>, key: &str, scope: ConfigScope) -
         let _ = run_git_allow_fail(path, &args);
         return Ok(());
     }
-    let _ = capture_git(None, &args, MAX_GIT_OUTPUT_BYTES)?;
+    let _ = capture_git(None, &args, MAX_GIT_OUTPUT_BYTES, None)?;
     Ok(())
 }
 
@@ -639,6 +678,20 @@ mod tests {
             combine_git_output("to origin\n", "enumerating objects\n"),
             "enumerating objects\nto origin"
         );
+    }
+
+    #[test]
+    fn streams_git_output_while_capturing_result() {
+        let chunks = Arc::new(Mutex::new(String::new()));
+        let streamed = chunks.clone();
+        let (stdout, stderr) = run_git_out_err_stream(Path::new("."), &["--version"], move |chunk| {
+            streamed.lock().unwrap().push_str(&chunk);
+        })
+        .unwrap();
+
+        assert!(stderr.is_empty());
+        assert!(stdout.starts_with("git version"));
+        assert!(chunks.lock().unwrap().starts_with("git version"));
     }
 
     #[test]

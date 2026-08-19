@@ -410,6 +410,26 @@ fn check_attr_lfs(path: &Path, files: &[String]) -> std::collections::HashSet<St
     lfs
 }
 
+fn containing_remote_branch(path: &Path, tip_sha: &str) -> Option<String> {
+    let contains = format!("--contains={tip_sha}");
+    let (ok, out, _) = git_cli::run_git_allow_fail(
+        path,
+        &[
+            "for-each-ref",
+            &contains,
+            "--format=%(refname:short)",
+            "refs/remotes",
+        ],
+    );
+    if !ok {
+        return None;
+    }
+    out.lines()
+        .map(str::trim)
+        .find(|name| !name.is_empty() && !name.ends_with("/HEAD"))
+        .map(str::to_string)
+}
+
 #[command]
 pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneEntry>> {
     let path = PathBuf::from(&input.path);
@@ -452,7 +472,7 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         let committerdate: i64 = parts[3].parse().unwrap_or(0);
         let track = parts.get(4).copied().unwrap_or("");
         let gone = track.contains("[gone]");
-        let safe_to_delete = git_cli::run_git_allow_fail(
+        let merged_into_head = git_cli::run_git_allow_fail(
             &path,
             &[
                 "merge-base",
@@ -462,10 +482,20 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
             ],
         )
         .0;
+        let remote_merge_target = if gone && !merged_into_head {
+            containing_remote_branch(&path, &tip_sha)
+        } else {
+            None
+        };
+        let safe_to_delete = merged_into_head || remote_merge_target.is_some();
         let (reason, detail) = if gone {
             (
                 "gone",
-                if track.trim().is_empty() {
+                if merged_into_head {
+                    "Merged into HEAD".to_string()
+                } else if let Some(target) = remote_merge_target {
+                    format!("Merged into {target}")
+                } else if track.trim().is_empty() {
                     "Remote-tracking branch is gone".to_string()
                 } else {
                     track.trim().to_string()

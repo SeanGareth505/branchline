@@ -191,8 +191,14 @@ export interface GitProcessState {
   title: string;
   command: string;
   output: string;
+  hasLiveOutput: boolean;
   running: boolean;
   ok: boolean | null;
+}
+interface GitProcessOutputEvent {
+  path: string;
+  kind: RemoteBusyKind;
+  chunk: string;
 }
 export type AutomationSection = 'workflows' | 'checks';
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';
@@ -414,6 +420,7 @@ export class AppStore {
   readonly remoteBusy = signal<RemoteBusyKind | null>(null);
   readonly gitProcess = signal<GitProcessState | null>(null);
   private gitProcessCloseTimer: number | null = null;
+  private gitProcessOutputUnlisten: UnlistenFn | null = null;
   readonly actionBusy = signal<string | null>(null);
   readonly repoStatusPending = computed(() => this.syncingRepo() && !this.status());
   readonly repoRefsPending = computed(() => this.syncingRepo() && this.branches().length === 0);
@@ -1035,6 +1042,7 @@ export class AppStore {
         this.bindWorktreeFocusWatch();
       }
       void this.bindRepoFsWatcher();
+      void this.bindGitProcessOutputListener();
       void this.bindReleaseProgressListener();
       this.restoreReleaseActivity();
       this.restoreReleaseNotesDraft();
@@ -3176,6 +3184,7 @@ export class AppStore {
       title: gitProcessTitle(kind),
       command,
       output: `${command}\n\n`,
+      hasLiveOutput: false,
       running: true,
       ok: null,
     });
@@ -3186,7 +3195,7 @@ export class AppStore {
     this.gitProcess.update((current) => {
       if (!current || !current.running) return current;
       let output = current.output;
-      if (extra?.trim()) {
+      if (extra?.trim() && !current.hasLiveOutput) {
         const chunk = extra.endsWith('\n') ? extra : `${extra}\n`;
         output = appendGitProcessOutput(output, chunk);
       }
@@ -3223,6 +3232,34 @@ export class AppStore {
   private endRemoteBusy(ok: boolean, output?: string): void {
     this.remoteBusy.set(null);
     this.finishGitProcess(ok, output);
+  }
+
+  private async bindGitProcessOutputListener(): Promise<void> {
+    if (this.isDummyBackend) return;
+    if (this.gitProcessOutputUnlisten) {
+      this.gitProcessOutputUnlisten();
+      this.gitProcessOutputUnlisten = null;
+    }
+    try {
+      this.gitProcessOutputUnlisten = await listen<GitProcessOutputEvent>(
+        'git-process-output',
+        (event) => {
+          const payload = event.payload;
+          const repoPath = this.currentRepo()?.path;
+          if (!repoPath || !sameRepoPath(repoPath, payload.path) || !payload.chunk) return;
+          this.gitProcess.update((current) => {
+            if (!current?.running || current.kind !== payload.kind) return current;
+            return {
+              ...current,
+              output: appendGitProcessOutput(current.output, payload.chunk),
+              hasLiveOutput: true,
+            };
+          });
+        },
+      );
+    } catch {
+      this.gitProcessOutputUnlisten = null;
+    }
   }
 
   private async bindReleaseProgressListener(): Promise<void> {
