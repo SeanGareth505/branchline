@@ -4831,7 +4831,7 @@ export class AppStore {
     message: string,
     amend = false,
     allowEmpty = false,
-    opts?: { toast?: boolean; skipHooks?: boolean },
+    opts?: { toast?: boolean; skipHooks?: boolean; refresh?: boolean },
   ): Promise<{ ok: boolean; shortSha?: string }> {
     const path = this.currentRepo()?.path;
     if (!path) return { ok: false };
@@ -4874,7 +4874,9 @@ export class AppStore {
           opts?.skipHooks ?? false,
         ),
       );
-      await this.refreshRepo();
+      if (opts?.refresh !== false) {
+        await this.refreshRepo();
+      }
       const shortSha = result.sha.slice(0, 7);
       if (opts?.toast !== false) {
         this.showToast(amend ? `Amended ${shortSha}` : `Committed ${shortSha}`, {

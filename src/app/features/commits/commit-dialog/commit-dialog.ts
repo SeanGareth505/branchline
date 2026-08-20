@@ -1238,7 +1238,7 @@ export class CommitDialog {
         this.messagePreview(),
         this.amend(),
         true,
-        { toast: !willPush, skipHooks: skipGitHooks },
+        { toast: !willPush, skipHooks: skipGitHooks, refresh: !willPush },
       );
       if (!commit.ok) return;
       const remembered = this.sequenceToPersist();
@@ -1255,6 +1255,7 @@ export class CommitDialog {
           runChecks: false,
           skipHooks: skipChecks || this.store.hasDetectedChecks(['pre-push']),
         });
+        if (!pushed) await this.store.refreshRepo();
         const short = commit.shortSha ?? 'commit';
         if (pushed) {
           this.store.showToast(`Committed ${short} and pushed`, {

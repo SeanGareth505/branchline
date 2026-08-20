@@ -68,7 +68,11 @@ fn create_commit_inner(app: &AppHandle, input: CreateCommitInput) -> AppResult<C
         run_git_with_process_output(app, path, &args, "commit")?;
 
         let sha = git_cli::run_git(path, &["rev-parse", "HEAD"])?;
-        let short_sha = git_cli::run_git(path, &["rev-parse", "--short", "HEAD"])?;
+        let short_sha = if sha.len() >= 7 {
+            sha[..7].to_string()
+        } else {
+            sha.clone()
+        };
 
         Ok(CreatedCommit {
             output: CreateCommitOutput {
