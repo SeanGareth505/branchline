@@ -38,6 +38,7 @@ export class ReleasePage {
 
   readonly productName = signal('');
   readonly branch = signal('main');
+  readonly createTagDefault = signal(true);
   readonly pushDefault = signal(true);
   readonly selectedFiles = signal<Record<string, boolean>>({});
   readonly loadError = signal<string | null>(null);
@@ -50,6 +51,9 @@ export class ReleasePage {
 
   readonly subtitle = computed(() => {
     const activity = this.activity();
+    if (activity?.phase === 'done' && activity.willTag === false) {
+      return `${activity.productName} is now ${activity.nextVersion}. The version change was committed without a tag.`;
+    }
     if (
       activity?.phase === 'done' &&
       activity.ok !== false &&
@@ -158,6 +162,7 @@ export class ReleasePage {
         this.setupHints.set(hints);
         this.productName.set(hints.productName);
         this.branch.set(hints.branch);
+        this.createTagDefault.set(hints.createTagDefault);
         this.pushDefault.set(hints.pushDefault);
         const selected: Record<string, boolean> = {};
         for (const file of hints.suggestedFiles) {
@@ -196,9 +201,10 @@ export class ReleasePage {
     this.branch.set(value);
   }
 
-  setPushDefault(value: boolean): void {
+  setReleaseMode(createTag: boolean, push: boolean): void {
     this.store.releaseSetupError.set(null);
-    this.pushDefault.set(value);
+    this.createTagDefault.set(createTag);
+    this.pushDefault.set(createTag && push);
   }
 
   async saveSetup(): Promise<void> {
@@ -208,6 +214,7 @@ export class ReleasePage {
       const ok = await this.store.saveReleaseSetup({
         productName: this.productName().trim(),
         branch: this.branch().trim(),
+        createTag: this.createTagDefault(),
         push: this.pushDefault(),
         files: this.selectedFileList(),
       });

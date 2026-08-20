@@ -102,6 +102,9 @@ export class ReleasePanel {
     () => this.releaseStatus()?.currentBranch || this.releaseStatus()?.config?.branch || '',
   );
   readonly isDirty = computed(() => !!this.releaseStatus()?.dirty);
+  readonly createTagDefault = computed(
+    () => this.releaseStatus()?.config?.createTagDefault !== false,
+  );
   readonly pushDefault = computed(() => this.releaseStatus()?.config?.pushDefault !== false);
   readonly versionFiles = computed(() => {
     const files = this.releaseStatus()?.config?.files ?? [];
@@ -211,7 +214,7 @@ export class ReleasePanel {
   readonly githubReleaseUrl = computed(() => {
     const activity = this.activity();
     const tag = activity?.tag?.trim();
-    if (!activity || !tag) return null;
+    if (!activity || activity.willTag === false || !tag) return null;
     return activity.releaseUrl?.trim() || tagWebUrl(this.originUrl(), tag);
   });
 
@@ -436,6 +439,9 @@ export class ReleasePanel {
     const activity = this.activity();
     if (!activity) return 'No release in progress';
     if (activity.phase === 'done' && !activity.needsRefresh) {
+      if (activity.willTag === false) {
+        return `Updated ${activity.productName} to ${activity.nextVersion}`;
+      }
       return `Released ${activity.productName} ${activity.nextVersion}`;
     }
     if (activity.phase === 'error') {
@@ -490,6 +496,9 @@ export class ReleasePanel {
   readonly finalStatus = computed(() => {
     const activity = this.activity();
     if (!activity) return '';
+    if (activity.phase === 'done' && activity.willTag === false) {
+      return 'Version files were updated and committed without creating a tag.';
+    }
     if (this.shippedLive()) {
       return 'On GitHub. Users pick it up the next time they open the app.';
     }

@@ -19,6 +19,8 @@
   // Refuse to release with uncommitted changes. Override per-run with --allow-dirty.
   "requireClean": true,
 
+  "createTag": true,
+
   // Push the commit + tag to origin automatically after tagging.
   // Leave false to always require an explicit --push (recommended default).
   // Override per-run with --push / --no-push.

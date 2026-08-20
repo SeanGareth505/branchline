@@ -808,6 +808,7 @@ export interface ReleaseConfigInfo {
   tagPrefix: string;
   branch: string;
   requireClean: boolean;
+  createTagDefault: boolean;
   pushDefault: boolean;
   commitMessage: string;
   tagMessage: string;
@@ -835,6 +836,7 @@ export interface ReleasePreviewOutput {
   currentBranch: string;
   requireClean: boolean;
   dirty: boolean;
+  willTag: boolean;
   willPush: boolean;
   commitMessage: string;
   tagMessage: string;
@@ -847,6 +849,7 @@ export interface ReleasePreviewOutput {
 export interface ReleaseRunOptions {
   bump: string;
   preid?: string | null;
+  createTag?: boolean;
   push?: boolean;
   message?: string | null;
   tagMessage?: string | null;
@@ -880,6 +883,7 @@ export interface ReleaseSetupHintsOutput {
   productName: string;
   branch: string;
   currentVersion?: string | null;
+  createTagDefault: boolean;
   pushDefault: boolean;
   suggestedFiles: ReleaseSetupFileHint[];
 }
@@ -938,6 +942,7 @@ export interface ReleaseActivity {
   currentVersion: string;
   nextVersion: string;
   tag: string;
+  willTag?: boolean;
   willPush: boolean;
   needsPush?: boolean;
   deployRunUrl?: string | null;

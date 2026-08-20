@@ -50,7 +50,8 @@ export class ReleaseNotesEditor {
   });
 
   readonly placeholder = computed(() => {
-    const tag = this.store.visibleReleaseActivity()?.tag;
+    const activity = this.store.visibleReleaseActivity();
+    const tag = activity?.willTag === false ? null : activity?.tag;
     return tag
       ? `Release notes for ${tag}`
       : 'What shipped in this version?';

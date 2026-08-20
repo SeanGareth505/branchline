@@ -78,18 +78,26 @@
               <button
                 type="button"
                 class="toggle"
-                [class.active]="push()"
-                (click)="push.set(true)"
+                [class.active]="createTag() && push()"
+                (click)="setReleaseMode(true, true)"
               >
                 Push & deploy
               </button>
               <button
                 type="button"
                 class="toggle"
-                [class.active]="!push()"
-                (click)="push.set(false)"
+                [class.active]="createTag() && !push()"
+                (click)="setReleaseMode(true, false)"
               >
                 Tag only
+              </button>
+              <button
+                type="button"
+                class="toggle"
+                [class.active]="!createTag()"
+                (click)="setReleaseMode(false, false)"
+              >
+                Commit only
               </button>
             </div>
           </div>
@@ -105,15 +113,17 @@
             />
           </label>
 
-          <label class="field">
-            <span>Tag message</span>
-            <input
-              type="text"
-              [placeholder]="prompt.config.tagMessage"
-              [ngModel]="tagMessage()"
-              (ngModelChange)="tagMessage.set($event)"
-            />
-          </label>
+          @if (createTag()) {
+            <label class="field">
+              <span>Tag message</span>
+              <input
+                type="text"
+                [placeholder]="prompt.config.tagMessage"
+                [ngModel]="tagMessage()"
+                (ngModelChange)="tagMessage.set($event)"
+              />
+            </label>
+          }
         </section>
       }
 

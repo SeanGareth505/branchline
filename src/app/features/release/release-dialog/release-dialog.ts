@@ -27,6 +27,7 @@ export class ReleaseDialog {
   readonly bump = signal<BumpKind>('patch');
   readonly customVersion = signal('');
   readonly branch = signal('');
+  readonly createTag = signal(true);
   readonly push = signal(true);
   readonly allowDirty = signal(false);
   readonly preid = signal('');
@@ -84,7 +85,11 @@ export class ReleaseDialog {
 
   readonly submitLabel = computed(() => {
     const next = this.nextVersion();
-    const verb = this.push() ? 'Release & deploy' : 'Create release';
+    const verb = !this.createTag()
+      ? 'Update version'
+      : this.push()
+        ? 'Release & deploy'
+        : 'Create release';
     return next ? `${verb} ${next}` : verb;
   });
 
@@ -95,7 +100,8 @@ export class ReleaseDialog {
       this.bump.set(req.preferredBump ?? 'patch');
       this.customVersion.set('');
       this.branch.set(req.config.branch || req.currentBranch);
-      this.push.set(req.config.pushDefault);
+      this.createTag.set(req.config.createTagDefault);
+      this.push.set(req.config.createTagDefault && req.config.pushDefault);
       this.allowDirty.set(false);
       this.preid.set('');
       this.tagMessage.set('');
@@ -106,6 +112,11 @@ export class ReleaseDialog {
 
   toggleSettings(): void {
     this.settingsOpen.update((v) => !v);
+  }
+
+  setReleaseMode(createTag: boolean, push: boolean): void {
+    this.createTag.set(createTag);
+    this.push.set(createTag && push);
   }
 
   pickBump(kind: BumpKind): void {
@@ -127,6 +138,7 @@ export class ReleaseDialog {
         if (!picked || picked === req.config.branch) return null;
         return picked;
       })(),
+      createTag: this.createTag(),
       push: this.push(),
       allowDirty: this.allowDirty(),
       preid: this.preid().trim() || null,

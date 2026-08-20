@@ -460,7 +460,11 @@ export class AppStore {
   });
   readonly releaseNotesCanPublish = computed(() => {
     const activity = this.visibleReleaseActivity();
-    return !!activity?.tag && (!!activity.releaseUrl || this.hasGithubConnection());
+    return (
+      activity?.willTag !== false &&
+      !!activity?.tag &&
+      (!!activity.releaseUrl || this.hasGithubConnection())
+    );
   });
   readonly releaseNotesSynced = computed(() => !!this.visibleReleaseActivity()?.notesSynced);
   private releaseAttachInFlight: Promise<boolean> | null = null;
@@ -3510,7 +3514,7 @@ export class AppStore {
     const activity = this.visibleReleaseActivity();
     const path = activity?.path || this.currentRepo()?.path;
     const tag = activity?.tag?.trim();
-    if (!path || !tag || this.releaseNotesBusy()) return;
+    if (!path || !tag || activity?.willTag === false || this.releaseNotesBusy()) return;
     const local = (activity?.notes ?? '').trim();
     if (local && !opts?.overwrite) return;
     this.releaseNotesBusy.set(true);
@@ -3635,7 +3639,14 @@ export class AppStore {
   }
 
   viewReleaseOutcome(
-    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed' = 'failure',
+    kind:
+      | 'started'
+      | 'tagged'
+      | 'committed'
+      | 'success'
+      | 'failure'
+      | 'paused'
+      | 'job-failed' = 'failure',
   ): void {
     const url = this.releaseOutcomeUrl(kind);
     if (url) {
@@ -3651,7 +3662,7 @@ export class AppStore {
   }
 
   private releaseOutcomeUrl(
-    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed',
+    kind: 'started' | 'tagged' | 'committed' | 'success' | 'failure' | 'paused' | 'job-failed',
   ): string | null {
     const activity = this.releaseActivity();
     const failedJobUrl =
@@ -3678,7 +3689,7 @@ export class AppStore {
   }
 
   private notifyReleaseOutcome(
-    kind: 'started' | 'tagged' | 'success' | 'failure' | 'paused' | 'job-failed',
+    kind: 'started' | 'tagged' | 'committed' | 'success' | 'failure' | 'paused' | 'job-failed',
     input?: { productName?: string; version?: string; tag?: string; message?: string },
   ): void {
     const activity = this.releaseActivity();
@@ -3692,6 +3703,8 @@ export class AppStore {
         ? `${label} is live`
         : kind === 'tagged'
           ? `${label} tagged locally`
+          : kind === 'committed'
+            ? `${label} committed without a tag`
           : kind === 'started'
             ? `${label} is deploying`
             : kind === 'paused'
@@ -3707,6 +3720,8 @@ export class AppStore {
         ? `${label} is live`
         : kind === 'tagged'
           ? `${label} tagged`
+          : kind === 'committed'
+            ? `${label} version committed`
           : kind === 'started'
             ? `${label} is deploying`
             : kind === 'paused'
@@ -3715,7 +3730,7 @@ export class AppStore {
                 ? `${label} job failed`
                 : `${label} failed`;
     const toastKind: ToastKind =
-      kind === 'success' || kind === 'tagged'
+      kind === 'success' || kind === 'tagged' || kind === 'committed'
         ? 'success'
         : kind === 'started'
           ? 'info'
@@ -3850,7 +3865,7 @@ export class AppStore {
     const baseSteps = existing?.steps?.length
       ? existing.steps
       : advanceReleaseSteps(
-          buildReleaseSteps(true),
+          buildReleaseSteps(true, true),
           trackingPhase === 'error' ? 'deploying' : trackingPhase,
           message,
         );
@@ -3860,6 +3875,7 @@ export class AppStore {
       currentVersion: input.version,
       nextVersion: input.version,
       tag: input.tag,
+      willTag: true,
       willPush: true,
       needsPush: false,
       deployRunUrl: input.result.runUrl ?? null,
@@ -3912,18 +3928,20 @@ export class AppStore {
     currentVersion: string;
     nextVersion: string;
     tag: string;
+    willTag: boolean;
     willPush: boolean;
   }): void {
     const draft = this.releaseNotesDraft();
     const draftBody =
       draft && sameRepoPath(draft.path, input.path) ? draft.body : '';
-    const steps = buildReleaseSteps(input.willPush);
+    const steps = buildReleaseSteps(input.willTag, input.willPush);
     this.releaseActivity.set({
       path: input.path,
       productName: input.productName,
       currentVersion: input.currentVersion,
       nextVersion: input.nextVersion,
       tag: input.tag,
+      willTag: input.willTag,
       willPush: input.willPush,
       phase: 'preparing',
       message: `Releasing ${input.productName} ${input.currentVersion} → ${input.nextVersion}`,
@@ -3941,14 +3959,14 @@ export class AppStore {
     this.persistReleaseActivity(true);
   }
 
-  private async simulateReleaseProgress(willPush: boolean): Promise<void> {
+  private async simulateReleaseProgress(willTag: boolean, willPush: boolean): Promise<void> {
     const phases: Array<{ phase: ReleasePhase; message: string; delay: number }> = [
       { phase: 'preparing', message: 'Checking release preconditions…', delay: 180 },
       { phase: 'bumping', message: 'Bumping version files…', delay: 220 },
       { phase: 'staging', message: 'Staging version files…', delay: 180 },
       { phase: 'committing', message: 'Creating release commit…', delay: 220 },
-      { phase: 'tagging', message: 'Creating release tag…', delay: 180 },
     ];
+    if (willTag) phases.push({ phase: 'tagging', message: 'Creating release tag…', delay: 180 });
     if (willPush) {
       phases.push({ phase: 'pushing', message: 'Pushing commit and tags to origin…', delay: 320 });
       phases.push({ phase: 'deploying', message: 'Waiting for GitHub to report installer jobs…', delay: 400 });
@@ -8618,6 +8636,7 @@ export class AppStore {
         push: setup.push,
         message: setup.message,
         branch: setup.branch,
+        createTag: setup.createTag,
         allowDirty: setup.allowDirty,
         preid: setup.preid,
         tagMessage: setup.tagMessage,
@@ -8638,21 +8657,27 @@ export class AppStore {
       const confirmed = await this.prompts.ask({
         title: `Release ${preview.productName} ${preview.nextVersion}?`,
         message: [
-          `${preview.currentVersion} → ${preview.nextVersion} (${preview.tag})`,
+          preview.willTag
+            ? `${preview.currentVersion} → ${preview.nextVersion} (${preview.tag})`
+            : `${preview.currentVersion} → ${preview.nextVersion}`,
           `Commit: ${preview.commitMessage}`,
-          `Tag: ${preview.tagMessage}`,
+          preview.willTag ? `Tag: ${preview.tagMessage}` : '',
           preview.willPush
             ? backgroundFinish
               ? 'Will bump, commit, tag, and push in a background process so the app stays responsive. tauri:dev may reload once; the release keeps going.'
               : 'Will bump, commit, tag, push, and watch until installers are published for every platform.'
-            : backgroundFinish
-              ? 'Will bump, commit, and tag in a background process so the app stays responsive.'
-              : 'Will bump, commit, and tag locally — you can push from the Release screen afterward.',
+            : preview.willTag
+              ? 'Will bump, commit, and tag locally — you can push from the Release screen afterward.'
+              : 'Will bump the version files and create a commit without creating or pushing a tag.',
           `Files: ${preview.files.join(', ')}`,
         ]
           .filter(Boolean)
           .join('\n'),
-        confirmLabel: preview.willPush ? 'Release & deploy' : 'Create release',
+        confirmLabel: preview.willPush
+          ? 'Release & deploy'
+          : preview.willTag
+            ? 'Create release'
+            : 'Update version',
         cancelLabel: 'Cancel',
         confirmOnly: true,
       });
@@ -8664,13 +8689,14 @@ export class AppStore {
         currentVersion: preview.currentVersion,
         nextVersion: preview.nextVersion,
         tag: preview.tag,
+        willTag: preview.willTag,
         willPush: preview.willPush,
       });
 
       try {
         await this.withRepoMutation(async () => {
           if (this.isDummyBackend) {
-            await this.simulateReleaseProgress(preview.willPush);
+            await this.simulateReleaseProgress(preview.willTag, preview.willPush);
             if (preview.willPush) {
               this.notifyReleaseOutcome('started', {
                 productName: preview.productName,
@@ -8680,7 +8706,7 @@ export class AppStore {
               void this.watchReleaseDeploy(path, preview.tag);
               return;
             }
-            this.notifyReleaseOutcome('tagged', {
+            this.notifyReleaseOutcome(preview.willTag ? 'tagged' : 'committed', {
               productName: preview.productName,
               version: preview.nextVersion,
               tag: preview.tag,
@@ -8731,9 +8757,9 @@ export class AppStore {
               version: preview.nextVersion,
               tag: preview.tag,
             },
-            { needsPush: true },
+            { needsPush: preview.willTag },
           );
-          this.notifyReleaseOutcome('tagged', {
+          this.notifyReleaseOutcome(preview.willTag ? 'tagged' : 'committed', {
             productName: preview.productName,
             version: preview.nextVersion,
             tag: preview.tag,
@@ -8769,6 +8795,7 @@ export class AppStore {
   async saveReleaseSetup(input: {
     productName: string;
     branch: string;
+    createTag: boolean;
     push: boolean;
     files: ReleaseSetupFileHint[];
   }): Promise<boolean> {
@@ -8818,18 +8845,25 @@ export class AppStore {
       required: true,
     });
     if (branch === null) return false;
-    const pushChoice = await this.selects.ask({
+    const releaseMode = await this.selects.ask({
       title: 'Release setup',
-      message: 'Should release push commit and tags by default?',
-      label: 'Default push behavior',
+      message: 'Choose how Branchline should finish releases by default.',
+      label: 'Release mode',
       options: [
-        { value: 'yes', label: 'Push by default (recommended)' },
-        { value: 'no', label: 'Tag only by default' },
+        { value: 'deploy', label: 'Create tag, push, and deploy (recommended)' },
+        { value: 'tag', label: 'Create a local tag without pushing' },
+        { value: 'commit', label: 'Version and commit without a tag' },
       ],
-      initialValue: hints.pushDefault ? 'yes' : 'no',
+      initialValue: hints.pushDefault
+        ? 'deploy'
+        : hints.createTagDefault
+          ? 'tag'
+          : 'commit',
       confirmLabel: 'Next',
     });
-    if (pushChoice !== 'yes' && pushChoice !== 'no') return false;
+    if (releaseMode !== 'deploy' && releaseMode !== 'tag' && releaseMode !== 'commit') {
+      return false;
+    }
     const availableFiles = hints.suggestedFiles ?? [];
     if (!availableFiles.length) {
       this.showWarning('No version files were detected for release setup.');
@@ -8856,7 +8890,8 @@ export class AppStore {
     const saved = await this.saveReleaseSetup({
       productName: productName.trim(),
       branch: branch.trim(),
-      push: pushChoice === 'yes',
+      createTag: releaseMode !== 'commit',
+      push: releaseMode === 'deploy',
       files,
     });
     if (!saved) return false;
@@ -9388,6 +9423,7 @@ function releaseActivityFingerprint(activity: ReleaseActivity): string {
     phase: activity.phase,
     message: activity.message,
     tag: activity.tag,
+    willTag: activity.willTag !== false,
     nextVersion: activity.nextVersion,
     needsPush: !!activity.needsPush,
     needsRefresh: !!activity.needsRefresh,
@@ -9415,16 +9451,16 @@ function firstNonEmptyUrl(...values: Array<string | null | undefined>): string |
 
 function hydrateReleaseActivity(activity: ReleaseActivity): ReleaseActivity {
   const deployJobs = adoptReleaseDeployJobs(activity.deployJobs);
+  const hydrated = { ...activity, willTag: activity.willTag !== false, deployJobs };
   const looksIncomplete =
     activity.willPush &&
     !activity.needsPush &&
     !activity.releaseUrl &&
     activity.phase === 'done' &&
     /taking longer|Check GitHub Actions|installer builds|Link GitHub/i.test(activity.message ?? '');
-  if (!looksIncomplete) return { ...activity, deployJobs };
+  if (!looksIncomplete) return hydrated;
   return {
-    ...activity,
-    deployJobs,
+    ...hydrated,
     phase: 'deploying',
     needsRefresh: true,
     ok: null,
@@ -9563,7 +9599,7 @@ function normalizeReleasePhase(value: string): ReleasePhase {
   }
 }
 
-function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
+function buildReleaseSteps(willTag: boolean, willPush: boolean): ReleaseActivityStep[] {
   const steps: ReleaseActivityStep[] = [
     {
       id: 'preparing',
@@ -9593,14 +9629,16 @@ function buildReleaseSteps(willPush: boolean): ReleaseActivityStep[] {
       message: 'git commit the release',
       status: 'pending',
     },
-    {
+  ];
+  if (willTag) {
+    steps.push({
       id: 'tagging',
       phase: 'tagging',
       label: 'Tag',
       message: 'git tag -a the new version',
       status: 'pending',
-    },
-  ];
+    });
+  }
   if (willPush) {
     steps.push({
       id: 'pushing',

@@ -129,6 +129,7 @@ const DEFAULT_CONFIG = {
   tagPrefix: 'v',
   branch: 'main',
   requireClean: true,
+  createTag: true,
   push: false,
   commitMessage: 'Release {{version}}',
   tagMessage: '{{productName}} {{version}}',
@@ -369,7 +370,8 @@ function main() {
   const requireClean = args.allowDirty ? false : config.requireClean !== false;
   const tagPrefix = config.tagPrefix ?? 'v';
   const productName = config.productName || inferProductName();
-  const shouldPush = args.push || (!args.noPush && config.push === true);
+  const shouldCreateTag = config.createTag !== false;
+  const shouldPush = shouldCreateTag && (args.push || (!args.noPush && config.push === true));
 
   const pkg = readJson(resolve(root, 'package.json'));
   const current = pkg.version;
@@ -390,12 +392,14 @@ function main() {
       const dirty = run('git', ['status', '--porcelain']);
       if (dirty) throw new Error('Working tree is dirty. Commit/stash first, or pass --allow-dirty.');
     }
-    const existing = spawnSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], {
-      cwd: root,
-      encoding: 'utf8',
-    });
-    if (existing.status === 0) {
-      throw new Error(`Tag ${tag} already exists`);
+    if (shouldCreateTag) {
+      const existing = spawnSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      if (existing.status === 0) {
+        throw new Error(`Tag ${tag} already exists`);
+      }
     }
   }
 
@@ -412,15 +416,19 @@ function main() {
 
   if (args.dryRun) {
     console.log(`Would commit: ${commitMessage}`);
-    console.log(`Would tag:    ${tag} (${tagMessage})`);
+    console.log(
+      shouldCreateTag ? `Would tag:    ${tag} (${tagMessage})` : 'Would tag:    (skipped)',
+    );
     console.log(shouldPush ? 'Would push:   origin HEAD + tags' : 'Would push:   (skipped)');
     return;
   }
 
   run('git', ['add', '--', ...changed]);
   run('git', ['commit', '-m', commitMessage], { stdio: 'inherit' });
-  run('git', ['tag', '-a', tag, '-m', tagMessage], { stdio: 'inherit' });
-  console.log(`Created tag ${tag}`);
+  if (shouldCreateTag) {
+    run('git', ['tag', '-a', tag, '-m', tagMessage], { stdio: 'inherit' });
+    console.log(`Created tag ${tag}`);
+  }
 
   if (shouldPush) {
     run('git', ['push', 'origin', 'HEAD', '--tags'], { stdio: 'inherit' });

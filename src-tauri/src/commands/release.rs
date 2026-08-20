@@ -63,6 +63,8 @@ pub struct ReleasePreviewInput {
     #[serde(default)]
     pub push: Option<bool>,
     #[serde(default)]
+    pub create_tag: Option<bool>,
+    #[serde(default)]
     pub message: Option<String>,
     #[serde(default)]
     pub tag_message: Option<String>,
@@ -79,6 +81,7 @@ pub struct ReleaseConfigInfo {
     pub tag_prefix: String,
     pub branch: String,
     pub require_clean: bool,
+    pub create_tag_default: bool,
     pub push_default: bool,
     pub commit_message: String,
     pub tag_message: String,
@@ -110,6 +113,7 @@ pub struct ReleasePreviewOutput {
     pub current_branch: String,
     pub require_clean: bool,
     pub dirty: bool,
+    pub will_tag: bool,
     pub will_push: bool,
     pub commit_message: String,
     pub tag_message: String,
@@ -143,6 +147,8 @@ struct ReleaseConfig {
     branch: String,
     #[serde(default = "default_true")]
     require_clean: bool,
+    #[serde(default = "default_true")]
+    create_tag: bool,
     #[serde(default)]
     push: bool,
     #[serde(default = "default_commit_message")]
@@ -601,7 +607,8 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
     } else {
         cfg.require_clean
     };
-    let will_push = input.push.unwrap_or(cfg.push);
+    let will_tag = input.create_tag.unwrap_or(cfg.create_tag);
+    let will_push = will_tag && input.push.unwrap_or(cfg.push);
     let commit_message = template(
         input
             .message
@@ -624,7 +631,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         &tag,
         &product_name,
     );
-    let background_finish = release_finish_script(repo).is_file();
+    let background_finish = will_push && release_finish_script(repo).is_file();
     let applied = apply_files(
         repo,
         &cfg.files,
@@ -644,10 +651,14 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
     if require_clean && dirty {
         blockers.push("Working tree is dirty. Commit or stash first.".into());
     }
-    let (tag_exists, _, _) =
-        git_cli::run_git_allow_fail(repo, &["rev-parse", "-q", "--verify", &format!("refs/tags/{tag}")]);
-    if tag_exists {
-        blockers.push(format!("Tag {tag} already exists"));
+    if will_tag {
+        let (tag_exists, _, _) = git_cli::run_git_allow_fail(
+            repo,
+            &["rev-parse", "-q", "--verify", &format!("refs/tags/{tag}")],
+        );
+        if tag_exists {
+            blockers.push(format!("Tag {tag} already exists"));
+        }
     }
     if files.is_empty() && !dev_skipped_files.is_empty() {
         blockers.push(
@@ -678,6 +689,7 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
         current_branch,
         require_clean,
         dirty,
+        will_tag,
         will_push,
         commit_message,
         tag_message,
@@ -737,6 +749,7 @@ fn get_release_status_inner(path: &Path) -> AppResult<ReleaseStatusOutput> {
             tag_prefix: cfg.tag_prefix,
             branch: cfg.branch,
             require_clean: cfg.require_clean,
+            create_tag_default: cfg.create_tag,
             push_default: cfg.push,
             commit_message: cfg.commit_message,
             tag_message: cfg.tag_message,
@@ -864,18 +877,20 @@ fn run_release_blocking(app: AppHandle, input: ReleasePreviewInput) -> AppResult
             Some(&preview.tag),
         );
         git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
-        emit_release_progress(
-            &app,
-            path,
-            "tagging",
-            &format!("Creating tag {}…", preview.tag),
-            Some(&preview.next_version),
-            Some(&preview.tag),
-        );
-        git_cli::run_git(
-            path,
-            &["tag", "-a", &preview.tag, "-m", &preview.tag_message],
-        )?;
+        if preview.will_tag {
+            emit_release_progress(
+                &app,
+                path,
+                "tagging",
+                &format!("Creating tag {}…", preview.tag),
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            git_cli::run_git(
+                path,
+                &["tag", "-a", &preview.tag, "-m", &preview.tag_message],
+            )?;
+        }
         if preview.will_push {
             emit_release_progress(
                 &app,
@@ -903,10 +918,17 @@ fn run_release_blocking(app: AppHandle, input: ReleasePreviewInput) -> AppResult
                 message,
             });
         }
-        let message = format!(
-            "Released {} {} ({}) — push to origin to deploy",
-            preview.product_name, preview.next_version, preview.tag
-        );
+        let message = if preview.will_tag {
+            format!(
+                "Released {} {} ({}) — push to origin to deploy",
+                preview.product_name, preview.next_version, preview.tag
+            )
+        } else {
+            format!(
+                "Updated {} to {} — committed without a tag",
+                preview.product_name, preview.next_version
+            )
+        };
         emit_release_progress(
             &app,
             path,
@@ -938,6 +960,7 @@ pub struct ReleaseSetupHintsOutput {
     pub product_name: String,
     pub branch: String,
     pub current_version: Option<String>,
+    pub create_tag_default: bool,
     pub push_default: bool,
     pub suggested_files: Vec<ReleaseSetupFileHint>,
 }
@@ -948,6 +971,7 @@ pub struct SaveReleaseConfigInput {
     pub path: String,
     pub product_name: String,
     pub branch: String,
+    pub create_tag: bool,
     pub push: bool,
     pub files: Vec<ReleaseSetupFileHint>,
 }
@@ -1338,6 +1362,7 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
                 tag_prefix: default_tag_prefix(),
                 branch: branch.clone(),
                 require_clean: true,
+                create_tag: true,
                 push: true,
                 commit_message: default_commit_message(),
                 tag_message: default_tag_message(),
@@ -1354,6 +1379,7 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
         product_name,
         branch,
         current_version,
+        create_tag_default: true,
         push_default: true,
         suggested_files: suggested,
     })
@@ -1422,7 +1448,8 @@ pub fn save_release_config(input: SaveReleaseConfigInput) -> AppResult<MutationO
         "tagPrefix": "v",
         "branch": branch,
         "requireClean": true,
-        "push": input.push,
+        "createTag": input.create_tag,
+        "push": input.create_tag && input.push,
         "commitMessage": "Release {{version}}",
         "tagMessage": "{{productName}} {{version}}",
         "files": files,

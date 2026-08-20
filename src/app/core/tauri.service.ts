@@ -823,6 +823,7 @@ export class TauriService {
         path,
         bump: opts.bump,
         preid: opts.preid ?? null,
+        createTag: opts.createTag ?? null,
         push: opts.push ?? null,
         message: opts.message ?? null,
         tagMessage: opts.tagMessage ?? null,
@@ -838,6 +839,7 @@ export class TauriService {
         path,
         bump: opts.bump,
         preid: opts.preid ?? null,
+        createTag: opts.createTag ?? null,
         push: opts.push ?? null,
         message: opts.message ?? null,
         tagMessage: opts.tagMessage ?? null,
@@ -856,6 +858,7 @@ export class TauriService {
     input: {
       productName: string;
       branch: string;
+      createTag: boolean;
       push: boolean;
       files: ReleaseSetupFileHint[];
     },
@@ -1703,6 +1706,7 @@ export class TauriService {
           tagPrefix: 'v',
           branch: 'main',
           requireClean: true,
+          createTagDefault: true,
           pushDefault: true,
           commitMessage: 'Release {{version}}',
           tagMessage: '{{productName}} {{version}}',
@@ -1724,6 +1728,7 @@ export class TauriService {
         currentBranch: 'main',
         requireClean: true,
         dirty: false,
+        willTag: true,
         willPush: false,
         commitMessage: 'Release 0.1.1',
         tagMessage: 'Demo App 0.1.1',
@@ -1737,6 +1742,7 @@ export class TauriService {
         productName: 'Demo App',
         branch: 'main',
         currentVersion: '0.1.0',
+        createTagDefault: true,
         pushDefault: true,
         suggestedFiles: [
           { path: 'package.json', kind: 'json', keys: ['version'], label: 'package.json' },

@@ -14,6 +14,7 @@ export interface ReleaseDialogInput {
 export interface ReleaseDialogResult {
   bump: string;
   branch: string | null;
+  createTag: boolean;
   push: boolean;
   allowDirty: boolean;
   preid: string | null;

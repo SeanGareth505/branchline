@@ -309,8 +309,16 @@
         </div>
         <ol class="pipeline">
           <li>Bump version files</li>
-          <li>Commit and tag</li>
-          <li>{{ pushDefault() ? 'Push and watch GitHub Actions' : 'Keep the tag local until you push' }}</li>
+          <li>{{ createTagDefault() ? 'Commit and tag' : 'Create a version commit' }}</li>
+          <li>
+            {{
+              !createTagDefault()
+                ? 'Finish without creating a tag'
+                : pushDefault()
+                  ? 'Push and watch GitHub Actions'
+                  : 'Keep the tag local until you push'
+            }}
+          </li>
         </ol>
         @if (versionFiles(); as files) {
           <p class="ready-files">{{ files }}</p>

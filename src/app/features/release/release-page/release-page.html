@@ -22,7 +22,7 @@
         } @else if (busy()) {
           <span class="live-badge">In progress</span>
         } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
-          <span class="done-badge">Live</span>
+          <span class="done-badge">{{ activity()?.willTag === false ? 'Committed' : 'Live' }}</span>
         } @else if (status()?.dirty) {
           <span class="dirty-badge">Uncommitted</span>
         }
@@ -32,7 +32,9 @@
         <div class="hero-facts">
           <span class="fact">v{{ status()!.currentVersion }}</span>
           <span class="fact">{{ status()!.currentBranch || status()!.config?.branch || 'main' }}</span>
-          @if (status()!.config?.pushDefault) {
+          @if (!status()!.config?.createTagDefault) {
+            <span class="fact muted">Commit only</span>
+          } @else if (status()!.config?.pushDefault) {
             <span class="fact muted">Push &amp; deploy</span>
           } @else {
             <span class="fact muted">Tag only</span>
@@ -60,7 +62,7 @@
           (click)="startRelease()"
         >
           <ng-icon name="lucideRocket" size="14" />
-          Create release
+          {{ status()?.config?.createTagDefault === false ? 'Update version' : 'Create release' }}
         </button>
       </div>
     }
@@ -164,30 +166,40 @@
             <div class="step-number">3</div>
             <div class="step-content">
               <div class="field toggles">
-                <span>After creating the tag</span>
+                <span>Default release mode</span>
                 <div class="toggle-row">
                   <button
                     type="button"
                     class="toggle"
-                    [class.active]="pushDefault()"
-                    (click)="setPushDefault(true)"
+                    [class.active]="createTagDefault() && pushDefault()"
+                    (click)="setReleaseMode(true, true)"
                   >
                     Push & deploy
                   </button>
                   <button
                     type="button"
                     class="toggle"
-                    [class.active]="!pushDefault()"
-                    (click)="setPushDefault(false)"
+                    [class.active]="createTagDefault() && !pushDefault()"
+                    (click)="setReleaseMode(true, false)"
                   >
                     Tag only
+                  </button>
+                  <button
+                    type="button"
+                    class="toggle"
+                    [class.active]="!createTagDefault()"
+                    (click)="setReleaseMode(false, false)"
+                  >
+                    Commit only
                   </button>
                 </div>
                 <span class="field-help">
                   {{
-                    pushDefault()
+                    !createTagDefault()
+                      ? 'Updates version files and creates a commit without creating or pushing a tag.'
+                      : pushDefault()
                       ? 'Recommended. Pushes the release commit and tag so GitHub can build installers.'
-                      : 'Keeps the release local until you push the tag manually.'
+                      : 'Creates the version commit and local tag without pushing either.'
                   }}
                 </span>
               </div>
