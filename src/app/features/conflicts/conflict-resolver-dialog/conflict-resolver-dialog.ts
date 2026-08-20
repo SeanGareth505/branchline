@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,13 +8,16 @@ import {
   HostListener,
   inject,
   signal,
+  viewChild,
   viewChildren,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
+import { AngularSplitModule, type SplitGutterInteractionEvent } from 'angular-split';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { AppStore } from '../../../core/app.store';
+import type { FileStatusEntry } from '../../../core/models';
 import {
   acceptAllChoices,
   alignConflictLines,
@@ -34,7 +38,13 @@ import {
   resolvePreferredEditor,
 } from '../../../shared/git/open-in-editor';
 
-type OpenMenu = 'tools' | null;
+type OpenMenu = 'tools' | 'more' | null;
+type CollapsePane = 'files' | 'result';
+
+interface ChoiceSnapshot {
+  choices: Map<string, ConflictChoice>;
+  custom: Map<string, string>;
+}
 
 interface TextBlock {
   kind: 'text';
@@ -48,14 +58,19 @@ interface ConflictBlock {
   index: number;
   startLine: number;
   conflict: ConflictRegion;
-  aligned: AlignedLine[];
+  aligned: NumberedAlignedLine[];
+}
+
+interface NumberedAlignedLine extends AlignedLine {
+  leftNo: number | null;
+  rightNo: number | null;
 }
 
 type DocumentBlock = TextBlock | ConflictBlock;
 
 @Component({
   selector: 'app-conflict-resolver-dialog',
-  imports: [FormsModule, NgIcon, HelpTip],
+  imports: [FormsModule, AngularSplitModule, NgTemplateOutlet, NgIcon, HelpTip],
   templateUrl: './conflict-resolver-dialog.html',
   styleUrl: './conflict-resolver-dialog.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -75,16 +90,41 @@ export class ConflictResolverDialog {
   readonly custom = signal<Map<string, string>>(new Map());
   readonly activeConflictId = signal<string | null>(null);
   readonly showBase = signal(false);
-  readonly resultMode = signal<'guided' | 'edit'>('guided');
+  readonly resultMode = signal<'guided' | 'edit'>('edit');
+  readonly manualResultEdit = signal(false);
   readonly openMenu = signal<OpenMenu>(null);
+  readonly hunkMoreId = signal<string | null>(null);
   readonly saving = signal(false);
   readonly editingId = signal<string | null>(null);
   readonly editDraft = signal('');
   readonly expandedContext = signal<Set<number>>(new Set());
   readonly closing = signal(false);
+  readonly choiceHistory = signal<ChoiceSnapshot[]>([]);
+  readonly narrowLayout = signal(globalThis.innerWidth <= 900);
+  readonly horizontalSplitDirection = computed<'horizontal' | 'vertical'>(() =>
+    this.narrowLayout() ? 'vertical' : 'horizontal',
+  );
+  readonly workspaceSplitSizes = signal<[number, number]>([16, 84]);
+  readonly twoSourceSizes = signal<[number, number]>([50, 50]);
+  readonly threeSourceSizes = signal<[number, number, number]>([34, 33, 33]);
+  readonly resultSplitSizes = signal<[number, number]>([72, 28]);
+  readonly filesCollapsed = signal(false);
+  readonly fileTreeExpanded = signal(true);
+  readonly resultCollapsed = signal(false);
+  private savedFilePaneSize = 16;
+  private savedResultPaneSize = 28;
   private syncedKey = '';
 
   readonly conflictCards = viewChildren<ElementRef<HTMLElement>>('conflictCard');
+  readonly resultEditor = viewChild<ElementRef<HTMLTextAreaElement>>('resultEditor');
+  readonly sourceDocs = viewChildren<ElementRef<HTMLElement>>('sourceDoc');
+  private syncingScroll = false;
+
+  readonly gutterOrientation = computed<'horizontal' | 'vertical'>(() =>
+    this.horizontalSplitDirection() === 'horizontal' ? 'vertical' : 'horizontal',
+  );
+
+  readonly showBasePane = computed(() => this.showBase() && !!this.sides()?.hasBase);
 
   constructor() {
     effect(() => {
@@ -115,6 +155,20 @@ export class ConflictResolverDialog {
   readonly hasVscode = computed(() => !!this.store.detectedEditors()?.vscode);
 
   readonly operation = computed(() => this.store.status()?.operation ?? null);
+  readonly abortLabel = computed(() => {
+    switch (this.operation()?.kind) {
+      case 'merge':
+        return 'Abort merge';
+      case 'rebase':
+        return 'Abort rebase';
+      case 'cherryPick':
+        return 'Abort cherry-pick';
+      case 'revert':
+        return 'Abort revert';
+      default:
+        return 'Abort operation';
+    }
+  });
 
   readonly yoursLabel = computed(() => {
     const kind = this.operation()?.kind;
@@ -130,17 +184,6 @@ export class ConflictResolverDialog {
     if (kind === 'cherryPick') return 'Cherry-picked';
     if (kind === 'revert') return 'Revert changes';
     return 'Incoming';
-  });
-
-  readonly sideHint = computed(() => {
-    const kind = this.operation()?.kind;
-    if (kind === 'rebase') {
-      return 'During rebase, “ours” is the branch you rebase onto; “incoming” is the commit being applied.';
-    }
-    if (kind === 'cherryPick') {
-      return 'Keep what is on your branch, take the cherry-picked change, or combine both.';
-    }
-    return 'Keep yours, take incoming, combine both, or edit the hunk in place.';
   });
 
   readonly parsed = computed(() => {
@@ -171,7 +214,7 @@ export class ConflictResolverDialog {
         index,
         startLine,
         conflict: segment.conflict,
-        aligned: alignConflictLines(segment.conflict.ours, segment.conflict.theirs),
+        aligned: numberAlignedLines(alignConflictLines(segment.conflict.ours, segment.conflict.theirs), startLine + 1),
       };
     });
   });
@@ -218,6 +261,41 @@ export class ConflictResolverDialog {
     return `${done}/${conflicts.length} in this file · ${this.fileIndex()}/${this.fileTotal()} files`;
   });
 
+  readonly progressPercent = computed(() => {
+    const conflicts = this.conflicts();
+    if (!conflicts.length) return this.markersClearedUnstaged() ? 100 : 0;
+    return Math.round(((conflicts.length - this.remainingCount()) / conflicts.length) * 100);
+  });
+
+  readonly progressValueText = computed(() => {
+    const conflicts = this.conflicts();
+    if (!conflicts.length) {
+      return this.markersClearedUnstaged()
+        ? `File ${this.fileIndex()} of ${this.fileTotal()} ready to stage`
+        : `File ${this.fileIndex()} of ${this.fileTotal()}`;
+    }
+    const done = conflicts.length - this.remainingCount();
+    return `${done} of ${conflicts.length} hunks resolved in this file`;
+  });
+
+  readonly abortTitle = computed(() => `${this.abortLabel()} — cannot be undone`);
+
+  readonly canUndo = computed(() => this.choiceHistory().length > 0);
+
+  readonly identicalConflicts = computed(() =>
+    this.conflicts().filter((conflict) => this.sidesIdentical(conflict)),
+  );
+
+  readonly remainStatus = computed(() => {
+    if (this.manualResultEdit()) {
+      return this.canSave()
+        ? 'Manual result is ready'
+        : 'Remove all conflict markers to continue';
+    }
+    if (this.remainingCount()) return `${this.remainingCount()} left in this file`;
+    return 'All conflicts chosen';
+  });
+
   readonly activeIndex = computed(() => {
     const id = this.activeConflictId();
     const list = this.conflicts();
@@ -227,15 +305,22 @@ export class ConflictResolverDialog {
     return idx >= 0 ? idx : 0;
   });
 
+  readonly activeConflict = computed(() => this.conflicts()[this.activeIndex()] ?? null);
+
   readonly canSave = computed(() => {
     const sides = this.sides();
     if (!sides || sides.binary) return false;
     if (this.isDeleteConflict()) return false;
+    if (this.resultMode() === 'edit') {
+      return !draftHasConflictMarkers(this.store.conflictResolverDraft());
+    }
     if (this.conflicts().length) return this.allResolved();
     return !draftHasConflictMarkers(this.store.conflictResolverDraft());
   });
 
-  readonly dirty = computed(() => this.choices().size > 0 || this.custom().size > 0);
+  readonly dirty = computed(
+    () => this.choices().size > 0 || this.custom().size > 0 || this.manualResultEdit(),
+  );
 
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
@@ -251,8 +336,8 @@ export class ConflictResolverDialog {
         event.preventDefault();
         return;
       }
-      if (this.openMenu()) {
-        this.openMenu.set(null);
+      if (this.openMenu() || this.hunkMoreId()) {
+        this.closeMenu();
         event.preventDefault();
         return;
       }
@@ -271,6 +356,13 @@ export class ConflictResolverDialog {
       if (this.canSave()) {
         event.preventDefault();
         void this.save();
+      }
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+      if (!typing && this.canUndo()) {
+        event.preventDefault();
+        this.undoLast();
       }
       return;
     }
@@ -326,11 +418,72 @@ export class ConflictResolverDialog {
     }
   }
 
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.narrowLayout.set(globalThis.innerWidth <= 900);
+  }
+
+  onWorkspaceSplitDragEnd(event: SplitGutterInteractionEvent): void {
+    const sizes = splitNumbers(event);
+    if (sizes.length < 2) return;
+    this.workspaceSplitSizes.set([sizes[0], sizes[1]]);
+    this.syncCollapsedFromSize('files', sizes[0]);
+  }
+
+  onSourceSplitDragEnd(event: SplitGutterInteractionEvent): void {
+    const sizes = splitNumbers(event);
+    if (this.showBasePane() && sizes.length >= 3) {
+      this.threeSourceSizes.set([sizes[0], sizes[1], sizes[2]]);
+      return;
+    }
+    if (sizes.length >= 2) this.twoSourceSizes.set([sizes[0], sizes[1]]);
+  }
+
+  onResultSplitDragEnd(event: SplitGutterInteractionEvent): void {
+    const sizes = splitNumbers(event);
+    if (sizes.length < 2) return;
+    this.resultSplitSizes.set([sizes[0], sizes[1]]);
+    this.syncCollapsedFromSize('result', sizes[1]);
+  }
+
+  toggleFilesPane(): void {
+    this.toggleCollapsedPane('files');
+  }
+
+  toggleResultPane(): void {
+    this.toggleCollapsedPane('result');
+  }
+
+  fileTreeOpen(path: string): boolean {
+    return path === this.store.conflictResolverPath() && this.fileTreeExpanded();
+  }
+
+  toggleFileTree(path: string, event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (path !== this.store.conflictResolverPath()) {
+      this.pickFile(path);
+      return;
+    }
+    this.fileTreeExpanded.update((open) => !open);
+  }
+
+  sidePaneChevron(collapsed: boolean): string {
+    return collapsed ? 'lucideChevronRight' : 'lucideChevronLeft';
+  }
+
+  resultPaneChevron(): string {
+    return this.resultCollapsed() ? 'lucideChevronUp' : 'lucideChevronDown';
+  }
+
   syncFromSides(): void {
     const sides = this.sides();
     this.choices.set(new Map());
     this.custom.set(new Map());
-    this.resultMode.set('guided');
+    this.choiceHistory.set([]);
+    this.hunkMoreId.set(null);
+    this.resultMode.set('edit');
+    this.manualResultEdit.set(false);
     this.openMenu.set(null);
     this.showBase.set(false);
     this.editingId.set(null);
@@ -346,9 +499,11 @@ export class ConflictResolverDialog {
     if (sides && !sides.binary && !parsed.hasMarkers) {
       this.resultMode.set('edit');
     }
+    this.fileTreeExpanded.set(true);
   }
 
   pickFile(path: string): void {
+    this.fileTreeExpanded.set(true);
     void this.store.openConflictResolver(path);
   }
 
@@ -382,11 +537,103 @@ export class ConflictResolverDialog {
     return contentForChoice(conflict, choice);
   }
 
-  accept(id: string, choice: ConflictChoice): void {
+  incomingAccepted(id: string): boolean {
+    const choice = this.choiceFor(id);
+    return choice === 'theirs' || choice === 'both' || choice === 'bothReverse';
+  }
+
+  currentAccepted(id: string): boolean {
+    const choice = this.choiceFor(id);
+    return choice === 'ours' || choice === 'both' || choice === 'bothReverse';
+  }
+
+  sideChosen(side: string, id: string): boolean {
+    if (side === 'theirs') return this.incomingAccepted(id);
+    if (side === 'ours') return this.currentAccepted(id);
+    return false;
+  }
+
+  sideRejected(side: string, id: string): boolean {
+    if (!this.choiceFor(id) || this.choiceFor(id) === 'custom') return false;
+    if (side === 'theirs') return !this.incomingAccepted(id);
+    if (side === 'ours') return !this.currentAccepted(id);
+    return false;
+  }
+
+  sidesIdentical(conflict: ConflictRegion): boolean {
+    return conflict.ours === conflict.theirs;
+  }
+
+  toggleIncoming(id: string): void {
+    if (this.manualResultEdit()) return;
+    const ours = this.currentAccepted(id);
+    const theirs = this.incomingAccepted(id);
+    if (theirs && ours) this.accept(id, 'ours', false);
+    else if (theirs) this.clearChoice(id);
+    else if (ours) this.accept(id, 'both', false);
+    else this.accept(id, 'theirs', false);
+  }
+
+  toggleCurrent(id: string): void {
+    if (this.manualResultEdit()) return;
+    const ours = this.currentAccepted(id);
+    const theirs = this.incomingAccepted(id);
+    if (ours && theirs) this.accept(id, 'theirs', false);
+    else if (ours) this.clearChoice(id);
+    else if (theirs) this.accept(id, 'both', false);
+    else this.accept(id, 'ours', false);
+  }
+
+  undoLast(): void {
+    const history = this.choiceHistory();
+    if (!history.length) return;
+    const last = history[history.length - 1]!;
+    this.choiceHistory.set(history.slice(0, -1));
+    this.choices.set(new Map(last.choices));
+    this.custom.set(new Map(last.custom));
+    this.rebuildDraft();
+  }
+
+  acceptIdentical(): void {
+    const identical = this.identicalConflicts();
+    if (!identical.length || this.manualResultEdit()) return;
+    this.pushChoiceHistory();
+    const next = new Map(this.choices());
+    for (const conflict of identical) next.set(conflict.id, 'theirs');
+    this.choices.set(next);
+    this.rebuildDraft();
+  }
+
+  toggleHunkMenu(id: string, event: Event): void {
+    event.stopPropagation();
+    this.hunkMoreId.update((cur) => (cur === id ? null : id));
+    this.openMenu.set(null);
+  }
+
+  onSourceScroll(event: Event): void {
+    if (this.syncingScroll) return;
+    const source = event.target as HTMLElement;
+    const max = source.scrollHeight - source.clientHeight;
+    const ratio = max > 0 ? source.scrollTop / max : 0;
+    this.syncingScroll = true;
+    for (const ref of this.sourceDocs()) {
+      const el = ref.nativeElement;
+      if (el === source) continue;
+      const otherMax = el.scrollHeight - el.clientHeight;
+      el.scrollTop = ratio * Math.max(0, otherMax);
+    }
+    requestAnimationFrame(() => {
+      this.syncingScroll = false;
+    });
+  }
+
+  accept(id: string, choice: ConflictChoice, advance = true): void {
+    if (this.manualResultEdit()) return;
     if (choice === 'base') {
       const conflict = this.conflicts().find((c) => c.id === id);
       if (!conflict?.hasBase) return;
     }
+    this.pushChoiceHistory();
     const next = new Map(this.choices());
     next.set(id, choice);
     this.choices.set(next);
@@ -398,6 +645,7 @@ export class ConflictResolverDialog {
     this.editingId.set(null);
     this.activeConflictId.set(id);
     this.rebuildDraft();
+    if (!advance) return;
     const remaining = remainingConflictIds(this.conflicts(), next, this.custom());
     if (remaining.length) {
       const currentIdx = this.conflicts().findIndex((c) => c.id === id);
@@ -422,6 +670,7 @@ export class ConflictResolverDialog {
   }
 
   acceptAll(side: ConflictChoice): void {
+    this.pushChoiceHistory();
     const map = acceptAllChoices(this.conflicts(), side);
     this.choices.set(map);
     this.custom.set(new Map());
@@ -431,6 +680,7 @@ export class ConflictResolverDialog {
   }
 
   clearChoice(id: string): void {
+    this.pushChoiceHistory();
     const next = new Map(this.choices());
     next.delete(id);
     this.choices.set(next);
@@ -444,11 +694,18 @@ export class ConflictResolverDialog {
     const parsed = this.parsed();
     if (!parsed.hasMarkers) return;
     this.store.setConflictResolverDraft(buildConflictResult(parsed, this.choices(), this.custom()));
+    this.manualResultEdit.set(false);
   }
 
   onDraftEdit(value: string): void {
     this.store.setConflictResolverDraft(value);
     this.resultMode.set('edit');
+    this.manualResultEdit.set(true);
+  }
+
+  resetGeneratedResult(): void {
+    this.manualResultEdit.set(false);
+    this.rebuildDraft();
   }
 
   startHunkEdit(id: string | null): void {
@@ -517,17 +774,67 @@ export class ConflictResolverDialog {
   focusConflictById(id: string): void {
     this.activeConflictId.set(id);
     queueMicrotask(() => {
-      const el = this.conflictCards().find((ref) => ref.nativeElement.dataset['conflictId'] === id);
-      el?.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const matches = this.conflictCards().filter(
+        (ref) => ref.nativeElement.dataset['conflictId'] === id,
+      );
+      for (const ref of matches) {
+        ref.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+      this.scrollResultToConflict(id);
     });
   }
 
+  onHunkCardKey(event: KeyboardEvent, id: string): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.focusConflictById(id);
+    }
+  }
+
+  toggleBasePane(): void {
+    if (!this.sides()?.hasBase) return;
+    this.showBase.update((open) => !open);
+  }
+
+  scrollResultToConflict(id: string): void {
+    const conflict = this.conflicts().find((c) => c.id === id);
+    const area = this.resultEditor()?.nativeElement;
+    if (!conflict || !area) return;
+    const draft = this.store.conflictResolverDraft();
+    const choice = this.choiceFor(id);
+    let needle = reconstructMarkers(conflict);
+    if (choice === 'custom') needle = this.custom().get(id) ?? needle;
+    else if (choice) needle = contentForChoice(conflict, choice);
+    const trimmed = needle.replace(/\n$/, '');
+    const idx = trimmed ? draft.indexOf(trimmed) : -1;
+    const before = idx >= 0 ? draft.slice(0, idx) : '';
+    const line = idx >= 0 ? before.split('\n').length : conflict.startLine;
+    const lh = Number.parseFloat(globalThis.getComputedStyle(area).lineHeight) || 18;
+    area.scrollTop = Math.max(0, (line - 2) * lh);
+  }
+
+  fileNavLabel(file: FileStatusEntry): string {
+    const status = file.markersCleared ? 'ready to stage' : file.conflictLabel || 'unresolved';
+    const dir = this.dirName(file.path);
+    return dir
+      ? `${this.fileName(file.path)}, ${status}, ${dir}`
+      : `${this.fileName(file.path)}, ${status}`;
+  }
+
+  hunkRailLabel(conflict: ConflictRegion): string {
+    const choice = this.choiceFor(conflict.id);
+    const state = choice ? this.choiceLabel(choice) : 'unresolved';
+    return `Conflict ${conflict.index + 1}, line ${conflict.startLine}, ${state}`;
+  }
+
   toggleMenu(menu: OpenMenu): void {
+    this.hunkMoreId.set(null);
     this.openMenu.update((cur) => (cur === menu ? null : menu));
   }
 
   closeMenu(): void {
     this.openMenu.set(null);
+    this.hunkMoreId.set(null);
   }
 
   async requestClose(): Promise<void> {
@@ -596,10 +903,24 @@ export class ConflictResolverDialog {
   }
 
   useWholeFile(side: 'ours' | 'theirs' | 'base' | 'working'): void {
+    this.pushChoiceHistory();
     this.store.useConflictSide(side);
     this.choices.set(new Map());
     this.custom.set(new Map());
     this.resultMode.set('edit');
+    this.manualResultEdit.set(side !== 'working');
+  }
+
+  private pushChoiceHistory(): void {
+    this.choiceHistory.update((history) =>
+      [
+        ...history,
+        {
+          choices: new Map(this.choices()),
+          custom: new Map(this.custom()),
+        },
+      ].slice(-40),
+    );
   }
 
   async save(): Promise<void> {
@@ -626,9 +947,71 @@ export class ConflictResolverDialog {
   lineNo(start: number, offset: number): number {
     return start + offset;
   }
+
+  textLines(text: string): string[] {
+    if (!text) return [];
+    return text.endsWith('\n') ? text.slice(0, -1).split('\n') : text.split('\n');
+  }
+
+  private toggleCollapsedPane(pane: CollapsePane): void {
+    if (pane === 'files') {
+      if (this.filesCollapsed()) {
+        const size = this.savedFilePaneSize;
+        this.workspaceSplitSizes.set([size, 100 - size]);
+        this.filesCollapsed.set(false);
+        return;
+      }
+      const current = this.workspaceSplitSizes()[0];
+      if (current > COLLAPSE_THRESHOLD) this.savedFilePaneSize = current;
+      this.filesCollapsed.set(true);
+      this.workspaceSplitSizes.set([COLLAPSED_SIDE, 100 - COLLAPSED_SIDE]);
+      return;
+    }
+    if (this.resultCollapsed()) {
+      const size = this.savedResultPaneSize;
+      this.resultSplitSizes.set([100 - size, size]);
+      this.resultCollapsed.set(false);
+      return;
+    }
+    const current = this.resultSplitSizes()[1];
+    if (current > RESULT_COLLAPSE_THRESHOLD) this.savedResultPaneSize = current;
+    this.resultCollapsed.set(true);
+    this.resultSplitSizes.set([100 - COLLAPSED_RESULT, COLLAPSED_RESULT]);
+  }
+
+  private syncCollapsedFromSize(pane: CollapsePane, size: number): void {
+    if (pane === 'files') {
+      const collapsed = size <= COLLAPSE_THRESHOLD;
+      this.filesCollapsed.set(collapsed);
+      if (!collapsed) this.savedFilePaneSize = size;
+      return;
+    }
+    const collapsed = size <= RESULT_COLLAPSE_THRESHOLD;
+    this.resultCollapsed.set(collapsed);
+    if (!collapsed) this.savedResultPaneSize = size;
+  }
 }
 
 function markerLineCount(conflict: ConflictRegion): number {
   const raw = reconstructMarkers(conflict);
   return raw.endsWith('\n') ? raw.slice(0, -1).split('\n').length : raw.split('\n').length;
 }
+
+function splitNumbers(event: SplitGutterInteractionEvent): number[] {
+  return event.sizes.filter((size): size is number => typeof size === 'number');
+}
+
+function numberAlignedLines(rows: AlignedLine[], startLine: number): NumberedAlignedLine[] {
+  let left = startLine;
+  let right = startLine;
+  return rows.map((row) => ({
+    ...row,
+    leftNo: row.left === null ? null : left++,
+    rightNo: row.right === null ? null : right++,
+  }));
+}
+
+const COLLAPSED_SIDE = 2.4;
+const COLLAPSED_RESULT = 4.8;
+const COLLAPSE_THRESHOLD = 4.2;
+const RESULT_COLLAPSE_THRESHOLD = 8;

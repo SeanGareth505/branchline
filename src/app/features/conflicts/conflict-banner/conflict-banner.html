@@ -1,9 +1,25 @@
 <div class="banner" [class.ready]="readyToContinue()">
   <div class="info">
-    <ng-icon [name]="readyToContinue() ? 'lucideCheck' : 'lucideCircleAlert'" size="16" />
+    <span class="status-icon" aria-hidden="true">
+      <ng-icon [name]="readyToContinue() ? 'lucideCheck' : 'lucideGitMerge'" size="17" />
+    </span>
     <div class="copy">
-      <strong>{{ title() }}</strong>
-      <p class="hint">{{ hint() }}</p>
+      <div class="title-row">
+        <span class="eyebrow">{{ readyToContinue() ? 'Ready to continue' : 'Merge session' }}</span>
+        <strong>{{ title() }}</strong>
+      </div>
+      <p class="hint" id="conflict-banner-hint">{{ hint() }}</p>
+      <div
+        class="session-progress"
+        role="progressbar"
+        aria-label="Conflict resolution progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        [attr.aria-valuenow]="progressPercent()"
+        [attr.aria-valuetext]="progressValueText()"
+      >
+        <span [style.width.%]="progressPercent()"></span>
+      </div>
       @if (previewFiles().length) {
         <div class="files">
           @for (f of previewFiles(); track f.path) {
@@ -13,10 +29,14 @@
               [class.ready]="f.markersCleared"
               (click)="store.openConflictResolver(f.path)"
               [title]="f.path"
+              [attr.aria-label]="fileChipLabel(f)"
             >
+              <span class="file-state" aria-hidden="true">
+                <ng-icon [name]="f.markersCleared ? 'lucideCheck' : 'lucideCircleAlert'" size="11" />
+              </span>
               <span class="mono">{{ fileName(f.path) }}</span>
               @if (f.markersCleared) {
-                <span class="kind ready">ready</span>
+                <span class="kind ready">Ready</span>
               } @else if (f.conflictLabel) {
                 <span class="kind">{{ f.conflictLabel }}</span>
               }
@@ -39,13 +59,15 @@
         (click)="openResolver()"
         title="Resolve conflicts one file at a time"
       >
-        Resolve
+        <ng-icon name="lucideGitMerge" size="14" />
+        Resolve conflicts
       </button>
       <div class="menu-wrap" (click)="$event.stopPropagation()">
         <button
           type="button"
           class="bl-btn"
           (click)="toggleTools()"
+          aria-haspopup="menu"
           [attr.aria-expanded]="toolsOpen()"
           title="Open conflicts in an editor or merge tool"
         >
@@ -80,30 +102,26 @@
         }
       </div>
     }
-    <button
-      type="button"
-      class="bl-btn"
-      [class.bl-btn-primary]="readyToContinue()"
-      (click)="continueOp()"
-      [title]="
-        operation()
-          ? 'Continue ' + (operation()?.label ?? 'operation')
-          : 'Continue merge, rebase, cherry-pick, or revert after resolving'
-      "
-    >
-      Continue
-    </button>
-    <button
-      type="button"
-      class="bl-btn"
-      (click)="abortOp()"
-      [title]="
-        operation()
-          ? 'Abort ' + (operation()?.label ?? 'operation')
-          : 'Abort the in-progress merge, rebase, cherry-pick, or revert'
-      "
-    >
-      Abort
-    </button>
+    @if (operation()) {
+      <button
+        type="button"
+        class="bl-btn"
+        [class.bl-btn-primary]="readyToContinue()"
+        [disabled]="!readyToContinue()"
+        (click)="continueOp()"
+        [title]="'Continue ' + (operation()?.label ?? 'operation')"
+        [attr.aria-describedby]="readyToContinue() ? null : 'conflict-banner-hint'"
+      >
+        Continue
+      </button>
+      <button
+        type="button"
+        class="bl-btn abort"
+        (click)="abortOp()"
+        [title]="'Abort ' + (operation()?.label ?? 'operation') + ' — cannot be undone'"
+      >
+        Abort
+      </button>
+    }
   </div>
 </div>

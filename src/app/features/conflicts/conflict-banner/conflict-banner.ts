@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, signal } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
+import type { FileStatusEntry } from '../../../core/models';
 import { preferredEditorLabel } from '../../../shared/git/open-in-editor';
 
 const PREVIEW_LIMIT = 3;
@@ -29,6 +30,18 @@ export class ConflictBanner {
   readonly readyToStageCount = computed(
     () => this.store.status()?.conflicted?.filter((f) => f.markersCleared).length ?? 0,
   );
+  readonly progressPercent = computed(() => {
+    const total = this.conflictCount();
+    if (!total) return this.operation() ? 100 : 0;
+    return Math.round((this.readyToStageCount() / total) * 100);
+  });
+
+  readonly progressValueText = computed(() => {
+    const total = this.conflictCount();
+    const ready = this.readyToStageCount();
+    if (!total) return this.readyToContinue() ? 'Ready to continue' : 'No conflicted files';
+    return `${ready} of ${total} files ready to stage`;
+  });
 
   readonly previewFiles = computed(() => (this.store.status()?.conflicted ?? []).slice(0, PREVIEW_LIMIT));
 
@@ -86,6 +99,13 @@ export class ConflictBanner {
   fileName(path: string): string {
     const parts = path.split(/[/\\]/);
     return parts[parts.length - 1] || path;
+  }
+
+  fileChipLabel(file: FileStatusEntry): string {
+    const status = file.markersCleared
+      ? 'ready to stage'
+      : file.conflictLabel || 'unresolved';
+    return `${this.fileName(file.path)}, ${status}, ${file.path}`;
   }
 
   toggleTools(): void {
