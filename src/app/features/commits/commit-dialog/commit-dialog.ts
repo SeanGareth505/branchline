@@ -587,33 +587,7 @@ export class CommitDialog {
       return;
     }
     this.focusPane.set(pane);
-    const key = this.fileKey(entry.path, pane);
-    const list = this.listForPane(pane);
-    let next = new Set<FileKey>();
-
-    if (event.shiftKey && this.lastFileIndex && this.lastFileIndex.pane === pane) {
-      const from = Math.min(this.lastFileIndex.index, index);
-      const to = Math.max(this.lastFileIndex.index, index);
-      for (let i = from; i <= to; i++) {
-        const item = list[i];
-        if (item) next.add(this.fileKey(item.path, pane));
-      }
-    } else if (event.metaKey || (!this.isMac && event.ctrlKey)) {
-      next = new Set(
-        [...this.selectedFiles()].filter((k) => {
-          if (pane === 'staged') return k.startsWith('s:');
-          if (pane === 'conflicted') return k.startsWith('c:');
-          return k.startsWith('u:');
-        }),
-      );
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-    } else {
-      next = new Set([key]);
-    }
-
     this.lastFileIndex = { pane, index };
-    this.selectedFiles.set(next);
     this.selectFile(entry.path, pane === 'staged');
   }
 
