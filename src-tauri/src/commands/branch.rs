@@ -84,6 +84,17 @@ struct GitProcessOutputEvent {
     chunk: String,
 }
 
+pub(crate) fn emit_process_output(app: &AppHandle, path: &Path, kind: &str, chunk: String) {
+    let _ = app.emit(
+        "git-process-output",
+        GitProcessOutputEvent {
+            path: path.to_string_lossy().to_string(),
+            kind: kind.to_string(),
+            chunk,
+        },
+    );
+}
+
 pub(crate) fn run_git_with_process_output(
     app: &AppHandle,
     path: &Path,
@@ -94,14 +105,7 @@ pub(crate) fn run_git_with_process_output(
     let event_path = path.to_string_lossy().to_string();
     let event_kind = kind.to_string();
     git_cli::run_git_out_err_stream(path, args, move |chunk| {
-        let _ = app.emit(
-            "git-process-output",
-            GitProcessOutputEvent {
-                path: event_path.clone(),
-                kind: event_kind.clone(),
-                chunk,
-            },
-        );
+        emit_process_output(&app, Path::new(&event_path), &event_kind, chunk);
     })
 }
 

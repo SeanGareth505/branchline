@@ -241,20 +241,6 @@ export class CommitDialog {
     return null;
   });
 
-  readonly busyDetail = computed(() => {
-    const phase = this.commitPhase();
-    if (phase === 'checking') return 'Hooks and repo checks are running in the background.';
-    if (phase === 'staging') return 'Adding unstaged files to the index.';
-    if (phase === 'committing') {
-      return this.amend()
-        ? 'Rewriting the latest commit with your message.'
-        : 'Writing the commit. This can take a moment if hooks run.';
-    }
-    if (phase === 'pushing') return 'Publishing the new commit to the remote.';
-    if (this.committing()) return 'Please wait — the repository is busy.';
-    return null;
-  });
-
   readonly commitButtonLabel = computed(() => {
     const phase = this.commitPhase();
     if (phase === 'checking') return 'Checking…';
@@ -1196,10 +1182,31 @@ export class CommitDialog {
       if (ok === null) return;
     }
 
+    const skipChecks = this.commitChecks()?.skip() ?? false;
+    const willPush = this.pushAfter();
+    const checkTriggers = willPush
+      ? ['pre-commit', 'commit-msg', 'pre-push']
+      : ['pre-commit', 'commit-msg'];
+    const checks = skipChecks ? [] : this.store.enabledChecks(checkTriggers);
+    const commitCommand = [
+      'git commit',
+      this.amend() ? '--amend' : '',
+      '--allow-empty',
+      skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']) ? '--no-verify' : '',
+      '-m <message>',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const firstCommand = needsStageAll
+      ? `git add -- <${this.unstagedCount()} files>`
+      : checks[0]?.command ?? commitCommand;
+
     this.committing.set(true);
     this.commitPhase.set(needsStageAll ? 'staging' : 'committing');
+    this.store.openGitProcess('commit', firstCommand);
     (document.activeElement as HTMLElement | null)?.blur();
     await this.paintBusy();
+    let workflowPassed = false;
     try {
       if (needsStageAll) {
         await this.stageAll();
@@ -1209,12 +1216,7 @@ export class CommitDialog {
         }
       }
 
-      const skipChecks = this.commitChecks()?.skip() ?? false;
-      const willPush = this.pushAfter();
-      const checkTriggers = willPush
-        ? ['pre-commit', 'commit-msg', 'pre-push']
-        : ['pre-commit', 'commit-msg'];
-      if (!skipChecks && this.store.enabledChecks(checkTriggers).length) {
+      if (checks.length) {
         this.commitPhase.set('checking');
         await this.paintBusy();
         const ok = await this.store.runRepoChecks(checkTriggers, {
@@ -1228,6 +1230,7 @@ export class CommitDialog {
       }
 
       this.commitPhase.set('committing');
+      this.store.openGitProcess('commit', commitCommand);
       await this.paintBusy();
       const skipGitHooks =
         skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']);
@@ -1266,6 +1269,9 @@ export class CommitDialog {
             undo: () => void this.store.undoLastActionQuiet(),
           });
         }
+        workflowPassed = pushed;
+      } else {
+        workflowPassed = true;
       }
       this.resetForm();
       const treeClean =
@@ -1276,6 +1282,9 @@ export class CommitDialog {
         this.close(true);
       }
     } finally {
+      if (this.store.gitProcess()?.running && this.store.gitProcess()?.kind === 'commit') {
+        this.store.finishGitProcess(workflowPassed);
+      }
       this.commitPhase.set(null);
       this.committing.set(false);
     }

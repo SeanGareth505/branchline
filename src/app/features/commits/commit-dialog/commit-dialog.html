@@ -569,21 +569,6 @@
       </section>
         </as-split-area>
       </as-split>
-
-    @if (committing()) {
-      <div class="commit-overlay" role="status" aria-live="assertive" aria-busy="true">
-        <div class="commit-overlay-card">
-          <app-spinner size="lg" [label]="busyLabel() || 'Working'" />
-          <p class="commit-overlay-title">{{ busyLabel() || 'Working…' }}</p>
-          @if (busyDetail(); as detail) {
-            <p class="commit-overlay-detail">{{ detail }}</p>
-          }
-          <div class="commit-overlay-bar" aria-hidden="true">
-            <span class="commit-overlay-fill"></span>
-          </div>
-        </div>
-      </div>
-    }
     </div>
   </div>
 }

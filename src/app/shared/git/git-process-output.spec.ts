@@ -23,4 +23,9 @@ describe('gitProcessTitle', () => {
     expect(gitProcessTitle('push')).toBe('Push');
     expect(gitProcessTitle('fetch')).toBe('Fetch');
   });
+
+  it('labels checks and commit workflows', () => {
+    expect(gitProcessTitle('check')).toBe('Repository checks');
+    expect(gitProcessTitle('commit')).toBe('Commit');
+  });
 });

@@ -185,7 +185,7 @@ export function normalizeSettingsSection(raw: unknown): SettingsSection {
 }
 
 export type AutomationFilter = 'all' | 'custom' | 'builtin';
-export type RemoteBusyKind = 'fetch' | 'pull' | 'push' | 'merge' | 'rebase';
+export type RemoteBusyKind = 'fetch' | 'pull' | 'push' | 'merge' | 'rebase' | 'check' | 'commit';
 export interface GitProcessState {
   kind: RemoteBusyKind;
   title: string;
@@ -3173,9 +3173,18 @@ export class AppStore {
   openGitProcess(kind: RemoteBusyKind, command: string): void {
     this.clearGitProcessCloseTimer();
     const current = this.gitProcess();
-    if (current?.running && current.kind === kind) {
+    if (current?.running) {
       if (command && command !== current.command) {
-        this.gitProcess.set({ ...current, command });
+        const separator = current.output.endsWith('\n\n')
+          ? ''
+          : current.output.endsWith('\n')
+            ? '\n'
+            : '\n\n';
+        const output = appendGitProcessOutput(
+          current.output,
+          `${separator}${command}\n\n`,
+        );
+        this.gitProcess.set({ ...current, command, output });
       }
       return;
     }
@@ -3248,7 +3257,7 @@ export class AppStore {
           const repoPath = this.currentRepo()?.path;
           if (!repoPath || !sameRepoPath(repoPath, payload.path) || !payload.chunk) return;
           this.gitProcess.update((current) => {
-            if (!current?.running || current.kind !== payload.kind) return current;
+            if (!current?.running) return current;
             return {
               ...current,
               output: appendGitProcessOutput(current.output, payload.chunk),
@@ -4674,39 +4683,47 @@ export class AppStore {
     }
     this.checkRuns.set({ ...runs });
 
-    for (const check of checks) {
-      runs[check.id] = { status: 'running', output: '' };
-      this.checkRuns.set({ ...runs });
-      try {
-        const result = await this.tauri.runRepoCheck(
-          path,
-          check.command,
-          check.trigger,
-          opts?.commitMessage,
-        );
-        const output = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
-        runs[check.id] = {
-          status: result.ok ? 'pass' : 'fail',
-          output,
-        };
+    const ownsProcess = !this.gitProcess()?.running;
+    let allPassed = false;
+    try {
+      for (const check of checks) {
+        this.openGitProcess('check', check.command);
+        runs[check.id] = { status: 'running', output: '' };
         this.checkRuns.set({ ...runs });
-        if (!result.ok) {
-          if (!opts?.silent) {
-            this.showError(this.checkFailMessage(check.name, output));
+        try {
+          const result = await this.tauri.runRepoCheck(
+            path,
+            check.command,
+            check.trigger,
+            opts?.commitMessage,
+          );
+          const output = [result.stdout, result.stderr].filter((s) => s.trim()).join('\n');
+          runs[check.id] = {
+            status: result.ok ? 'pass' : 'fail',
+            output,
+          };
+          this.checkRuns.set({ ...runs });
+          if (!result.ok) {
+            if (!opts?.silent) {
+              this.showError(this.checkFailMessage(check.name, output));
+            }
+            return false;
           }
+        } catch (err) {
+          runs[check.id] = {
+            status: 'fail',
+            output: this.formatError(err),
+          };
+          this.checkRuns.set({ ...runs });
+          if (!opts?.silent) this.showError(err);
           return false;
         }
-      } catch (err) {
-        runs[check.id] = {
-          status: 'fail',
-          output: this.formatError(err),
-        };
-        this.checkRuns.set({ ...runs });
-        if (!opts?.silent) this.showError(err);
-        return false;
       }
+      allPassed = true;
+      return true;
+    } finally {
+      if (ownsProcess) this.finishGitProcess(allPassed);
     }
-    return true;
   }
 
   async runSingleCheck(
@@ -4718,6 +4735,9 @@ export class AppStore {
     const runs = { ...this.checkRuns() };
     runs[check.id] = { status: 'running', output: '' };
     this.checkRuns.set(runs);
+    const ownsProcess = !this.gitProcess()?.running;
+    this.openGitProcess('check', check.command);
+    let passed = false;
     try {
       const result = await this.tauri.runRepoCheck(
         path,
@@ -4733,6 +4753,7 @@ export class AppStore {
       if (!result.ok && !opts?.silent) {
         this.showError(this.checkFailMessage(check.name, output));
       }
+      passed = result.ok;
       return result.ok;
     } catch (err) {
       this.checkRuns.set({
@@ -4741,6 +4762,8 @@ export class AppStore {
       });
       if (!opts?.silent) this.showError(err);
       return false;
+    } finally {
+      if (ownsProcess) this.finishGitProcess(passed);
     }
   }
 
@@ -4815,6 +4838,18 @@ export class AppStore {
     }))) {
       return { ok: false };
     }
+    const command = [
+      'git commit',
+      amend ? '--amend' : '',
+      '--allow-empty',
+      opts?.skipHooks ? '--no-verify' : '',
+      '-m <message>',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const ownsProcess = !this.gitProcess()?.running;
+    this.openGitProcess('commit', command);
+    let committed = false;
     try {
       const result = await this.withRepoMutation(() =>
         this.tauri.createCommit(
@@ -4834,10 +4869,13 @@ export class AppStore {
           undo: this.undoFromToast(path),
         });
       }
+      committed = true;
       return { ok: true, shortSha };
     } catch (err) {
       this.showError(err);
       return { ok: false };
+    } finally {
+      if (ownsProcess) this.finishGitProcess(committed);
     }
   }
 

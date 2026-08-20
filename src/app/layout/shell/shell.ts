@@ -173,7 +173,7 @@ export class Shell {
       if (job.status.trim() !== 'completed') pending = true;
     }
     if (failed && !pending) return 'failure';
-    if (this.store.releaseBusy() || pending) return 'running';
+    if (pending) return 'running';
     if (activity.needsRefresh) return 'paused';
     if (activity.phase === 'done') return 'success';
     return 'running';

@@ -25,7 +25,7 @@ export function appendGitProcessOutput(existing: string, chunk: string): string 
 }
 
 export function gitProcessTitle(
-  kind: 'fetch' | 'pull' | 'push' | 'merge' | 'rebase',
+  kind: 'fetch' | 'pull' | 'push' | 'merge' | 'rebase' | 'check' | 'commit',
 ): string {
   switch (kind) {
     case 'fetch':
@@ -38,5 +38,9 @@ export function gitProcessTitle(
       return 'Merge';
     case 'rebase':
       return 'Rebase';
+    case 'check':
+      return 'Repository checks';
+    case 'commit':
+      return 'Commit';
   }
 }

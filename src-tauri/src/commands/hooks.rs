@@ -1,3 +1,4 @@
+use super::branch::emit_process_output;
 use crate::infrastructure::{git_cli, sqlite};
 use crate::state::AppState;
 use crate::{run_blocking, AppError, AppResult};
@@ -6,8 +7,9 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::{command, State};
+use tauri::{command, AppHandle, State};
 
 const SETTINGS_KEY: &str = "repo_checks_json";
 const RUN_TIMEOUT: Duration = Duration::from_secs(180);
@@ -301,7 +303,7 @@ pub fn set_check_enabled(
 }
 
 #[command]
-pub async fn run_repo_check(input: RunCheckInput) -> AppResult<RunCheckOutput> {
+pub async fn run_repo_check(app: AppHandle, input: RunCheckInput) -> AppResult<RunCheckOutput> {
     run_blocking(move || {
         let path = PathBuf::from(&input.path);
         git_cli::ensure_repo(&path)?;
@@ -314,7 +316,13 @@ pub async fn run_repo_check(input: RunCheckInput) -> AppResult<RunCheckOutput> {
             .as_deref()
             .map(normalize_trigger)
             .unwrap_or_else(|| "pre-commit".into());
-        run_shell_command(&path, command, &trigger, input.commit_message.as_deref())
+        run_shell_command(
+            &app,
+            &path,
+            command,
+            &trigger,
+            input.commit_message.as_deref(),
+        )
     })
     .await
 }
@@ -1032,6 +1040,7 @@ fn unquote(value: &str) -> String {
 }
 
 fn run_shell_command(
+    app: &AppHandle,
     cwd: &Path,
     command: &str,
     trigger: &str,
@@ -1072,8 +1081,14 @@ fn run_shell_command(
         .take()
         .ok_or_else(|| AppError::msg("Failed to capture check stderr"))?;
 
-    let out_handle = std::thread::spawn(move || read_capped(stdout));
-    let err_handle = std::thread::spawn(move || read_capped(stderr));
+    let output_callback: Arc<dyn Fn(String) + Send + Sync> = {
+        let app = app.clone();
+        let path = cwd.to_path_buf();
+        Arc::new(move |chunk| emit_process_output(&app, &path, "check", chunk))
+    };
+    let out_callback = output_callback.clone();
+    let out_handle = std::thread::spawn(move || read_capped(stdout, Some(out_callback)));
+    let err_handle = std::thread::spawn(move || read_capped(stderr, Some(output_callback)));
 
     let started = Instant::now();
     let status = loop {
@@ -1108,13 +1123,19 @@ fn run_shell_command(
     })
 }
 
-fn read_capped(mut reader: impl Read) -> String {
+fn read_capped(
+    mut reader: impl Read,
+    on_output: Option<Arc<dyn Fn(String) + Send + Sync>>,
+) -> String {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 16 * 1024];
     loop {
         match reader.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => {
+                if let Some(emit) = &on_output {
+                    emit(String::from_utf8_lossy(&chunk[..n]).to_string());
+                }
                 if buf.len() < MAX_OUTPUT_BYTES {
                     let room = MAX_OUTPUT_BYTES - buf.len();
                     buf.extend_from_slice(&chunk[..n.min(room)]);

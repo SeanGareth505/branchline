@@ -1,3 +1,4 @@
+use super::branch::run_git_with_process_output;
 use crate::domain::undo;
 use crate::infrastructure::git_cli;
 use crate::state::AppState;
@@ -5,8 +6,7 @@ use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
-use tauri::command;
-use tauri::State;
+use tauri::{command, AppHandle, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +34,7 @@ struct CreatedCommit {
     repo_key: String,
 }
 
-fn create_commit_inner(input: CreateCommitInput) -> AppResult<CreatedCommit> {
+fn create_commit_inner(app: &AppHandle, input: CreateCommitInput) -> AppResult<CreatedCommit> {
     git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
         let amend = input.amend.unwrap_or(false);
         let allow_empty = input.allow_empty.unwrap_or(true);
@@ -65,7 +65,7 @@ fn create_commit_inner(input: CreateCommitInput) -> AppResult<CreatedCommit> {
             args.push("-m");
             args.push(message.as_str());
         }
-        git_cli::run_git(path, &args)?;
+        run_git_with_process_output(app, path, &args, "commit")?;
 
         let sha = git_cli::run_git(path, &["rev-parse", "HEAD"])?;
         let short_sha = git_cli::run_git(path, &["rev-parse", "--short", "HEAD"])?;
@@ -85,10 +85,11 @@ fn create_commit_inner(input: CreateCommitInput) -> AppResult<CreatedCommit> {
 
 #[command]
 pub async fn create_commit(
+    app: AppHandle,
     state: State<'_, AppState>,
     input: CreateCommitInput,
 ) -> AppResult<CreateCommitOutput> {
-    let created = run_blocking(move || create_commit_inner(input)).await?;
+    let created = run_blocking(move || create_commit_inner(&app, input)).await?;
     {
         let db = state.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
         let _ = undo::try_push_entry(
