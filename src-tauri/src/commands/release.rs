@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::io::Write;
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle, Emitter, State};
@@ -1328,15 +1328,6 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
             label: "Cargo.lock".into(),
         });
     }
-    if suggested.is_empty() {
-        suggested.push(ReleaseSetupFileHint {
-            path: "package.json".into(),
-            kind: "json".into(),
-            keys: Some(vec!["version".into()]),
-            package: None,
-            label: "package.json".into(),
-        });
-    }
     let product_name = if config_path(path).exists() {
         infer_product_name(path, &load_config(path)?)
     } else {
@@ -1387,6 +1378,25 @@ pub fn save_release_config(input: SaveReleaseConfigInput) -> AppResult<MutationO
     }
     if input.files.is_empty() {
         return Err(crate::AppError::msg("Select at least one version file"));
+    }
+    for file in &input.files {
+        let relative = Path::new(&file.path);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| matches!(part, Component::ParentDir))
+        {
+            return Err(crate::AppError::msg(format!(
+                "Version file must be inside the repository: {}",
+                file.path
+            )));
+        }
+        if !path.join(relative).is_file() {
+            return Err(crate::AppError::msg(format!(
+                "Version file does not exist: {}",
+                file.path
+            )));
+        }
     }
     let files: Vec<Value> = input
         .files
@@ -2364,6 +2374,18 @@ fn poll_release_deploy_blocking(
     let (tag_pushed, output, _) =
         git_cli::run_git_allow_fail(&path, &["ls-remote", "--tags", "origin", &remote_tag]);
     if !tag_pushed || output.trim().is_empty() {
+        if tag_sha.is_none() {
+            return Ok(DeployUrls::for_repo(&owner, &repo).output(
+                "unavailable",
+                "idle",
+                &format!(
+                    "No release found for {tag}. Create the first release when you are ready."
+                ),
+                None,
+                None,
+                Vec::new(),
+            ));
+        }
         return Ok(DeployUrls::for_repo(&owner, &repo).output(
             "pending",
             "pushing",

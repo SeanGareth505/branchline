@@ -449,6 +449,7 @@ export class AppStore {
   readonly releaseNotesDraft = signal<ReleaseNotesDraft | null>(null);
   readonly releaseNotesBusy = signal(false);
   readonly releaseNotesGenerating = signal(false);
+  readonly releaseSetupError = signal<string | null>(null);
   readonly releaseNotesText = computed(() => {
     const activity = this.visibleReleaseActivity();
     if (activity) return activity.notes ?? '';
@@ -3787,6 +3788,10 @@ export class AppStore {
       const result = await this.tauri.pollReleaseDeploy(path, tag);
       if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return false;
       if (!force && !onRelease && sameTag) return false;
+      if (result.status === 'unavailable' && normalizeReleasePhase(result.phase) === 'idle') {
+        if (force) this.showWarning(result.message);
+        return false;
+      }
       this.seedAttachedReleaseActivity({
         path,
         productName: cfg.productName,
@@ -8769,12 +8774,15 @@ export class AppStore {
   }): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) return false;
+    this.releaseSetupError.set(null);
     try {
       const result = await this.tauri.saveReleaseConfig(path, input);
       this.showSuccess(result.message);
       return true;
     } catch (err) {
-      this.showError(err);
+      const message = this.formatError(err);
+      this.releaseSetupError.set(message);
+      this.showError(message);
       return false;
     }
   }

@@ -5,6 +5,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
@@ -45,6 +46,7 @@ export class ReleasePage {
   readonly busy = computed(() => this.store.visibleReleaseBusy());
   readonly activity = computed(() => this.store.visibleReleaseActivity());
   readonly configured = computed(() => !!this.status()?.available);
+  readonly setupError = computed(() => this.store.releaseSetupError());
 
   readonly subtitle = computed(() => {
     const activity = this.activity();
@@ -97,6 +99,20 @@ export class ReleasePage {
   readonly canSaveSetup = computed(() => {
     return !!this.productName().trim() && !!this.branch().trim() && this.selectedFileList().length > 0;
   });
+  readonly setupGuidance = computed(() => {
+    const hints = this.setupHints();
+    if (!hints) return '';
+    if (!hints.suggestedFiles.length) {
+      return 'No supported version files were found. Add a package.json or Tauri version file, then try again.';
+    }
+    if (!this.productName().trim()) return 'Enter the product name shown to users.';
+    if (!this.branch().trim()) return 'Enter the branch that releases should use.';
+    if (!this.selectedFileList().length) return 'Select at least one file containing the app version.';
+    if (hints.currentVersion) {
+      return `Ready to enable releases. Branchline detected version ${hints.currentVersion}.`;
+    }
+    return 'Ready to enable releases. The selected files will be validated before a release starts.';
+  });
 
   private loadGen = 0;
 
@@ -114,7 +130,7 @@ export class ReleasePage {
         this.loadError.set(null);
         return;
       }
-      void this.load(path);
+      untracked(() => void this.load(path));
     });
 
     effect(() => {
@@ -122,7 +138,7 @@ export class ReleasePage {
       const path = this.store.currentRepo()?.path;
       if (!path || this.store.view() !== 'release') return;
       if (activity?.phase !== 'done' && activity?.phase !== 'error') return;
-      void this.load(path);
+      untracked(() => void this.load(path));
     });
   }
 
@@ -131,6 +147,7 @@ export class ReleasePage {
     const blocking = !this.status() && !this.activity();
     if (blocking) this.loading.set(true);
     this.loadError.set(null);
+    this.store.releaseSetupError.set(null);
     try {
       const status = await this.tauri.getReleaseStatus(path);
       if (gen !== this.loadGen || this.store.view() !== 'release') return;
@@ -162,10 +179,26 @@ export class ReleasePage {
   }
 
   setFileSelected(path: string, selected: boolean): void {
+    this.store.releaseSetupError.set(null);
     this.selectedFiles.update((current) => ({
       ...current,
       [path]: selected,
     }));
+  }
+
+  setProductName(value: string): void {
+    this.store.releaseSetupError.set(null);
+    this.productName.set(value);
+  }
+
+  setBranch(value: string): void {
+    this.store.releaseSetupError.set(null);
+    this.branch.set(value);
+  }
+
+  setPushDefault(value: boolean): void {
+    this.store.releaseSetupError.set(null);
+    this.pushDefault.set(value);
   }
 
   async saveSetup(): Promise<void> {

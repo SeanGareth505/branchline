@@ -66,6 +66,14 @@
     }
   </header>
 
+  @if (loadError() && activity()) {
+    <div class="inline-alert error" role="alert">
+      <ng-icon name="lucideCircleAlert" size="15" />
+      <span>{{ loadError() }}</span>
+      <button type="button" class="bl-btn" (click)="retry()">Try again</button>
+    </div>
+  }
+
   @if (!hasRepo()) {
     <div class="empty bl-glass">
       <p class="empty-title">Open a repository</p>
@@ -79,85 +87,152 @@
       <p class="empty-hint">{{ loadError() }}</p>
       <button type="button" class="bl-btn" (click)="retry()">Try again</button>
     </div>
-  } @else if (!configured() && !activity()) {
+  } @else if (!configured() && setupHints()) {
     <div class="setup bl-glass">
       <div class="setup-copy">
-        <h2>Set up once</h2>
+        <span class="eyebrow">One-time setup</span>
+        <h2>Prepare this repository for releases</h2>
         <p>
-          Branchline needs <code>release.config.json</code> so it knows which files to bump and
-          which branch to tag.
+          Confirm the detected details below. Branchline will create
+          <code>release.config.json</code> and use it for future releases.
         </p>
+        @if (status()?.message) {
+          <p class="status-message">{{ status()!.message }}</p>
+        }
       </div>
 
       @if (setupHints(); as hints) {
         <div class="setup-form">
-          <label class="field">
-            <span>Product name</span>
-            <input type="text" [ngModel]="productName()" (ngModelChange)="productName.set($event)" />
-          </label>
+          <section class="setup-step">
+            <div class="step-number">1</div>
+            <div class="step-content two-column">
+              <label class="field">
+                <span>Product name</span>
+                <input
+                  type="text"
+                  [ngModel]="productName()"
+                  (ngModelChange)="setProductName($event)"
+                  autocomplete="off"
+                />
+              </label>
 
-          <label class="field">
-            <span>Release branch</span>
-            <input type="text" [ngModel]="branch()" (ngModelChange)="branch.set($event)" spellcheck="false" />
-          </label>
-
-          <div class="field toggles">
-            <span>After tagging</span>
-            <div class="toggle-row">
-              <button
-                type="button"
-                class="toggle"
-                [class.active]="pushDefault()"
-                (click)="pushDefault.set(true)"
-              >
-                Push & deploy
-              </button>
-              <button
-                type="button"
-                class="toggle"
-                [class.active]="!pushDefault()"
-                (click)="pushDefault.set(false)"
-              >
-                Tag only
-              </button>
+              <label class="field">
+                <span>Release branch</span>
+                <input
+                  type="text"
+                  [ngModel]="branch()"
+                  (ngModelChange)="setBranch($event)"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </label>
             </div>
-          </div>
+          </section>
 
-          <div class="field">
-            <span>Version files</span>
-            <ul class="file-list">
-              @for (file of hints.suggestedFiles; track file.path) {
-                <li>
-                  <label class="check">
-                    <input
-                      type="checkbox"
-                      [ngModel]="selectedFiles()[file.path]"
-                      (ngModelChange)="setFileSelected(file.path, $event)"
-                    />
-                    <span>{{ file.label }}</span>
-                    <span class="mono muted">{{ file.path }}</span>
-                  </label>
-                </li>
-              }
-            </ul>
-          </div>
+          <section class="setup-step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+              <div class="field">
+                <span>Version files</span>
+                @if (hints.suggestedFiles.length) {
+                  <ul class="file-list">
+                    @for (file of hints.suggestedFiles; track file.path) {
+                      <li>
+                        <label class="check">
+                          <input
+                            type="checkbox"
+                            [ngModel]="selectedFiles()[file.path]"
+                            (ngModelChange)="setFileSelected(file.path, $event)"
+                          />
+                          <span>{{ file.label }}</span>
+                          <span class="mono muted">{{ file.path }}</span>
+                        </label>
+                      </li>
+                    }
+                  </ul>
+                } @else {
+                  <div class="inline-alert error" role="alert">
+                    <ng-icon name="lucideCircleAlert" size="15" />
+                    <span>No supported version files were detected in this repository.</span>
+                  </div>
+                }
+              </div>
+            </div>
+          </section>
 
-          @if (hints.currentVersion) {
-            <p class="hint">Current version {{ hints.currentVersion }}</p>
+          <section class="setup-step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+              <div class="field toggles">
+                <span>After creating the tag</span>
+                <div class="toggle-row">
+                  <button
+                    type="button"
+                    class="toggle"
+                    [class.active]="pushDefault()"
+                    (click)="setPushDefault(true)"
+                  >
+                    Push & deploy
+                  </button>
+                  <button
+                    type="button"
+                    class="toggle"
+                    [class.active]="!pushDefault()"
+                    (click)="setPushDefault(false)"
+                  >
+                    Tag only
+                  </button>
+                </div>
+                <span class="field-help">
+                  {{
+                    pushDefault()
+                      ? 'Recommended. Pushes the release commit and tag so GitHub can build installers.'
+                      : 'Keeps the release local until you push the tag manually.'
+                  }}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          @if (setupError()) {
+            <div class="inline-alert error" role="alert">
+              <ng-icon name="lucideCircleAlert" size="15" />
+              <span>{{ setupError() }}</span>
+            </div>
+          } @else {
+            <p class="setup-guidance" [class.ready]="canSaveSetup()">
+              {{ setupGuidance() }}
+            </p>
           }
 
           <div class="setup-actions">
+            <div>
+              <strong>{{ canSaveSetup() ? 'Ready to enable' : 'Setup needs attention' }}</strong>
+              <span>You can change these settings later in <code>release.config.json</code>.</span>
+            </div>
             <button
               type="button"
               class="bl-btn bl-btn-primary"
               [disabled]="!canSaveSetup() || setupBusy()"
               (click)="saveSetup()"
             >
-              {{ setupBusy() ? 'Saving…' : 'Save & enable' }}
+              {{ setupBusy() ? 'Saving…' : 'Enable releases' }}
             </button>
           </div>
         </div>
       }
+    </div>
+  } @else if (configured() && !status()?.currentVersion && !activity()) {
+    <div class="empty bl-glass">
+      <p class="empty-title">Couldn’t read the configured version</p>
+      <p class="empty-hint">
+        Check that the files in <code>release.config.json</code> exist and contain a valid semantic
+        version.
+      </p>
+      @if (status()?.config?.files?.length) {
+        <p class="mono empty-files">{{ status()!.config!.files!.join(' · ') }}</p>
+      }
+      <button type="button" class="bl-btn" (click)="retry()">Check again</button>
     </div>
   } @else {
     <div class="panel">
