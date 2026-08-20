@@ -92,7 +92,7 @@ export class ReleaseDialog {
     effect(() => {
       const req = this.dialog.request();
       if (!req) return;
-      this.bump.set('patch');
+      this.bump.set(req.preferredBump ?? 'patch');
       this.customVersion.set('');
       this.branch.set(req.config.branch || req.currentBranch);
       this.push.set(req.config.pushDefault);

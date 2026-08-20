@@ -53,7 +53,8 @@
 .watch-badge,
 .live-badge,
 .done-badge,
-.error-badge {
+.error-badge,
+.dirty-badge {
   display: inline-flex;
   align-items: center;
   font-size: 10px;
@@ -85,6 +86,37 @@
   color: var(--danger, #ef4444);
   background: color-mix(in srgb, var(--danger, #ef4444) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--danger, #ef4444) 30%, transparent);
+}
+
+.dirty-badge {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--git-modified) 30%, transparent);
+}
+
+.hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.fact {
+  display: inline-flex;
+  align-items: center;
+  height: 1.45rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.fact.muted {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .hero-actions {

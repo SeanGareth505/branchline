@@ -3,6 +3,10 @@
     <div>
       <div class="title-row">
         <h1>Release</h1>
+        <app-help-tip
+          heading="Release"
+          body="Bump version files, commit, tag, and optionally push so GitHub can build installers. Create a release when you are ready to ship."
+        />
         @if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
         } @else if (store.releasingLocally()) {
@@ -19,9 +23,22 @@
           <span class="live-badge">In progress</span>
         } @else if (activity()?.phase === 'done' && !activity()?.needsRefresh) {
           <span class="done-badge">Live</span>
+        } @else if (status()?.dirty) {
+          <span class="dirty-badge">Uncommitted</span>
         }
       </div>
       <p>{{ subtitle() }}</p>
+      @if (status()?.available && status()?.currentVersion) {
+        <div class="hero-facts">
+          <span class="fact">v{{ status()!.currentVersion }}</span>
+          <span class="fact">{{ status()!.currentBranch || status()!.config?.branch || 'main' }}</span>
+          @if (status()!.config?.pushDefault) {
+            <span class="fact muted">Push &amp; deploy</span>
+          } @else {
+            <span class="fact muted">Tag only</span>
+          }
+        </div>
+      }
     </div>
     @if (hasRepo() && configured()) {
       <div class="hero-actions">
@@ -30,9 +47,10 @@
             type="button"
             class="bl-btn"
             [disabled]="findingLatest()"
+            title="Find the latest GitHub release and watch installer builds"
             (click)="trackLatest()"
           >
-            {{ findingLatest() ? 'Finding latest…' : 'Find latest' }}
+            {{ findingLatest() ? 'Finding…' : 'Watch latest' }}
           </button>
         }
         <button
@@ -143,7 +161,7 @@
     </div>
   } @else {
     <div class="panel">
-      <app-release-panel />
+      <app-release-panel [releaseStatus]="status()" />
     </div>
   }
 </section>

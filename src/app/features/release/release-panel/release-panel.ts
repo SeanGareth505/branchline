@@ -4,6 +4,7 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
@@ -16,6 +17,7 @@ import type {
   ReleaseActivityStep,
   ReleaseDeployJob,
   ReleasePhase,
+  ReleaseStatusOutput,
 } from '../../../core/models';
 import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor';
 import {
@@ -79,6 +81,7 @@ interface ProgressStepView {
 })
 export class ReleasePanel {
   readonly store = inject(AppStore);
+  readonly releaseStatus = input<ReleaseStatusOutput | null>(null);
   private readonly updates = inject(UpdateService);
   private readonly now = signal(Date.now());
   private promptedVersion = '';
@@ -88,6 +91,28 @@ export class ReleasePanel {
 
   readonly activity = computed(() => this.store.releaseActivity());
   readonly busy = computed(() => this.store.releaseBusy());
+  readonly currentVersion = computed(() => this.releaseStatus()?.currentVersion?.trim() || '0.0.0');
+  readonly productName = computed(
+    () => this.releaseStatus()?.config?.productName || this.store.currentRepo()?.name || 'App',
+  );
+  readonly currentBranch = computed(
+    () => this.releaseStatus()?.currentBranch || this.releaseStatus()?.config?.branch || '',
+  );
+  readonly isDirty = computed(() => !!this.releaseStatus()?.dirty);
+  readonly pushDefault = computed(() => this.releaseStatus()?.config?.pushDefault !== false);
+  readonly versionFiles = computed(() => {
+    const files = this.releaseStatus()?.config?.files ?? [];
+    if (!files.length) return '';
+    return files.join(' · ');
+  });
+  readonly bumpChoices = computed(() => {
+    const current = this.currentVersion();
+    return [
+      { kind: 'patch' as const, label: 'Patch', hint: 'Fixes', next: nextSemver(current, 'patch') },
+      { kind: 'minor' as const, label: 'Minor', hint: 'Features', next: nextSemver(current, 'minor') },
+      { kind: 'major' as const, label: 'Major', hint: 'Breaking', next: nextSemver(current, 'major') },
+    ];
+  });
 
   readonly elapsed = computed(() => {
     const activity = this.activity();
@@ -515,8 +540,8 @@ export class ReleasePanel {
     this.store.clearReleaseActivity();
   }
 
-  startRelease(): void {
-    void this.store.startReleaseFlow();
+  startRelease(kind?: 'patch' | 'minor' | 'major'): void {
+    void this.store.startReleaseFlow(kind);
   }
 
   pushRelease(): void {
@@ -610,6 +635,16 @@ export class ReleasePanel {
     if (filter === 'failed') return 'No failed jobs';
     return 'No jobs';
   }
+}
+
+function nextSemver(current: string, kind: 'patch' | 'minor' | 'major'): string {
+  const core = current.trim().split('-')[0]?.split('+')[0] ?? '';
+  const parts = core.split('.').map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return current;
+  const [major, minor, patch] = parts;
+  if (kind === 'major') return `${major + 1}.0.0`;
+  if (kind === 'minor') return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
 }
 
 function nestArtifactsUnder(steps: ReleaseActivityStep[]): string | null {

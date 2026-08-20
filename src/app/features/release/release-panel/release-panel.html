@@ -277,8 +277,46 @@
     }
   } @else {
     <div class="idle">
-      <p>Nothing in flight. Start a release when you are ready to bump, tag, and ship.</p>
+      <div class="ready">
+        <div class="ready-copy">
+          <span class="ready-kicker">Ready to ship</span>
+          <strong class="ready-version">{{ currentVersion() }}</strong>
+          <p class="ready-meta">
+            {{ productName() }}
+            @if (currentBranch()) {
+              · {{ currentBranch() }}
+            }
+          </p>
+        </div>
+        @if (isDirty()) {
+          <p class="ready-warn">
+            Uncommitted changes. Commit or stash first, or allow a dirty tree in the release dialog.
+          </p>
+        }
+        <div class="bumps" role="group" aria-label="Version bump">
+          @for (bump of bumpChoices(); track bump.kind) {
+            <button
+              type="button"
+              class="bump"
+              [disabled]="busy() || store.releasingLocally()"
+              (click)="startRelease(bump.kind)"
+            >
+              <span class="bump-kind">{{ bump.label }}</span>
+              <span class="bump-next">{{ bump.next }}</span>
+              <span class="bump-hint">{{ bump.hint }}</span>
+            </button>
+          }
+        </div>
+        <ol class="pipeline">
+          <li>Bump version files</li>
+          <li>Commit and tag</li>
+          <li>{{ pushDefault() ? 'Push and watch GitHub Actions' : 'Keep the tag local until you push' }}</li>
+        </ol>
+        @if (versionFiles(); as files) {
+          <p class="ready-files">{{ files }}</p>
+        }
+      </div>
+      <app-release-notes-editor />
     </div>
-    <app-release-notes-editor />
   }
 </div>

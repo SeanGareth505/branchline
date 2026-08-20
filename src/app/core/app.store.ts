@@ -8558,7 +8558,7 @@ export class AppStore {
     }
   }
 
-  async startReleaseFlow(): Promise<void> {
+  async startReleaseFlow(preferredBump?: 'patch' | 'minor' | 'major'): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path) {
       this.showWarning('Open a repository first');
@@ -8595,6 +8595,7 @@ export class AppStore {
         dirty: status.dirty,
         config: cfg,
         branches,
+        preferredBump,
       });
       if (!setup) return;
 

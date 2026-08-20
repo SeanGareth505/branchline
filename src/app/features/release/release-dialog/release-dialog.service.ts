@@ -8,6 +8,7 @@ export interface ReleaseDialogInput {
   dirty: boolean;
   config: ReleaseConfigInfo;
   branches: string[];
+  preferredBump?: 'patch' | 'minor' | 'major';
 }
 
 export interface ReleaseDialogResult {
