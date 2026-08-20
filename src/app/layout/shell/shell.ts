@@ -153,9 +153,10 @@ export class Shell {
   }
 
   readonly releaseNavStatus = computed((): ReleaseNavStatus | null => {
-    if (this.store.view() === 'release' && this.store.releaseAttaching()) return 'running';
     const activity = this.store.visibleReleaseActivity();
-    if (!activity) return null;
+    if (!activity) {
+      return this.store.view() === 'release' && this.store.releaseAttaching() ? 'running' : null;
+    }
     if (activity.phase === 'error' || activity.ok === false) return 'failure';
     const jobs = activity.deployJobs ?? [];
     let pending = false;
