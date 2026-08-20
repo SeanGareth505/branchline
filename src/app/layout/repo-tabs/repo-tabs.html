@@ -1,28 +1,122 @@
 @if (store.visibleOpenRepos().length) {
-  <div class="tabs" role="tablist" aria-label="Open repositories">
-    @for (repo of store.visibleOpenRepos(); track repo.path) {
-      <div
-        class="tab"
-        role="tab"
-        [class.active]="store.isCurrentRepo(repo.path)"
-        [attr.aria-selected]="store.isCurrentRepo(repo.path)"
-        [style.--identity]="colorFor(repo)"
-        [title]="tooltip(repo.path, repo.branch)"
-      >
-        <button type="button" class="tab-main" (click)="select(repo.path)">
-          <ng-icon name="lucideFolderGit2" size="12" />
-          <span class="name">{{ repo.name }}</span>
-        </button>
-        <button
-          type="button"
-          class="close"
-          [attr.aria-label]="'Close ' + repo.name"
-          title="Close this repository tab"
-          (click)="close(repo.path, $event)"
+  <div class="strip">
+    <div
+      class="tabs"
+      #tabs
+      role="tablist"
+      aria-label="Open repositories"
+      [class.overflow-start]="overflowStart()"
+      [class.overflow-end]="overflowEnd()"
+      (scroll)="onScroll()"
+    >
+      @for (repo of store.visibleOpenRepos(); track repo.path) {
+        <div
+          class="tab"
+          role="tab"
+          [class.active]="store.isCurrentRepo(repo.path)"
+          [attr.aria-selected]="store.isCurrentRepo(repo.path)"
+          [style.--identity]="colorFor(repo)"
+          [title]="tooltip(repo.path, repo.branch)"
         >
-          <ng-icon name="lucideX" size="12" />
-        </button>
-      </div>
+          <button type="button" class="tab-main" (click)="select(repo.path)">
+            <ng-icon name="lucideFolderGit2" size="12" />
+            <span class="name">{{ repo.name }}</span>
+          </button>
+          <button
+            type="button"
+            class="close"
+            [attr.aria-label]="'Close ' + repo.name"
+            title="Close this repository tab"
+            (click)="close(repo.path, $event)"
+          >
+            <ng-icon name="lucideX" size="12" />
+          </button>
+        </div>
+      }
+    </div>
+
+    @if (showPicker()) {
+      <button
+        type="button"
+        class="picker"
+        cdkOverlayOrigin
+        #origin="cdkOverlayOrigin"
+        [class.open]="menuOpen()"
+        [attr.aria-expanded]="menuOpen()"
+        aria-haspopup="menu"
+        aria-label="All open repositories"
+        [title]="'All open repositories (' + count() + ')'"
+        (click)="toggleMenu()"
+      >
+        <ng-icon name="lucideChevronsUpDown" size="12" />
+        <span>{{ count() }}</span>
+      </button>
+      <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="origin"
+        [cdkConnectedOverlayOpen]="menuOpen()"
+        [cdkConnectedOverlayPositions]="menuPositions"
+        [cdkConnectedOverlayPush]="true"
+        [cdkConnectedOverlayWidth]="280"
+        (overlayOutsideClick)="closeMenu()"
+      >
+        <div class="bl-menu tab-menu" role="menu" aria-label="Open repositories">
+          <div class="bl-menu-label">{{ count() }} open</div>
+          @if (showSearch()) {
+            <div class="search">
+              <ng-icon name="lucideSearch" size="13" />
+              <input
+                type="search"
+                placeholder="Find an open repo"
+                [value]="query()"
+                (input)="onQuery($event)"
+                (click)="$event.stopPropagation()"
+              />
+            </div>
+          }
+          <div class="list">
+            @for (repo of filteredRepos(); track repo.path) {
+              <div class="row">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  [attr.aria-checked]="store.isCurrentRepo(repo.path)"
+                  [style.--identity]="colorFor(repo)"
+                  (click)="select(repo.path)"
+                >
+                  <span class="check">
+                    @if (store.isCurrentRepo(repo.path)) {
+                      <ng-icon name="lucideCheck" size="14" />
+                    }
+                  </span>
+                  <span class="swatch"></span>
+                  <span class="meta">
+                    <span class="repo-name">{{ repo.name }}</span>
+                    @if (repo.branch) {
+                      <span class="branch">{{ repo.branch }}</span>
+                    }
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="row-close"
+                  [attr.aria-label]="'Close ' + repo.name"
+                  title="Close"
+                  (click)="close(repo.path, $event)"
+                >
+                  <ng-icon name="lucideX" size="12" />
+                </button>
+              </div>
+            } @empty {
+              <p class="empty">No matching repos</p>
+            }
+          </div>
+          @if (count() > 1) {
+            <div class="bl-menu-sep"></div>
+            <button type="button" role="menuitem" (click)="closeOthers()">Close others</button>
+          }
+        </div>
+      </ng-template>
     }
   </div>
 }

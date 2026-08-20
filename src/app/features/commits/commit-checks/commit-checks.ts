@@ -52,6 +52,40 @@ export class CommitChecks {
 
   readonly managers = computed(() => this.store.repoChecks()?.managers ?? []);
 
+  readonly groups = computed(() => {
+    const groups: { id: string; label: string; checks: RepoCheck[] }[] = [];
+    const index = new Map<string, number>();
+    for (const check of this.checks()) {
+      const id = check.source || 'custom';
+      let at = index.get(id);
+      if (at === undefined) {
+        at = groups.length;
+        index.set(id, at);
+        groups.push({ id, label: check.sourceLabel || 'Checks', checks: [] });
+      }
+      groups[at].checks.push(check);
+    }
+    return groups;
+  });
+
+  readonly headline = computed(() => {
+    const groups = this.groups();
+    if (groups.length === 1) return groups[0].label;
+    const managers = this.managers();
+    if (managers.length === 1) return managers[0].label;
+    return 'Checks';
+  });
+
+  readonly subtitle = computed(() => {
+    const when = this.pushIncluded() ? 'before commit or push' : 'before commit';
+    const groups = this.groups();
+    if (groups.length === 1) return `${groups[0].label} runs ${when}.`;
+    if (this.checks().length) return `Scripts that run ${when}.`;
+    return `Run a script ${when}, or skip if you need to land this as-is.`;
+  });
+
+  readonly buttonTitle = computed(() => `${this.headline()} — ${this.summary()}`);
+
   readonly pushIncluded = computed(() => this.triggers().includes('pre-push'));
 
   readonly tone = computed((): CheckRunStatus => {
@@ -84,10 +118,10 @@ export class CommitChecks {
     const failed = checks.filter((c) => runs[c.id]?.status === 'fail').length;
     if (failed) return failed === 1 ? '1 failed' : `${failed} failed`;
     const passed = checks.filter((c) => runs[c.id]?.status === 'pass').length;
-    if (passed === checks.length) return 'All passed';
+    if (passed === checks.length) return 'Passed';
     const running = checks.some((c) => runs[c.id]?.status === 'running');
-    if (running) return 'Running…';
-    return checks.length === 1 ? '1 ready' : `${checks.length} ready`;
+    if (running) return 'Running';
+    return `${checks.length} ready`;
   });
 
   statusOf(check: RepoCheck): CheckRunStatus {

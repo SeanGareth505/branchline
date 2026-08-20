@@ -41,40 +41,44 @@
             <button
               type="button"
               [class.active]="isActive('browse')"
+              [attr.aria-current]="isActive('browse') ? 'page' : null"
               (click)="nav('browse')"
               title="Browse branches, commits, and files"
             >
-              <ng-icon name="lucideGitBranch" size="14" />
-              <span>Repo</span>
+              <ng-icon name="lucideGitBranch" size="15" />
+              <span class="view-label">Repo</span>
             </button>
             <button
               type="button"
               [class.active]="isActive('prs')"
+              [attr.aria-current]="isActive('prs') ? 'page' : null"
               (click)="nav('prs')"
               title="Pull requests for this repository"
             >
-              <ng-icon name="lucideGitPullRequest" size="14" />
-              <span>PRs</span>
+              <ng-icon name="lucideGitPullRequest" size="15" />
+              <span class="view-label">PRs</span>
             </button>
             @if (store.hasLinkedJira() || store.isDummyBackend || store.jiraSetupIncomplete()) {
               <button
                 type="button"
                 [class.active]="isActive('jira')"
+                [attr.aria-current]="isActive('jira') ? 'page' : null"
                 (click)="nav('jira')"
                 title="Linked Jira issues for this repository"
               >
-                <ng-icon name="lucideTicket" size="14" />
-                <span>Jira</span>
+                <ng-icon name="lucideTicket" size="15" />
+                <span class="view-label">Jira</span>
               </button>
             }
             <button
               type="button"
               [class.active]="isActive('release')"
+              [attr.aria-current]="isActive('release') ? 'page' : null"
               (click)="nav('release')"
               [title]="releaseNavTitle()"
             >
-              <ng-icon name="lucideRocket" size="14" />
-              <span>Release</span>
+              <ng-icon name="lucideRocket" size="15" />
+              <span class="view-label">Release</span>
               @if (releaseNavStatus(); as status) {
                 <span
                   class="nav-dot"
@@ -87,20 +91,22 @@
               <button
                 type="button"
                 [class.active]="isActive('profiles')"
+                [attr.aria-current]="isActive('profiles') ? 'page' : null"
                 (click)="nav('profiles')"
                 title="Git author name and email used for commits"
               >
-                <ng-icon name="lucideUser" size="14" />
-                <span>Identity</span>
+                <ng-icon name="lucideUser" size="15" />
+                <span class="view-label">Identity</span>
               </button>
               <button
                 type="button"
                 [class.active]="isActive('automation')"
+                [attr.aria-current]="isActive('automation') ? 'page' : null"
                 (click)="nav('automation')"
                 title="Workflows and commit checks"
               >
-                <ng-icon name="lucideWorkflow" size="14" />
-                <span>Automation</span>
+                <ng-icon name="lucideWorkflow" size="15" />
+                <span class="view-label">Automation</span>
               </button>
             }
           </nav>

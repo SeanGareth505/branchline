@@ -4,21 +4,19 @@
   [attr.data-status]="tone()"
   [attr.aria-expanded]="detailsOpen()"
   aria-haspopup="dialog"
-  title="Open commit checks"
+  [title]="buttonTitle()"
   (click)="openDetails()"
 >
   <span class="mark" aria-hidden="true">
     @if (tone() === 'running') {
       <app-spinner size="sm" label="Running checks" />
     } @else {
-      <ng-icon [name]="iconFor(tone())" size="14" />
+      <ng-icon [name]="iconFor(tone())" size="13" />
     }
   </span>
-  <span class="copy">
-    <span class="label">Checks</span>
-    <span class="summary">{{ summary() }}</span>
-  </span>
-  <ng-icon class="chevron" name="lucideChevronRight" size="14" />
+  <span class="label">{{ headline() }}</span>
+  <span class="summary">{{ summary() }}</span>
+  <ng-icon class="chevron" name="lucideChevronRight" size="13" />
 </button>
 
 @if (detailsOpen()) {
@@ -32,15 +30,8 @@
     >
       <header>
         <div class="copy">
-          <p class="eyebrow">Commit</p>
-          <h2 id="commit-checks-title">Checks</h2>
-          <p>
-            @if (managers().length) {
-              {{ managers()[0].label }} runs before the commit{{ pushIncluded() ? ' or push' : '' }}.
-            } @else {
-              Run a script before the commit, or skip if you need to land this as-is.
-            }
-          </p>
+          <h2 id="commit-checks-title">{{ headline() }}</h2>
+          <p>{{ subtitle() }}</p>
         </div>
         <button type="button" class="bl-btn icon" (click)="closeDetails()" aria-label="Close" title="Close">
           <ng-icon name="lucideX" size="16" />
@@ -57,35 +48,39 @@
       @if (checks().length === 0) {
         <p class="empty">No commit checks yet. Add a script, or open a repo with Husky.</p>
       } @else {
-        <ul>
-          @for (c of checks(); track c.id) {
-            <li [attr.data-status]="statusOf(c)" [class.off]="!c.enabled">
-              <button type="button" class="row" (click)="toggleOutput(c)">
-                <span class="mark" aria-hidden="true">
-                  @if (statusOf(c) === 'running') {
-                    <app-spinner size="sm" [label]="c.name" />
-                  } @else {
-                    <ng-icon [name]="iconFor(statusOf(c))" size="14" />
-                  }
-                </span>
-                <span class="meta">
-                  <span class="name">{{ c.name }}</span>
-                  @if (c.sourceLabel !== managers()[0]?.label) {
-                    <span class="from">{{ c.sourceLabel }}</span>
-                  }
-                </span>
-                @if (!c.enabled) {
-                  <span class="off-label">off</span>
-                } @else {
-                  <span class="state">{{ statusLabel(statusOf(c)) }}</span>
-                }
-              </button>
-              @if (expandedId() === c.id && (outputOf(c) || c.command)) {
-                <pre class="log">{{ outputOf(c) || c.command }}</pre>
+        <div class="list">
+          @for (group of groups(); track group.id) {
+            <section class="group">
+              @if (groups().length > 1) {
+                <h3>{{ group.label }}</h3>
               }
-            </li>
+              <ul>
+                @for (c of group.checks; track c.id) {
+                  <li [attr.data-status]="statusOf(c)" [class.off]="!c.enabled">
+                    <button type="button" class="row" (click)="toggleOutput(c)">
+                      <span class="mark" aria-hidden="true">
+                        @if (statusOf(c) === 'running') {
+                          <app-spinner size="sm" [label]="c.name" />
+                        } @else {
+                          <ng-icon [name]="iconFor(statusOf(c))" size="14" />
+                        }
+                      </span>
+                      <span class="name">{{ c.name }}</span>
+                      @if (!c.enabled) {
+                        <span class="off-label">off</span>
+                      } @else {
+                        <span class="state">{{ statusLabel(statusOf(c)) }}</span>
+                      }
+                    </button>
+                    @if (expandedId() === c.id && (outputOf(c) || c.command)) {
+                      <pre class="log">{{ outputOf(c) || c.command }}</pre>
+                    }
+                  </li>
+                }
+              </ul>
+            </section>
           }
-        </ul>
+        </div>
       }
 
       <footer>

@@ -1420,15 +1420,12 @@ export class CommitDialog {
     const firstUnstaged = status?.unstaged[0]?.path ?? status?.untracked[0]?.path ?? null;
     const firstStaged = status?.staged[0]?.path ?? null;
     if (firstConflict) {
-      this.selectedFiles.set(new Set([this.fileKey(firstConflict, 'conflicted')]));
       this.selectFile(firstConflict, false);
       this.focusPane.set('conflicted');
     } else if (firstUnstaged) {
-      this.selectedFiles.set(new Set([this.fileKey(firstUnstaged, 'unstaged')]));
       this.selectFile(firstUnstaged, false);
       this.focusPane.set('unstaged');
     } else if (firstStaged) {
-      this.selectedFiles.set(new Set([this.fileKey(firstStaged, 'staged')]));
       this.selectFile(firstStaged, true);
       this.focusPane.set('staged');
     }

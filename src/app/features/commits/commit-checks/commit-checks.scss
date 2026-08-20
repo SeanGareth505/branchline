@@ -6,12 +6,12 @@
 .checks-btn {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
   width: 100%;
-  min-height: 2.15rem;
-  padding: 0.3rem 0.45rem 0.3rem 0.4rem;
+  min-height: 1.7rem;
+  padding: 0.18rem 0.35rem 0.18rem 0.32rem;
   border: 1px solid var(--glass-border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--bg-base) 40%, transparent);
   color: inherit;
   font: inherit;
@@ -27,37 +27,35 @@
 .checks-btn .mark {
   display: grid;
   place-items: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.05rem;
+  height: 1.05rem;
   color: var(--text-muted);
   flex-shrink: 0;
 }
 
-.checks-btn .copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 0.02rem;
-}
-
 .checks-btn .label {
-  font-size: 11.5px;
-  font-weight: 700;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 650;
   letter-spacing: -0.01em;
   color: var(--text-primary);
-}
-
-.checks-btn .summary {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.checks-btn .chevron {
+.checks-btn .summary {
   margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.checks-btn .chevron {
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -75,6 +73,11 @@
 .checks-btn[data-status='fail'] .mark,
 .checks-btn[data-status='fail'] .summary {
   color: #ef4444;
+}
+
+.checks-btn[data-status='running'] .mark,
+.checks-btn[data-status='running'] .summary {
+  color: var(--accent);
 }
 
 .checks-btn[data-status='skipped'] .mark,
@@ -132,27 +135,41 @@ header {
   flex-shrink: 0;
 }
 
-.eyebrow {
-  margin: 0 0 0.2rem;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
 .dialog > header .copy h2 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.03em;
 }
 
-.dialog > header .copy p:last-child {
-  margin: 0.35rem 0 0;
+.dialog > header .copy p {
+  margin: 0.2rem 0 0;
   color: var(--text-secondary);
-  font-size: 0.88rem;
-  line-height: 1.4;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.list {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.group h3 {
+  margin: 0.15rem 0.45rem 0.05rem;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .fail-banner {
@@ -189,8 +206,6 @@ ul {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  min-height: 0;
-  overflow: auto;
 }
 
 .row {
@@ -237,14 +252,9 @@ li[data-status='skipped'] .state {
   color: var(--text-muted);
 }
 
-.meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 0.05rem;
-}
-
 .name {
+  min-width: 0;
+  flex: 1;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -252,11 +262,6 @@ li[data-status='skipped'] .state {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.from {
-  font-size: 11px;
-  color: var(--text-muted);
 }
 
 .off-label,

@@ -1733,6 +1733,20 @@ export class AppStore {
     if (showToast && name) this.showToast(`Closed ${name}`);
   }
 
+  closeOtherOpenRepos(showToast = true): void {
+    const current = this.currentRepo()?.path;
+    if (!current) return;
+    const dropped = this.openRepos().filter((repo) => !sameRepoPath(repo.path, current));
+    if (!dropped.length) return;
+    for (const repo of dropped) this.dropRepoSnapshot(repo.path);
+    this.openRepos.set(this.openRepos().filter((repo) => sameRepoPath(repo.path, current)));
+    this.pruneRepoSnapshots();
+    this.persistOpenRepos();
+    if (showToast) {
+      this.showToast(`Closed ${dropped.length} other ${dropped.length === 1 ? 'repo' : 'repos'}`);
+    }
+  }
+
   closeRepo(showToast = true): void {
     const path = this.currentRepo()?.path;
     if (path) {
