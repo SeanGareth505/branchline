@@ -1005,7 +1005,7 @@
         (click)="toggleIncoming(conflict.id); $event.stopPropagation()"
       >
         <span class="box"><ng-icon name="lucideCheck" size="12" /></span>
-        Accept Incoming Change
+        Accept incoming
       </button>
     } @else if (side === 'ours') {
       <button
@@ -1017,7 +1017,7 @@
         (click)="toggleCurrent(conflict.id); $event.stopPropagation()"
       >
         <span class="box"><ng-icon name="lucideCheck" size="12" /></span>
-        Accept Current Change
+        Accept yours
       </button>
     }
     @if (sidesIdentical(conflict)) {

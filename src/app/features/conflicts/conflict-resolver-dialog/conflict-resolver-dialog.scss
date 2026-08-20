@@ -22,41 +22,46 @@
   display: flex;
   flex-direction: column;
   border-radius: 12px;
-  --merge-incoming: #34d399;
-  --merge-current: #38bdf8;
+  --merge-incoming: #059669;
+  --merge-current: #0284c7;
+  --merge-base: #64748b;
+  --merge-result: #0d9488;
+  --merge-editor-bg: #f8fafc;
+  --merge-editor-fg: #0f172a;
+  --merge-editor-muted: #64748b;
+  --merge-chrome: #ffffff;
+  --merge-pane-bar: #f1f5f9;
+  --merge-pane-border: rgba(100, 116, 139, 0.18);
+  --merge-incoming-line: color-mix(in srgb, var(--merge-incoming) 12%, transparent);
+  --merge-current-line: color-mix(in srgb, var(--merge-current) 12%, transparent);
+  --merge-incoming-span: color-mix(in srgb, var(--merge-incoming) 22%, transparent);
+  --merge-current-span: color-mix(in srgb, var(--merge-current) 22%, transparent);
+  --merge-conflict-rail: #ea580c;
+  --merge-resolved-rail: #059669;
+}
+
+:host-context([data-theme='dark']) .dialog {
+  --merge-incoming: #3dd68c;
+  --merge-current: #62c4ff;
   --merge-base: #94a3b8;
   --merge-result: #2dd4bf;
-  --merge-editor-bg: #1b2432;
-  --merge-editor-fg: #eef3f8;
-  --merge-editor-muted: #8b98aa;
-  --merge-chrome: color-mix(in srgb, var(--bg-elevated) 88%, white);
-  --merge-pane-bar: #243044;
-  --merge-pane-border: rgba(255, 255, 255, 0.08);
-  --merge-add-line: color-mix(in srgb, #34d399 22%, transparent);
-  --merge-del-line: color-mix(in srgb, #fb7185 20%, transparent);
-  --merge-add-span: color-mix(in srgb, #34d399 40%, transparent);
-  --merge-del-span: color-mix(in srgb, #fb7185 36%, transparent);
+  --merge-editor-bg: #0b1017;
+  --merge-editor-fg: #e8eef6;
+  --merge-editor-muted: #8b9aaf;
+  --merge-chrome: #10161f;
+  --merge-pane-bar: #141b25;
+  --merge-pane-border: rgba(255, 255, 255, 0.07);
+  --merge-incoming-line: color-mix(in srgb, var(--merge-incoming) 14%, transparent);
+  --merge-current-line: color-mix(in srgb, var(--merge-current) 14%, transparent);
+  --merge-incoming-span: color-mix(in srgb, var(--merge-incoming) 28%, transparent);
+  --merge-current-span: color-mix(in srgb, var(--merge-current) 28%, transparent);
   --merge-conflict-rail: #fb923c;
   --merge-resolved-rail: #34d399;
 }
 
-:host-context([data-theme='dark']) .dialog {
-  --merge-incoming: #34d399;
-  --merge-current: #38bdf8;
-  --merge-result: #2dd4bf;
-  --merge-editor-bg: #0e141c;
-  --merge-editor-fg: #e8eef5;
-  --merge-editor-muted: #7c8ba1;
-  --merge-chrome: color-mix(in srgb, var(--bg-elevated) 82%, #0b1220);
-  --merge-pane-bar: #161d28;
-  --merge-pane-border: rgba(255, 255, 255, 0.07);
-  --merge-add-line: color-mix(in srgb, #34d399 22%, transparent);
-  --merge-del-line: color-mix(in srgb, #fb7185 20%, transparent);
-  --merge-add-span: color-mix(in srgb, #34d399 38%, transparent);
-  --merge-del-span: color-mix(in srgb, #fb7185 34%, transparent);
-}
-
 .dialog.bl-glass-dialog {
+  background: var(--merge-chrome);
+  color: var(--text-primary);
   border-radius: 12px;
   box-shadow: var(--shadow-dialog);
 }
@@ -87,7 +92,7 @@ footer,
   padding: 0 0.7rem;
   flex-wrap: nowrap;
   overflow: hidden;
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--merge-pane-border);
   background: var(--merge-chrome);
 }
 
@@ -96,7 +101,7 @@ footer {
   flex-shrink: 0;
   min-height: 2.55rem;
   padding: 0.4rem 0.7rem;
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid var(--merge-pane-border);
   background: var(--merge-chrome);
 }
 
@@ -220,6 +225,7 @@ footer {
 .guided-workspace,
 .editor-split,
 .source-split {
+  min-width: 0;
   min-height: 0;
   flex: 1;
   height: 100%;
@@ -229,11 +235,14 @@ footer {
   width: 100%;
   height: 100%;
   cursor: col-resize;
-  background: var(--merge-pane-bar);
+  background:
+    linear-gradient(var(--merge-pane-border), var(--merge-pane-border)) center / 1px 100% no-repeat;
 }
 
 .merge-gutter.row {
   cursor: row-resize;
+  background:
+    linear-gradient(var(--merge-pane-border), var(--merge-pane-border)) center / 100% 1px no-repeat;
 }
 
 .file-nav {
@@ -246,7 +255,7 @@ footer {
   min-height: 0;
   overflow: auto;
   padding: 0.15rem 0 0.4rem;
-  border-right: 1px solid var(--glass-border);
+  border-right: 1px solid var(--merge-pane-border);
   background: var(--merge-chrome);
 }
 
@@ -419,8 +428,8 @@ footer {
 }
 
 .file-node.on > .file-row-line {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: color-mix(in srgb, var(--merge-current) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--merge-current);
 }
 
 .file-node.on .file-name {
@@ -450,7 +459,7 @@ footer {
 
 .merge-result .pane-toggle:hover {
   color: var(--merge-editor-fg);
-  background: color-mix(in srgb, white 8%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-fg) 8%, transparent);
 }
 
 .editor-bar {
@@ -458,7 +467,7 @@ footer {
   padding: 0.2rem 0.55rem;
   border-radius: 0;
   border: 0;
-  border-bottom: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--merge-pane-border);
   background: var(--merge-chrome);
   flex-shrink: 0;
 }
@@ -595,11 +604,11 @@ kbd {
 .document {
   display: flex;
   flex-direction: column;
-  gap: 0.12rem;
+  gap: 0;
   overflow: auto;
   min-height: 0;
   flex: 1;
-  padding-right: 0;
+  padding: 0.35rem 0.75rem 0.75rem;
   background: var(--merge-editor-bg);
   color: var(--merge-editor-fg);
   scroll-behavior: smooth;
@@ -683,33 +692,39 @@ kbd {
 }
 
 .context {
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
 }
 
 .ctx-line {
   display: grid;
-  grid-template-columns: 3.1rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: start;
   font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 1.5em;
+  min-width: 0;
 }
 
 .ctx-line .ln,
 .cmp-line .ln {
-  color: var(--merge-editor-muted);
+  color: color-mix(in srgb, var(--merge-editor-muted) 88%, var(--merge-editor-fg));
   text-align: right;
-  padding: 0 0.4rem 0 0.15rem;
+  padding: 0 0.55rem 0 0.35rem;
   user-select: none;
   font-variant-numeric: tabular-nums;
-  opacity: 0.9;
 }
 
 .ctx-line pre {
   margin: 0;
-  white-space: pre;
-  color: color-mix(in srgb, var(--merge-editor-fg) 78%, var(--merge-editor-muted));
+  padding-right: 0.75rem;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: color-mix(in srgb, var(--merge-editor-fg) 86%, var(--merge-editor-muted));
 }
 
 .accept-check .box ng-icon {
@@ -720,15 +735,20 @@ kbd {
   display: block;
   width: 100%;
   border: 0;
-  border-top: 1px dashed color-mix(in srgb, var(--merge-editor-muted) 35%, transparent);
-  border-bottom: 1px dashed color-mix(in srgb, var(--merge-editor-muted) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--merge-editor-bg));
-  color: var(--accent);
-  font-size: 11.5px;
-  font-weight: 650;
-  padding: 0.28rem 0.5rem;
+  border-top: 1px dashed color-mix(in srgb, var(--merge-editor-muted) 28%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--merge-editor-muted) 28%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-muted) 7%, var(--merge-editor-bg));
+  color: var(--merge-editor-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0.22rem 0.5rem;
   cursor: pointer;
   text-align: center;
+}
+
+.expand:hover {
+  color: var(--merge-editor-fg);
+  background: color-mix(in srgb, var(--merge-current) 8%, var(--merge-editor-bg));
 }
 
 .source-pane[data-side='theirs'] {
@@ -747,103 +767,94 @@ kbd {
 .source-hunk {
   position: relative;
   isolation: isolate;
-  border: 1px solid color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 28%, transparent);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 10%, var(--merge-editor-bg));
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 7%, var(--merge-editor-bg));
   padding: 0;
-  margin: 0.45rem 0.5rem;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
   cursor: pointer;
-  box-shadow: none;
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 70%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 22%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 22%, transparent);
   overflow: visible;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.hunk:not(.resolved),
-.source-hunk:not(.resolved) {
-  box-shadow: none;
+.hunk {
+  margin: 0.75rem 0;
+  --hunk-accent: var(--merge-conflict-rail);
 }
 
-.source-hunk.resolved,
-.hunk.resolved {
-  box-shadow: none;
-}
-
-.source-hunk:not(.active):not(.chosen) {
-  opacity: 0.58;
-  border-color: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 16%, transparent);
-  background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 6%, var(--merge-editor-bg));
-}
-
-.source-hunk:not(.active):not(.chosen):hover {
-  opacity: 0.92;
+.source-hunk:hover:not(.active):not(.rejected):not(.chosen) {
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 9%, var(--merge-editor-bg));
 }
 
 .source-hunk.chosen {
-  opacity: 1;
-  border-color: color-mix(in srgb, var(--hunk-accent) 72%, transparent);
-  background: color-mix(in srgb, var(--hunk-accent) 22%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent) 11%, var(--merge-editor-bg));
+  box-shadow:
+    inset 3px 0 0 var(--hunk-accent),
+    inset 0 1px 0 color-mix(in srgb, var(--hunk-accent) 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--hunk-accent) 28%, transparent);
 }
 
 .source-hunk.rejected {
-  opacity: 0.42;
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--merge-editor-muted) 35%, transparent);
-  background: color-mix(in srgb, var(--merge-editor-muted) 8%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--merge-editor-muted) 5%, var(--merge-editor-bg));
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, var(--merge-editor-muted) 42%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--merge-editor-muted) 16%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--merge-editor-muted) 16%, transparent);
+}
+
+.source-hunk.rejected .cmp-line[data-kind='insert'],
+.source-hunk.rejected .cmp-line[data-kind='delete'],
+.source-hunk.rejected .cmp-line[data-kind='change'] {
+  background: color-mix(in srgb, var(--merge-editor-muted) 8%, transparent);
+}
+
+.source-hunk.rejected .code [data-span] {
+  background: transparent;
 }
 
 .hunk.active,
 .source-hunk.active {
-  opacity: 1;
   z-index: 2;
-  border-color: var(--hunk-accent, var(--merge-current));
-  border-width: 2px;
-  background: color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 26%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 11%, var(--merge-editor-bg));
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 40%, transparent),
-    0 8px 24px color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 18%, transparent);
+    inset 3px 0 0 var(--hunk-accent, var(--merge-current)),
+    inset 0 1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 32%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 32%, transparent);
 }
 
 .source-hunk.active.chosen {
-  background: color-mix(in srgb, var(--hunk-accent) 32%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent) 13%, var(--merge-editor-bg));
 }
 
 .source-hunk.active.rejected {
-  opacity: 0.78;
-  border-style: solid;
-}
-
-.hunk.resolved {
-  opacity: 0.96;
+  background: color-mix(in srgb, var(--merge-editor-muted) 8%, var(--merge-editor-bg));
 }
 
 .source-hunk header {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 3;
   display: block;
   min-height: 0;
   padding: 0;
-  pointer-events: none;
-}
-
-.source-hunk header .codelens,
-.source-hunk header button {
-  pointer-events: auto;
 }
 
 .source-hunk .lines,
 .source-hunk .hunk-edit {
-  padding-top: 1.85rem;
+  padding-top: 0;
 }
 
 .hunk-head {
   justify-content: flex-start;
-  min-height: 1.55rem;
-  padding: 0 0.08rem;
+  min-height: 1.7rem;
+  padding: 0.2rem 0.7rem;
+  background: color-mix(in srgb, var(--hunk-accent) 8%, var(--merge-editor-bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--hunk-accent) 18%, transparent);
 }
 
 .hunk-head strong {
@@ -859,7 +870,7 @@ kbd {
 .compare {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  gap: 0;
   min-width: 0;
 }
 
@@ -871,10 +882,14 @@ kbd {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--merge-pane-border);
-  border-radius: 8px;
-  background: var(--merge-pane-bar);
+  border: 0;
+  border-radius: 0;
+  background: var(--merge-editor-bg);
   overflow: hidden;
+}
+
+.compare .side-ours {
+  border-left: 1px solid var(--merge-pane-border);
 }
 
 .compare .lines,
@@ -918,32 +933,35 @@ kbd {
 
 .cmp-line {
   display: grid;
-  grid-template-columns: 3.1rem 1.05rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem 1.1rem minmax(0, 1fr);
+  align-items: start;
   font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 1.5em;
+  min-width: 0;
 }
 
 .side-ours .cmp-line[data-kind='delete'],
 .side-ours .cmp-line[data-kind='change'],
 .source-pane[data-side='ours'] .cmp-line[data-kind='delete'],
 .source-pane[data-side='ours'] .cmp-line[data-kind='change'] {
-  background: var(--merge-del-line);
+  background: var(--merge-current-line);
 }
 
 .side-theirs .cmp-line[data-kind='insert'],
 .side-theirs .cmp-line[data-kind='change'],
 .source-pane[data-side='theirs'] .cmp-line[data-kind='insert'],
 .source-pane[data-side='theirs'] .cmp-line[data-kind='change'] {
-  background: var(--merge-add-line);
+  background: var(--merge-incoming-line);
 }
 
 .cmp-line.empty {
-  background: color-mix(in srgb, var(--merge-editor-muted) 10%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--merge-editor-muted) 6%, var(--merge-editor-bg));
 }
 
 .cmp-line.empty .code {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 .gutter {
@@ -954,11 +972,11 @@ kbd {
 }
 
 .gutter.del {
-  color: #fb7185;
+  color: var(--merge-current);
 }
 
 .gutter.add {
-  color: #34d399;
+  color: var(--merge-incoming);
 }
 
 .gutter.off {
@@ -966,18 +984,44 @@ kbd {
 }
 
 .code {
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: visible;
   color: var(--merge-editor-fg);
   min-width: 0;
+  padding-right: 0.75rem;
+}
+
+.code [data-span] {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .code [data-span='delete'] {
-  background: var(--merge-del-span);
+  background: var(--merge-current-span);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .code [data-span='insert'] {
-  background: var(--merge-add-span);
+  background: var(--merge-incoming-span);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.side-ours .code [data-span='delete'],
+.side-ours .code [data-span='change'],
+.source-pane[data-side='ours'] .code [data-span='delete'],
+.source-pane[data-side='ours'] .code [data-span='change'] {
+  background: var(--merge-current-span);
+}
+
+.side-theirs .code [data-span='insert'],
+.side-theirs .code [data-span='change'],
+.source-pane[data-side='theirs'] .code [data-span='insert'],
+.source-pane[data-side='theirs'] .code [data-span='change'] {
+  background: var(--merge-incoming-span);
 }
 
 .base-pane pre,
@@ -989,9 +1033,11 @@ kbd {
   padding: 0.5rem;
   overflow: auto;
   font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.35;
-  white-space: pre;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   color: var(--merge-editor-fg);
   background: var(--merge-editor-bg);
   border: 0;
@@ -1004,7 +1050,7 @@ kbd {
 }
 
 .result-pane {
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--glass-border));
+  border-top: 1px solid color-mix(in srgb, var(--merge-result) 22%, var(--merge-pane-border));
   background: var(--merge-editor-bg);
 }
 
@@ -1015,7 +1061,7 @@ kbd {
 .result-pane.empty {
   border-style: dashed;
   border-color: var(--merge-pane-border);
-  background: color-mix(in srgb, black 18%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--merge-editor-muted) 8%, var(--merge-editor-bg));
 }
 
 .result-pane.empty h3 {
@@ -1033,12 +1079,13 @@ kbd {
 }
 
 .choices {
-  align-self: flex-start;
+  align-self: stretch;
   gap: 0.28rem;
-  padding: 0.28rem;
+  padding: 0.35rem 0.7rem 0.45rem;
   border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--hunk-accent) 16%, transparent);
   border-radius: 0;
-  background: transparent;
+  background: color-mix(in srgb, var(--hunk-accent) 6%, var(--merge-editor-bg));
 }
 
 .document .choices .bl-btn,
@@ -1083,6 +1130,7 @@ kbd {
 }
 
 .source-doc {
+  min-width: 0;
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -1090,17 +1138,21 @@ kbd {
   color: var(--merge-editor-fg);
 }
 
-.source-hunk header strong {
-  font-size: 10px;
+.source-hunk,
+.source-doc .context {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .source-hunk pre {
   margin: 0;
-  padding: 0.2rem 0.4rem;
-  overflow: auto;
+  padding: 0.2rem 0.75rem 0.2rem 0.4rem;
+  overflow: visible;
   color: var(--merge-editor-fg);
-  font: 12px/1.45 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
-  white-space: pre;
+  font: 13px/1.5 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .source-pane h3,
@@ -1133,11 +1185,10 @@ kbd {
 }
 
 .pane-id .dot {
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.42rem;
+  height: 0.42rem;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 
 .source-pane h3 button {
@@ -1155,7 +1206,7 @@ kbd {
 .source-pane h3 button:hover:not(:disabled) {
   color: var(--merge-editor-fg);
   border-color: var(--merge-pane-border);
-  background: color-mix(in srgb, white 8%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-fg) 8%, transparent);
 }
 
 .source-pane h3 button:disabled {
@@ -1165,16 +1216,19 @@ kbd {
 
 .source-pane[data-side='ours'] h3 {
   color: var(--merge-current);
+  background: color-mix(in srgb, var(--merge-current) 8%, var(--merge-pane-bar));
   box-shadow: inset 0 2px 0 var(--merge-current);
 }
 
 .source-pane[data-side='base'] h3 {
   color: var(--merge-base);
+  background: color-mix(in srgb, var(--merge-base) 8%, var(--merge-pane-bar));
   box-shadow: inset 0 2px 0 color-mix(in srgb, var(--merge-base) 55%, transparent);
 }
 
 .source-pane[data-side='theirs'] h3 {
   color: var(--merge-incoming);
+  background: color-mix(in srgb, var(--merge-incoming) 8%, var(--merge-pane-bar));
   box-shadow: inset 0 2px 0 var(--merge-incoming);
 }
 
@@ -1198,43 +1252,27 @@ kbd {
   align-items: center;
   gap: 0.4rem;
   box-sizing: border-box;
-  height: 1.85rem;
-  min-height: 1.85rem;
-  padding: 0.15rem 0.45rem 0.15rem 0.4rem;
+  height: 1.7rem;
+  min-height: 1.7rem;
+  padding: 0 0.5rem 0 0.7rem;
   overflow: visible;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--hunk-accent, var(--merge-pane-bar)) 42%, var(--merge-editor-bg)),
-    color-mix(in srgb, var(--hunk-accent, var(--merge-pane-bar)) 8%, transparent)
-  );
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-pane-bar)) 10%, var(--merge-editor-bg));
   border: 0;
-  border-bottom: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--hunk-accent, var(--merge-pane-border)) 22%, var(--merge-pane-border));
   color: var(--merge-editor-fg);
 }
 
 .source-hunk.chosen .codelens,
 .hunk.resolved .codelens {
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--hunk-accent, var(--git-added)) 55%, var(--merge-editor-bg)),
-    color-mix(in srgb, var(--hunk-accent, var(--git-added)) 10%, transparent)
-  );
+  background: color-mix(in srgb, var(--hunk-accent, var(--git-added)) 14%, var(--merge-editor-bg));
 }
 
 .source-hunk.rejected .codelens {
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--merge-editor-muted) 22%, var(--merge-editor-bg)),
-    transparent
-  );
+  background: color-mix(in srgb, var(--merge-editor-muted) 8%, var(--merge-editor-bg));
 }
 
 .codelens.active {
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 58%, var(--merge-editor-bg)),
-    color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 8%, transparent)
-  );
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-current)) 16%, var(--merge-editor-bg));
 }
 
 .codelens .hunk-id {
@@ -1264,15 +1302,15 @@ kbd {
 .accept-check {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.38rem;
   margin: 0;
-  padding: 0.16rem 0.5rem 0.16rem 0.28rem;
-  border: 1px solid color-mix(in srgb, var(--hunk-accent, var(--merge-editor-muted)) 35%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--merge-editor-bg) 55%, transparent);
-  color: var(--merge-editor-fg);
-  font-size: 12px;
-  font-weight: 700;
+  padding: 0.08rem 0.2rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--merge-editor-fg) 88%, var(--hunk-accent));
+  font-size: 11.5px;
+  font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
@@ -1281,41 +1319,37 @@ kbd {
 .accept-check .box {
   display: grid;
   place-items: center;
-  width: 1.05rem;
-  height: 1.05rem;
-  border: 2px solid color-mix(in srgb, var(--hunk-accent, var(--merge-editor-muted)) 80%, white);
-  border-radius: 4px;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1.5px solid color-mix(in srgb, var(--hunk-accent, var(--merge-editor-muted)) 80%, white);
+  border-radius: 3px;
   color: transparent;
-  background: color-mix(in srgb, var(--merge-editor-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-bg) 55%, transparent);
 }
 
 .accept-check.incoming.on,
 .accept-check.current.on {
-  color: #062018;
-  background: var(--hunk-accent, var(--merge-incoming));
-  border-color: transparent;
+  color: var(--merge-editor-fg);
+  background: color-mix(in srgb, var(--hunk-accent, var(--merge-incoming)) 18%, transparent);
 }
 
 .accept-check.incoming.on {
-  color: #06281c;
-  background: var(--merge-incoming);
+  color: var(--merge-incoming);
 }
 
 .accept-check.current.on {
-  color: #062033;
-  background: var(--merge-current);
+  color: var(--merge-current);
 }
 
 .accept-check.incoming.on .box,
 .accept-check.current.on .box {
   border-color: transparent;
-  background: color-mix(in srgb, black 22%, transparent);
-  color: #fff;
+  background: var(--hunk-accent, var(--merge-incoming));
+  color: var(--merge-editor-bg);
 }
 
 .accept-check:hover:not(:disabled):not(.on) {
-  background: color-mix(in srgb, var(--hunk-accent) 22%, var(--merge-editor-bg));
-  border-color: var(--hunk-accent);
+  background: color-mix(in srgb, var(--hunk-accent) 12%, transparent);
 }
 
 .accept-check:disabled {
@@ -1359,11 +1393,13 @@ kbd {
 .merge-result > header {
   min-height: 2rem;
   color: var(--merge-result);
+  background: color-mix(in srgb, var(--merge-result) 8%, var(--merge-pane-bar));
   box-shadow: inset 0 2px 0 var(--merge-result);
 }
 
 .merge-result.manual > header {
   color: var(--git-conflict);
+  background: color-mix(in srgb, var(--git-conflict) 8%, var(--merge-pane-bar));
   box-shadow: inset 0 2px 0 var(--git-conflict);
 }
 
@@ -1399,12 +1435,12 @@ kbd {
   text-transform: none;
   color: var(--merge-editor-fg);
   border-color: var(--merge-pane-border);
-  background: color-mix(in srgb, white 7%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-fg) 6%, transparent);
 }
 
 .result-actions .bl-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, white 12%, transparent);
-  border-color: color-mix(in srgb, white 18%, transparent);
+  background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
+  border-color: color-mix(in srgb, var(--merge-editor-fg) 18%, transparent);
 }
 
 .merge-result textarea {
@@ -1418,9 +1454,11 @@ kbd {
   resize: none;
   color: var(--merge-editor-fg);
   background: var(--merge-editor-bg);
-  font: 12px/1.35 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+  font: 13px/1.5 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
   tab-size: 2;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .merge-result textarea:focus {
