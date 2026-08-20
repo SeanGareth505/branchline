@@ -89,8 +89,11 @@ export class ReleasePanel {
   private readonly expandedJobs = signal(new Set<string>());
   readonly jobFilter = signal<JobFilter>('all');
 
-  readonly activity = computed(() => this.store.releaseActivity());
-  readonly busy = computed(() => this.store.releaseBusy());
+  readonly activity = computed(() => this.store.visibleReleaseActivity());
+  readonly busy = computed(() => this.store.visibleReleaseBusy());
+  readonly deployChecking = computed(
+    () => !!this.activity() && this.store.releaseDeployChecking(),
+  );
   readonly currentVersion = computed(() => this.releaseStatus()?.currentVersion?.trim() || '0.0.0');
   readonly productName = computed(
     () => this.releaseStatus()?.config?.productName || this.store.currentRepo()?.name || 'App',

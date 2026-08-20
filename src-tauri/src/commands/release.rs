@@ -1609,6 +1609,24 @@ fn required_jobs_succeeded(jobs: &[ReleaseDeployJob]) -> bool {
     !required.is_empty() && required.iter().all(|job| job_succeeded(job))
 }
 
+fn reconcile_completed_workflow_jobs(
+    status: &str,
+    conclusion: &str,
+    jobs: &mut [ReleaseDeployJob],
+) {
+    if !status.eq_ignore_ascii_case("completed")
+        || !matches!(conclusion.to_ascii_lowercase().as_str(), "success" | "neutral")
+    {
+        return;
+    }
+    for job in jobs {
+        if job_is_active(job) {
+            job.status = "completed".into();
+            job.conclusion = Some("success".into());
+        }
+    }
+}
+
 fn live_release_message(tag: &str) -> String {
     format!(
         "Release {tag} is live on GitHub"
@@ -1633,7 +1651,7 @@ fn evaluate_deploy(
     run: Option<WorkflowSnapshot>,
     has_installers: bool,
 ) -> PollReleaseDeployOutput {
-    let Some(run) = run else {
+    let Some(mut run) = run else {
         if has_installers {
             if let Some(url) = release_url {
                 return urls.output(
@@ -1655,6 +1673,7 @@ fn evaluate_deploy(
             Vec::new(),
         );
     };
+    reconcile_completed_workflow_jobs(&run.status, &run.conclusion, &mut run.jobs);
     let jobs_failed = required_job_failed(&run.jobs);
     let jobs_active = required_jobs_active(&run.jobs);
     let terminal_failure = (jobs_failed && !jobs_active)
@@ -2778,6 +2797,24 @@ mod tests {
         let result = eval("v0.7.4", None, Some(run("", "")));
         assert_eq!(result.status, "running");
         assert_eq!(result.phase, "ci");
+    }
+
+    #[test]
+    fn completed_workflow_reconciles_stale_active_jobs() {
+        let result = eval(
+            "v0.8.34",
+            Some("https://github.com/acme/branchline/releases/tag/v0.8.34".into()),
+            Some(WorkflowSnapshot {
+                status: "completed".into(),
+                conclusion: "success".into(),
+                run_url: Some("https://github.com/acme/branchline/actions/runs/1".into()),
+                jobs: vec![job("Windows", "in_progress", "")],
+            }),
+        );
+        assert_eq!(result.status, "success");
+        assert_eq!(result.phase, "done");
+        assert_eq!(result.jobs[0].status, "completed");
+        assert_eq!(result.jobs[0].conclusion.as_deref(), Some("success"));
     }
 
     #[test]

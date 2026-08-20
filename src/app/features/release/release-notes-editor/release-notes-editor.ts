@@ -23,7 +23,7 @@ export class ReleaseNotesEditor {
   });
 
   readonly hint = computed(() => {
-    const activity = this.store.releaseActivity();
+    const activity = this.store.visibleReleaseActivity();
     const text = this.store.releaseNotesText().trim();
     if (this.store.releaseNotesSynced() && text) {
       return activity?.releaseUrl
@@ -50,7 +50,7 @@ export class ReleaseNotesEditor {
   });
 
   readonly placeholder = computed(() => {
-    const tag = this.store.releaseActivity()?.tag;
+    const tag = this.store.visibleReleaseActivity()?.tag;
     return tag
       ? `Release notes for ${tag}`
       : 'What shipped in this version?';

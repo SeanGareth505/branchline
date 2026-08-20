@@ -22,13 +22,13 @@
                 type="button"
                 class="tag-btn"
                 title="Reload installer build status from GitHub"
-                [disabled]="refreshLocked() || store.releaseDeployChecking()"
+                [disabled]="refreshLocked() || deployChecking()"
                 (click)="refreshDeploy()"
               >
                 <ng-icon
                   name="lucideRefreshCw"
                   size="11"
-                  [class.spin]="store.releaseDeployChecking()"
+                  [class.spin]="deployChecking()"
                 />
                 Refresh
               </button>
@@ -58,14 +58,14 @@
               class="bl-btn"
               [class.bl-btn-primary]="action.primary"
               [title]="action.title"
-              [disabled]="action.id === 'refresh' && (refreshLocked() || store.releaseDeployChecking())"
+              [disabled]="action.id === 'refresh' && (refreshLocked() || deployChecking())"
               (click)="runAction(action.id)"
             >
               @if (action.icon) {
                 <ng-icon
                   [name]="action.icon"
                   size="14"
-                  [class.spin]="action.id === 'refresh' && store.releaseDeployChecking()"
+                  [class.spin]="action.id === 'refresh' && deployChecking()"
                 />
               }
               {{ action.label }}

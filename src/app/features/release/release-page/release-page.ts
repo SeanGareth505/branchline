@@ -42,8 +42,8 @@ export class ReleasePage {
   readonly loadError = signal<string | null>(null);
 
   readonly hasRepo = computed(() => !!this.store.currentRepo());
-  readonly busy = computed(() => this.store.releaseBusy());
-  readonly activity = computed(() => this.store.releaseActivity());
+  readonly busy = computed(() => this.store.visibleReleaseBusy());
+  readonly activity = computed(() => this.store.visibleReleaseActivity());
   readonly configured = computed(() => !!this.status()?.available);
 
   readonly subtitle = computed(() => {

@@ -443,11 +443,14 @@ export class AppStore {
     if (!activity || !path || !sameRepoPath(activity.path, path)) return null;
     return activity;
   });
+  readonly visibleReleaseBusy = computed(
+    () => !!this.visibleReleaseActivity() && this.releaseBusy(),
+  );
   readonly releaseNotesDraft = signal<ReleaseNotesDraft | null>(null);
   readonly releaseNotesBusy = signal(false);
   readonly releaseNotesGenerating = signal(false);
   readonly releaseNotesText = computed(() => {
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     if (activity) return activity.notes ?? '';
     const draft = this.releaseNotesDraft();
     const path = this.currentRepo()?.path;
@@ -455,10 +458,10 @@ export class AppStore {
     return '';
   });
   readonly releaseNotesCanPublish = computed(() => {
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     return !!activity?.tag && (!!activity.releaseUrl || this.hasGithubConnection());
   });
-  readonly releaseNotesSynced = computed(() => !!this.releaseActivity()?.notesSynced);
+  readonly releaseNotesSynced = computed(() => !!this.visibleReleaseActivity()?.notesSynced);
   private releaseAttachInFlight: Promise<boolean> | null = null;
   private releaseAttachPath: string | null = null;
   readonly releasingLocally = computed(() => {
@@ -3447,18 +3450,22 @@ export class AppStore {
     }
   }
 
-  private patchReleaseActivity(patch: Partial<ReleaseActivity>, persistImmediate = true): void {
+  private patchReleaseActivity(
+    path: string,
+    patch: Partial<ReleaseActivity>,
+    persistImmediate = true,
+  ): void {
     const current = this.releaseActivity();
-    if (!current) return;
+    if (!current || !sameRepoPath(current.path, path)) return;
     const next: ReleaseActivity = { ...current, ...patch };
     this.releaseActivity.set(next);
     this.persistReleaseActivity(persistImmediate);
   }
 
   setReleaseNotes(body: string): void {
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     if (activity) {
-      this.patchReleaseActivity({ notes: body, notesSynced: false });
+      this.patchReleaseActivity(activity.path, { notes: body, notesSynced: false });
       return;
     }
     const path = this.currentRepo()?.path;
@@ -3468,7 +3475,7 @@ export class AppStore {
   }
 
   async saveReleaseNotes(): Promise<void> {
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     const path = activity?.path || this.currentRepo()?.path;
     if (!path || this.releaseNotesBusy()) return;
     const body = this.releaseNotesText();
@@ -3482,7 +3489,7 @@ export class AppStore {
     try {
       const result = await this.tauri.updateGithubReleaseNotes(path, tag, body);
       if (result.ok && result.found) {
-        this.patchReleaseActivity({
+        this.patchReleaseActivity(path, {
           notes: result.body,
           notesSynced: true,
           releaseUrl: result.htmlUrl ?? activity?.releaseUrl ?? null,
@@ -3499,7 +3506,7 @@ export class AppStore {
   }
 
   async loadGitHubReleaseNotes(opts?: { overwrite?: boolean }): Promise<void> {
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     const path = activity?.path || this.currentRepo()?.path;
     const tag = activity?.tag?.trim();
     if (!path || !tag || this.releaseNotesBusy()) return;
@@ -3511,7 +3518,7 @@ export class AppStore {
       if (!result.found) return;
       const remote = result.body ?? '';
       if (!opts?.overwrite && local && local !== remote.trim()) return;
-      this.patchReleaseActivity({
+      this.patchReleaseActivity(path, {
         notes: remote,
         notesSynced: true,
         releaseUrl: result.htmlUrl ?? activity?.releaseUrl ?? null,
@@ -3525,7 +3532,7 @@ export class AppStore {
   async generateReleaseNotes(): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path || this.releaseNotesGenerating()) return;
-    const activity = this.releaseActivity();
+    const activity = this.visibleReleaseActivity();
     const currentTag = activity?.tag?.trim() || null;
     const previous = this.changelog.previousReleaseTag(this.tags(), this.commits(), currentTag);
     const current = currentTag
@@ -3568,7 +3575,7 @@ export class AppStore {
     try {
       const result = await this.tauri.updateGithubReleaseNotes(path, tag, body);
       if (result.ok && result.found) {
-        this.patchReleaseActivity({
+        this.patchReleaseActivity(path, {
           notes: result.body || body,
           notesSynced: true,
           releaseUrl: result.htmlUrl ?? activity.releaseUrl ?? null,
@@ -3750,6 +3757,7 @@ export class AppStore {
     if (this.releaseBusy() && !force) return false;
     try {
       const status = await this.tauri.getReleaseStatus(path);
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return false;
       const version = status.currentVersion?.trim();
       const cfg = status.config;
       if (!status.available || !version || !cfg) {
@@ -3777,6 +3785,7 @@ export class AppStore {
       if (!force && this.readDismissedReleaseTag() === tag) return false;
 
       const result = await this.tauri.pollReleaseDeploy(path, tag);
+      if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return false;
       if (!force && !onRelease && sameTag) return false;
       this.seedAttachedReleaseActivity({
         path,
