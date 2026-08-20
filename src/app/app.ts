@@ -33,10 +33,9 @@ export class App implements OnInit {
 
   private readonly windowTitle = effect(() => {
     const repo = this.store.currentRepo();
-    const branch = this.store.status()?.branch?.trim();
     const view = this.store.view();
     const title = repo
-      ? `${repo.name}${branch ? ` — ${branch}` : ''} · Branchline`
+      ? `${repo.name} · Branchline`
       : view === 'onboarding'
         ? 'Set up Git · Branchline'
         : 'Branchline';

@@ -16,7 +16,7 @@
           [class.active]="store.isCurrentRepo(repo.path)"
           [attr.aria-selected]="store.isCurrentRepo(repo.path)"
           [style.--identity]="colorFor(repo)"
-          [title]="tooltip(repo.path, repo.branch)"
+          [title]="tooltip(repo.name, repo.branch)"
         >
           <button type="button" class="tab-main" (click)="select(repo.path)">
             <ng-icon name="lucideFolderGit2" size="12" />

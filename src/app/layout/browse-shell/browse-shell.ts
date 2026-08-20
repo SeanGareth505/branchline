@@ -38,6 +38,12 @@ import { Spinner } from '../../shared/ui/spinner/spinner';
 export class BrowseShell {
   readonly store = inject(AppStore);
 
+  openRelease(event?: Event): void {
+    if (!this.store.releasingLocally()) return;
+    event?.preventDefault();
+    this.store.setView('release');
+  }
+
   setTab(tab: BrowseTab): void {
     this.store.setBrowseTab(tab);
   }

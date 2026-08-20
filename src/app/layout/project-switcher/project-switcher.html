@@ -2,17 +2,20 @@
   <button
     type="button"
     class="trigger"
+    [class.compact]="hasOpenRepos()"
     cdkOverlayOrigin
     #origin="cdkOverlayOrigin"
     [attr.aria-expanded]="menuOpen()"
     aria-haspopup="menu"
-    aria-label="Open a repository as a tab"
+    [attr.aria-label]="triggerTitle()"
     [title]="triggerTitle()"
     (click)="toggle()"
   >
-    <ng-icon name="lucideFolderGit2" size="13" />
-    <span class="label">{{ triggerLabel() }}</span>
-    <ng-icon name="lucideChevronsUpDown" size="12" class="chevron" />
+    <ng-icon [name]="hasOpenRepos() ? 'lucidePlus' : 'lucideFolderGit2'" size="13" />
+    @if (!hasOpenRepos()) {
+      <span class="label">{{ triggerLabel() }}</span>
+      <ng-icon name="lucideChevronsUpDown" size="12" class="chevron" />
+    }
   </button>
 
   <ng-template

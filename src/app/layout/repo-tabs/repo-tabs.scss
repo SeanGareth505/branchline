@@ -1,15 +1,18 @@
 :host {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   min-width: 0;
   height: 100%;
-  flex: 1 1 auto;
+}
+
+:host.empty {
+  display: none;
 }
 
 .strip {
   display: flex;
   align-items: stretch;
-  gap: 0.2rem;
+  gap: 0.15rem;
   min-width: 0;
   width: 100%;
   height: 100%;
@@ -18,6 +21,7 @@
 .tabs {
   display: flex;
   align-items: stretch;
+  justify-content: flex-start;
   gap: 0;
   min-width: 0;
   flex: 1 1 auto;
@@ -47,18 +51,20 @@
 
 .tab {
   --identity: var(--accent);
-  --tab-radius: 8px;
+  --tab-radius: 7px;
   position: relative;
   display: inline-flex;
   align-items: stretch;
-  flex: 1 1 7.25rem;
-  min-width: 5.1rem;
-  max-width: 11rem;
+  flex: 0 1 8.25rem;
+  min-width: 4.75rem;
+  max-width: 10.25rem;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--tab-radius) var(--tab-radius) 0 0;
   background: transparent;
   color: var(--text-muted);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .tab + .tab {
@@ -92,8 +98,8 @@
 
 .tab.active {
   z-index: 1;
-  flex: 1.35 1 8.5rem;
-  min-width: 6.5rem;
+  flex: 0 1 9.25rem;
+  min-width: 6rem;
   background: color-mix(in srgb, var(--identity) 9%, var(--bg-elevated));
   border-color: color-mix(in srgb, var(--identity) 22%, var(--glass-border));
   color: var(--text-primary);

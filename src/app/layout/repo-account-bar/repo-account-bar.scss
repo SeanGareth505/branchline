@@ -2,7 +2,8 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  padding-right: 0.5rem;
+  padding-right: 0.35rem;
+  margin-right: 0.1rem;
   border-right: 1px solid var(--glass-border);
 }
 
@@ -64,4 +65,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 1180px) {
+  .label {
+    display: none;
+  }
+
+  .trigger {
+    width: 1.7rem;
+    min-width: 1.7rem;
+    max-width: 1.7rem;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .chevron {
+    display: none;
+  }
 }

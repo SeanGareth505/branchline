@@ -26,93 +26,97 @@
         @if (macosTrafficLights) {
           <div class="chrome-drag-lead" aria-hidden="true"></div>
         }
-        <div class="chrome-left">
+        <div class="chrome-workspace">
           <button type="button" class="brand" (click)="goRepos()" aria-label="Branchline home" title="Go to repository view">
             <app-brand-mark [size]="18" />
             <span>Branchline</span>
           </button>
-          <app-project-switcher />
           <app-repo-account-bar />
-          <app-repo-tabs />
         </div>
 
-        @if (store.currentRepo()) {
-          <nav class="chrome-views" aria-label="Repository views">
-            <button
-              type="button"
-              [class.active]="isActive('browse')"
-              [attr.aria-current]="isActive('browse') ? 'page' : null"
-              (click)="nav('browse')"
-              title="Browse branches, commits, and files"
-            >
-              <ng-icon name="lucideGitBranch" size="15" />
-              <span class="view-label">Repo</span>
-            </button>
-            <button
-              type="button"
-              [class.active]="isActive('prs')"
-              [attr.aria-current]="isActive('prs') ? 'page' : null"
-              (click)="nav('prs')"
-              title="Pull requests for this repository"
-            >
-              <ng-icon name="lucideGitPullRequest" size="15" />
-              <span class="view-label">PRs</span>
-            </button>
-            @if (store.hasLinkedJira() || store.isDummyBackend || store.jiraSetupIncomplete()) {
-              <button
-                type="button"
-                [class.active]="isActive('jira')"
-                [attr.aria-current]="isActive('jira') ? 'page' : null"
-                (click)="nav('jira')"
-                title="Linked Jira issues for this repository"
-              >
-                <ng-icon name="lucideTicket" size="15" />
-                <span class="view-label">Jira</span>
-              </button>
-            }
-            <button
-              type="button"
-              [class.active]="isActive('release')"
-              [attr.aria-current]="isActive('release') ? 'page' : null"
-              (click)="nav('release')"
-              [title]="releaseNavTitle()"
-            >
-              <ng-icon name="lucideRocket" size="15" />
-              <span class="view-label">Release</span>
-              @if (releaseNavStatus(); as status) {
-                <span
-                  class="nav-dot"
-                  [attr.data-status]="status"
-                  [attr.aria-label]="releaseNavLabel()"
-                ></span>
-              }
-            </button>
-            @if (!store.settings().simpleMode) {
-              <button
-                type="button"
-                [class.active]="isActive('profiles')"
-                [attr.aria-current]="isActive('profiles') ? 'page' : null"
-                (click)="nav('profiles')"
-                title="Git author name and email used for commits"
-              >
-                <ng-icon name="lucideUser" size="15" />
-                <span class="view-label">Identity</span>
-              </button>
-              <button
-                type="button"
-                [class.active]="isActive('automation')"
-                [attr.aria-current]="isActive('automation') ? 'page' : null"
-                (click)="nav('automation')"
-                title="Workflows and commit checks"
-              >
-                <ng-icon name="lucideWorkflow" size="15" />
-                <span class="view-label">Automation</span>
-              </button>
-            }
-          </nav>
-        }
+        <div class="chrome-tabs">
+          <app-repo-tabs />
+          <app-project-switcher />
+        </div>
 
-        <div class="chrome-right">
+        <div class="chrome-end">
+          @if (store.currentRepo()) {
+            <nav class="chrome-views" aria-label="Repository views">
+              <button
+                type="button"
+                [class.active]="isActive('browse')"
+                [attr.aria-current]="isActive('browse') ? 'page' : null"
+                (click)="nav('browse')"
+                title="Browse branches, commits, and files"
+              >
+                <ng-icon name="lucideGitBranch" size="15" />
+                <span class="view-label">Repo</span>
+              </button>
+              <button
+                type="button"
+                [class.active]="isActive('prs')"
+                [attr.aria-current]="isActive('prs') ? 'page' : null"
+                (click)="nav('prs')"
+                title="Pull requests for this repository"
+              >
+                <ng-icon name="lucideGitPullRequest" size="15" />
+                <span class="view-label">PRs</span>
+              </button>
+              @if (store.hasLinkedJira() || store.isDummyBackend || store.jiraSetupIncomplete()) {
+                <button
+                  type="button"
+                  [class.active]="isActive('jira')"
+                  [attr.aria-current]="isActive('jira') ? 'page' : null"
+                  (click)="nav('jira')"
+                  title="Linked Jira issues for this repository"
+                >
+                  <ng-icon name="lucideTicket" size="15" />
+                  <span class="view-label">Jira</span>
+                </button>
+              }
+              <button
+                type="button"
+                [class.active]="isActive('release')"
+                [attr.aria-current]="isActive('release') ? 'page' : null"
+                (click)="nav('release')"
+                [title]="releaseNavTitle()"
+              >
+                <ng-icon name="lucideRocket" size="15" />
+                <span class="view-label">Release</span>
+                @if (releaseNavStatus(); as status) {
+                  <span
+                    class="nav-dot"
+                    [attr.data-status]="status"
+                    [attr.aria-label]="releaseNavLabel()"
+                  ></span>
+                }
+              </button>
+              @if (!store.settings().simpleMode) {
+                <button
+                  type="button"
+                  [class.active]="isActive('profiles')"
+                  [attr.aria-current]="isActive('profiles') ? 'page' : null"
+                  (click)="nav('profiles')"
+                  title="Git author name and email used for commits"
+                >
+                  <ng-icon name="lucideUser" size="15" />
+                  <span class="view-label">Identity</span>
+                </button>
+                <button
+                  type="button"
+                  [class.active]="isActive('automation')"
+                  [attr.aria-current]="isActive('automation') ? 'page' : null"
+                  (click)="nav('automation')"
+                  title="Workflows and commit checks"
+                >
+                  <ng-icon name="lucideWorkflow" size="15" />
+                  <span class="view-label">Automation</span>
+                </button>
+              }
+            </nav>
+          }
+
+          <div class="chrome-right">
           <button
             type="button"
             class="util icon-only"
@@ -154,6 +158,7 @@
           >
             <ng-icon name="lucideCommand" size="15" />
           </button>
+        </div>
         </div>
       </div>
 

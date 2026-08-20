@@ -28,6 +28,9 @@ import { assignIdentityColors, repoIdentityKey } from '../../shared/ui/identity-
   templateUrl: './repo-tabs.html',
   styleUrl: './repo-tabs.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.empty]': '!count()',
+  },
 })
 export class RepoTabs {
   readonly store = inject(AppStore);
@@ -127,8 +130,8 @@ export class RepoTabs {
     this.store.closeOtherOpenRepos();
   }
 
-  tooltip(path: string, branch?: string | null): string {
-    return branch ? `${path}\non ${branch}` : path;
+  tooltip(name: string, branch?: string | null): string {
+    return branch ? `${name} · ${branch}` : name;
   }
 
   onScroll(): void {

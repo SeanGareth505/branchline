@@ -2,8 +2,14 @@
   @if (store.syncingRepo() || store.remoteBusy() || store.releasingLocally() || store.repoAccountSwitching()) {
     <div
       class="sync-bar"
-      role="status"
+      [class.sync-action]="store.releasingLocally()"
+      [attr.role]="store.releasingLocally() ? 'button' : 'status'"
+      [attr.tabindex]="store.releasingLocally() ? 0 : null"
+      [attr.title]="store.releasingLocally() ? 'Open Release' : null"
       aria-live="polite"
+      (click)="openRelease()"
+      (keydown.enter)="openRelease()"
+      (keydown.space)="openRelease($event)"
       [attr.aria-label]="
         store.repoAccountSwitching()
           ? 'Switching GitHub account'

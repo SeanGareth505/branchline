@@ -27,6 +27,16 @@
     color var(--duration-fast) var(--ease-out);
 }
 
+.trigger.compact {
+  width: 1.55rem;
+  min-width: 1.55rem;
+  max-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+}
+
 .trigger:hover,
 .trigger[aria-expanded='true'] {
   background: var(--bg-hover);
