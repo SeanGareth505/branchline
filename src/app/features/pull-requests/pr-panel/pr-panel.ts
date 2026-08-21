@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -23,7 +24,7 @@ import {
   prPendingReviewers,
   prReadyToMerge,
 } from '../../../core/models';
-import { formatPullRequests, checkLine, reviewLine } from '../pr-copy';
+import { formatPullRequests, checkLine, reviewLine, sharedRepoPrefix } from '../pr-copy';
 import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
@@ -34,7 +35,7 @@ type SortKey = 'updated' | 'number' | 'title' | 'additions' | 'approvals' | 'che
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgIcon, HelpTip, PageSkeleton, EmptyState],
+  imports: [FormsModule, NgTemplateOutlet, NgIcon, HelpTip, PageSkeleton, EmptyState],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -67,8 +68,18 @@ export class PrPanel {
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
   readonly testing = signal(false);
-  readonly copyMenuOpen = signal(false);
+  readonly copyMenuOpen = signal<'header' | 'list' | null>(null);
   readonly actingId = signal<string | null>(null);
+  readonly copyFormats: { id: PrCopyFormat; label: string }[] = [
+    { id: 'links', label: 'Links' },
+    { id: 'markdown', label: 'Markdown' },
+    { id: 'slack', label: 'Slack' },
+    { id: 'standup', label: 'Standup' },
+    { id: 'titles', label: 'Titles' },
+    { id: 'refs', label: 'repo#number' },
+    { id: 'checkout', label: 'Checkout commands' },
+    { id: 'csv', label: 'CSV' },
+  ];
   readonly mergeMenuId = signal<string | null>(null);
 
   readonly showingDummy = computed(
@@ -181,6 +192,38 @@ export class PrPanel {
     if (!ids.length) return false;
     const sel = this.selected();
     return ids.every((id) => sel.has(id));
+  });
+
+  readonly copyCounts = computed(() => {
+    const filtered = this.filtered();
+    const sel = this.selected();
+    const all = this.prs();
+    const open = all.filter((pr) => pr.status === 'open' && !pr.draft);
+    const needsReview = (pr: MockPullRequest) =>
+      this.liveMode()
+        ? pr.needsMyReview
+        : pr.reviewState === 'pending' || pr.reviewState === 'changesRequested';
+    return {
+      filtered: filtered.length,
+      selected: filtered.filter((p) => sel.has(p.id)).length,
+      open: open.length,
+      ready: all.filter((pr) => prReadyToMerge(pr)).length,
+      failing: all.filter((pr) => pr.pipelineStatus === 'failure' || prCheckFailed(pr) > 0).length,
+      review: all.filter(needsReview).length,
+      drafts: all.filter((pr) => pr.draft && pr.status === 'open').length,
+      mine: all.filter((pr) => pr.isMine).length,
+    };
+  });
+
+  readonly copyRepos = computed(() => {
+    const names = this.repos();
+    const prefix = sharedRepoPrefix(names);
+    const open = this.prs().filter((pr) => pr.status === 'open' && !pr.draft);
+    return names.map((name) => ({
+      key: name,
+      label: prefix && name.length > prefix.length ? name.slice(prefix.length) : name,
+      count: open.filter((pr) => pr.repo === name).length,
+    }));
   });
 
   constructor() {
@@ -358,19 +401,43 @@ export class PrPanel {
     this.selected.set(new Set(this.filtered().map((p) => p.id)));
   }
 
-  selectedOrFiltered(): MockPullRequest[] {
+  selectedPrs(): MockPullRequest[] {
     const sel = this.selected();
-    const filtered = this.filtered();
-    const picked = filtered.filter((p) => sel.has(p.id));
-    return picked.length ? picked : filtered;
+    return this.filtered().filter((p) => sel.has(p.id));
   }
 
-  async copyLinks(): Promise<void> {
-    await this.copyFormat('links');
+  openPrs(repo = 'all'): MockPullRequest[] {
+    return this.prs().filter(
+      (pr) => pr.status === 'open' && !pr.draft && (repo === 'all' || pr.repo === repo),
+    );
   }
 
-  async copyFormat(format: PrCopyFormat, source: MockPullRequest[] = this.selectedOrFiltered()): Promise<void> {
-    this.copyMenuOpen.set(false);
+  readyPrs(): MockPullRequest[] {
+    return this.prs().filter((pr) => prReadyToMerge(pr));
+  }
+
+  failingPrs(): MockPullRequest[] {
+    return this.prs().filter((pr) => pr.pipelineStatus === 'failure' || prCheckFailed(pr) > 0);
+  }
+
+  reviewPrs(): MockPullRequest[] {
+    return this.prs().filter((pr) =>
+      this.liveMode()
+        ? pr.needsMyReview
+        : pr.reviewState === 'pending' || pr.reviewState === 'changesRequested',
+    );
+  }
+
+  draftPrs(): MockPullRequest[] {
+    return this.prs().filter((pr) => pr.draft && pr.status === 'open');
+  }
+
+  minePrs(): MockPullRequest[] {
+    return this.prs().filter((pr) => pr.isMine);
+  }
+
+  async copyFormat(format: PrCopyFormat, source: MockPullRequest[]): Promise<void> {
+    this.copyMenuOpen.set(null);
     const text = formatPullRequests(source, format);
     const labels: Record<PrCopyFormat, string> = {
       links: 'link(s)',
@@ -386,41 +453,8 @@ export class PrPanel {
     await this.copy(text, `Copied ${count} ${labels[format]}`);
   }
 
-  async copyOpenForRepo(repo: string): Promise<void> {
-    this.copyMenuOpen.set(false);
-    const list = this.prs().filter(
-      (pr) => pr.status === 'open' && !pr.draft && (repo === 'all' || pr.repo === repo),
-    );
-    await this.copyFormat('markdown', list);
-  }
-
-  async copyReady(): Promise<void> {
-    await this.copyFormat(
-      'markdown',
-      this.selectedOrFiltered().filter((pr) => prReadyToMerge(pr)),
-    );
-  }
-
-  async copyFailing(): Promise<void> {
-    await this.copyFormat(
-      'markdown',
-      this.selectedOrFiltered().filter((pr) => pr.pipelineStatus === 'failure' || prCheckFailed(pr) > 0),
-    );
-  }
-
-  async copyNeedsReview(): Promise<void> {
-    await this.copyFormat(
-      'markdown',
-      this.selectedOrFiltered().filter((pr) => pr.needsMyReview || pr.reviewState === 'pending'),
-    );
-  }
-
-  toggleCopyMenu(): void {
-    this.copyMenuOpen.update((open) => !open);
-  }
-
-  closeCopyMenu(): void {
-    this.copyMenuOpen.set(false);
+  toggleCopyMenu(which: 'header' | 'list'): void {
+    this.copyMenuOpen.update((open) => (open === which ? null : which));
   }
 
   @HostListener('document:click', ['$event'])
@@ -428,7 +462,7 @@ export class PrPanel {
     const target = event.target as HTMLElement | null;
     if (!target) return;
     if (this.copyMenuOpen() && !target.closest('.copy-wrap')) {
-      this.copyMenuOpen.set(false);
+      this.copyMenuOpen.set(null);
     }
     if (this.mergeMenuId() && !target.closest('.merge-wrap')) {
       this.mergeMenuId.set(null);
@@ -437,7 +471,7 @@ export class PrPanel {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    this.copyMenuOpen.set(false);
+    this.copyMenuOpen.set(null);
     this.mergeMenuId.set(null);
     this.cancelComment();
     this.cancelRequestChanges();
@@ -905,18 +939,6 @@ export class PrPanel {
     if (prCheckPending(pr) > 0 || pr.pipelineStatus === 'pending') return 'pending';
     if (prCheckTotal(pr) > 0 || pr.pipelineStatus === 'success') return 'success';
     return 'unknown';
-  }
-
-  copyRepoLabel(): string {
-    if (this.repo() !== 'all') return this.repo();
-    if (this.repos().length === 1) return this.repos()[0];
-    return this.store.currentRepo()?.name || 'this repo';
-  }
-
-  copyRepoKey(): string {
-    if (this.repo() !== 'all') return this.repo();
-    if (this.repos().length === 1) return this.repos()[0];
-    return 'all';
   }
 
   reviewLabel(state: string): string {

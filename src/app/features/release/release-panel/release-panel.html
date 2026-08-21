@@ -215,10 +215,15 @@
                             }
                           </div>
                           <div class="platform-end">
-                            <span class="status-chip" [attr.data-status]="item.chip">
+                            <span class="status-chip" [attr.data-status]="item.chip" [class.slow]="item.slow">
                               {{ item.statusLabel }}
                               @if (item.duration) {
                                 <span class="step-time">{{ item.duration }}</span>
+                              }
+                              @if (item.typical) {
+                                <span class="step-avg" title="Typical time from recent successful releases">
+                                  avg {{ item.typical }}
+                                </span>
                               }
                             </span>
                             @if (item.url) {

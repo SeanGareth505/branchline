@@ -1075,6 +1075,7 @@ export interface ReleaseDeployJob {
   steps?: ReleaseDeployJobStep[];
   startedAt?: string | null;
   completedAt?: string | null;
+  typicalMs?: number | null;
 }
 
 export interface PollReleaseDeployOutput {

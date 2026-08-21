@@ -10,6 +10,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{command, AppHandle, Emitter, State};
 
 use super::branch::MutationOutput;
@@ -1045,6 +1046,8 @@ pub struct ReleaseDeployJob {
     pub steps: Vec<ReleaseDeployJobStep>,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    #[serde(default)]
+    pub typical_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1180,6 +1183,7 @@ fn parse_deploy_jobs(value: &Value) -> Vec<ReleaseDeployJob> {
                         steps: parse_deploy_job_steps(job),
                         started_at,
                         completed_at,
+                        typical_ms: None,
                     })
                 })
                 .collect()
@@ -2067,6 +2071,302 @@ fn remember_deploy_run(repo: &str, tag: &str, run_id: u64, release_url: Option<S
     guard.insert(key, CachedDeployRun { run_id, release_url });
 }
 
+const JOB_AVERAGE_TTL: Duration = Duration::from_secs(45 * 60);
+const JOB_AVERAGE_RUNS: usize = 5;
+
+#[derive(Clone)]
+struct CachedJobAverages {
+    at: Instant,
+    averages: HashMap<String, u64>,
+}
+
+fn job_average_cache() -> &'static Mutex<HashMap<String, CachedJobAverages>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedJobAverages>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cached_job_averages(repo: &str) -> Option<HashMap<String, u64>> {
+    let guard = job_average_cache().lock().ok()?;
+    let entry = guard.get(repo)?;
+    if entry.at.elapsed() < JOB_AVERAGE_TTL {
+        Some(entry.averages.clone())
+    } else {
+        None
+    }
+}
+
+fn remember_job_averages(repo: &str, averages: HashMap<String, u64>) {
+    let Ok(mut guard) = job_average_cache().lock() else {
+        return;
+    };
+    guard.insert(
+        repo.to_string(),
+        CachedJobAverages {
+            at: Instant::now(),
+            averages,
+        },
+    );
+}
+
+fn job_duration_key(name: &str) -> String {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("stabilize") || lower.contains("stable download") {
+        return "stable-download".into();
+    }
+    if lower.contains("create-release") || lower.contains("github release") {
+        return "github-release".into();
+    }
+    if lower.contains("android") {
+        return "android".into();
+    }
+    if lower.contains("windows") {
+        return "windows".into();
+    }
+    if lower.contains("ubuntu") || lower.contains("linux") {
+        return "linux".into();
+    }
+    if lower.contains("macos") && (lower.contains("arm") || lower.contains("aarch64")) {
+        return "macos-arm".into();
+    }
+    if lower.contains("macos")
+        && (lower.contains("intel") || lower.contains("x64") || lower.contains("x86"))
+    {
+        return "macos-intel".into();
+    }
+    if lower.contains("macos") {
+        return "macos".into();
+    }
+    lower
+}
+
+fn parse_job_time_ms(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value.trim())
+        .ok()
+        .map(|stamp| stamp.timestamp_millis())
+}
+
+fn job_elapsed_ms(job: &ReleaseDeployJob) -> Option<u64> {
+    if !job.conclusion.as_deref().is_some_and(|c| {
+        matches!(
+            c.trim().to_ascii_lowercase().as_str(),
+            "success" | "neutral"
+        )
+    }) {
+        return None;
+    }
+    let start = parse_job_time_ms(job.started_at.as_deref()?)?;
+    let end = parse_job_time_ms(job.completed_at.as_deref()?)?;
+    if end <= start {
+        return None;
+    }
+    let ms = (end - start) as u64;
+    if ms < 15_000 {
+        return None;
+    }
+    Some(ms)
+}
+
+fn typical_job_ms(mut samples: Vec<u64>) -> Option<u64> {
+    if samples.is_empty() {
+        return None;
+    }
+    samples.sort_unstable();
+    Some(samples[samples.len() / 2])
+}
+
+fn averages_from_jobs(jobs: impl IntoIterator<Item = ReleaseDeployJob>) -> HashMap<String, Vec<u64>> {
+    let mut samples: HashMap<String, Vec<u64>> = HashMap::new();
+    for job in jobs {
+        if let Some(ms) = job_elapsed_ms(&job) {
+            samples
+                .entry(job_duration_key(&job.name))
+                .or_default()
+                .push(ms);
+        }
+    }
+    samples
+}
+
+fn collapse_job_samples(samples: HashMap<String, Vec<u64>>) -> HashMap<String, u64> {
+    samples
+        .into_iter()
+        .filter_map(|(key, values)| typical_job_ms(values).map(|ms| (key, ms)))
+        .collect()
+}
+
+fn attach_job_averages(jobs: &mut [ReleaseDeployJob], averages: &HashMap<String, u64>) {
+    for job in jobs {
+        if let Some(ms) = averages.get(&job_duration_key(&job.name)) {
+            job.typical_ms = Some(*ms);
+        }
+    }
+}
+
+fn with_job_averages(
+    mut output: PollReleaseDeployOutput,
+    averages: &HashMap<String, u64>,
+) -> PollReleaseDeployOutput {
+    attach_job_averages(&mut output.jobs, averages);
+    output
+}
+
+fn decorate_deploy_jobs(
+    output: PollReleaseDeployOutput,
+    averages: impl FnOnce() -> HashMap<String, u64>,
+) -> PollReleaseDeployOutput {
+    if output.jobs.is_empty() {
+        return output;
+    }
+    with_job_averages(output, &averages())
+}
+
+fn is_previous_success_run(
+    current_tag: &str,
+    current_run_id: Option<u64>,
+    run_id: Option<u64>,
+    conclusion: Option<&str>,
+    head_branch: Option<&str>,
+    title: Option<&str>,
+) -> bool {
+    let Some(id) = run_id else {
+        return false;
+    };
+    if current_run_id == Some(id) {
+        return false;
+    }
+    if !conclusion.is_some_and(|c| c.eq_ignore_ascii_case("success")) {
+        return false;
+    }
+    if head_branch.is_some_and(|branch| branch == current_tag) {
+        return false;
+    }
+    if title.is_some_and(|text| text.contains(current_tag)) {
+        return false;
+    }
+    true
+}
+
+fn job_averages_with_gh(gh: &str, repo: &str, tag: &str, current_run_id: Option<u64>) -> HashMap<String, u64> {
+    if let Some(cached) = cached_job_averages(repo) {
+        return cached;
+    }
+    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle,headSha";
+    let mut runs = Vec::new();
+    for workflow in RELEASE_WORKFLOW_FILES {
+        runs.extend(gh_list_workflow_runs(gh, repo, workflow, json_fields, None));
+    }
+    let ids: Vec<u64> = runs
+        .into_iter()
+        .filter(|run| {
+            is_previous_success_run(
+                tag,
+                current_run_id,
+                run.database_id,
+                run.conclusion.as_deref(),
+                run.head_branch.as_deref(),
+                run.display_title.as_deref(),
+            )
+        })
+        .filter_map(|run| run.database_id)
+        .take(JOB_AVERAGE_RUNS)
+        .collect();
+    if ids.is_empty() {
+        remember_job_averages(repo, HashMap::new());
+        return HashMap::new();
+    }
+    let mut samples: HashMap<String, Vec<u64>> = HashMap::new();
+    for id in ids {
+        let batch = averages_from_jobs(fetch_run_jobs_with_gh(gh, repo, id));
+        for (key, values) in batch {
+            samples.entry(key).or_default().extend(values);
+        }
+    }
+    let averages = collapse_job_samples(samples);
+    if averages.is_empty() {
+        return HashMap::new();
+    }
+    remember_job_averages(repo, averages.clone());
+    averages
+}
+
+fn job_averages_with_api(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    tag: &str,
+    current_run_id: Option<u64>,
+) -> HashMap<String, u64> {
+    let full = format!("{owner}/{repo}");
+    if let Some(cached) = cached_job_averages(&full) {
+        return cached;
+    }
+    let mut ids = Vec::new();
+    for workflow in RELEASE_WORKFLOW_FILES {
+        if ids.len() >= JOB_AVERAGE_RUNS {
+            break;
+        }
+        let url = format!("{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=20");
+        let Ok(resp) = client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Branchline")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .bearer_auth(token)
+            .send()
+        else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(payload) = resp.json::<Value>() else {
+            continue;
+        };
+        let Some(runs) = payload.get("workflow_runs").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for run in runs {
+            if ids.len() >= JOB_AVERAGE_RUNS {
+                break;
+            }
+            let id = run.get("id").and_then(|v| v.as_u64());
+            if is_previous_success_run(
+                tag,
+                current_run_id,
+                id,
+                run.get("conclusion").and_then(|v| v.as_str()),
+                run.get("head_branch").and_then(|v| v.as_str()),
+                run.get("display_title").and_then(|v| v.as_str()),
+            ) {
+                if let Some(id) = id {
+                    ids.push(id);
+                }
+            }
+        }
+    }
+    if ids.is_empty() {
+        remember_job_averages(&full, HashMap::new());
+        return HashMap::new();
+    }
+    let mut samples: HashMap<String, Vec<u64>> = HashMap::new();
+    for id in ids {
+        let batch = averages_from_jobs(fetch_run_jobs_with_api(
+            client, base, token, owner, repo, id,
+        ));
+        for (key, values) in batch {
+            samples.entry(key).or_default().extend(values);
+        }
+    }
+    let averages = collapse_job_samples(samples);
+    if averages.is_empty() {
+        return HashMap::new();
+    }
+    remember_job_averages(&full, averages.clone());
+    averages
+}
+
 fn fetch_run_snapshot_with_gh(gh: &str, repo: &str, run_id: u64) -> Option<WorkflowSnapshot> {
     let viewed = Command::new(gh)
         .args([
@@ -2201,12 +2501,15 @@ fn poll_deploy_with_gh(
     if let Some(cached) = &cached {
         if let Some(snapshot) = fetch_run_snapshot_with_gh(&gh, repo, cached.run_id) {
             remember_deploy_run(repo, tag, cached.run_id, release_url.clone());
-            return Some(evaluate_deploy(
-                &urls,
-                tag,
-                release_url,
-                Some(snapshot),
-                has_installers,
+            return Some(decorate_deploy_jobs(
+                evaluate_deploy(
+                    &urls,
+                    tag,
+                    release_url,
+                    Some(snapshot),
+                    has_installers,
+                ),
+                || job_averages_with_gh(&gh, repo, tag, Some(cached.run_id)),
             ));
         }
     }
@@ -2220,7 +2523,8 @@ fn poll_deploy_with_gh(
             tag_sha,
         )
     });
-    if let Some(id) = matched.as_ref().and_then(|run| run.database_id) {
+    let current_run_id = matched.as_ref().and_then(|run| run.database_id);
+    if let Some(id) = current_run_id {
         remember_deploy_run(repo, tag, id, release_url.clone());
     }
     let snapshot = matched.map(|run| WorkflowSnapshot {
@@ -2232,12 +2536,15 @@ fn poll_deploy_with_gh(
             .map(|id| fetch_run_jobs_with_gh(&gh, repo, id))
             .unwrap_or_default(),
     });
-    Some(evaluate_deploy(
-        &urls,
-        tag,
-        release_url,
-        snapshot,
-        has_installers,
+    Some(decorate_deploy_jobs(
+        evaluate_deploy(
+            &urls,
+            tag,
+            release_url,
+            snapshot,
+            has_installers,
+        ),
+        || job_averages_with_gh(&gh, repo, tag, current_run_id),
     ))
 }
 
@@ -2383,12 +2690,25 @@ fn poll_deploy_with_api(
             fetch_run_snapshot_with_api(&client, base, token, owner, repo, cached.run_id)
         {
             remember_deploy_run(&full, tag, cached.run_id, release_url.clone());
-            return Ok(evaluate_deploy(
-                &urls,
-                tag,
-                release_url,
-                Some(snapshot),
-                has_installers,
+            return Ok(decorate_deploy_jobs(
+                evaluate_deploy(
+                    &urls,
+                    tag,
+                    release_url,
+                    Some(snapshot),
+                    has_installers,
+                ),
+                || {
+                    job_averages_with_api(
+                        &client,
+                        base,
+                        token,
+                        owner,
+                        repo,
+                        tag,
+                        Some(cached.run_id),
+                    )
+                },
             ));
         }
     }
@@ -2426,7 +2746,10 @@ fn poll_deploy_with_api(
             tag_sha,
         )
     });
-    if let Some(id) = matched.as_ref().and_then(|run| run.get("id").and_then(|v| v.as_u64())) {
+    let current_run_id = matched
+        .as_ref()
+        .and_then(|run| run.get("id").and_then(|v| v.as_u64()));
+    if let Some(id) = current_run_id {
         remember_deploy_run(&full, tag, id, release_url.clone());
     }
     let snapshot = matched.map(|run| {
@@ -2451,12 +2774,15 @@ fn poll_deploy_with_api(
                 .unwrap_or_default(),
         }
     });
-    Ok(evaluate_deploy(
-        &urls,
-        tag,
-        release_url,
-        snapshot,
-        has_installers,
+    Ok(decorate_deploy_jobs(
+        evaluate_deploy(
+            &urls,
+            tag,
+            release_url,
+            snapshot,
+            has_installers,
+        ),
+        || job_averages_with_api(&client, base, token, owner, repo, tag, current_run_id),
     ))
 }
 
@@ -3763,6 +4089,7 @@ mod tests {
                 steps: vec![],
                 started_at: None,
                 completed_at: None,
+                typical_ms: None,
             }],
         }
     }
@@ -3780,6 +4107,7 @@ mod tests {
             steps: vec![],
             started_at: None,
             completed_at: None,
+            typical_ms: None,
         }
     }
 
@@ -3928,6 +4256,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
                 ReleaseDeployJob {
                     name: "Windows".into(),
@@ -3937,6 +4266,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
                 ReleaseDeployJob {
                     name: "Stable download names".into(),
@@ -3946,6 +4276,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
             ],
         };
@@ -4059,6 +4390,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
                 ReleaseDeployJob {
                     name: "Stable download names".into(),
@@ -4068,6 +4400,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
             ],
         };
@@ -4095,6 +4428,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
                 ReleaseDeployJob {
                     name: "Windows".into(),
@@ -4104,6 +4438,7 @@ mod tests {
                     steps: vec![],
                     started_at: None,
                     completed_at: None,
+                    typical_ms: None,
                 },
             ],
         };
@@ -4254,5 +4589,38 @@ mod tests {
             Some("https://github.com/acme/branchline/releases/tag/v0.7.15")
         );
         assert!(!notes.draft);
+    }
+
+    #[test]
+    fn job_duration_key_groups_platform_names() {
+        assert_eq!(
+            job_duration_key("publish-tauri (windows-latest)"),
+            "windows"
+        );
+        assert_eq!(
+            job_duration_key("publish-tauri (macos-latest, --target aarch64-apple-darwin)"),
+            "macos-arm"
+        );
+        assert_eq!(
+            job_duration_key("publish-tauri (macos-latest, --target x86_64-apple-darwin)"),
+            "macos-intel"
+        );
+        assert_eq!(job_duration_key("Linux"), "linux");
+        assert_eq!(job_duration_key("create-release"), "github-release");
+    }
+
+    #[test]
+    fn typical_job_ms_uses_median() {
+        assert_eq!(typical_job_ms(vec![60_000, 120_000, 180_000]), Some(120_000));
+        assert_eq!(typical_job_ms(vec![]), None);
+    }
+
+    #[test]
+    fn attach_job_averages_matches_platform_keys() {
+        let mut jobs = vec![job("publish-tauri (windows-latest)", "in_progress", "")];
+        let mut averages = HashMap::new();
+        averages.insert("windows".into(), 390_000);
+        attach_job_averages(&mut jobs, &averages);
+        assert_eq!(jobs[0].typical_ms, Some(390_000));
     }
 }

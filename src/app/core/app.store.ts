@@ -9665,6 +9665,7 @@ function releaseActivityFingerprint(activity: ReleaseActivity): string {
       n: job.name,
       s: job.status,
       c: job.conclusion ?? '',
+      t: job.typicalMs ?? 0,
       steps: (job.steps ?? []).map(
         (step) => `${step.number ?? ''}:${step.status}:${step.conclusion ?? ''}`,
       ),
@@ -9742,7 +9743,14 @@ function adoptReleaseDeployJobs(
   previous?: ReleaseDeployJob[],
 ): ReleaseDeployJob[] {
   if (incoming && incoming.length > 0) {
-    return incoming.map(sanitizeReleaseDeployJob);
+    return incoming.map((job) => {
+      const sanitized = sanitizeReleaseDeployJob(job);
+      const prior = previous?.find((item) => item.name === job.name);
+      return {
+        ...sanitized,
+        typicalMs: sanitized.typicalMs ?? prior?.typicalMs ?? null,
+      };
+    });
   }
   return (previous ?? []).map(sanitizeReleaseDeployJob);
 }

@@ -45,30 +45,130 @@
         <button
           type="button"
           class="bl-btn"
-          (click)="toggleCopyMenu()"
-          title="Copy matching pull requests"
+          (click)="toggleCopyMenu('header')"
+          title="Copy pull requests"
         >
           <ng-icon name="lucideCopy" size="14" />
           Copy
           <ng-icon name="lucideChevronDown" size="12" />
         </button>
-        @if (copyMenuOpen()) {
-          <div class="copy-menu bl-glass" role="menu">
-            <button type="button" (click)="copyFormat('links')">Links</button>
-            <button type="button" (click)="copyFormat('markdown')">Markdown list</button>
-            <button type="button" (click)="copyFormat('slack')">Slack list</button>
-            <button type="button" (click)="copyFormat('standup')">Standup by author</button>
-            <button type="button" (click)="copyFormat('titles')">Titles</button>
-            <button type="button" (click)="copyFormat('refs')">repo#number</button>
-            <button type="button" (click)="copyFormat('checkout')">Checkout commands</button>
-            <button type="button" (click)="copyFormat('csv')">CSV</button>
-            <span class="copy-sep"></span>
-            <button type="button" (click)="copyOpenForRepo(copyRepoKey())">
-              All open in {{ copyRepoLabel() }}
-            </button>
-            <button type="button" (click)="copyReady()">Ready to merge</button>
-            <button type="button" (click)="copyFailing()">Failing checks</button>
-            <button type="button" (click)="copyNeedsReview()">Needs review</button>
+        @if (copyMenuOpen() === 'header') {
+          <div class="bl-menu copy-flyout" role="menu">
+            <div class="bl-menu-label">This view</div>
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Filtered
+                <span class="shortcut">{{ copyCounts().filtered }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: filtered() }" />
+              </div>
+            </div>
+            @if (copyCounts().selected) {
+              <div class="bl-menu-flyout">
+                <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                  Selected
+                  <span class="shortcut">{{ copyCounts().selected }}</span>
+                  <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+                </button>
+                <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                  <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: selectedPrs() }" />
+                </div>
+              </div>
+            } @else {
+              <button type="button" disabled>
+                Selected
+                <span class="shortcut">0</span>
+              </button>
+            }
+
+            <div class="bl-menu-sep"></div>
+            <div class="bl-menu-label">All loaded</div>
+
+            @if (copyRepos().length > 1) {
+              <div class="bl-menu-flyout">
+                <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                  All open
+                  <span class="shortcut">{{ copyCounts().open }}</span>
+                  <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+                </button>
+                <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                  <button type="button" (click)="copyFormat('markdown', openPrs())">
+                    All repos
+                    <span class="shortcut">{{ copyCounts().open }}</span>
+                  </button>
+                  @for (repo of copyRepos(); track repo.key) {
+                    <button type="button" [title]="repo.key" (click)="copyFormat('markdown', openPrs(repo.key))">
+                      {{ repo.label }}
+                      <span class="shortcut">{{ repo.count }}</span>
+                    </button>
+                  }
+                </div>
+              </div>
+            } @else {
+              <div class="bl-menu-flyout">
+                <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                  All open
+                  <span class="shortcut">{{ copyCounts().open }}</span>
+                  <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+                </button>
+                <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                  <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: openPrs() }" />
+                </div>
+              </div>
+            }
+
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Ready to merge
+                <span class="shortcut">{{ copyCounts().ready }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: readyPrs() }" />
+              </div>
+            </div>
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Failing checks
+                <span class="shortcut">{{ copyCounts().failing }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: failingPrs() }" />
+              </div>
+            </div>
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Needs review
+                <span class="shortcut">{{ copyCounts().review }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: reviewPrs() }" />
+              </div>
+            </div>
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Drafts
+                <span class="shortcut">{{ copyCounts().drafts }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: draftPrs() }" />
+              </div>
+            </div>
+            <div class="bl-menu-flyout">
+              <button type="button" class="bl-menu-flyout-trigger" aria-haspopup="menu">
+                Mine
+                <span class="shortcut">{{ copyCounts().mine }}</span>
+                <ng-icon class="flyout-chev" name="lucideChevronRight" size="12" />
+              </button>
+              <div class="bl-menu bl-menu-flyout-panel" role="menu">
+                <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: minePrs() }" />
+              </div>
+            </div>
           </div>
         }
       </div>
@@ -235,7 +335,43 @@
       />
       Select all ({{ filtered().length }})
     </label>
-    <span class="muted">Copy and filters use the selection, or every matching PR if none are selected.</span>
+    <div class="copy-wrap list-copy">
+      <button
+        type="button"
+        class="bl-btn"
+        [disabled]="!filtered().length"
+        (click)="copyFormat('markdown', filtered())"
+        title="Copy every pull request in this list as markdown"
+      >
+        <ng-icon name="lucideCopy" size="14" />
+        Copy filtered
+      </button>
+      <button
+        type="button"
+        class="bl-btn icon copy-more"
+        [disabled]="!filtered().length"
+        (click)="toggleCopyMenu('list')"
+        title="Copy this list as…"
+      >
+        <ng-icon name="lucideChevronDown" size="12" />
+      </button>
+      @if (copyMenuOpen() === 'list') {
+        <div class="bl-menu copy-flyout" role="menu">
+          <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: filtered() }" />
+        </div>
+      }
+    </div>
+    @if (copyCounts().selected) {
+      <button
+        type="button"
+        class="bl-btn"
+        (click)="copyFormat('markdown', selectedPrs())"
+        title="Copy the selected pull requests as markdown"
+      >
+        Copy selected ({{ copyCounts().selected }})
+      </button>
+    }
+    <span class="muted">Copy filtered uses this list. Select rows to copy only those.</span>
     @if (hiddenCount()) {
       <button type="button" class="hidden-hint" (click)="revealHidden()">
         {{ hiddenCount() }} hidden by filters — show all
@@ -273,9 +409,6 @@
                 {{ mergeLabel }}
               </span>
             }
-          </div>
-
-          <div class="insight">
             <span class="bl-chip" [attr.data-review]="pr.reviewState" [title]="approvedNames(pr)">
               {{ reviewCountLabel(pr) }}
             </span>
@@ -312,6 +445,7 @@
             }
             <span>{{ time(pr.updatedAt) }}</span>
           </div>
+          @if (pr.labels.length || (pr.approvedBy?.length ?? 0) || (pr.requestedChangesBy?.length ?? 0) || pr.reviewers.length) {
           <div class="labels">
             @for (l of pr.labels; track l) {
               <span class="tag">{{ l }}</span>
@@ -328,6 +462,7 @@
               }
             }
           </div>
+          }
 
           @if (showReviewBar(pr)) {
             <div class="review-bar">
@@ -478,15 +613,19 @@
         </div>
 
         <div class="actions">
-          <button type="button" class="bl-btn" (click)="copyOneLink(pr)">Copy link</button>
-          <button type="button" class="bl-btn" (click)="copyOneMarkdown(pr)">Copy md</button>
-          <button type="button" class="bl-btn" (click)="openBrowser(pr)">Open</button>
+          <button type="button" class="bl-btn compact" (click)="copyOneLink(pr)" title="Copy link">
+            Link
+          </button>
+          <button type="button" class="bl-btn compact" (click)="copyOneMarkdown(pr)" title="Copy markdown">
+            MD
+          </button>
+          <button type="button" class="bl-btn compact" (click)="openBrowser(pr)">Open</button>
           @if (canReopen(pr)) {
-            <button type="button" class="bl-btn" [disabled]="isActing(pr)" (click)="reopenPr(pr)">
+            <button type="button" class="bl-btn compact" [disabled]="isActing(pr)" (click)="reopenPr(pr)">
               Reopen
             </button>
           }
-          <button type="button" class="bl-btn" (click)="checkoutPr(pr)">Checkout</button>
+          <button type="button" class="bl-btn compact" (click)="checkoutPr(pr)">Checkout</button>
         </div>
       </article>
     } @empty {
@@ -508,3 +647,9 @@
   }
   }
 </section>
+
+<ng-template #copyFormatsTpl let-list>
+  @for (fmt of copyFormats; track fmt.id) {
+    <button type="button" role="menuitem" (click)="copyFormat(fmt.id, list)">{{ fmt.label }}</button>
+  }
+</ng-template>

@@ -112,3 +112,15 @@ function csv(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replaceAll('"', '""')}"`;
   return value;
 }
+
+export function sharedRepoPrefix(names: string[]): string {
+  if (names.length < 2) return '';
+  const lower = names.map((n) => n.toLowerCase());
+  let i = 0;
+  const first = lower[0];
+  while (i < first.length && lower.every((n) => n[i] === first[i])) i++;
+  const raw = names[0].slice(0, i);
+  const cut = Math.max(raw.lastIndexOf('-'), raw.lastIndexOf('/'), raw.lastIndexOf('_'));
+  if (cut <= 0) return '';
+  return names[0].slice(0, cut + 1);
+}

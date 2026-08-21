@@ -55,6 +55,8 @@ interface ArtifactView {
   chip: ArtifactStatus;
   statusLabel: string;
   duration: string;
+  typical: string;
+  slow: boolean;
   when: string;
   url: string | null;
   children: JobChildView[];
@@ -330,13 +332,17 @@ export class ReleasePanel {
     return this.deployJobs().map((job) => {
       const chip = chipStatus(job);
       const label = formatDeployJobName(job.name);
+      const elapsedMs = durationMs(job, now);
+      const typicalMs = job.typicalMs && job.typicalMs > 0 ? job.typicalMs : 0;
       return {
         name: job.name,
         label,
         step: currentJobStep(job, chip),
         chip,
         statusLabel: statusLabelOf(job, chip),
-        duration: durationOf(job, now),
+        duration: elapsedMs ? formatElapsed(elapsedMs) : '',
+        typical: typicalMs ? formatElapsed(typicalMs) : '',
+        slow: chip === 'pending' && typicalMs > 0 && elapsedMs > typicalMs * 1.15,
         when: formatClock(job.startedAt),
         url: job.url ?? null,
         children: (job.steps ?? []).map((child, index) => {
@@ -826,14 +832,22 @@ function statusLabelOf(
   return job.status || 'Waiting';
 }
 
+function durationMs(
+  item: Pick<ReleaseDeployJob, 'startedAt' | 'completedAt'>,
+  now: number,
+): number {
+  const start = parseClock(item.startedAt);
+  if (start == null) return 0;
+  const end = parseClock(item.completedAt) ?? now;
+  return Math.max(0, end - start);
+}
+
 function durationOf(
   item: Pick<ReleaseDeployJob, 'startedAt' | 'completedAt'>,
   now: number,
 ): string {
-  const start = parseClock(item.startedAt);
-  if (start == null) return '';
-  const end = parseClock(item.completedAt) ?? now;
-  return formatElapsed(Math.max(0, end - start));
+  const ms = durationMs(item, now);
+  return ms ? formatElapsed(ms) : '';
 }
 
 function phaseLabel(phase: ReleasePhase): string {
