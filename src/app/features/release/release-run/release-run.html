@@ -1,0 +1,69 @@
+<div class="run">
+  <div class="nav">
+    <button type="button" class="bl-btn" (click)="goBack()">
+      <ng-icon name="lucideChevronLeft" size="14" />
+      Back to list
+    </button>
+    @if (event().url) {
+      <button type="button" class="bl-btn" (click)="openGithub()">
+        Open on GitHub
+      </button>
+    }
+  </div>
+
+  <article class="hero" [attr.data-status]="status()">
+    <span class="mark" [class.spin]="running()" aria-hidden="true">
+      <ng-icon [name]="statusIcon(status())" size="14" />
+    </span>
+    <div class="copy">
+      <p class="eyebrow">{{ kindLabel() }}@if (running()) { · live}</p>
+      <h2>{{ title() }}</h2>
+      <p>
+        {{ statusLabel(status()) }}
+        @if (detail()) {
+          · {{ detail() }}
+        }
+        @if (when()) {
+          · {{ when() }}
+        }
+      </p>
+      @if (message()) {
+        <p class="note">{{ message() }}</p>
+      }
+    </div>
+  </article>
+
+  @if (loading() && !jobViews().length) {
+    <p class="hint">Loading jobs…</p>
+  } @else if (!jobViews().length) {
+    <p class="hint">{{ message() || 'No jobs to show for this item yet.' }}</p>
+  } @else {
+    <ul class="jobs">
+      @for (job of jobViews(); track job.name) {
+        <li [attr.data-status]="job.chip">
+          <div class="job">
+            <span class="job-mark" [class.spin]="job.chip === 'pending' || job.chip === 'queued'" aria-hidden="true">
+              <ng-icon [name]="jobChipIcon(job.chip)" size="11" />
+            </span>
+            <span class="job-copy">
+              <span class="job-name">{{ job.name }}</span>
+              @if (job.steps.length) {
+                <span class="job-steps">
+                  @for (step of job.steps; track step.id) {
+                    <span [attr.data-status]="step.chip">{{ step.name }} · {{ step.label }}</span>
+                  }
+                </span>
+              }
+            </span>
+            <span class="job-state">
+              {{ job.label }}
+              @if (job.duration) {
+                · {{ job.duration }}
+              }
+            </span>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>

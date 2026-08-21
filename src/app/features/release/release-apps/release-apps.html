@@ -9,11 +9,16 @@
         (click)="selectApp.emit(app.id)"
       >
         {{ app.name }}
+        @if (appHasRunning(app)) {
+          <span class="live-dot" title="A deploy is running"></span>
+        }
       </button>
     }
   </div>
 
-  @if (selected(); as app) {
+  @if (opened(); as event) {
+    <app-release-run [event]="event" (back)="onClose()" (openUrl)="onOpenUrl($event)" />
+  } @else if (selected(); as app) {
     <div class="app-meta">
       <div>
         <strong>{{ app.name }}</strong>
@@ -45,10 +50,9 @@
       <div class="stats">
         <span><strong>{{ counts().shown }}</strong> shown</span>
         <span><strong>{{ counts().live }}</strong> live</span>
-        <span><strong>{{ counts().running }}</strong> running</span>
-        @if (counts().queued) {
-          <span><strong>{{ counts().queued }}</strong> queued</span>
-        }
+        <span [class.hot]="counts().running + counts().queued">
+          <strong>{{ counts().running + counts().queued }}</strong> running
+        </span>
         <span class="fail"><strong>{{ counts().failed }}</strong> failed</span>
       </div>
 
@@ -121,12 +125,11 @@
           @for (event of filtered(); track eventTrack(event)) {
             <li>
               <div
-                class="event"
-                [class.clickable]="!!event.url"
+                class="event clickable"
                 [attr.data-status]="event.status"
                 (click)="onRowClick(event)"
               >
-                <span class="mark" aria-hidden="true">
+                <span class="mark" [class.spin]="isRunning(event.status)" aria-hidden="true">
                   <ng-icon [name]="statusIcon(event.status)" size="11" />
                 </span>
                 <span class="copy">
@@ -141,7 +144,9 @@
                     }
                   </span>
                 </span>
-                <span class="state">{{ statusLabel(event.status) }}</span>
+                <span class="state" [class.hot]="isRunning(event.status)">
+                  {{ statusLabel(event.status) }}
+                </span>
                 @if (event.url) {
                   <span class="actions">
                     <button type="button" class="bl-btn" (click)="openRow(event, $event)">

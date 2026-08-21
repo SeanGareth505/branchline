@@ -3757,12 +3757,13 @@ export class AppStore {
     void this.sendDesktopIfEnabled('release', title, message);
   }
 
-  async attachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
+  async attachLatestRelease(options?: { force?: boolean; quiet?: boolean }): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) return false;
     if (this.releasingLocally()) return false;
     if (this.releaseAttachInFlight && this.releaseAttachPath === path) {
-      return this.releaseAttachInFlight;
+      if (!options?.force) return this.releaseAttachInFlight;
+      await this.releaseAttachInFlight;
     }
     this.releaseAttaching.set(true);
     this.releaseAttachPath = path;
@@ -3774,11 +3775,12 @@ export class AppStore {
     return this.releaseAttachInFlight;
   }
 
-  private async runAttachLatestRelease(options?: { force?: boolean }): Promise<boolean> {
+  private async runAttachLatestRelease(options?: { force?: boolean; quiet?: boolean }): Promise<boolean> {
     if (this.isDummyBackend) return false;
     const path = this.currentRepo()?.path;
     if (!path) return false;
     const force = options?.force === true;
+    const quiet = options?.quiet === true;
     if (this.releasingLocally()) return false;
     if (this.releaseBusy() && !force) return false;
     try {
@@ -3798,7 +3800,9 @@ export class AppStore {
           return false;
         }
         if (!latest.found || !latest.tag.trim()) {
-          if (force) this.showWarning(latest.message || 'No GitHub releases found for this repository.');
+          if (force && !quiet) {
+            this.showWarning(latest.message || 'No GitHub releases found for this repository.');
+          }
           return false;
         }
         tag = latest.tag.trim();
@@ -3846,7 +3850,7 @@ export class AppStore {
           this.releaseBusy.set(false);
           return true;
         }
-        if (force) this.showWarning(result.message);
+        if (force && !quiet) this.showWarning(result.message);
         return false;
       }
       this.seedAttachedReleaseActivity({
@@ -3876,7 +3880,7 @@ export class AppStore {
       void this.watchReleaseDeploy(path, tag);
       return true;
     } catch (err) {
-      if (force) this.showError(err);
+      if (force && !quiet) this.showError(err);
       return false;
     }
   }

@@ -56,6 +56,7 @@ export class ReleasePage {
   readonly releaseApps = signal<RepoReleaseApp[]>([]);
   readonly releaseAppsMessage = signal('');
   readonly selectedAppId = signal<string | null>(null);
+  readonly openedEvent = signal<RepoReleaseEvent | null>(null);
   readonly appsLoading = signal(false);
   readonly hasWorkspaceApps = computed(() => this.releaseApps().length > 0);
   readonly selectedApp = computed(() => {
@@ -151,6 +152,7 @@ export class ReleasePage {
       if (view !== 'release') {
         this.loadGen += 1;
         this.editingSetup.set(false);
+        this.openedEvent.set(null);
         return;
       }
       if (!path) {
@@ -160,12 +162,13 @@ export class ReleasePage {
         this.releaseApps.set([]);
         this.releaseAppsMessage.set('');
         this.selectedAppId.set(null);
+        this.openedEvent.set(null);
         this.editingSetup.set(false);
         return;
       }
       untracked(() => {
         this.restoreSelectedApp(path);
-        void this.load(path);
+        void this.load(path, { watchLatest: true });
       });
     });
 
@@ -176,9 +179,21 @@ export class ReleasePage {
       if (activity?.phase !== 'done' && activity?.phase !== 'error') return;
       untracked(() => void this.load(path));
     });
+
+    effect((onCleanup) => {
+      const view = this.store.view();
+      const path = this.store.currentRepo()?.path;
+      const watching = view === 'release' && !!path && this.hasWorkspaceApps();
+      if (!watching || !path) return;
+      const repoPath = path;
+      const id = window.setInterval(() => {
+        untracked(() => void this.refreshApps(repoPath));
+      }, 12000);
+      onCleanup(() => window.clearInterval(id));
+    });
   }
 
-  private async load(path: string): Promise<void> {
+  private async load(path: string, opts?: { watchLatest?: boolean }): Promise<void> {
     const gen = ++this.loadGen;
     const blocking = !this.status() && !this.activity();
     if (blocking) this.loading.set(true);
@@ -207,7 +222,10 @@ export class ReleasePage {
       await this.loadApps(path, gen);
       if (gen !== this.loadGen || this.store.view() !== 'release') return;
       if (!this.releaseApps().length) {
-        void this.store.attachLatestRelease();
+        void this.store.attachLatestRelease({
+          force: opts?.watchLatest === true,
+          quiet: opts?.watchLatest === true,
+        });
       }
     } catch (err) {
       if (gen !== this.loadGen) return;
@@ -279,7 +297,20 @@ export class ReleasePage {
 
   selectApp(id: string): void {
     this.selectedAppId.set(id);
+    this.openedEvent.set(null);
     this.persistSelectedApp(id);
+  }
+
+  closeEvent(): void {
+    this.openedEvent.set(null);
+  }
+
+  openEvent(event: RepoReleaseEvent): void {
+    this.openedEvent.set(event);
+  }
+
+  openExternal(event: RepoReleaseEvent): void {
+    if (event.url) void this.tauri.openExternalUrl(event.url);
   }
 
   private restoreSelectedApp(path: string | undefined): void {
@@ -300,10 +331,6 @@ export class ReleasePage {
     });
   }
 
-  openEvent(event: RepoReleaseEvent): void {
-    if (event.url) void this.tauri.openExternalUrl(event.url);
-  }
-
   openWorkflow(app: RepoReleaseApp): void {
     if (app.workflowUrl) void this.tauri.openExternalUrl(app.workflowUrl);
   }
@@ -313,9 +340,11 @@ export class ReleasePage {
     this.findingLatest.set(true);
     try {
       if (this.hasWorkspaceApps()) {
-        const latest = this.selectedApp()?.latest;
-        if (latest?.url) {
-          await this.tauri.openExternalUrl(latest.url);
+        const events = this.selectedApp()?.events ?? [];
+        const running = events.find((item) => item.status === 'pending' || item.status === 'queued');
+        const latest = running ?? this.selectedApp()?.latest ?? events[0] ?? null;
+        if (latest) {
+          this.openedEvent.set(latest);
           return;
         }
         this.store.showWarning('No deploys found for this app yet.');
@@ -337,15 +366,7 @@ export class ReleasePage {
     try {
       const overview = await this.tauri.getRepoReleaseApps(path);
       if (gen !== this.loadGen) return;
-      const apps = overview.apps ?? [];
-      this.releaseApps.set(apps);
-      this.releaseAppsMessage.set(overview.message ?? '');
-      const current = this.selectedAppId();
-      if (!current || !apps.some((app) => app.id === current)) {
-        const next = apps[0]?.id ?? null;
-        this.selectedAppId.set(next);
-        this.persistSelectedApp(next);
-      }
+      this.applyApps(overview.apps ?? [], overview.message ?? '');
     } catch {
       if (gen !== this.loadGen) return;
       this.releaseApps.set([]);
@@ -354,4 +375,39 @@ export class ReleasePage {
       if (gen === this.loadGen) this.appsLoading.set(false);
     }
   }
+
+  private async refreshApps(path: string): Promise<void> {
+    if (this.store.view() !== 'release') return;
+    const gen = this.loadGen;
+    try {
+      const overview = await this.tauri.getRepoReleaseApps(path);
+      if (gen !== this.loadGen || this.store.view() !== 'release') return;
+      this.applyApps(overview.apps ?? [], overview.message ?? '');
+    } catch {
+      return;
+    }
+  }
+
+  private applyApps(apps: RepoReleaseApp[], message: string): void {
+    this.releaseApps.set(apps);
+    this.releaseAppsMessage.set(message);
+    const current = this.selectedAppId();
+    if (!current || !apps.some((app) => app.id === current)) {
+      const next = apps[0]?.id ?? null;
+      this.selectedAppId.set(next);
+      this.persistSelectedApp(next);
+    }
+    const opened = this.openedEvent();
+    if (!opened) return;
+    const match = apps
+      .flatMap((app) => app.events)
+      .find((event) => sameReleaseEvent(event, opened));
+    if (match) this.openedEvent.set(match);
+  }
+}
+
+function sameReleaseEvent(left: RepoReleaseEvent, right: RepoReleaseEvent): boolean {
+  if (left.runId && right.runId) return left.runId === right.runId;
+  if (left.url && right.url) return left.url === right.url;
+  return left.kind === right.kind && left.title === right.title && left.at === right.at;
 }

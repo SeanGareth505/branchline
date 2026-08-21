@@ -14,6 +14,7 @@ import { NgIcon } from '@ng-icons/core';
 import { format } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { RepoReleaseApp, RepoReleaseEvent } from '../../../core/models';
+import { ReleaseRun } from '../release-run/release-run';
 import {
   countReleaseEvents,
   defaultReleaseEventFilters,
@@ -32,7 +33,7 @@ import {
 
 @Component({
   selector: 'app-release-apps',
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, ReleaseRun],
   templateUrl: './release-apps.html',
   styleUrl: './release-apps.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,8 +45,11 @@ export class ReleaseApps {
   readonly selectedId = input<string | null>(null);
   readonly loading = input(false);
   readonly message = input('');
+  readonly opened = input<RepoReleaseEvent | null>(null);
   readonly selectApp = output<string>();
   readonly openEvent = output<RepoReleaseEvent>();
+  readonly closeEvent = output<void>();
+  readonly openExternal = output<RepoReleaseEvent>();
   readonly openWorkflow = output<RepoReleaseApp>();
 
   readonly query = signal('');
@@ -194,17 +198,25 @@ export class ReleaseApps {
     return 'lucideCircleAlert';
   }
 
+  isRunning(status: string): boolean {
+    return status === 'pending' || status === 'queued';
+  }
+
+  appHasRunning(app: RepoReleaseApp): boolean {
+    return app.events.some((item) => this.isRunning(item.status));
+  }
+
   eventTrack(event: RepoReleaseEvent): string {
-    return `${event.kind}:${event.title}:${event.at ?? ''}:${event.url ?? ''}`;
+    return `${event.kind}:${event.runId ?? ''}:${event.title}:${event.at ?? ''}:${event.url ?? ''}`;
   }
 
   onRowClick(event: RepoReleaseEvent): void {
-    if (event.url) this.openEvent.emit(event);
+    this.openEvent.emit(event);
   }
 
   openRow(event: RepoReleaseEvent, click: Event): void {
     click.stopPropagation();
-    this.onRowClick(event);
+    this.openExternal.emit(event);
   }
 
   async copyLink(event: RepoReleaseEvent, click: Event): Promise<void> {
@@ -217,5 +229,14 @@ export class ReleaseApps {
     } catch {
       this.store.showError('Could not copy link');
     }
+  }
+
+  onClose(): void {
+    this.closeEvent.emit();
+  }
+
+  onOpenUrl(url: string): void {
+    const current = this.opened();
+    if (current) this.openExternal.emit({ ...current, url });
   }
 }

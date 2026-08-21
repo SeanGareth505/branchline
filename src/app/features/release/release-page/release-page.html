@@ -48,11 +48,11 @@
           <button
             type="button"
             class="bl-btn"
-            [disabled]="findingLatest()"
-            title="{{ hasWorkspaceApps() ? 'Open the latest deploy for the selected app' : 'Find the latest GitHub release and watch installer builds' }}"
+            [disabled]="findingLatest() || store.releaseAttaching()"
+            title="{{ hasWorkspaceApps() ? 'Open the latest running deploy for the selected app' : 'Find the latest GitHub release and watch installer builds' }}"
             (click)="trackLatest()"
           >
-            {{ findingLatest() ? 'Finding…' : 'Watch latest' }}
+            {{ findingLatest() || store.releaseAttaching() ? 'Finding…' : 'Watch latest' }}
           </button>
         }
         @if (canShip()) {
@@ -251,8 +251,11 @@
         [selectedId]="selectedAppId()"
         [loading]="appsLoading()"
         [message]="releaseAppsMessage()"
+        [opened]="openedEvent()"
         (selectApp)="selectApp($event)"
         (openEvent)="openEvent($event)"
+        (closeEvent)="closeEvent()"
+        (openExternal)="openExternal($event)"
         (openWorkflow)="openWorkflow($event)"
       />
     </div>

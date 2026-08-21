@@ -1,0 +1,168 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.run {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 0.85rem;
+  padding: 1.05rem 1.1rem 1.15rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nav,
+.hero,
+.hint {
+  flex-shrink: 0;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.copy h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.copy p {
+  margin: 0.25rem 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.note {
+  color: var(--text-secondary) !important;
+}
+
+.mark,
+.job-mark {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
+  color: var(--text-muted);
+}
+
+.job-mark {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.hero[data-status='success'] .mark,
+.jobs [data-status='success'] .job-mark {
+  background: color-mix(in srgb, var(--git-added) 18%, transparent);
+  color: var(--git-added);
+}
+
+.hero[data-status='failure'] .mark,
+.jobs [data-status='failure'] .job-mark {
+  background: color-mix(in srgb, var(--git-deleted) 18%, transparent);
+  color: var(--git-deleted);
+}
+
+.hero[data-status='pending'] .mark,
+.hero[data-status='queued'] .mark,
+.jobs [data-status='pending'] .job-mark,
+.jobs [data-status='queued'] .job-mark {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.spin {
+  animation: release-run-spin 0.8s linear infinite;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.jobs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.job {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.65rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+}
+
+.job-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.job-name {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.job-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.job-state {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@keyframes release-run-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

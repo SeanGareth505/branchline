@@ -994,6 +994,16 @@ pub struct PollReleaseDeployInput {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PollRepoReleaseRunInput {
+    pub path: String,
+    #[serde(default)]
+    pub run_id: Option<u64>,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GithubReleaseNotesInput {
     pub path: String,
     pub tag: String,
@@ -1052,6 +1062,18 @@ pub struct PollReleaseDeployOutput {
     pub jobs: Vec<ReleaseDeployJob>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollRepoReleaseRunOutput {
+    pub status: String,
+    pub message: String,
+    pub url: Option<String>,
+    pub title: Option<String>,
+    pub detail: Option<String>,
+    #[serde(default)]
+    pub jobs: Vec<ReleaseDeployJob>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LatestGithubReleaseOutput {
@@ -1074,6 +1096,7 @@ pub struct RepoReleaseEvent {
     pub environment: Option<String>,
     pub url: Option<String>,
     pub at: Option<String>,
+    pub run_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -2817,6 +2840,16 @@ fn event_status(status: Option<&str>, conclusion: Option<&str>) -> String {
     "unknown".into()
 }
 
+fn run_id_from_url(url: &str) -> Option<u64> {
+    let marker = "/actions/runs/";
+    let rest = url.split(marker).nth(1)?;
+    let id: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if id.is_empty() {
+        return None;
+    }
+    id.parse().ok()
+}
+
 struct DiscoveredApp {
     id: String,
     name: String,
@@ -2986,6 +3019,7 @@ fn event_from_run(run: &GhWorkflowRun, workflow: &str) -> RepoReleaseEvent {
         environment: env,
         url: run.url.clone(),
         at: run.created_at.clone(),
+        run_id: run.database_id.or_else(|| run.url.as_deref().and_then(run_id_from_url)),
     }
 }
 
@@ -3007,6 +3041,7 @@ fn event_from_tag(tag: &LocalTag, owner: Option<&str>, repo: Option<&str>) -> Re
         environment: env,
         url,
         at: tag.at.clone(),
+        run_id: None,
     }
 }
 
@@ -3077,6 +3112,14 @@ fn fetch_api_workflow_runs(
                     .get("created_at")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
+                run_id: run
+                    .get("id")
+                    .and_then(|v| v.as_u64())
+                    .or_else(|| {
+                        run.get("html_url")
+                            .and_then(|v| v.as_str())
+                            .and_then(run_id_from_url)
+                    }),
             })
         })
         .collect()
@@ -3227,6 +3270,222 @@ pub async fn get_repo_release_apps(
     tauri::async_runtime::spawn_blocking(move || repo_release_apps_blocking(path, connection))
         .await
         .map_err(|e| crate::AppError::msg(format!("Release apps request interrupted: {e}")))?
+}
+
+fn poll_repo_release_run_blocking(
+    path: PathBuf,
+    run_id: Option<u64>,
+    url: Option<String>,
+    connection: Option<ConnectionConfig>,
+) -> AppResult<PollRepoReleaseRunOutput> {
+    git_cli::ensure_repo(&path)?;
+    let run_id = run_id
+        .or_else(|| url.as_deref().and_then(run_id_from_url))
+        .ok_or_else(|| crate::AppError::msg("This item is not a GitHub Actions run."))?;
+    let github = resolve_github_repo(&path).ok();
+    let Some((owner, repo)) = github else {
+        return Ok(PollRepoReleaseRunOutput {
+            status: "unknown".into(),
+            message: "This repository is not linked to GitHub.".into(),
+            url,
+            title: None,
+            detail: None,
+            jobs: Vec::new(),
+        });
+    };
+    let full = format!("{owner}/{repo}");
+    let gh = gh_command();
+    let jobs = if let Some(gh) = gh.as_deref() {
+        fetch_run_jobs_with_gh(gh, &full, run_id)
+    } else {
+        Vec::new()
+    };
+    let jobs = if jobs.is_empty() {
+        if let Some(conn) = connection.as_ref() {
+            let base = {
+                let trimmed = conn.base_url.trim().trim_end_matches('/');
+                if trimmed.is_empty() {
+                    "https://api.github.com".to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            };
+            let client = reqwest::blocking::Client::new();
+            fetch_run_jobs_with_api(&client, &base, conn.token.trim(), &owner, &repo, run_id)
+        } else {
+            jobs
+        }
+    } else {
+        jobs
+    };
+
+    let snapshot = fetch_run_snapshot(gh.as_deref(), connection.as_ref(), &owner, &repo, run_id);
+    let status = snapshot
+        .as_ref()
+        .map(|run| event_status(run.status.as_deref(), run.conclusion.as_deref()))
+        .unwrap_or_else(|| {
+            if jobs.iter().any(|job| {
+                matches!(
+                    job.status.to_ascii_lowercase().as_str(),
+                    "in_progress" | "pending"
+                )
+            }) {
+                "pending".into()
+            } else if jobs.iter().any(|job| {
+                matches!(
+                    job.status.to_ascii_lowercase().as_str(),
+                    "queued" | "waiting" | "requested"
+                )
+            }) {
+                "queued".into()
+            } else if jobs.iter().any(|job| {
+                job.conclusion
+                    .as_deref()
+                    .is_some_and(|value| {
+                        matches!(
+                            value.to_ascii_lowercase().as_str(),
+                            "failure" | "cancelled" | "canceled" | "timed_out"
+                        )
+                    })
+            }) {
+                "failure".into()
+            } else if !jobs.is_empty() {
+                "success".into()
+            } else {
+                "unknown".into()
+            }
+        });
+    let title = snapshot
+        .as_ref()
+        .and_then(|run| run.display_title.clone())
+        .filter(|value| !value.trim().is_empty());
+    let branch = snapshot
+        .as_ref()
+        .and_then(|run| run.head_branch.clone())
+        .filter(|value| !value.trim().is_empty());
+    let message = match status.as_str() {
+        "pending" => "This deploy is still running.".into(),
+        "queued" => "This deploy is queued.".into(),
+        "failure" => "This deploy failed.".into(),
+        "success" => "This deploy finished.".into(),
+        _ => {
+            if jobs.is_empty() {
+                "Could not load jobs for this run yet.".into()
+            } else {
+                "Loaded GitHub Actions jobs.".into()
+            }
+        }
+    };
+    Ok(PollRepoReleaseRunOutput {
+        status,
+        message,
+        url: snapshot
+            .and_then(|run| run.url)
+            .or(url)
+            .or_else(|| Some(format!("https://github.com/{full}/actions/runs/{run_id}"))),
+        title,
+        detail: branch,
+        jobs,
+    })
+}
+
+fn fetch_run_snapshot(
+    gh: Option<&str>,
+    connection: Option<&ConnectionConfig>,
+    owner: &str,
+    repo: &str,
+    run_id: u64,
+) -> Option<GhWorkflowRun> {
+    let full = format!("{owner}/{repo}");
+    if let Some(gh) = gh {
+        let output = Command::new(gh)
+            .args([
+                "run",
+                "view",
+                &run_id.to_string(),
+                "-R",
+                &full,
+                "--json",
+                "databaseId,status,conclusion,url,headBranch,displayTitle,createdAt",
+            ])
+            .output();
+        if let Ok(output) = output {
+            if output.status.success() {
+                if let Ok(run) = serde_json::from_slice::<GhWorkflowRun>(&output.stdout) {
+                    return Some(run);
+                }
+            }
+        }
+    }
+    let conn = connection?;
+    let base = {
+        let trimmed = conn.base_url.trim().trim_end_matches('/');
+        if trimmed.is_empty() {
+            "https://api.github.com".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(format!("{base}/repos/{owner}/{repo}/actions/runs/{run_id}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(conn.token.trim())
+        .send()
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let value = response.json::<Value>().ok()?;
+    Some(GhWorkflowRun {
+        database_id: value.get("id").and_then(|v| v.as_u64()),
+        status: value
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        conclusion: value
+            .get("conclusion")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        url: value
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        head_branch: value
+            .get("head_branch")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        display_title: value
+            .get("display_title")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        head_sha: value
+            .get("head_sha")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        created_at: value
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+#[command]
+pub async fn poll_repo_release_run(
+    state: State<'_, AppState>,
+    input: PollRepoReleaseRunInput,
+) -> AppResult<PollRepoReleaseRunOutput> {
+    let path = PathBuf::from(&input.path);
+    let run_id = input.run_id;
+    let url = input.url;
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        poll_repo_release_run_blocking(path, run_id, url, connection)
+    })
+    .await
+    .map_err(|e| crate::AppError::msg(format!("Deploy run request interrupted: {e}")))?
 }
 
 fn empty_release_notes(tag: &str, message: impl Into<String>) -> GithubReleaseNotesOutput {
@@ -3538,6 +3797,19 @@ mod tests {
         assert_eq!(event_status(Some("in_progress"), None), "pending");
         assert_eq!(event_status(Some("completed"), Some("success")), "success");
         assert_eq!(event_status(Some("completed"), Some("failure")), "failure");
+    }
+
+    #[test]
+    fn run_id_from_github_actions_url() {
+        assert_eq!(
+            run_id_from_url("https://github.com/acme/web/actions/runs/1351"),
+            Some(1351)
+        );
+        assert_eq!(
+            run_id_from_url("https://github.com/acme/web/actions/runs/99/attempts/1"),
+            Some(99)
+        );
+        assert_eq!(run_id_from_url("https://github.com/acme/web/releases/tag/v1"), None);
     }
 
     #[test]

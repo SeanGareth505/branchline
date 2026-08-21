@@ -77,6 +77,7 @@ import type {
   GithubReleaseNotesOutput,
   LatestGithubReleaseOutput,
   RepoReleaseAppsOutput,
+  PollRepoReleaseRunOutput,
   SyncCommitInfo,
 } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
@@ -889,6 +890,12 @@ export class TauriService {
   getRepoReleaseApps(path: string) {
     return this.invoke<RepoReleaseAppsOutput>('get_repo_release_apps', {
       input: { path },
+    });
+  }
+
+  pollRepoReleaseRun(path: string, runId?: number | null, url?: string | null) {
+    return this.invoke<PollRepoReleaseRunOutput>('poll_repo_release_run', {
+      input: { path, runId: runId ?? null, url: url ?? null },
     });
   }
 
@@ -1819,6 +1826,24 @@ export class TauriService {
         repoUrl: 'https://github.com/example/navigo',
         tagsUrl: 'https://github.com/example/navigo/tags',
         message: '',
+      },
+      poll_repo_release_run: {
+        status: 'pending',
+        message: 'This deploy is still running.',
+        url: 'https://github.com/example/navigo/actions/runs/1',
+        title: 'Deploy',
+        detail: 'develop',
+        jobs: [
+          {
+            name: 'build',
+            status: 'in_progress',
+            conclusion: null,
+            url: 'https://github.com/example/navigo/actions/runs/1',
+            steps: [],
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+          },
+        ],
       },
       list_remotes: [
         {

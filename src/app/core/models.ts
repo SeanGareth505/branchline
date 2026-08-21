@@ -998,6 +998,16 @@ export interface RepoReleaseEvent {
   environment?: string | null;
   url?: string | null;
   at?: string | null;
+  runId?: number | null;
+}
+
+export interface PollRepoReleaseRunOutput {
+  status: string;
+  message: string;
+  url?: string | null;
+  title?: string | null;
+  detail?: string | null;
+  jobs?: ReleaseDeployJob[];
 }
 
 export interface RepoReleaseApp {

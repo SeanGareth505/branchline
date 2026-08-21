@@ -42,6 +42,9 @@
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .app-chip.active {
@@ -246,6 +249,24 @@ select {
   white-space: nowrap;
 }
 
+.state.hot,
+.stats .hot {
+  color: var(--accent);
+}
+
+.live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: release-live-pulse 1.4s ease-out infinite;
+}
+
+.spin {
+  animation: release-run-spin 0.8s linear infinite;
+}
+
 .actions {
   display: flex;
   flex-direction: column;
@@ -254,4 +275,29 @@ select {
 
 .actions .bl-btn {
   white-space: nowrap;
+}
+
+app-release-run {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+@keyframes release-run-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes release-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
 }
