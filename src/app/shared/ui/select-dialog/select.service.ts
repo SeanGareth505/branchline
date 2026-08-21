@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
 
 export interface SelectOption {
   value: string;
@@ -29,6 +29,7 @@ interface SelectRequest extends SelectPromptOptions {
 
 @Injectable({ providedIn: 'root' })
 export class SelectService {
+  private readonly appRef = inject(ApplicationRef);
   readonly request = signal<SelectRequest | null>(null);
 
   ask(options: SelectPromptOptions): Promise<string | null> {
@@ -43,6 +44,7 @@ export class SelectService {
         ...options,
         resolve,
       });
+      this.appRef.tick();
     });
   }
 

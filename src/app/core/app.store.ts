@@ -5533,6 +5533,7 @@ export class AppStore {
     try {
       const analysis = await this.tauri.analyzeSafety(path, action, target);
       this.safety.set(analysis);
+      this.appRef.tick();
     } catch (err) {
       this.showError(err);
     }

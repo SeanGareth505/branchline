@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { ApplicationRef, Injectable, inject, signal } from '@angular/core';
 
 export interface PromptOptions {
   title: string;
@@ -20,6 +20,7 @@ interface PromptRequest extends PromptOptions {
 
 @Injectable({ providedIn: 'root' })
 export class PromptService {
+  private readonly appRef = inject(ApplicationRef);
   readonly request = signal<PromptRequest | null>(null);
 
   ask(options: PromptOptions): Promise<string | null> {
@@ -35,6 +36,7 @@ export class PromptService {
         ...options,
         resolve,
       });
+      this.appRef.tick();
     });
   }
 

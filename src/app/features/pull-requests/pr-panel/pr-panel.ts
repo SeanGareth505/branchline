@@ -300,8 +300,17 @@ export class PrPanel {
     await this.copy(pr.url, `Copied #${pr.number}`);
   }
 
-  openBrowser(pr: MockPullRequest): void {
-    window.open(pr.url, '_blank', 'noopener');
+  async openBrowser(pr: MockPullRequest): Promise<void> {
+    const url = pr.url?.trim();
+    if (!url) {
+      this.store.showWarning(`No URL for #${pr.number}`);
+      return;
+    }
+    try {
+      await this.tauri.openExternalUrl(url);
+    } catch (err) {
+      this.store.showError(err);
+    }
   }
 
   checkoutPr(pr: MockPullRequest): void {
