@@ -450,7 +450,7 @@
                           [class.resolved]="!!choiceFor(block.conflict.id)"
                           [attr.data-conflict-id]="block.conflict.id"
                           [attr.aria-label]="hunkRailLabel(block.conflict)"
-                          (click)="focusConflictById(block.conflict.id)"
+                          (click)="focusConflictById(block.conflict.id, false)"
                           (keydown)="onHunkCardKey($event, block.conflict.id)"
                         >
                           <header class="hunk-head">
@@ -887,7 +887,7 @@
             [class.locked]="manualResultEdit()"
             [attr.data-conflict-id]="block.conflict.id"
             [attr.aria-label]="hunkRailLabel(block.conflict)"
-            (click)="focusConflictById(block.conflict.id)"
+            (click)="focusConflictById(block.conflict.id, false)"
             (keydown)="onHunkCardKey($event, block.conflict.id)"
           >
             <header>

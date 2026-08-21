@@ -613,14 +613,11 @@ export class ConflictResolverDialog {
   onSourceScroll(event: Event): void {
     if (this.syncingScroll) return;
     const source = event.target as HTMLElement;
-    const max = source.scrollHeight - source.clientHeight;
-    const ratio = max > 0 ? source.scrollTop / max : 0;
     this.syncingScroll = true;
     for (const ref of this.sourceDocs()) {
       const el = ref.nativeElement;
       if (el === source) continue;
-      const otherMax = el.scrollHeight - el.clientHeight;
-      el.scrollTop = ratio * Math.max(0, otherMax);
+      el.scrollTop = source.scrollTop;
       el.scrollLeft = source.scrollLeft;
     }
     requestAnimationFrame(() => {
@@ -772,16 +769,29 @@ export class ConflictResolverDialog {
     this.focusConflictById(prev ?? remaining[remaining.length - 1]!);
   }
 
-  focusConflictById(id: string): void {
+  focusConflictById(id: string, scroll = true): void {
     this.activeConflictId.set(id);
-    queueMicrotask(() => {
-      const matches = this.conflictCards().filter(
-        (ref) => ref.nativeElement.dataset['conflictId'] === id,
-      );
-      for (const ref of matches) {
-        ref.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-      this.scrollResultToConflict(id);
+    if (!scroll) return;
+    queueMicrotask(() => this.scrollSourcesToConflict(id));
+  }
+
+  private scrollSourcesToConflict(id: string): void {
+    const card = this.conflictCards().find((ref) => {
+      const el = ref.nativeElement;
+      return el.dataset['conflictId'] === id && el.closest('.source-doc');
+    })?.nativeElement;
+    const sourceDoc = card?.closest('.source-doc') as HTMLElement | null;
+    if (!card || !sourceDoc) return;
+    const nextTop =
+      sourceDoc.scrollTop +
+      (card.getBoundingClientRect().top - sourceDoc.getBoundingClientRect().top) -
+      Math.min(48, sourceDoc.clientHeight * 0.12);
+    this.syncingScroll = true;
+    for (const ref of this.sourceDocs()) {
+      ref.nativeElement.scrollTop = Math.max(0, nextTop);
+    }
+    requestAnimationFrame(() => {
+      this.syncingScroll = false;
     });
   }
 
