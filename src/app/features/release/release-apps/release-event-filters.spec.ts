@@ -1,10 +1,13 @@
 import type { RepoReleaseEvent } from '../../../core/models';
 import {
   countReleaseEvents,
+  defaultReleaseEventFilters,
   filterReleaseEvents,
   hasMultipleReleaseKinds,
   hasQueuedReleaseEvents,
   releaseEventFiltersActive,
+  releaseEventFiltersFromSession,
+  releaseEventFiltersToSession,
   uniqueReleaseEnvironments,
 } from './release-event-filters';
 
@@ -123,5 +126,32 @@ describe('release event filters', () => {
         sort: 'newest',
       }),
     ).toBeTrue();
+  });
+
+  it('restores and serializes saved filters from session', () => {
+    const restored = releaseEventFiltersFromSession({
+      releaseQuery: 'sotf',
+      releaseStatus: 'pending',
+      releaseEnvironment: 'staging',
+      releaseKind: 'workflow',
+      releaseSort: 'oldest',
+    });
+    expect(restored).toEqual({
+      query: 'sotf',
+      status: 'pending',
+      environment: 'staging',
+      kind: 'workflow',
+      sort: 'oldest',
+    });
+    expect(releaseEventFiltersToSession(restored)).toEqual({
+      releaseQuery: 'sotf',
+      releaseStatus: 'pending',
+      releaseEnvironment: 'staging',
+      releaseKind: 'workflow',
+      releaseSort: 'oldest',
+    });
+    expect(releaseEventFiltersFromSession({ releaseStatus: 'nope' })).toEqual(
+      defaultReleaseEventFilters(),
+    );
   });
 });

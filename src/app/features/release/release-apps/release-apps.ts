@@ -22,6 +22,8 @@ import {
   hasQueuedReleaseEvents,
   releaseEnvironmentLabel,
   releaseEventFiltersActive,
+  releaseEventFiltersFromSession,
+  releaseEventFiltersToSession,
   uniqueReleaseEnvironments,
   type ReleaseEventKindFilter,
   type ReleaseEventSort,
@@ -87,17 +89,38 @@ export class ReleaseApps {
   });
 
   constructor() {
+    const saved = releaseEventFiltersFromSession(this.store.readSession());
+    this.query.set(saved.query);
+    this.status.set(saved.status);
+    this.environment.set(saved.environment);
+    this.kind.set(saved.kind);
+    this.sort.set(saved.sort);
+
     effect(() => {
+      const events = this.events();
       const environments = this.environments();
       const showKind = this.showKindFilter();
       const showQueued = this.showQueuedFilter();
       untracked(() => {
         const environment = this.environment();
-        if (environment !== 'all' && !environments.includes(environment)) {
+        if (events.length && environment !== 'all' && !environments.includes(environment)) {
           this.environment.set('all');
         }
-        if (!showKind && this.kind() !== 'all') this.kind.set('all');
-        if (!showQueued && this.status() === 'queued') this.status.set('all');
+        if (events.length && !showKind && this.kind() !== 'all') this.kind.set('all');
+        if (events.length && !showQueued && this.status() === 'queued') this.status.set('all');
+      });
+    });
+
+    effect(() => {
+      const filters = {
+        query: this.query(),
+        status: this.status(),
+        environment: this.environment(),
+        kind: this.kind(),
+        sort: this.sort(),
+      };
+      untracked(() => {
+        this.store.patchSession(releaseEventFiltersToSession(filters));
       });
     });
   }

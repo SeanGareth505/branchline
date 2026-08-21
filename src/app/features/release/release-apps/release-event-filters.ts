@@ -32,6 +32,52 @@ export function defaultReleaseEventFilters(): ReleaseEventFilters {
   };
 }
 
+export function releaseEventFiltersFromSession(session: {
+  releaseQuery?: string;
+  releaseStatus?: string;
+  releaseEnvironment?: string;
+  releaseKind?: string;
+  releaseSort?: string;
+}): ReleaseEventFilters {
+  const defaults = defaultReleaseEventFilters();
+  const status = session.releaseStatus;
+  const kind = session.releaseKind;
+  const sort = session.releaseSort;
+  return {
+    query: typeof session.releaseQuery === 'string' ? session.releaseQuery : defaults.query,
+    status:
+      status === 'all' ||
+      status === 'success' ||
+      status === 'pending' ||
+      status === 'failure' ||
+      status === 'queued'
+        ? status
+        : defaults.status,
+    environment:
+      typeof session.releaseEnvironment === 'string' && session.releaseEnvironment.trim()
+        ? session.releaseEnvironment
+        : defaults.environment,
+    kind: kind === 'all' || kind === 'workflow' || kind === 'tag' ? kind : defaults.kind,
+    sort: sort === 'newest' || sort === 'oldest' ? sort : defaults.sort,
+  };
+}
+
+export function releaseEventFiltersToSession(filters: ReleaseEventFilters): {
+  releaseQuery: string;
+  releaseStatus: ReleaseEventStatusFilter;
+  releaseEnvironment: string;
+  releaseKind: ReleaseEventKindFilter;
+  releaseSort: ReleaseEventSort;
+} {
+  return {
+    releaseQuery: filters.query,
+    releaseStatus: filters.status,
+    releaseEnvironment: filters.environment,
+    releaseKind: filters.kind,
+    releaseSort: filters.sort,
+  };
+}
+
 export function releaseEventFiltersActive(filters: ReleaseEventFilters): boolean {
   return (
     filters.query.trim().length > 0 ||

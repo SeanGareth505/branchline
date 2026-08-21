@@ -6,6 +6,7 @@ import {
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { format } from 'date-fns';
@@ -522,6 +523,17 @@ export class ReleasePanel {
   });
 
   constructor() {
+    const jobFilter = this.store.readSession().releaseJobFilter;
+    if (
+      jobFilter === 'all' ||
+      jobFilter === 'queued' ||
+      jobFilter === 'building' ||
+      jobFilter === 'ready' ||
+      jobFilter === 'failed'
+    ) {
+      this.jobFilter.set(jobFilter);
+    }
+
     effect((onCleanup) => {
       const activity = this.activity();
       const live =
@@ -549,6 +561,10 @@ export class ReleasePanel {
       if (!tag || this.autoSyncedTag === tag) return;
       this.autoSyncedTag = tag;
       queueMicrotask(() => this.refreshDeploy());
+    });
+    effect(() => {
+      const jobFilter = this.jobFilter();
+      untracked(() => this.store.patchSession({ releaseJobFilter: jobFilter }));
     });
   }
 

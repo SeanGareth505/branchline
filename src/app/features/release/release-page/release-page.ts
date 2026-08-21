@@ -143,6 +143,8 @@ export class ReleasePage {
   private loadGen = 0;
 
   constructor() {
+    this.restoreSelectedApp(this.store.currentRepo()?.path);
+
     effect(() => {
       const view = this.store.view();
       const path = this.store.currentRepo()?.path;
@@ -161,7 +163,10 @@ export class ReleasePage {
         this.editingSetup.set(false);
         return;
       }
-      untracked(() => void this.load(path));
+      untracked(() => {
+        this.restoreSelectedApp(path);
+        void this.load(path);
+      });
     });
 
     effect(() => {
@@ -274,6 +279,25 @@ export class ReleasePage {
 
   selectApp(id: string): void {
     this.selectedAppId.set(id);
+    this.persistSelectedApp(id);
+  }
+
+  private restoreSelectedApp(path: string | undefined): void {
+    if (!path) return;
+    const session = this.store.readSession();
+    const byRepo = session.releaseAppIdByRepo?.[path];
+    const saved = (typeof byRepo === 'string' && byRepo.trim() ? byRepo : session.releaseAppId) ?? '';
+    if (saved) this.selectedAppId.set(saved);
+  }
+
+  private persistSelectedApp(id: string | null): void {
+    const path = this.store.currentRepo()?.path;
+    if (!path || !id) return;
+    const current = this.store.readSession().releaseAppIdByRepo ?? {};
+    this.store.patchSession({
+      releaseAppId: id,
+      releaseAppIdByRepo: { ...current, [path]: id },
+    });
   }
 
   openEvent(event: RepoReleaseEvent): void {
@@ -318,7 +342,9 @@ export class ReleasePage {
       this.releaseAppsMessage.set(overview.message ?? '');
       const current = this.selectedAppId();
       if (!current || !apps.some((app) => app.id === current)) {
-        this.selectedAppId.set(apps[0]?.id ?? null);
+        const next = apps[0]?.id ?? null;
+        this.selectedAppId.set(next);
+        this.persistSelectedApp(next);
       }
     } catch {
       if (gen !== this.loadGen) return;

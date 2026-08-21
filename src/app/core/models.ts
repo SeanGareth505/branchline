@@ -708,6 +708,14 @@ export interface UiSession {
   prNeedsMyReview?: boolean;
   prReview?: string;
   prSortKey?: string;
+  releaseAppId?: string;
+  releaseAppIdByRepo?: Record<string, string>;
+  releaseQuery?: string;
+  releaseStatus?: string;
+  releaseEnvironment?: string;
+  releaseKind?: string;
+  releaseSort?: string;
+  releaseJobFilter?: string;
   splitMain?: number[];
   splitNested?: number[];
   commitSplitFiles?: number[];
