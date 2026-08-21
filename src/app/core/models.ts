@@ -395,7 +395,15 @@ export interface AppSettings {
   notifyAppUpdates: boolean;
   notifyPrActivity: boolean;
   notifyPrCi: boolean;
+  notifyPrReview: boolean;
+  notifyPrReady: boolean;
   notifyRelease: boolean;
+  notifySoundEnabled: boolean;
+  notifySoundVolume: number;
+  notifySoundPrReview: boolean;
+  notifySoundPrReady: boolean;
+  notifySoundPrCi: boolean;
+  notifySoundPrActivity: boolean;
   hideUntracked: boolean;
   uiDensity: 'comfortable' | 'compact';
   prTemplates: SavedPrTemplate[];

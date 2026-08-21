@@ -776,7 +776,7 @@
             <div class="setting">
               <div class="setting-label">
                 <strong>PR CI</strong>
-                <span>Pipeline pass/fail alerts when live PR sync is available</span>
+                <span>Alert when checks fail or recover on PRs you own or need to review</span>
               </div>
               <div class="setting-control">
                 <label class="switch">
@@ -784,6 +784,38 @@
                     type="checkbox"
                     [ngModel]="store.settings().notifyPrCi"
                     (ngModelChange)="store.saveSettings({ notifyPrCi: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Needs my review</strong>
+                <span>Alert when a pull request is waiting for you</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyPrReview"
+                    (ngModelChange)="store.saveSettings({ notifyPrReview: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Ready to merge</strong>
+                <span>Alert when one of your pull requests becomes mergeable</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifyPrReady"
+                    (ngModelChange)="store.saveSettings({ notifyPrReady: $event })"
                   />
                   <span></span>
                 </label>
@@ -800,6 +832,119 @@
                     type="checkbox"
                     [ngModel]="store.settings().notifyRelease"
                     (ngModelChange)="store.saveSettings({ notifyRelease: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+          </article>
+
+          <article class="bl-panel block">
+            <h2 class="block-title">Sounds</h2>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Sound effects</strong>
+                <span>Play a short chime with PR alerts</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [ngModel]="store.settings().notifySoundEnabled"
+                    (ngModelChange)="store.saveSettings({ notifySoundEnabled: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Volume</strong>
+                <span>{{ soundVolumeLabel() }}</span>
+              </div>
+              <div class="setting-control volume">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  [ngModel]="soundVolumePercent()"
+                  (ngModelChange)="setSoundVolume($event)"
+                />
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  (click)="playTestSound()"
+                >
+                  Test
+                </button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Needs review</strong>
+                <span>Chime when a PR is waiting for you</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [disabled]="!store.settings().notifySoundEnabled"
+                    [ngModel]="store.settings().notifySoundPrReview"
+                    (ngModelChange)="store.saveSettings({ notifySoundPrReview: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Ready to merge</strong>
+                <span>Chime when your PR is mergeable</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [disabled]="!store.settings().notifySoundEnabled"
+                    [ngModel]="store.settings().notifySoundPrReady"
+                    (ngModelChange)="store.saveSettings({ notifySoundPrReady: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>PR CI</strong>
+                <span>Pass and fail tones for checks on PRs you care about</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [disabled]="!store.settings().notifySoundEnabled"
+                    [ngModel]="store.settings().notifySoundPrCi"
+                    (ngModelChange)="store.saveSettings({ notifySoundPrCi: $event })"
+                  />
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>PR activity</strong>
+                <span>Soft click for comments, reviews, and merges (off by default)</span>
+              </div>
+              <div class="setting-control">
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    [disabled]="!store.settings().notifySoundEnabled"
+                    [ngModel]="store.settings().notifySoundPrActivity"
+                    (ngModelChange)="store.saveSettings({ notifySoundPrActivity: $event })"
                   />
                   <span></span>
                 </label>

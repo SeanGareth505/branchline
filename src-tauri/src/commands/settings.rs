@@ -131,7 +131,23 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub notify_pr_ci: bool,
     #[serde(default = "default_true")]
+    pub notify_pr_review: bool,
+    #[serde(default = "default_true")]
+    pub notify_pr_ready: bool,
+    #[serde(default = "default_true")]
     pub notify_release: bool,
+    #[serde(default = "default_true")]
+    pub notify_sound_enabled: bool,
+    #[serde(default = "default_sound_volume")]
+    pub notify_sound_volume: f64,
+    #[serde(default = "default_true")]
+    pub notify_sound_pr_review: bool,
+    #[serde(default = "default_true")]
+    pub notify_sound_pr_ready: bool,
+    #[serde(default = "default_true")]
+    pub notify_sound_pr_ci: bool,
+    #[serde(default)]
+    pub notify_sound_pr_activity: bool,
     #[serde(default)]
     pub hide_untracked: bool,
     #[serde(default = "default_density")]
@@ -221,6 +237,10 @@ fn default_ssh_client() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_sound_volume() -> f64 {
+    0.5
 }
 
 fn default_branch_prefix() -> String {
@@ -427,7 +447,15 @@ impl Default for AppSettings {
             notify_app_updates: true,
             notify_pr_activity: true,
             notify_pr_ci: true,
+            notify_pr_review: true,
+            notify_pr_ready: true,
             notify_release: true,
+            notify_sound_enabled: true,
+            notify_sound_volume: default_sound_volume(),
+            notify_sound_pr_review: true,
+            notify_sound_pr_ready: true,
+            notify_sound_pr_ci: true,
+            notify_sound_pr_activity: false,
             hide_untracked: false,
             ui_density: default_density(),
             pr_templates: Vec::new(),
@@ -463,6 +491,11 @@ fn ensure_defaults(mut settings: AppSettings) -> AppSettings {
     }
     if settings.git_flow_develop.trim().is_empty() {
         settings.git_flow_develop = default_git_flow_develop();
+    }
+    if !settings.notify_sound_volume.is_finite() {
+        settings.notify_sound_volume = default_sound_volume();
+    } else {
+        settings.notify_sound_volume = settings.notify_sound_volume.clamp(0.0, 1.0);
     }
     if settings.branch_prefix.trim().is_empty() {
         settings.branch_prefix = default_branch_prefix();

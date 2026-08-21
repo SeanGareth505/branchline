@@ -62,6 +62,8 @@ import type {
   TestConnectionOutput,
 } from './models';
 import { normalizePullRequest } from './models';
+import { diffPullRequestNotifications, formatPrNotify } from './pr-notifications';
+import { SoundService, type NotifySoundKind } from './sound.service';
 import { mergeUiSession } from './ui-session';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
@@ -214,6 +216,8 @@ export type NotificationCategory =
   | 'updates'
   | 'prActivity'
   | 'prCi'
+  | 'prReview'
+  | 'prReady'
   | 'release';
 export interface ToastState {
   id: number;
@@ -280,6 +284,7 @@ export class AppStore {
   private readonly appRef = inject(ApplicationRef);
   private readonly diagnostics = inject(DiagnosticsService);
   private readonly notifications = inject(NotificationService);
+  private readonly sounds = inject(SoundService);
   private readonly prompts = inject(PromptService);
   private readonly selects = inject(SelectService);
   private readonly releaseDialog = inject(ReleaseDialogService);
@@ -391,7 +396,15 @@ export class AppStore {
     notifyAppUpdates: true,
     notifyPrActivity: true,
     notifyPrCi: true,
+    notifyPrReview: true,
+    notifyPrReady: true,
     notifyRelease: true,
+    notifySoundEnabled: true,
+    notifySoundVolume: 0.5,
+    notifySoundPrReview: true,
+    notifySoundPrReady: true,
+    notifySoundPrCi: true,
+    notifySoundPrActivity: false,
     hideUntracked: false,
     uiDensity: 'comfortable',
     prTemplates: [],
@@ -594,7 +607,10 @@ export class AppStore {
   private pullRequestsInflight: Promise<void> | null = null;
   private pullRequestsInflightKey = '';
   private readonly pullRequestCache = new Map<string, { list: MockPullRequest[]; at: number }>();
+  private readonly pullRequestSeen = new Map<string, MockPullRequest[]>();
+  private prPollTimer: number | null = null;
   private static readonly PRS_TTL_MS = 90_000;
+  private static readonly PR_POLL_MS = 90_000;
   readonly selectedDiffPath = signal<string | null>(null);
   readonly fileHistoryPath = signal<string | null>(null);
   readonly automationFilter = signal<AutomationFilter>('all');
@@ -1056,6 +1072,7 @@ export class AppStore {
       this.restoreReleaseActivity();
       this.restoreReleaseNotesDraft();
       this.startWorktreePoll();
+      this.startPullRequestPoll();
       this.readRepoDiskCache();
       const onboarding = await this.tauri.getOnboardingStatus();
       if (!onboarding.completed && !onboarding.skipped) {
@@ -1181,7 +1198,7 @@ export class AppStore {
 
   async refreshPullRequests(
     state: 'open' | 'closed' | 'all' = 'open',
-    opts?: { force?: boolean },
+    opts?: { force?: boolean; notify?: boolean },
   ): Promise<void> {
     const path = this.currentRepo()?.path ?? '';
     const dummy = this.isDummyBackend && !this.hasLinkedPrHost();
@@ -1244,6 +1261,7 @@ export class AppStore {
         this.pullRequests.set(list);
         this.pullRequestsKey = key;
         this.pullRequestsError.set(null);
+        this.emitPullRequestNotifications(key, list, opts?.notify !== false);
       } catch (err) {
         if (gen !== this.pullRequestsGen) return;
         if (!cached) {
@@ -1306,7 +1324,7 @@ export class AppStore {
         return false;
       }
       this.showSuccess(result.message, undefined, 'prActivity');
-      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true });
+      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true, notify: false });
       return true;
     } catch (err) {
       this.showError(err);
@@ -1331,7 +1349,7 @@ export class AppStore {
         return false;
       }
       this.showSuccess(result.message, undefined, 'prActivity');
-      await this.refreshPullRequests('open', { force: true });
+      await this.refreshPullRequests('open', { force: true, notify: false });
       return true;
     } catch (err) {
       this.showError(err);
@@ -1359,7 +1377,7 @@ export class AppStore {
         return false;
       }
       this.showSuccess(result.message, undefined, 'prActivity');
-      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true });
+      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true, notify: false });
       return true;
     } catch (err) {
       this.showError(err);
@@ -4185,6 +4203,20 @@ export class AppStore {
     });
   }
 
+  private startPullRequestPoll(): void {
+    if (typeof window === 'undefined') return;
+    if (this.prPollTimer !== null) {
+      window.clearInterval(this.prPollTimer);
+    }
+    this.prPollTimer = window.setInterval(() => {
+      if (this.isDummyBackend) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (!this.hasLinkedPrHost() || !this.currentRepo()) return;
+      if (this.pullRequestsLoading() || this.pullRequestsRefreshing()) return;
+      void this.refreshPullRequests('open', { force: true });
+    }, AppStore.PR_POLL_MS);
+  }
+
   private startWorktreePoll(): void {
     if (typeof window === 'undefined') return;
     if (this.worktreePollTimer !== null) {
@@ -4485,6 +4517,7 @@ export class AppStore {
     if (desktop) {
       void this.sendDesktopIfEnabled(category, title, body);
     }
+    this.playNotifySound(category, options?.kind);
   }
 
   private shouldShowToast(category: NotificationCategory, kind: ToastKind): boolean {
@@ -4517,6 +4550,10 @@ export class AppStore {
         return s.notifyPrActivity;
       case 'prCi':
         return s.notifyPrCi;
+      case 'prReview':
+        return s.notifyPrReview;
+      case 'prReady':
+        return s.notifyPrReady;
       case 'release':
         return s.notifyRelease;
       case 'general':
@@ -4534,6 +4571,64 @@ export class AppStore {
     if (!s.notificationsEnabled || !s.notifyDesktop) return;
     if (!this.categoryEnabled(category, s)) return;
     await this.notifications.sendDesktop(title, body);
+  }
+
+  unlockSounds(): void {
+    this.sounds.unlock();
+  }
+
+  playTestNotifySound(): void {
+    this.sounds.unlock();
+    this.sounds.play('review', this.settings().notifySoundVolume);
+  }
+
+  private emitPullRequestNotifications(key: string, next: MockPullRequest[], notify = true): void {
+    const prev = this.pullRequestSeen.get(key) ?? null;
+    this.pullRequestSeen.set(key, next);
+    if (!notify || !prev || this.restoringSession) return;
+    for (const event of diffPullRequestNotifications(prev, next)) {
+      const copy = formatPrNotify(event);
+      const category =
+        event.kind === 'review'
+          ? 'prReview'
+          : event.kind === 'ready'
+            ? 'prReady'
+            : event.kind === 'ciFail' || event.kind === 'ciPass'
+              ? 'prCi'
+              : 'prActivity';
+      const kind: ToastKind =
+        event.kind === 'ciFail' ? 'warning' : event.kind === 'ready' || event.kind === 'ciPass' ? 'success' : 'info';
+      this.notifyEvent(category, copy.title, copy.body, { kind });
+    }
+  }
+
+  private playNotifySound(category: NotificationCategory, kind?: ToastKind): void {
+    const s = this.settings();
+    if (!s.notifySoundEnabled) return;
+    if (!this.categoryEnabled(category, s)) return;
+    const sound = this.soundKindFor(category, kind, s);
+    if (!sound) return;
+    this.sounds.play(sound, s.notifySoundVolume);
+  }
+
+  private soundKindFor(
+    category: NotificationCategory,
+    kind: ToastKind | undefined,
+    s = this.settings(),
+  ): NotifySoundKind | null {
+    switch (category) {
+      case 'prReview':
+        return s.notifySoundPrReview ? 'review' : null;
+      case 'prReady':
+        return s.notifySoundPrReady ? 'ready' : null;
+      case 'prCi':
+        if (!s.notifySoundPrCi) return null;
+        return kind === 'warning' || kind === 'error' ? 'fail' : 'success';
+      case 'prActivity':
+        return s.notifySoundPrActivity ? 'activity' : null;
+      default:
+        return null;
+    }
   }
 
   private maybeNotifyStatusChanges(prev: RepoStatus | null, next: RepoStatus): void {
@@ -10009,6 +10104,12 @@ function normalizeBranchPrefixes(raw: unknown, selected?: string): string[] {
   return [...new Set(merged)];
 }
 
+function clampSoundVolume(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 0.5;
+  return Math.max(0, Math.min(1, n));
+}
+
 function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings {
   const base = defaultConnections();
   const incoming = Array.isArray(raw.connections) ? raw.connections : [];
@@ -10084,7 +10185,15 @@ function normalizeSettings(raw: Partial<AppSettings> | AppSettings): AppSettings
     notifyAppUpdates: raw.notifyAppUpdates ?? true,
     notifyPrActivity: raw.notifyPrActivity ?? true,
     notifyPrCi: raw.notifyPrCi ?? true,
+    notifyPrReview: raw.notifyPrReview ?? true,
+    notifyPrReady: raw.notifyPrReady ?? true,
     notifyRelease: raw.notifyRelease ?? true,
+    notifySoundEnabled: raw.notifySoundEnabled ?? true,
+    notifySoundVolume: clampSoundVolume(raw.notifySoundVolume),
+    notifySoundPrReview: raw.notifySoundPrReview ?? true,
+    notifySoundPrReady: raw.notifySoundPrReady ?? true,
+    notifySoundPrCi: raw.notifySoundPrCi ?? true,
+    notifySoundPrActivity: raw.notifySoundPrActivity ?? false,
     hideUntracked: raw.hideUntracked ?? false,
     uiDensity: raw.uiDensity === 'compact' ? 'compact' : 'comfortable',
     prTemplates: normalizePrTemplates(raw.prTemplates),

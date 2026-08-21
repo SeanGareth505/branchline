@@ -63,6 +63,11 @@ export class App implements OnInit {
     void this.store.init().then(() => void this.updates.init());
   }
 
+  @HostListener('document:pointerdown')
+  onPointerDown(): void {
+    this.store.unlockSounds();
+  }
+
   @HostListener('window:unhandledrejection', ['$event'])
   onUnhandledRejection(event: PromiseRejectionEvent): void {
     if (isIgnorableUnhandledError(event.reason)) return;

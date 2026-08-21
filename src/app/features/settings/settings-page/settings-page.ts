@@ -105,8 +105,8 @@ export class SettingsPage implements OnInit {
     {
       id: 'notifications',
       label: 'Notifications',
-      hint: 'Toasts, desktop alerts, Git and pull request events',
-      help: 'In-app toasts and optional desktop alerts for Git and pull request events.',
+      hint: 'Toasts, desktop alerts, sounds, and pull request events',
+      help: 'In-app toasts, optional desktop alerts, and sound effects for Git and pull request events.',
     },
     {
       id: 'connections',
@@ -183,6 +183,22 @@ export class SettingsPage implements OnInit {
 
   setConfirmation(key: ConfirmationKey, value: boolean): void {
     void this.store.saveSettings({ [key]: value } as Partial<AppSettings>);
+  }
+
+  soundVolumePercent(): number {
+    return Math.round(this.store.settings().notifySoundVolume * 100);
+  }
+
+  soundVolumeLabel(): string {
+    return `${this.soundVolumePercent()}%`;
+  }
+
+  setSoundVolume(percent: number): void {
+    void this.store.saveSettings({ notifySoundVolume: Math.max(0, Math.min(1, Number(percent) / 100)) });
+  }
+
+  playTestSound(): void {
+    this.store.playTestNotifySound();
   }
 
   async refreshDiagnostics(): Promise<void> {
