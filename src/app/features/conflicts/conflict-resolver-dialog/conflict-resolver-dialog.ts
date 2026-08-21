@@ -621,6 +621,7 @@ export class ConflictResolverDialog {
       if (el === source) continue;
       const otherMax = el.scrollHeight - el.clientHeight;
       el.scrollTop = ratio * Math.max(0, otherMax);
+      el.scrollLeft = source.scrollLeft;
     }
     requestAnimationFrame(() => {
       this.syncingScroll = false;

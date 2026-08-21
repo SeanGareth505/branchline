@@ -699,13 +699,14 @@ kbd {
 
 .ctx-line {
   display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem max-content;
   align-items: start;
   font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.5;
   min-height: 1.5em;
-  min-width: 0;
+  min-width: 100%;
+  width: max-content;
 }
 
 .ctx-line .ln,
@@ -720,10 +721,8 @@ kbd {
 .ctx-line pre {
   margin: 0;
   padding-right: 0.75rem;
-  min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  min-width: min-content;
+  white-space: pre;
   color: color-mix(in srgb, var(--merge-editor-fg) 86%, var(--merge-editor-muted));
 }
 
@@ -781,7 +780,6 @@ kbd {
     inset 0 1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 22%, transparent),
     inset 0 -1px 0 color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 22%, transparent);
   overflow: visible;
-  max-width: 100%;
   min-width: 0;
 }
 
@@ -933,13 +931,14 @@ kbd {
 
 .cmp-line {
   display: grid;
-  grid-template-columns: 3.25rem 1.1rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem 1.1rem max-content;
   align-items: start;
   font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.5;
   min-height: 1.5em;
-  min-width: 0;
+  min-width: 100%;
+  width: max-content;
 }
 
 .side-ours .cmp-line[data-kind='delete'],
@@ -984,12 +983,10 @@ kbd {
 }
 
 .code {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: pre;
   overflow: visible;
   color: var(--merge-editor-fg);
-  min-width: 0;
+  min-width: min-content;
   padding-right: 0.75rem;
 }
 
@@ -1136,12 +1133,14 @@ kbd {
   overflow: auto;
   background: var(--merge-editor-bg);
   color: var(--merge-editor-fg);
+  overscroll-behavior: contain;
 }
 
 .source-hunk,
 .source-doc .context {
-  max-width: 100%;
-  min-width: 0;
+  max-width: none;
+  min-width: 100%;
+  width: max-content;
 }
 
 .source-hunk pre {
@@ -1150,9 +1149,7 @@ kbd {
   overflow: visible;
   color: var(--merge-editor-fg);
   font: 13px/1.5 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: pre;
 }
 
 .source-pane h3,
