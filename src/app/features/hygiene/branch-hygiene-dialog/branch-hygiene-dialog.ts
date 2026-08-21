@@ -29,6 +29,7 @@ export class BranchHygieneDialog {
   readonly store = inject(AppStore);
   private readonly prompts = inject(PromptService);
   readonly entries = signal<BranchHygieneEntry[]>([]);
+  readonly selectedReasons = signal<Set<string>>(new Set());
   readonly loading = signal(false);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
@@ -41,7 +42,7 @@ export class BranchHygieneDialog {
       list.push(entry);
       buckets.set(entry.reason, list);
     }
-    const order = ['merged', 'gone', 'stale'];
+    const order = ['merged', 'gone'];
     const reasons = [
       ...order.filter((reason) => buckets.has(reason)),
       ...[...buckets.keys()].filter((reason) => !order.includes(reason)).sort(),
@@ -53,14 +54,14 @@ export class BranchHygieneDialog {
     }));
   });
 
-  readonly safeCount = computed(
-    () => this.entries().filter((entry) => entry.safeToDelete).length,
-  );
+  readonly chosen = computed(() => {
+    const selected = this.selectedReasons();
+    return this.entries().filter((entry) => selected.has(entry.reason));
+  });
+
+  readonly safeCount = computed(() => this.chosen().length);
   readonly canDeleteSafe = computed(
     () => !this.loading() && !this.busy() && this.safeCount() > 0,
-  );
-  readonly canDeleteAll = computed(
-    () => !this.loading() && !this.busy() && this.entries().length > 0,
   );
 
   constructor() {
@@ -81,29 +82,26 @@ export class BranchHygieneDialog {
     this.store.closeBranchHygieneDialog();
   }
 
-  async submit(mode: 'safe' | 'all'): Promise<void> {
-    if (mode === 'safe' && !this.canDeleteSafe()) return;
-    if (mode === 'all' && !this.canDeleteAll()) return;
-    const chosen =
-      mode === 'safe' ? this.entries().filter((entry) => entry.safeToDelete) : this.entries();
+  reasonSelected(reason: string): boolean {
+    return this.selectedReasons().has(reason);
+  }
+
+  toggleReason(reason: string): void {
+    const next = new Set(this.selectedReasons());
+    if (next.has(reason)) next.delete(reason);
+    else next.add(reason);
+    this.selectedReasons.set(next);
+  }
+
+  async submit(): Promise<void> {
+    if (!this.canDeleteSafe()) return;
+    const chosen = this.chosen();
     if (!chosen.length) return;
-    if (mode === 'all') {
-      const n = chosen.length;
-      const ok = await this.prompts.ask({
-        title: 'Delete all local branches?',
-        message: `Force-delete all ${n} listed local branch${n === 1 ? '' : 'es'}, including unmerged branches. Commits that only exist on those branches may be hard to recover.`,
-        confirmLabel: 'Delete all',
-        cancelLabel: 'Cancel',
-        confirmOnly: true,
-        required: false,
-      });
-      if (ok === null) return;
-    }
     this.busy.set(true);
     try {
       await this.store.deleteLocalBranches(
         chosen.map((entry) => entry.name),
-        mode === 'all',
+        false,
       );
       this.store.closeBranchHygieneDialog();
     } finally {
@@ -127,8 +125,10 @@ export class BranchHygieneDialog {
     try {
       const list = await this.store.loadBranchHygiene();
       this.entries.set(list);
+      this.selectedReasons.set(new Set(list.map((entry) => entry.reason)));
     } catch (err) {
       this.entries.set([]);
+      this.selectedReasons.set(new Set());
       this.error.set(this.store.formatError(err));
     } finally {
       this.loading.set(false);
@@ -141,8 +141,6 @@ export class BranchHygieneDialog {
         return 'Merged into HEAD';
       case 'gone':
         return 'Remote branch deleted';
-      case 'stale':
-        return 'No commits in 90+ days';
       default:
         return reason;
     }

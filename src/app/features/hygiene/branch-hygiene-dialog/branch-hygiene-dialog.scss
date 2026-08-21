@@ -45,12 +45,27 @@ h2 {
   font-size: 1.15rem;
 }
 
-h3 {
+.kind {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.kind input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.kind-count {
+  margin-left: auto;
+  font-weight: 650;
   color: var(--text-muted);
 }
 
@@ -111,11 +126,6 @@ h3 {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-}
-
-.safety.unsafe {
-  background: color-mix(in srgb, var(--git-deleted, #ef4444) 14%, transparent);
-  color: var(--git-deleted, #ef4444);
 }
 
 .meta {

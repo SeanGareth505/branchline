@@ -25,34 +25,42 @@
         <p class="empty">Nothing to clean up</p>
       } @else {
         <p class="choice">
-          Delete branches merged into HEAD or a remaining remote branch, or force-delete every
-          listed branch.
+          Safe delete only includes merged locals, and locals whose remote was deleted. Unmerged
+          branches that still exist on origin are left alone.
         </p>
         <div class="list">
           @for (group of groups(); track group.reason) {
             <section class="group">
-              <h3>{{ group.label }}</h3>
-              @for (entry of group.entries; track entry.name) {
-                <div class="row">
-                  <span class="row-body">
-                    <span class="name-line">
-                      <span class="name">{{ entry.name }}</span>
-                      <span class="safety" [class.unsafe]="!entry.safeToDelete">
-                        {{ entry.safeToDelete ? 'safe' : 'unmerged' }}
+              <label class="kind">
+                <input
+                  type="checkbox"
+                  [checked]="reasonSelected(group.reason)"
+                  (change)="toggleReason(group.reason)"
+                />
+                <span>{{ group.label }}</span>
+                <span class="kind-count">{{ group.entries.length }}</span>
+              </label>
+              @if (reasonSelected(group.reason)) {
+                @for (entry of group.entries; track entry.name) {
+                  <div class="row">
+                    <span class="row-body">
+                      <span class="name-line">
+                        <span class="name">{{ entry.name }}</span>
+                        <span class="safety">safe</span>
                       </span>
+                      @if (entry.detail || entry.tipShortSha) {
+                        <span class="meta">
+                          @if (entry.tipShortSha) {
+                            <span class="mono">{{ entry.tipShortSha }}</span>
+                          }
+                          @if (entry.detail) {
+                            <span>{{ entry.detail }}</span>
+                          }
+                        </span>
+                      }
                     </span>
-                    @if (entry.detail || entry.tipShortSha) {
-                      <span class="meta">
-                        @if (entry.tipShortSha) {
-                          <span class="mono">{{ entry.tipShortSha }}</span>
-                        }
-                        @if (entry.detail) {
-                          <span>{{ entry.detail }}</span>
-                        }
-                      </span>
-                    }
-                  </span>
-                </div>
+                  </div>
+                }
               }
             </section>
           }
@@ -65,17 +73,9 @@
           type="button"
           class="bl-btn bl-btn-primary"
           [disabled]="!canDeleteSafe()"
-          (click)="submit('safe')"
+          (click)="submit()"
         >
           {{ busy() ? 'Deleting…' : 'Delete safe (' + safeCount() + ')' }}
-        </button>
-        <button
-          type="button"
-          class="bl-btn danger"
-          [disabled]="!canDeleteAll()"
-          (click)="submit('all')"
-        >
-          Delete all ({{ entries().length }})
         </button>
       </footer>
     </div>

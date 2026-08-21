@@ -132,10 +132,16 @@ fn analyze_delete_branch(
         },
         SafetyCheck {
             id: "merged".into(),
-            label: "Merged into HEAD".into(),
-            ok: merged,
+            label: if gone && !merged {
+                "Remote leftover".into()
+            } else {
+                "Merged into HEAD".into()
+            },
+            ok: merged || gone,
             detail: if merged {
                 "Branch tip is reachable from HEAD".into()
+            } else if gone {
+                "Remote branch was deleted, so this local leftover is safe to remove".into()
             } else {
                 "Branch contains commits not in HEAD — they may be hard to recover".into()
             },
@@ -171,7 +177,7 @@ fn analyze_delete_branch(
 
     let (recommended_label, recommended_action, proceed_label) = if blocked {
         ("Close".into(), "keep".into(), "Close".into())
-    } else if gone && merged {
+    } else if gone {
         (
             "Delete leftover local branch".into(),
             "delete_gone".into(),
@@ -199,10 +205,8 @@ fn analyze_delete_branch(
         format!(
             "Deleting '{branch}' can disrupt the whole team. Prefer renaming or archiving if you only need a different default. Type the branch name to continue."
         )
-    } else if gone && merged {
-        "The remote already deleted this branch. Git will not accept -d because the old upstream is missing.".into()
     } else if gone {
-        "The remote branch is gone, but this local branch has commits not in HEAD.".into()
+        "The remote branch is already gone. This leftover local branch is safe to delete.".into()
     } else if merged {
         "Prefer deleting only after the branch is merged or you no longer need it.".into()
     } else {

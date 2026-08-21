@@ -9315,53 +9315,39 @@ export class AppStore {
     const goneCount = targets.filter((b) => b.upstreamGone).length;
     const mode = await this.selects.ask({
       title: 'Clean up local branches',
-      message: `Delete ${targets.length} local branch${targets.length === 1 ? '' : 'es'}? Keeps your current branch${current ? ` (${current})` : ''}, locked branches, and branches checked out in other worktrees. Remotes are not deleted.`,
+      message: `Delete local branches that are merged, or whose remote was deleted. Keeps your current branch${current ? ` (${current})` : ''}, locked branches, worktree checkouts, and unmerged branches that still exist on origin.`,
       label: 'What to delete',
       options: [
         {
           value: 'merged',
           label: 'Merged only',
-          hint: 'Safer — skips branches with commits not in HEAD',
+          hint: 'Deletes locals whose commits are already in HEAD',
         },
         ...(goneCount > 0
           ? [
               {
                 value: 'gone',
-                label: 'Upstream gone',
-                hint: `Deletes ${goneCount} local branch${goneCount === 1 ? '' : 'es'} whose remote-tracking branch was deleted`,
+                label: 'Remote deleted',
+                hint: `Deletes ${goneCount} leftover local${goneCount === 1 ? '' : 's'} whose origin branch is gone`,
               },
             ]
           : []),
-        {
-          value: 'all',
-          label: 'All except current',
-          hint: 'Also deletes unmerged branches (harder to recover)',
-        },
       ],
       initialValue: goneCount > 0 ? 'gone' : 'merged',
       confirmLabel: 'Continue',
     });
-    if (mode !== 'merged' && mode !== 'all' && mode !== 'gone') return;
+    if (mode !== 'merged' && mode !== 'gone') return;
 
-    const selected = mode === 'gone' ? targets.filter((b) => b.upstreamGone) : targets;
+    const selected =
+      mode === 'gone'
+        ? targets.filter((b) => b.upstreamGone)
+        : targets.filter((b) => !b.upstreamGone);
     if (selected.length === 0) {
       this.showToast('No matching local branches to delete', { kind: 'info' });
       return;
     }
 
-    if (mode === 'all') {
-      const ok = await this.prompts.ask({
-        title: 'Delete unmerged branches too?',
-        message: `Force-delete ${selected.length} local branch${selected.length === 1 ? '' : 'es'}. Commits that only exist on those branches may be hard to recover.`,
-        confirmLabel: 'Delete all',
-        cancelLabel: 'Cancel',
-        confirmOnly: true,
-        required: false,
-      });
-      if (ok === null) return;
-    }
-
-    const force = mode === 'all' || mode === 'gone';
+    const force = mode === 'gone';
     let deleted = 0;
     const skipped: string[] = [];
     for (const branch of selected) {
@@ -9377,7 +9363,7 @@ export class AppStore {
     if (deleted === 0 && skipped.length > 0) {
       this.showWarning(
         mode === 'merged'
-          ? 'Nothing deleted — remaining branches are unmerged. Choose “All except current” or “Upstream gone” to force-delete them.'
+          ? 'Nothing deleted — remaining branches are unmerged and still have an origin.'
           : `Could not delete ${skipped.length} branch${skipped.length === 1 ? '' : 'es'}.`,
       );
       return;

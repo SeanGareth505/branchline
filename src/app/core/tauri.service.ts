@@ -1903,7 +1903,7 @@ export class TauriService {
           name: 'old-experiment',
           reason: 'gone',
           detail: 'Upstream branch deleted',
-          safeToDelete: false,
+          safeToDelete: true,
           tipSha: 'd4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
           tipShortSha: 'd4e5f6a',
         },

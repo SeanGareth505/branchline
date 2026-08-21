@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tauri::command;
 use tauri::State;
 
@@ -140,7 +140,6 @@ const LARGE_FILE_MIN_BYTES: u64 = 512_000;
 const FILE_FLAGS_CAP: usize = 200;
 const STATUS_SHA_CAP: usize = 12;
 const BLOB_MAX_BYTES: u64 = 1_572_864;
-const STALE_SECS: i64 = 90 * 24 * 60 * 60;
 
 fn format_size_label(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -434,11 +433,6 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
     if !ok {
         return Ok(vec![]);
     }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let stale_before = now.saturating_sub(STALE_SECS);
     let mut entries = Vec::new();
     for line in out.lines() {
         if entries.len() >= HYGIENE_CAP {
@@ -454,7 +448,6 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         }
         let tip_sha = parts[1].to_string();
         let tip_short_sha = parts[2].to_string();
-        let committerdate: i64 = parts[3].parse().unwrap_or(0);
         let track = parts.get(4).copied().unwrap_or("");
         let gone = track.contains("[gone]");
         let merged_into_head = git_cli::run_git_allow_fail(
@@ -472,7 +465,7 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         } else {
             None
         };
-        let safe_to_delete = merged_into_head || remote_merge_target.is_some();
+        let safe_to_delete = gone || merged_into_head || remote_merge_target.is_some();
         let (reason, detail) = if gone {
             (
                 "gone",
@@ -480,21 +473,14 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
                     "Merged into HEAD".to_string()
                 } else if let Some(target) = remote_merge_target {
                     format!("Merged into {target}")
-                } else if track.trim().is_empty() {
-                    "Remote-tracking branch is gone".to_string()
                 } else {
-                    track.trim().to_string()
+                    "Remote branch deleted".to_string()
                 },
             )
+        } else if merged_into_head {
+            ("merged", "Merged into HEAD".to_string())
         } else {
-            if safe_to_delete {
-                ("merged", "Merged into HEAD".to_string())
-            } else if committerdate > 0 && committerdate < stale_before {
-                let days = ((now - committerdate) / 86_400).max(1);
-                ("stale", format!("Last commit {days} days ago"))
-            } else {
-                continue;
-            }
+            continue;
         };
         entries.push(BranchHygieneEntry {
             name: name.to_string(),
