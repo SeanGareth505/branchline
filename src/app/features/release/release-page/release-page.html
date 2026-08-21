@@ -5,7 +5,7 @@
         <h1>Release</h1>
         <app-help-tip
           heading="Release"
-          body="Bump version files, commit, tag, and optionally push so GitHub can build installers. Create a release when you are ready to ship."
+          body="For a monorepo, pick an app to see its deploys and tags. Single-package repos can also bump versions and create GitHub releases from here."
         />
         @if (activity()?.phase === 'error') {
           <span class="error-badge">Failed</span>
@@ -28,7 +28,7 @@
         }
       </div>
       <p>{{ subtitle() }}</p>
-      @if (status()?.available && status()?.currentVersion) {
+      @if (status()?.available && canShip()) {
         <div class="hero-facts">
           <span class="fact">v{{ status()!.currentVersion }}</span>
           <span class="fact">{{ status()!.currentBranch || status()!.config?.branch || 'main' }}</span>
@@ -42,28 +42,38 @@
         </div>
       }
     </div>
-    @if (hasRepo() && configured()) {
+    @if (hasRepo() && !editingSetup()) {
       <div class="hero-actions">
         @if (!store.releasingLocally()) {
           <button
             type="button"
             class="bl-btn"
             [disabled]="findingLatest()"
-            title="Find the latest GitHub release and watch installer builds"
+            title="{{ hasWorkspaceApps() ? 'Open the latest deploy for the selected app' : 'Find the latest GitHub release and watch installer builds' }}"
             (click)="trackLatest()"
           >
             {{ findingLatest() ? 'Finding…' : 'Watch latest' }}
           </button>
         }
-        <button
-          type="button"
-          class="bl-btn bl-btn-primary"
-          [disabled]="busy() || store.releasingLocally()"
-          (click)="startRelease()"
-        >
-          <ng-icon name="lucideRocket" size="14" />
-          {{ status()?.config?.createTagDefault === false ? 'Update version' : 'Create release' }}
-        </button>
+        @if (canShip()) {
+          <button
+            type="button"
+            class="bl-btn bl-btn-primary"
+            [disabled]="busy() || store.releasingLocally()"
+            (click)="startRelease()"
+          >
+            <ng-icon name="lucideRocket" size="14" />
+            {{ status()?.config?.createTagDefault === false ? 'Update version' : 'Create release' }}
+          </button>
+        } @else if (!configured() && !hasWorkspaceApps()) {
+          <button type="button" class="bl-btn bl-btn-primary" (click)="openSetup()">
+            Enable shipping
+          </button>
+        }
+      </div>
+    } @else if (hasRepo() && editingSetup()) {
+      <div class="hero-actions">
+        <button type="button" class="bl-btn" (click)="cancelSetup()">Cancel</button>
       </div>
     }
   </header>
@@ -79,7 +89,7 @@
   @if (!hasRepo()) {
     <div class="empty bl-glass">
       <p class="empty-title">Open a repository</p>
-      <p class="empty-hint">Pick a repo, then come back here to ship a version.</p>
+      <p class="empty-hint">Pick a repo, then come back here to watch GitHub releases or ship a version.</p>
     </div>
   } @else if (loading() && !activity()) {
     <app-loading-block message="Loading release settings…" />
@@ -89,7 +99,7 @@
       <p class="empty-hint">{{ loadError() }}</p>
       <button type="button" class="bl-btn" (click)="retry()">Try again</button>
     </div>
-  } @else if (!configured() && setupHints()) {
+  } @else if (editingSetup() && setupHints()) {
     <div class="setup bl-glass">
       <div class="setup-copy">
         <span class="eyebrow">One-time setup</span>
@@ -234,17 +244,17 @@
         </div>
       }
     </div>
-  } @else if (configured() && !status()?.currentVersion && !activity()) {
-    <div class="empty bl-glass">
-      <p class="empty-title">Couldn’t read the configured version</p>
-      <p class="empty-hint">
-        Check that the files in <code>release.config.json</code> exist and contain a valid semantic
-        version.
-      </p>
-      @if (status()?.config?.files?.length) {
-        <p class="mono empty-files">{{ status()!.config!.files!.join(' · ') }}</p>
-      }
-      <button type="button" class="bl-btn" (click)="retry()">Check again</button>
+  } @else if (hasWorkspaceApps() && !canShip()) {
+    <div class="panel">
+      <app-release-apps
+        [apps]="releaseApps()"
+        [selectedId]="selectedAppId()"
+        [loading]="appsLoading()"
+        [message]="releaseAppsMessage()"
+        (selectApp)="selectApp($event)"
+        (openEvent)="openEvent($event)"
+        (openWorkflow)="openWorkflow($event)"
+      />
     </div>
   } @else {
     <div class="panel">

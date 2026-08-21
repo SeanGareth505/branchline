@@ -13,15 +13,18 @@ import { AppStore } from '../../../core/app.store';
 import type {
   ReleaseSetupHintsOutput,
   ReleaseStatusOutput,
+  RepoReleaseApp,
+  RepoReleaseEvent,
 } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
 import { LoadingBlock } from '../../../shared/ui/loading-block/loading-block';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { ReleasePanel } from '../release-panel/release-panel';
+import { ReleaseApps } from '../release-apps/release-apps';
 
 @Component({
   selector: 'app-release-page',
-  imports: [FormsModule, NgIcon, LoadingBlock, HelpTip, ReleasePanel],
+  imports: [FormsModule, NgIcon, LoadingBlock, HelpTip, ReleasePanel, ReleaseApps],
   templateUrl: './release-page.html',
   styleUrl: './release-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,7 +50,19 @@ export class ReleasePage {
   readonly busy = computed(() => this.store.visibleReleaseBusy());
   readonly activity = computed(() => this.store.visibleReleaseActivity());
   readonly configured = computed(() => !!this.status()?.available);
+  readonly canShip = computed(() => !!this.status()?.currentVersion?.trim());
+  readonly editingSetup = signal(false);
   readonly setupError = computed(() => this.store.releaseSetupError());
+  readonly releaseApps = signal<RepoReleaseApp[]>([]);
+  readonly releaseAppsMessage = signal('');
+  readonly selectedAppId = signal<string | null>(null);
+  readonly appsLoading = signal(false);
+  readonly hasWorkspaceApps = computed(() => this.releaseApps().length > 0);
+  readonly selectedApp = computed(() => {
+    const id = this.selectedAppId();
+    const apps = this.releaseApps();
+    return apps.find((app) => app.id === id) ?? apps[0] ?? null;
+  });
 
   readonly subtitle = computed(() => {
     const activity = this.activity();
@@ -84,11 +99,18 @@ export class ReleasePage {
     if (!this.hasRepo()) return 'Open a repository to ship a version.';
     if (this.loadError()) return this.loadError();
     if (!status) return 'Loading…';
+    if (this.hasWorkspaceApps()) {
+      const app = this.selectedApp();
+      const latest = app?.latest?.title;
+      return app
+        ? `${app.name} ships on its own workflow${latest ? ` · latest ${latest}` : ''}`
+        : 'This repo has more than one app. Pick one to see its deploys.';
+    }
     if (!status.available) {
-      return 'Tell Branchline which files hold the version, then you can ship from here.';
+      return 'Watch GitHub releases, or enable version shipping for this repo.';
     }
     const name = status.config?.productName ?? 'App';
-    const version = status.currentVersion ? `v${status.currentVersion}` : 'no version yet';
+    const version = status.currentVersion ? `v${status.currentVersion}` : 'no local version';
     const branch = status.currentBranch ?? status.config?.branch ?? 'main';
     const dirty = status.dirty ? ' · uncommitted changes' : '';
     return `${name} · ${version} on ${branch}${dirty}`;
@@ -126,12 +148,17 @@ export class ReleasePage {
       const path = this.store.currentRepo()?.path;
       if (view !== 'release') {
         this.loadGen += 1;
+        this.editingSetup.set(false);
         return;
       }
       if (!path) {
         this.status.set(null);
         this.setupHints.set(null);
         this.loadError.set(null);
+        this.releaseApps.set([]);
+        this.releaseAppsMessage.set('');
+        this.selectedAppId.set(null);
+        this.editingSetup.set(false);
         return;
       }
       untracked(() => void this.load(path));
@@ -171,6 +198,10 @@ export class ReleasePage {
         this.selectedFiles.set(selected);
       } else {
         this.setupHints.set(null);
+      }
+      await this.loadApps(path, gen);
+      if (gen !== this.loadGen || this.store.view() !== 'release') return;
+      if (!this.releaseApps().length) {
         void this.store.attachLatestRelease();
       }
     } catch (err) {
@@ -207,6 +238,14 @@ export class ReleasePage {
     this.pushDefault.set(createTag && push);
   }
 
+  openSetup(): void {
+    this.editingSetup.set(true);
+  }
+
+  cancelSetup(): void {
+    this.editingSetup.set(false);
+  }
+
   async saveSetup(): Promise<void> {
     if (!this.canSaveSetup() || this.setupBusy()) return;
     this.setupBusy.set(true);
@@ -222,6 +261,7 @@ export class ReleasePage {
       const path = this.store.currentRepo()?.path;
       if (path) {
         await this.load(path);
+        this.editingSetup.set(false);
       }
     } finally {
       this.setupBusy.set(false);
@@ -232,10 +272,31 @@ export class ReleasePage {
     void this.store.startReleaseFlow();
   }
 
+  selectApp(id: string): void {
+    this.selectedAppId.set(id);
+  }
+
+  openEvent(event: RepoReleaseEvent): void {
+    if (event.url) void this.tauri.openExternalUrl(event.url);
+  }
+
+  openWorkflow(app: RepoReleaseApp): void {
+    if (app.workflowUrl) void this.tauri.openExternalUrl(app.workflowUrl);
+  }
+
   async trackLatest(): Promise<void> {
     if (this.findingLatest()) return;
     this.findingLatest.set(true);
     try {
+      if (this.hasWorkspaceApps()) {
+        const latest = this.selectedApp()?.latest;
+        if (latest?.url) {
+          await this.tauri.openExternalUrl(latest.url);
+          return;
+        }
+        this.store.showWarning('No deploys found for this app yet.');
+        return;
+      }
       await this.store.attachLatestRelease({ force: true });
     } finally {
       this.findingLatest.set(false);
@@ -245,5 +306,26 @@ export class ReleasePage {
   retry(): void {
     const path = this.store.currentRepo()?.path;
     if (path) void this.load(path);
+  }
+
+  private async loadApps(path: string, gen: number): Promise<void> {
+    this.appsLoading.set(true);
+    try {
+      const overview = await this.tauri.getRepoReleaseApps(path);
+      if (gen !== this.loadGen) return;
+      const apps = overview.apps ?? [];
+      this.releaseApps.set(apps);
+      this.releaseAppsMessage.set(overview.message ?? '');
+      const current = this.selectedAppId();
+      if (!current || !apps.some((app) => app.id === current)) {
+        this.selectedAppId.set(apps[0]?.id ?? null);
+      }
+    } catch {
+      if (gen !== this.loadGen) return;
+      this.releaseApps.set([]);
+      this.releaseAppsMessage.set('');
+    } finally {
+      if (gen === this.loadGen) this.appsLoading.set(false);
+    }
   }
 }

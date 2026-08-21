@@ -23,6 +23,7 @@ import { ReleaseNotesEditor } from '../release-notes-editor/release-notes-editor
 import {
   actionsWebUrl,
   releaseWorkflowWebUrl,
+  releasesWebUrl,
   tagWebUrl,
 } from '../../../shared/git/repo-links';
 
@@ -94,7 +95,8 @@ export class ReleasePanel {
   readonly deployChecking = computed(
     () => !!this.activity() && this.store.releaseDeployChecking(),
   );
-  readonly currentVersion = computed(() => this.releaseStatus()?.currentVersion?.trim() || '0.0.0');
+  readonly currentVersion = computed(() => this.releaseStatus()?.currentVersion?.trim() || '');
+  readonly canShip = computed(() => !!this.currentVersion());
   readonly productName = computed(
     () => this.releaseStatus()?.config?.productName || this.store.currentRepo()?.name || 'App',
   );
@@ -199,6 +201,8 @@ export class ReleasePanel {
   readonly githubLinked = computed(() => this.store.hasGithubConnection());
 
   readonly originUrl = computed(() => this.store.originFetchUrl() ?? '');
+  readonly githubReleasesUrl = computed(() => releasesWebUrl(this.originUrl()));
+  readonly attaching = computed(() => this.store.releaseAttaching());
 
   readonly deployUrl = computed(() => {
     const activity = this.activity();
@@ -554,6 +558,19 @@ export class ReleasePanel {
 
   startRelease(kind?: 'patch' | 'minor' | 'major'): void {
     void this.store.startReleaseFlow(kind);
+  }
+
+  watchLatest(): void {
+    void this.store.attachLatestRelease({ force: true });
+  }
+
+  openReleasesPage(): void {
+    const url = this.githubReleasesUrl();
+    if (!url) {
+      this.store.showWarning('No GitHub or GitLab remote found for this repository.');
+      return;
+    }
+    this.openLink(url);
   }
 
   pushRelease(): void {

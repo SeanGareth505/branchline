@@ -121,6 +121,8 @@ pub fn run() {
             commands::release::run_release,
             commands::release::push_release_tags,
             commands::release::poll_release_deploy,
+            commands::release::get_latest_github_release,
+            commands::release::get_repo_release_apps,
             commands::release::get_github_release_notes,
             commands::release::update_github_release_notes,
             commands::worktrees::list_worktrees,

@@ -246,16 +246,25 @@ fn read_json_version(path: &Path, keys: &[String]) -> AppResult<String> {
         .ok_or_else(|| crate::AppError::msg(format!("Key {key} is not a string in {}", path.display())))
 }
 
+fn json_version_value(path: &Path, keys: &[String]) -> Option<String> {
+    read_json_version(path, keys)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn current_version(repo: &Path, cfg: &ReleaseConfig) -> AppResult<String> {
-    let pkg = repo.join("package.json");
-    if pkg.exists() {
-        return read_json_version(&pkg, &["version".into()]);
-    }
     for file in &cfg.files {
-        if file.kind == "json" {
-            let keys = file.keys.clone().unwrap_or_else(|| vec!["version".into()]);
-            return read_json_version(&repo.join(&file.path), &keys);
+        if file.kind != "json" {
+            continue;
         }
+        let keys = file.keys.clone().unwrap_or_else(|| vec!["version".into()]);
+        if let Some(version) = json_version_value(&repo.join(&file.path), &keys) {
+            return Ok(version);
+        }
+    }
+    if let Some(version) = json_version_value(&repo.join("package.json"), &["version".into()]) {
+        return Ok(version);
     }
     Err(crate::AppError::msg(
         "Could not find a version source (package.json or a json file in release.config.json)",
@@ -1043,6 +1052,52 @@ pub struct PollReleaseDeployOutput {
     pub jobs: Vec<ReleaseDeployJob>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestGithubReleaseOutput {
+    pub found: bool,
+    pub message: String,
+    pub tag: String,
+    pub version: String,
+    pub name: Option<String>,
+    pub html_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoReleaseEvent {
+    pub kind: String,
+    pub title: String,
+    pub detail: String,
+    pub status: String,
+    pub tag: Option<String>,
+    pub environment: Option<String>,
+    pub url: Option<String>,
+    pub at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoReleaseApp {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub workflow_file: Option<String>,
+    pub workflow_url: Option<String>,
+    pub creates_tags: bool,
+    pub latest: Option<RepoReleaseEvent>,
+    pub events: Vec<RepoReleaseEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoReleaseAppsOutput {
+    pub apps: Vec<RepoReleaseApp>,
+    pub repo_url: Option<String>,
+    pub tags_url: Option<String>,
+    pub message: String,
+}
+
 struct DeployUrls {
     repo_url: String,
     website_url: String,
@@ -1313,7 +1368,7 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
         .unwrap_or_else(|| "main".into());
     let mut suggested = Vec::new();
     let pkg = path.join("package.json");
-    if pkg.exists() {
+    if json_version_value(&pkg, &["version".into()]).is_some() {
         suggested.push(ReleaseSetupFileHint {
             path: "package.json".into(),
             kind: "json".into(),
@@ -1370,11 +1425,7 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
             },
         )
     };
-    let current_version = if pkg.exists() {
-        read_json_version(&pkg, &["version".into()]).ok()
-    } else {
-        None
-    };
+    let current_version = json_version_value(&pkg, &["version".into()]);
     Ok(ReleaseSetupHintsOutput {
         product_name,
         branch,
@@ -1493,6 +1544,8 @@ struct GhWorkflowRun {
     display_title: Option<String>,
     #[serde(default)]
     head_sha: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1510,6 +1563,10 @@ struct GhReleaseView {
     is_draft: Option<bool>,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    tag_name: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     assets: Vec<GhReleaseAsset>,
 }
@@ -2450,6 +2507,718 @@ pub async fn poll_release_deploy(
     .map_err(|e| crate::AppError::msg(format!("Deploy poll interrupted: {e}")))?
 }
 
+fn empty_latest_github_release(message: impl Into<String>) -> LatestGithubReleaseOutput {
+    LatestGithubReleaseOutput {
+        found: false,
+        message: message.into(),
+        tag: String::new(),
+        version: String::new(),
+        name: None,
+        html_url: None,
+    }
+}
+
+fn version_from_release_tag(tag: &str, prefix: &str) -> String {
+    let trimmed = tag.trim();
+    let prefix = prefix.trim();
+    if !prefix.is_empty() {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            if !rest.is_empty() {
+                return rest.to_string();
+            }
+        }
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix('v')
+        .or_else(|| trimmed.strip_prefix('V'))
+    {
+        if !rest.is_empty() {
+            return rest.to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn tag_prefix_for_repo(repo: &Path) -> String {
+    if !config_path(repo).exists() {
+        return default_tag_prefix();
+    }
+    load_config(repo)
+        .ok()
+        .map(|cfg| cfg.tag_prefix)
+        .filter(|prefix| !prefix.trim().is_empty())
+        .unwrap_or_else(default_tag_prefix)
+}
+
+fn latest_from_gh_view(view: GhReleaseView, prefix: &str) -> Option<LatestGithubReleaseOutput> {
+    if view.is_draft.unwrap_or(false) {
+        return None;
+    }
+    let tag = view.tag_name?.trim().to_string();
+    if tag.is_empty() {
+        return None;
+    }
+    Some(LatestGithubReleaseOutput {
+        found: true,
+        message: format!("Latest GitHub release is {tag}"),
+        version: version_from_release_tag(&tag, prefix),
+        name: view
+            .name
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty()),
+        html_url: view.url,
+        tag,
+    })
+}
+
+fn latest_from_api_value(value: &Value, prefix: &str) -> Option<LatestGithubReleaseOutput> {
+    if value.get("draft").and_then(|v| v.as_bool()) == Some(true) {
+        return None;
+    }
+    let tag = value
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())?;
+    Some(LatestGithubReleaseOutput {
+        found: true,
+        message: format!("Latest GitHub release is {tag}"),
+        version: version_from_release_tag(tag, prefix),
+        tag: tag.to_string(),
+        name: value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string),
+        html_url: value
+            .get("html_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    })
+}
+
+fn fetch_gh_latest_release(gh: &str, repo: &str, prefix: &str) -> Option<LatestGithubReleaseOutput> {
+    Command::new(gh)
+        .args([
+            "release",
+            "view",
+            "-R",
+            repo,
+            "--json",
+            "tagName,name,url,isDraft",
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| serde_json::from_slice::<GhReleaseView>(&output.stdout).ok())
+        .and_then(|view| latest_from_gh_view(view, prefix))
+}
+
+fn fetch_api_latest_release(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    prefix: &str,
+) -> AppResult<LatestGithubReleaseOutput> {
+    let resp = client
+        .get(format!("{base}/repos/{full}/releases/latest"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| crate::AppError::msg(format!("GitHub release request failed: {e}")))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(empty_latest_github_release(format!(
+            "No GitHub releases yet for {full}."
+        )));
+    }
+    if !resp.status().is_success() {
+        return Err(crate::AppError::msg(format!(
+            "GitHub release request returned {}",
+            resp.status()
+        )));
+    }
+    let value: Value = resp
+        .json()
+        .map_err(|e| crate::AppError::msg(format!("Invalid GitHub release response: {e}")))?;
+    Ok(latest_from_api_value(&value, prefix).unwrap_or_else(|| {
+        empty_latest_github_release(format!("No GitHub releases yet for {full}."))
+    }))
+}
+
+fn latest_github_release_blocking(
+    path: PathBuf,
+    connection: Option<ConnectionConfig>,
+) -> AppResult<LatestGithubReleaseOutput> {
+    git_cli::ensure_repo(&path)?;
+    let Ok((owner, repo)) = resolve_github_repo(&path) else {
+        return Ok(empty_latest_github_release(
+            "Could not detect a GitHub remote. Add an origin pointing at github.com.",
+        ));
+    };
+    let full = format!("{owner}/{repo}");
+    let prefix = tag_prefix_for_repo(&path);
+    if let Some(gh) = gh_command() {
+        if let Some(latest) = fetch_gh_latest_release(&gh, &full, &prefix) {
+            return Ok(latest);
+        }
+    }
+    let Some(connection) = connection else {
+        return Ok(empty_latest_github_release(format!(
+            "No GitHub releases found for {full}. Link GitHub in Settings → Connections or install gh to look them up."
+        )));
+    };
+    let base = {
+        let trimmed = connection.base_url.trim().trim_end_matches('/');
+        if trimmed.is_empty() {
+            "https://api.github.com".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let token = connection.token.trim();
+    let client = reqwest::blocking::Client::new();
+    fetch_api_latest_release(&client, &base, token, &full, &prefix)
+}
+
+#[command]
+pub async fn get_latest_github_release(
+    state: State<'_, AppState>,
+    input: ReleaseRepoInput,
+) -> AppResult<LatestGithubReleaseOutput> {
+    let path = PathBuf::from(&input.path);
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || latest_github_release_blocking(path, connection))
+        .await
+        .map_err(|e| crate::AppError::msg(format!("Latest release request interrupted: {e}")))?
+}
+
+fn is_deploy_workflow_name(filename: &str) -> bool {
+    let stem = filename.to_ascii_lowercase();
+    let stem = stem
+        .trim_end_matches(".yaml")
+        .trim_end_matches(".yml");
+    if stem.contains("check")
+        || stem.contains("lint")
+        || stem.contains("test")
+        || stem.contains("detect")
+    {
+        return false;
+    }
+    stem.contains("deploy") || stem.contains("release") || stem.contains("publish")
+}
+
+fn workflow_mentions_app(text: &str, app_path: &str) -> bool {
+    let needle = app_path.replace('\\', "/");
+    text.contains(&needle)
+}
+
+fn workflow_name_matches_app(filename: &str, app_id: &str) -> bool {
+    let stem = filename.to_ascii_lowercase();
+    let stem = stem
+        .trim_end_matches(".yaml")
+        .trim_end_matches(".yml");
+    let id = app_id.to_ascii_lowercase();
+    if stem.contains(&id) {
+        return true;
+    }
+    let first = id.split(['-', '_']).next().unwrap_or("");
+    first.len() >= 3 && stem.starts_with(first) && is_deploy_workflow_name(filename)
+}
+
+fn workflow_matches_app(filename: &str, text: &str, app_id: &str, app_path: &str) -> bool {
+    if !is_deploy_workflow_name(filename) && !text.contains("git tag") {
+        return false;
+    }
+    workflow_mentions_app(text, app_path) || workflow_name_matches_app(filename, app_id)
+}
+
+fn workflow_creates_tags(text: &str) -> bool {
+    text.contains("git tag") || text.contains("github.event.release")
+}
+
+fn app_display_name(folder: &str) -> String {
+    folder
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            if part.len() <= 4 && part.chars().all(|c| c.is_ascii_alphabetic()) && part != "web" {
+                part.to_ascii_uppercase()
+            } else {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn tag_environment(tag: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    if lower.starts_with("prod-") || lower.starts_with("production-") {
+        Some("production".into())
+    } else if lower.starts_with("stg-") || lower.starts_with("staging-") {
+        Some("staging".into())
+    } else if lower.starts_with("dev-") || lower.starts_with("development-") {
+        Some("development".into())
+    } else {
+        None
+    }
+}
+
+fn branch_environment(branch: &str) -> Option<String> {
+    match branch.trim() {
+        "main" | "master" => Some("production".into()),
+        "staging" => Some("staging".into()),
+        "develop" | "development" => Some("development".into()),
+        _ => None,
+    }
+}
+
+fn tag_named_for_app(tag: &str, app_id: &str) -> bool {
+    let lower = tag.to_ascii_lowercase();
+    let id = app_id.to_ascii_lowercase();
+    if lower.contains(&id) {
+        return true;
+    }
+    id.split(['-', '_'])
+        .filter(|part| part.len() >= 4)
+        .any(|part| {
+            lower.starts_with(&format!("{part}-"))
+                || lower.contains(&format!("-{part}-"))
+                || lower.contains(&format!("-{part}."))
+        })
+}
+
+fn event_status(status: Option<&str>, conclusion: Option<&str>) -> String {
+    let conclusion = conclusion.unwrap_or("").to_ascii_lowercase();
+    if conclusion == "success" {
+        return "success".into();
+    }
+    if matches!(
+        conclusion.as_str(),
+        "failure" | "cancelled" | "canceled" | "timed_out" | "startup_failure"
+    ) {
+        return "failure".into();
+    }
+    let status = status.unwrap_or("").to_ascii_lowercase();
+    if matches!(
+        status.as_str(),
+        "queued" | "in_progress" | "waiting" | "requested" | "pending"
+    ) {
+        return "pending".into();
+    }
+    "unknown".into()
+}
+
+struct DiscoveredApp {
+    id: String,
+    name: String,
+    path: String,
+}
+
+#[derive(Clone)]
+struct DiscoveredWorkflow {
+    filename: String,
+    text: String,
+}
+
+fn discover_workspace_apps(repo: &Path) -> Vec<DiscoveredApp> {
+    let apps_dir = repo.join("apps");
+    let Ok(entries) = fs::read_dir(&apps_dir) else {
+        return Vec::new();
+    };
+    let mut apps = Vec::new();
+    for entry in entries.flatten() {
+        let file_type = entry.file_type().ok();
+        if !file_type.is_some_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let folder = entry.file_name().to_string_lossy().to_string();
+        if folder.starts_with('.') {
+            continue;
+        }
+        let pkg = entry.path().join("package.json");
+        if !pkg.is_file() {
+            continue;
+        }
+        let rel = format!("apps/{folder}");
+        apps.push(DiscoveredApp {
+            name: app_display_name(&folder),
+            id: folder,
+            path: rel,
+        });
+    }
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps
+}
+
+fn discover_workflows(repo: &Path) -> Vec<DiscoveredWorkflow> {
+    let dir = repo.join(".github").join("workflows");
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut workflows = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let lower = name.to_ascii_lowercase();
+        if !(lower.ends_with(".yml") || lower.ends_with(".yaml")) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        workflows.push(DiscoveredWorkflow {
+            filename: name,
+            text,
+        });
+    }
+    workflows
+}
+
+fn github_workflow_url(owner: &str, repo: &str, filename: &str) -> String {
+    format!("https://github.com/{owner}/{repo}/actions/workflows/{filename}")
+}
+
+fn github_tags_url(owner: &str, repo: &str) -> String {
+    format!("https://github.com/{owner}/{repo}/tags")
+}
+
+struct LocalTag {
+    name: String,
+    at: Option<String>,
+}
+
+fn list_local_tags(repo: &Path) -> Vec<LocalTag> {
+    let (ok, out, _) = git_cli::run_git_allow_fail(
+        repo,
+        &[
+            "for-each-ref",
+            "--sort=-creatordate",
+            "--count=40",
+            "--format=%(refname:short)|%(creatordate:iso-strict)",
+            "refs/tags",
+        ],
+    );
+    if !ok || out.trim().is_empty() {
+        return Vec::new();
+    }
+    out.lines()
+        .filter_map(|line| {
+            let (name, at) = line.split_once('|')?;
+            let name = name.trim();
+            if name.is_empty() {
+                return None;
+            }
+            Some(LocalTag {
+                name: name.to_string(),
+                at: Some(at.trim().to_string()).filter(|value| !value.is_empty()),
+            })
+        })
+        .collect()
+}
+
+fn assign_tag_app(tag: &str, apps: &[DiscoveredApp], tagging_ids: &[String]) -> Option<String> {
+    let named: Vec<String> = apps
+        .iter()
+        .filter(|app| tag_named_for_app(tag, &app.id))
+        .map(|app| app.id.clone())
+        .collect();
+    if named.len() == 1 {
+        return named.into_iter().next();
+    }
+    if named.is_empty() && tagging_ids.len() == 1 {
+        return tagging_ids.first().cloned();
+    }
+    None
+}
+
+fn gh_list_app_runs(gh: &str, repo: &str, workflow: &str) -> Vec<GhWorkflowRun> {
+    gh_list_workflow_runs(
+        gh,
+        repo,
+        workflow,
+        "databaseId,status,conclusion,url,headBranch,displayTitle,headSha,createdAt",
+        None,
+    )
+}
+
+fn event_from_run(run: &GhWorkflowRun, workflow: &str) -> RepoReleaseEvent {
+    let branch = run.head_branch.clone().unwrap_or_default();
+    let env = branch_environment(&branch);
+    let status = event_status(run.status.as_deref(), run.conclusion.as_deref());
+    let title = run
+        .display_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(workflow)
+        .to_string();
+    let mut detail_parts = Vec::new();
+    if !branch.is_empty() {
+        detail_parts.push(branch);
+    }
+    if let Some(env) = env.as_deref() {
+        detail_parts.push(env.to_string());
+    }
+    RepoReleaseEvent {
+        kind: "workflow".into(),
+        title,
+        detail: detail_parts.join(" · "),
+        status,
+        tag: None,
+        environment: env,
+        url: run.url.clone(),
+        at: run.created_at.clone(),
+    }
+}
+
+fn event_from_tag(tag: &LocalTag, owner: Option<&str>, repo: Option<&str>) -> RepoReleaseEvent {
+    let env = tag_environment(&tag.name);
+    let url = match (owner, repo) {
+        (Some(owner), Some(repo)) => Some(format!(
+            "https://github.com/{owner}/{repo}/releases/tag/{}",
+            tag.name
+        )),
+        _ => None,
+    };
+    RepoReleaseEvent {
+        kind: "tag".into(),
+        title: tag.name.clone(),
+        detail: env.clone().unwrap_or_else(|| "Tag".into()),
+        status: "success".into(),
+        tag: Some(tag.name.clone()),
+        environment: env,
+        url,
+        at: tag.at.clone(),
+    }
+}
+
+fn fetch_api_workflow_runs(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    workflow: &str,
+) -> Vec<RepoReleaseEvent> {
+    let Ok(resp) = client
+        .get(format!(
+            "{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=10"
+        ))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+    else {
+        return Vec::new();
+    };
+    if !resp.status().is_success() {
+        return Vec::new();
+    }
+    let Ok(value) = resp.json::<Value>() else {
+        return Vec::new();
+    };
+    value
+        .get("workflow_runs")
+        .and_then(|runs| runs.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|run| {
+            let status = run.get("status").and_then(|v| v.as_str());
+            let conclusion = run.get("conclusion").and_then(|v| v.as_str());
+            let branch = run
+                .get("head_branch")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let env = branch_environment(branch);
+            let title = run
+                .get("display_title")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(workflow)
+                .to_string();
+            let mut detail_parts = Vec::new();
+            if !branch.is_empty() {
+                detail_parts.push(branch.to_string());
+            }
+            if let Some(env) = env.as_deref() {
+                detail_parts.push(env.to_string());
+            }
+            Some(RepoReleaseEvent {
+                kind: "workflow".into(),
+                title,
+                detail: detail_parts.join(" · "),
+                status: event_status(status, conclusion),
+                tag: None,
+                environment: env,
+                url: run
+                    .get("html_url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                at: run
+                    .get("created_at")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+fn merge_app_events(runs: Vec<RepoReleaseEvent>, tags: Vec<RepoReleaseEvent>) -> Vec<RepoReleaseEvent> {
+    let mut events = runs;
+    for tag in tags {
+        let title = tag.title.clone();
+        if events.iter().any(|event| event.title.contains(&title) || event.detail.contains(&title))
+        {
+            continue;
+        }
+        events.push(tag);
+    }
+    events.sort_by(|a, b| b.at.cmp(&a.at));
+    events.truncate(12);
+    events
+}
+
+fn repo_release_apps_blocking(
+    path: PathBuf,
+    connection: Option<ConnectionConfig>,
+) -> AppResult<RepoReleaseAppsOutput> {
+    git_cli::ensure_repo(&path)?;
+    let apps = discover_workspace_apps(&path);
+    if apps.is_empty() {
+        return Ok(RepoReleaseAppsOutput {
+            apps: Vec::new(),
+            repo_url: None,
+            tags_url: None,
+            message: String::new(),
+        });
+    }
+    let workflows = discover_workflows(&path);
+    let github = resolve_github_repo(&path).ok();
+    let (owner, repo_name) = match github.as_ref() {
+        Some((owner, repo)) => (Some(owner.as_str()), Some(repo.as_str())),
+        None => (None, None),
+    };
+    let full = github
+        .as_ref()
+        .map(|(owner, repo)| format!("{owner}/{repo}"));
+    let tags = list_local_tags(&path);
+    let mut matched: Vec<(DiscoveredApp, Option<DiscoveredWorkflow>)> = apps
+        .into_iter()
+        .map(|app| {
+            let workflow = workflows.iter().find(|workflow| {
+                workflow_matches_app(&workflow.filename, &workflow.text, &app.id, &app.path)
+            });
+            (app, workflow.cloned())
+        })
+        .collect();
+    let tagging_ids: Vec<String> = matched
+        .iter()
+        .filter(|(_, workflow)| workflow.as_ref().is_some_and(|item| workflow_creates_tags(&item.text)))
+        .map(|(app, _)| app.id.clone())
+        .collect();
+
+    let gh = gh_command();
+    let api_client = connection.as_ref().map(|conn| {
+        let base = {
+            let trimmed = conn.base_url.trim().trim_end_matches('/');
+            if trimmed.is_empty() {
+                "https://api.github.com".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        (base, conn.token.trim().to_string())
+    });
+
+    let mut output_apps = Vec::new();
+    for (app, workflow) in matched.drain(..) {
+        let creates_tags = workflow
+            .as_ref()
+            .is_some_and(|item| workflow_creates_tags(&item.text));
+        let workflow_file = workflow.as_ref().map(|item| item.filename.clone());
+        let workflow_url = match (owner, repo_name, workflow_file.as_deref()) {
+            (Some(owner), Some(repo), Some(file)) => Some(github_workflow_url(owner, repo, file)),
+            _ => None,
+        };
+        let mut runs = Vec::new();
+        if let (Some(gh), Some(full), Some(file)) = (gh.as_deref(), full.as_deref(), workflow_file.as_deref())
+        {
+            runs = gh_list_app_runs(gh, full, file)
+                .iter()
+                .map(|run| event_from_run(run, file))
+                .collect();
+        }
+        if runs.is_empty() {
+            if let (Some((base, token)), Some(full), Some(file)) =
+                (api_client.as_ref(), full.as_deref(), workflow_file.as_deref())
+            {
+                let client = reqwest::blocking::Client::new();
+                runs = fetch_api_workflow_runs(&client, base, token, full, file);
+            }
+        }
+        let app_tags: Vec<RepoReleaseEvent> = tags
+            .iter()
+            .filter(|tag| {
+                assign_tag_app(&tag.name, std::slice::from_ref(&app), &tagging_ids).as_deref()
+                    == Some(app.id.as_str())
+            })
+            .map(|tag| event_from_tag(tag, owner, repo_name))
+            .collect();
+        let events = merge_app_events(runs, app_tags);
+        let latest = events.first().cloned();
+        output_apps.push(RepoReleaseApp {
+            id: app.id,
+            name: app.name,
+            path: app.path,
+            workflow_file,
+            workflow_url,
+            creates_tags,
+            latest,
+            events,
+        });
+    }
+
+    let linked = gh.is_some() || connection.is_some();
+    let message = if !linked && github.is_some() {
+        "Tags are from this clone. Link GitHub in Settings → Connections to load deploy runs."
+            .into()
+    } else {
+        String::new()
+    };
+
+    Ok(RepoReleaseAppsOutput {
+        apps: output_apps,
+        repo_url: github
+            .as_ref()
+            .map(|(owner, repo)| format!("https://github.com/{owner}/{repo}")),
+        tags_url: github
+            .as_ref()
+            .map(|(owner, repo)| github_tags_url(owner, repo)),
+        message,
+    })
+}
+
+#[command]
+pub async fn get_repo_release_apps(
+    state: State<'_, AppState>,
+    input: ReleaseRepoInput,
+) -> AppResult<RepoReleaseAppsOutput> {
+    let path = PathBuf::from(&input.path);
+    let connection = github_connection(&state).ok();
+    tauri::async_runtime::spawn_blocking(move || repo_release_apps_blocking(path, connection))
+        .await
+        .map_err(|e| crate::AppError::msg(format!("Release apps request interrupted: {e}")))?
+}
+
 fn empty_release_notes(tag: &str, message: impl Into<String>) -> GithubReleaseNotesOutput {
     GithubReleaseNotesOutput {
         ok: true,
@@ -2786,6 +3555,72 @@ mod tests {
             Some("abc123"),
             Some("def456")
         ));
+    }
+
+    #[test]
+    fn version_from_release_tag_strips_configured_prefix() {
+        assert_eq!(version_from_release_tag("v0.8.45", "v"), "0.8.45");
+        assert_eq!(version_from_release_tag("0.8.45", "v"), "0.8.45");
+        assert_eq!(version_from_release_tag("rel-1.2.3", "rel-"), "1.2.3");
+        assert_eq!(version_from_release_tag("sotf-1734", "v"), "sotf-1734");
+    }
+
+    #[test]
+    fn deploy_workflow_names_skip_checks() {
+        assert!(is_deploy_workflow_name("web-deploy.yml"));
+        assert!(is_deploy_workflow_name("sotf-deploy.yml"));
+        assert!(!is_deploy_workflow_name("web-checks.yml"));
+        assert!(!is_deploy_workflow_name("sotf-checks.yml"));
+        assert!(!is_deploy_workflow_name("detect-changes.yml"));
+    }
+
+    #[test]
+    fn matches_monorepo_apps_to_deploy_workflows() {
+        assert!(workflow_matches_app(
+            "web-deploy.yml",
+            "paths:\n  - 'apps/web-frontend/**'\n",
+            "web-frontend",
+            "apps/web-frontend",
+        ));
+        assert!(workflow_matches_app(
+            "sotf-deploy.yml",
+            "paths:\n  - 'apps/sotf/**'\n",
+            "sotf",
+            "apps/sotf",
+        ));
+        assert!(!workflow_matches_app(
+            "web-checks.yml",
+            "paths:\n  - 'apps/web-frontend/**'\n",
+            "web-frontend",
+            "apps/web-frontend",
+        ));
+    }
+
+    #[test]
+    fn env_tags_go_to_the_app_that_creates_tags() {
+        let web = DiscoveredApp {
+            id: "web-frontend".into(),
+            name: "Web Frontend".into(),
+            path: "apps/web-frontend".into(),
+        };
+        let sotf = DiscoveredApp {
+            id: "sotf".into(),
+            name: "SOTF".into(),
+            path: "apps/sotf".into(),
+        };
+        let tagging = vec!["web-frontend".to_string()];
+        assert_eq!(
+            assign_tag_app("prod-v1.0.3", std::slice::from_ref(&web), &tagging).as_deref(),
+            Some("web-frontend")
+        );
+        assert_eq!(
+            assign_tag_app("prod-v1.0.3", std::slice::from_ref(&sotf), &tagging).as_deref(),
+            Some("web-frontend")
+        );
+        assert_eq!(app_display_name("web-frontend"), "Web Frontend");
+        assert_eq!(app_display_name("sotf"), "SOTF");
+        assert_eq!(tag_environment("prod-v1.0.3").as_deref(), Some("production"));
+        assert_eq!(tag_environment("dev-v1.0.3").as_deref(), Some("development"));
     }
 
     #[test]

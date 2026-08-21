@@ -75,6 +75,8 @@ import type {
   ReleaseSetupFileHint,
   PollReleaseDeployOutput,
   GithubReleaseNotesOutput,
+  LatestGithubReleaseOutput,
+  RepoReleaseAppsOutput,
   SyncCommitInfo,
 } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
@@ -875,6 +877,18 @@ export class TauriService {
   pollReleaseDeploy(path: string, tag: string) {
     return this.invoke<PollReleaseDeployOutput>('poll_release_deploy', {
       input: { path, tag },
+    });
+  }
+
+  getLatestGithubRelease(path: string) {
+    return this.invoke<LatestGithubReleaseOutput>('get_latest_github_release', {
+      input: { path },
+    });
+  }
+
+  getRepoReleaseApps(path: string) {
+    return this.invoke<RepoReleaseAppsOutput>('get_repo_release_apps', {
+      input: { path },
     });
   }
 
@@ -1791,6 +1805,20 @@ export class TauriService {
             ],
           },
         ],
+      },
+      get_latest_github_release: {
+        found: true,
+        message: 'Latest GitHub release is v0.1.1',
+        tag: 'v0.1.1',
+        version: '0.1.1',
+        name: 'Demo App 0.1.1',
+        htmlUrl: 'https://github.com/example/navigo/releases/tag/v0.1.1',
+      },
+      get_repo_release_apps: {
+        apps: [],
+        repoUrl: 'https://github.com/example/navigo',
+        tagsUrl: 'https://github.com/example/navigo/tags',
+        message: '',
       },
       list_remotes: [
         {

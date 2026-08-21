@@ -30,7 +30,7 @@
         <li><strong>Repo</strong> — branches, commit graph, diff, and file tree.</li>
         <li><strong>PRs</strong> — pull requests for the current repository.</li>
         <li><strong>Jira</strong> — linked issues when Jira is connected (optional).</li>
-        <li><strong>Release</strong> — version bumps, tags, and release tracking.</li>
+        <li><strong>Release</strong> — GitHub releases, version bumps, tags, and release tracking.</li>
         <li><strong>Identity / Automation</strong> — visible in Advanced mode only.</li>
         <li><strong>Settings</strong> — preferences, connections, updates, and this guide.</li>
       </ul>
@@ -222,15 +222,23 @@
     <article id="help-release" class="bl-panel block section">
       <h2>Release</h2>
       <p>
-        The Release view helps you bump version numbers, create tags, and track deployment status for
-        projects that ship tagged releases.
+        The Release view can watch GitHub releases for any linked repository, including client
+        projects that do not ship versions through Branchline.
       </p>
       <ul>
-        <li><strong>Version bump</strong> — increment semver in project files.</li>
+        <li><strong>Watch latest</strong> — load the newest GitHub release and follow installer builds when GitHub Actions is used.</li>
+        <li><strong>Version bump</strong> — increment semver in project files when a version source is configured.</li>
         <li><strong>Tag &amp; push</strong> — create an annotated tag and push it to the remote.</li>
         <li><strong>Changelog</strong> — extract commit messages between tags or branches for release notes.</li>
         <li><strong>CI tracking</strong> — follow GitHub Actions workflow runs tied to the release.</li>
       </ul>
+      <p>
+        Creating a release from Branchline needs a file with a semantic version (usually
+        <code>package.json</code>). Workspace roots without a version can still browse GitHub
+        releases. In a monorepo, pick an app to see that app’s deploy workflow and tags — each app
+        can ship separately. Do not add <code>release.config.json</code> to a client repo unless you
+        intend to ship from Branchline.
+      </p>
     </article>
 
     <article id="help-integrations" class="bl-panel block section">

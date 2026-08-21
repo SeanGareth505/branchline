@@ -972,6 +972,44 @@ export interface GithubReleaseNotesOutput {
   draft: boolean;
 }
 
+export interface LatestGithubReleaseOutput {
+  found: boolean;
+  message: string;
+  tag: string;
+  version: string;
+  name?: string | null;
+  htmlUrl?: string | null;
+}
+
+export interface RepoReleaseEvent {
+  kind: string;
+  title: string;
+  detail: string;
+  status: string;
+  tag?: string | null;
+  environment?: string | null;
+  url?: string | null;
+  at?: string | null;
+}
+
+export interface RepoReleaseApp {
+  id: string;
+  name: string;
+  path: string;
+  workflowFile?: string | null;
+  workflowUrl?: string | null;
+  createsTags: boolean;
+  latest?: RepoReleaseEvent | null;
+  events: RepoReleaseEvent[];
+}
+
+export interface RepoReleaseAppsOutput {
+  apps: RepoReleaseApp[];
+  repoUrl?: string | null;
+  tagsUrl?: string | null;
+  message: string;
+}
+
 export interface CreatePullRequestOutput {
   ok: boolean;
   message: string;

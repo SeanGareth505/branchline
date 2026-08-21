@@ -146,7 +146,8 @@
   background: color-mix(in srgb, var(--glass-bg) 78%, transparent);
 }
 
-.panel app-release-panel {
+.panel app-release-panel,
+.panel app-release-apps {
   flex: 1;
   min-height: 0;
 }

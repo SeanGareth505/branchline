@@ -121,6 +121,13 @@ export function releaseWorkflowWebUrl(remoteUrl: string): string | null {
   return `${parsed.webBase}/actions/workflows/release.yml`;
 }
 
+export function releasesWebUrl(remoteUrl: string): string | null {
+  const parsed = parseRemoteWebBase(remoteUrl);
+  if (!parsed) return null;
+  if (isGitLabHost(parsed.host)) return `${parsed.webBase}/-/releases`;
+  return `${parsed.webBase}/releases`;
+}
+
 export function commitWebUrl(remoteUrl: string, sha: string): string | null {
   const parsed = parseRemoteWebBase(remoteUrl);
   const id = sha.trim();

@@ -3786,11 +3786,25 @@ export class AppStore {
       if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return false;
       const version = status.currentVersion?.trim();
       const cfg = status.config;
-      if (!status.available || !version || !cfg) {
-        if (force) this.showWarning('Release is not configured for this repository.');
-        return false;
+      const productName = cfg?.productName || this.currentRepo()?.name || 'App';
+      let tag = '';
+      let watchVersion = version || '';
+      let githubReleaseUrl: string | null = null;
+      if (version) {
+        tag = `${cfg?.tagPrefix || 'v'}${version}`;
+      } else {
+        const latest = await this.tauri.getLatestGithubRelease(path);
+        if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) {
+          return false;
+        }
+        if (!latest.found || !latest.tag.trim()) {
+          if (force) this.showWarning(latest.message || 'No GitHub releases found for this repository.');
+          return false;
+        }
+        tag = latest.tag.trim();
+        watchVersion = latest.version.trim() || tag.replace(/^v/i, '');
+        githubReleaseUrl = latest.htmlUrl?.trim() || null;
       }
-      const tag = `${cfg.tagPrefix}${version}`;
       const current = this.releaseActivity();
       const sameTag =
         !!current && sameRepoPath(current.path, path) && current.tag === tag;
@@ -3814,15 +3828,36 @@ export class AppStore {
       if (!this.currentRepo()?.path || !sameRepoPath(this.currentRepo()!.path, path)) return false;
       if (!force && !onRelease && sameTag) return false;
       if (result.status === 'unavailable' && normalizeReleasePhase(result.phase) === 'idle') {
+        if (githubReleaseUrl) {
+          this.seedAttachedReleaseActivity({
+            path,
+            productName,
+            version: watchVersion,
+            tag,
+            result: {
+              ...result,
+              status: 'success',
+              phase: 'done',
+              message: `GitHub release ${tag} is published.`,
+              releaseUrl: githubReleaseUrl,
+            },
+          });
+          this.clearDismissedReleaseTag(tag);
+          this.releaseBusy.set(false);
+          return true;
+        }
         if (force) this.showWarning(result.message);
         return false;
       }
       this.seedAttachedReleaseActivity({
         path,
-        productName: cfg.productName,
-        version,
+        productName,
+        version: watchVersion,
         tag,
-        result,
+        result: {
+          ...result,
+          releaseUrl: result.releaseUrl ?? githubReleaseUrl,
+        },
       });
       this.clearDismissedReleaseTag(tag);
       if (
@@ -8625,6 +8660,12 @@ export class AppStore {
       }
       const cfg = status.config;
       if (!cfg) return;
+      if (!status.currentVersion?.trim()) {
+        this.showWarning(
+          'This repository has no version file Branchline can bump. Watch GitHub releases instead, or point release.config.json at a file with a semantic version.',
+        );
+        return;
+      }
 
       const branchNames = this.localBranches().map((b) => b.name);
       const branches = [

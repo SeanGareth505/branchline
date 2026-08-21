@@ -1,0 +1,80 @@
+<div class="apps">
+  <div class="picker" role="tablist" aria-label="Apps in this repository">
+    @for (app of apps(); track app.id) {
+      <button
+        type="button"
+        class="app-chip"
+        role="tab"
+        [class.active]="selectedId() === app.id"
+        (click)="selectApp.emit(app.id)"
+      >
+        {{ app.name }}
+      </button>
+    }
+  </div>
+
+  @if (selected(); as app) {
+    <div class="app-meta">
+      <div>
+        <strong>{{ app.name }}</strong>
+        <p>
+          {{ app.path }}
+          @if (app.workflowFile) {
+            · {{ app.workflowFile }}
+          }
+        </p>
+      </div>
+      @if (app.workflowUrl) {
+        <button type="button" class="bl-btn" (click)="openWorkflow.emit(app)">
+          Open workflow
+        </button>
+      }
+    </div>
+
+    @if (message()) {
+      <p class="hint">{{ message() }}</p>
+    }
+
+    @if (loading()) {
+      <p class="hint">Loading deploys…</p>
+    } @else if (!app.events.length) {
+      <p class="hint">
+        No deploys or tags found for this app yet. Pushes to the deploy branches will show up here.
+      </p>
+    } @else {
+      <ul class="events">
+        @for (event of app.events; track event.title + (event.at || '') + event.kind) {
+          <li>
+            <button
+              type="button"
+              class="event"
+              [attr.data-status]="event.status"
+              [disabled]="!event.url"
+              (click)="event.url && openEvent.emit(event)"
+            >
+              <span class="mark" aria-hidden="true">
+                <ng-icon [name]="statusIcon(event.status)" size="11" />
+              </span>
+              <span class="copy">
+                <span class="title">{{ event.title }}</span>
+                <span class="detail">
+                  {{ kindLabel(event.kind) }}
+                  @if (event.detail) {
+                    · {{ event.detail }}
+                  }
+                  @if (whenLabel(event.at); as when) {
+                    · {{ when }}
+                  }
+                </span>
+              </span>
+              <span class="state">{{ statusLabel(event.status) }}</span>
+              @if (event.url) {
+                <ng-icon class="open" name="lucideExternalLink" size="12" />
+              }
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

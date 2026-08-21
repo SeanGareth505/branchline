@@ -271,60 +271,101 @@
       <div class="footer-actions">
         <button type="button" class="bl-btn" (click)="clear()">Clear</button>
         @if (activity.phase === 'done' || activity.phase === 'error') {
-          <button type="button" class="bl-btn" (click)="startRelease()">Release again</button>
+          @if (canShip()) {
+            <button type="button" class="bl-btn" (click)="startRelease()">Release again</button>
+          }
         }
       </div>
     }
   } @else {
     <div class="idle">
-      <div class="ready">
-        <div class="ready-copy">
-          <span class="ready-kicker">Ready to ship</span>
-          <strong class="ready-version">{{ currentVersion() }}</strong>
-          <p class="ready-meta">
-            {{ productName() }}
-            @if (currentBranch()) {
-              · {{ currentBranch() }}
+      @if (canShip()) {
+        <div class="ready">
+          <div class="ready-copy">
+            <span class="ready-kicker">Ready to ship</span>
+            <strong class="ready-version">{{ currentVersion() }}</strong>
+            <p class="ready-meta">
+              {{ productName() }}
+              @if (currentBranch()) {
+                · {{ currentBranch() }}
+              }
+            </p>
+          </div>
+          @if (isDirty()) {
+            <p class="ready-warn">
+              Uncommitted changes. Commit or stash first, or allow a dirty tree in the release dialog.
+            </p>
+          }
+          <div class="bumps" role="group" aria-label="Version bump">
+            @for (bump of bumpChoices(); track bump.kind) {
+              <button
+                type="button"
+                class="bump"
+                [disabled]="busy() || store.releasingLocally()"
+                (click)="startRelease(bump.kind)"
+              >
+                <span class="bump-kind">{{ bump.label }}</span>
+                <span class="bump-next">{{ bump.next }}</span>
+                <span class="bump-hint">{{ bump.hint }}</span>
+              </button>
             }
-          </p>
-        </div>
-        @if (isDirty()) {
-          <p class="ready-warn">
-            Uncommitted changes. Commit or stash first, or allow a dirty tree in the release dialog.
-          </p>
-        }
-        <div class="bumps" role="group" aria-label="Version bump">
-          @for (bump of bumpChoices(); track bump.kind) {
-            <button
-              type="button"
-              class="bump"
-              [disabled]="busy() || store.releasingLocally()"
-              (click)="startRelease(bump.kind)"
-            >
-              <span class="bump-kind">{{ bump.label }}</span>
-              <span class="bump-next">{{ bump.next }}</span>
-              <span class="bump-hint">{{ bump.hint }}</span>
-            </button>
+          </div>
+          <ol class="pipeline">
+            <li>Bump version files</li>
+            <li>{{ createTagDefault() ? 'Commit and tag' : 'Create a version commit' }}</li>
+            <li>
+              {{
+                !createTagDefault()
+                  ? 'Finish without creating a tag'
+                  : pushDefault()
+                    ? 'Push and watch GitHub Actions'
+                    : 'Keep the tag local until you push'
+              }}
+            </li>
+          </ol>
+          @if (versionFiles(); as files) {
+            <p class="ready-files">{{ files }}</p>
           }
         </div>
-        <ol class="pipeline">
-          <li>Bump version files</li>
-          <li>{{ createTagDefault() ? 'Commit and tag' : 'Create a version commit' }}</li>
-          <li>
-            {{
-              !createTagDefault()
-                ? 'Finish without creating a tag'
-                : pushDefault()
-                  ? 'Push and watch GitHub Actions'
-                  : 'Keep the tag local until you push'
-            }}
-          </li>
-        </ol>
-        @if (versionFiles(); as files) {
-          <p class="ready-files">{{ files }}</p>
-        }
-      </div>
-      <app-release-notes-editor />
+      } @else {
+        <div class="ready">
+          <div class="ready-copy">
+            <span class="ready-kicker">GitHub releases</span>
+            <strong class="ready-version">Browse this repo</strong>
+            <p class="ready-meta">
+              {{ productName() }}
+              @if (currentBranch()) {
+                · {{ currentBranch() }}
+              }
+            </p>
+          </div>
+          <p class="ready-hint">
+            This project doesn’t have a local version file Branchline can bump. You can still watch
+            the latest GitHub release and open the releases page.
+          </p>
+          <div class="browse-actions">
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary"
+              [disabled]="attaching() || store.releasingLocally()"
+              (click)="watchLatest()"
+            >
+              {{ attaching() ? 'Finding…' : 'Watch latest' }}
+            </button>
+            @if (githubReleasesUrl()) {
+              <button type="button" class="bl-btn" (click)="openReleasesPage()">
+                Open on GitHub
+              </button>
+            }
+          </div>
+          @if (versionFiles(); as files) {
+            <p class="ready-files">Configured files have no version · {{ files }}</p>
+          }
+        </div>
+      }
+      @if (canShip()) {
+        <app-release-notes-editor />
+      }
     </div>
   }
 </div>

@@ -11,6 +11,7 @@ import {
   tagWebUrl,
   actionsWebUrl,
   releaseWorkflowWebUrl,
+  releasesWebUrl,
   toHttpsRemoteUrl,
   toSshRemoteUrl,
 } from './repo-links';
@@ -58,6 +59,15 @@ describe('repo web links', () => {
     );
     expect(actionsWebUrl('https://gitlab.com/group/proj.git')).toBe(
       'https://gitlab.com/group/proj/-/pipelines',
+    );
+  });
+
+  it('builds GitHub and GitLab releases URLs', () => {
+    expect(releasesWebUrl('https://github.com/example/navigo.git')).toBe(
+      'https://github.com/example/navigo/releases',
+    );
+    expect(releasesWebUrl('git@gitlab.com:group/proj.git')).toBe(
+      'https://gitlab.com/group/proj/-/releases',
     );
   });
 
