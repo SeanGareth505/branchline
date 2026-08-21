@@ -46,6 +46,18 @@ interface ChoiceSnapshot {
   custom: Map<string, string>;
 }
 
+interface FileResolveSnapshot extends ChoiceSnapshot {
+  total: number;
+  remaining: number;
+}
+
+interface FileProgress {
+  ready: boolean;
+  pending: boolean;
+  remaining: number;
+  total: number;
+}
+
 interface TextBlock {
   kind: 'text';
   index: number;
@@ -89,6 +101,9 @@ export class ConflictResolverDialog {
   readonly choices = signal<Map<string, ConflictChoice>>(new Map());
   readonly custom = signal<Map<string, string>>(new Map());
   readonly activeConflictId = signal<string | null>(null);
+  readonly flashConflictId = signal<string | null>(null);
+  private flashTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly fileSnapshots = signal<Map<string, FileResolveSnapshot>>(new Map());
   readonly showBase = signal(false);
   readonly resultMode = signal<'guided' | 'edit'>('edit');
   readonly manualResultEdit = signal(false);
@@ -133,6 +148,7 @@ export class ConflictResolverDialog {
       const sides = this.store.conflictResolver();
       if (!open || !path || !sides) {
         this.syncedKey = '';
+        if (!open) this.fileSnapshots.set(new Map());
         return;
       }
       const w = sides.working;
@@ -292,8 +308,17 @@ export class ConflictResolverDialog {
         ? 'Manual result is ready'
         : 'Remove all conflict markers to continue';
     }
-    if (this.remainingCount()) return `${this.remainingCount()} left in this file`;
+    if (this.remainingCount()) {
+      return this.remainingCount() === this.conflicts().length
+        ? 'Pending — choose Incoming or Yours'
+        : `${this.remainingCount()} left in this file`;
+    }
     return 'All conflicts chosen';
+  });
+
+  readonly allFilesReady = computed(() => {
+    const files = this.conflicted();
+    return files.length > 0 && files.every((file) => this.fileIsReady(file));
   });
 
   readonly activeIndex = computed(() => {
@@ -477,9 +502,12 @@ export class ConflictResolverDialog {
   }
 
   syncFromSides(): void {
+    const path = this.store.conflictResolverPath();
     const sides = this.sides();
-    this.choices.set(new Map());
-    this.custom.set(new Map());
+    const snap = path ? this.fileSnapshots().get(path) : undefined;
+    const restore = !!(snap && sides?.hasMarkers);
+    this.choices.set(restore ? new Map(snap!.choices) : new Map());
+    this.custom.set(restore ? new Map(snap!.custom) : new Map());
     this.choiceHistory.set([]);
     this.hunkMoreId.set(null);
     this.resultMode.set('edit');
@@ -491,7 +519,8 @@ export class ConflictResolverDialog {
     this.expandedContext.set(new Set());
     const parsed = this.parsed();
     if (parsed.conflicts.length) {
-      this.activeConflictId.set(parsed.conflicts[0]?.id ?? null);
+      const remaining = remainingConflictIds(parsed.conflicts, this.choices(), this.custom());
+      this.activeConflictId.set(remaining[0] ?? parsed.conflicts[0]?.id ?? null);
       this.rebuildDraft();
     } else {
       this.activeConflictId.set(null);
@@ -503,8 +532,26 @@ export class ConflictResolverDialog {
   }
 
   pickFile(path: string): void {
+    this.persistFileSnapshot();
     this.fileTreeExpanded.set(true);
     void this.store.openConflictResolver(path);
+  }
+
+  private persistFileSnapshot(path = this.store.conflictResolverPath()): void {
+    if (!path) return;
+    const total = this.conflicts().length;
+    if (!total) return;
+    const remaining = remainingConflictIds(this.conflicts(), this.choices(), this.custom()).length;
+    this.fileSnapshots.update((map) => {
+      const next = new Map(map);
+      next.set(path, {
+        choices: new Map(this.choices()),
+        custom: new Map(this.custom()),
+        total,
+        remaining,
+      });
+      return next;
+    });
   }
 
   choiceFor(id: string): ConflictChoice | null {
@@ -592,6 +639,7 @@ export class ConflictResolverDialog {
     this.choices.set(new Map(last.choices));
     this.custom.set(new Map(last.custom));
     this.rebuildDraft();
+    this.persistFileSnapshot();
   }
 
   acceptIdentical(): void {
@@ -602,6 +650,7 @@ export class ConflictResolverDialog {
     for (const conflict of identical) next.set(conflict.id, 'theirs');
     this.choices.set(next);
     this.rebuildDraft();
+    this.persistFileSnapshot();
   }
 
   toggleHunkMenu(id: string, event: Event): void {
@@ -643,6 +692,7 @@ export class ConflictResolverDialog {
     this.editingId.set(null);
     this.activeConflictId.set(id);
     this.rebuildDraft();
+    this.persistFileSnapshot();
     if (!advance) return;
     const remaining = remainingConflictIds(this.conflicts(), next, this.custom());
     if (remaining.length) {
@@ -675,6 +725,7 @@ export class ConflictResolverDialog {
     this.editingId.set(null);
     this.rebuildDraft();
     this.activeConflictId.set(this.conflicts()[0]?.id ?? null);
+    this.persistFileSnapshot();
   }
 
   clearChoice(id: string): void {
@@ -686,6 +737,7 @@ export class ConflictResolverDialog {
     custom.delete(id);
     this.custom.set(custom);
     this.rebuildDraft();
+    this.persistFileSnapshot();
   }
 
   rebuildDraft(): void {
@@ -754,25 +806,50 @@ export class ConflictResolverDialog {
 
   focusNextUnresolved(dir: 1 | -1): void {
     const remaining = this.remaining();
-    if (!remaining.length) return;
-    const list = this.conflicts();
-    const current = this.activeIndex();
-    if (dir === 1) {
-      const nextId =
-        remaining.find((id) => (list.findIndex((c) => c.id === id) > current)) ?? remaining[0];
-      if (nextId) this.focusConflictById(nextId);
+    if (remaining.length) {
+      const list = this.conflicts();
+      const current = this.activeIndex();
+      if (dir === 1) {
+        const nextId =
+          remaining.find((id) => list.findIndex((c) => c.id === id) > current) ?? remaining[0];
+        if (nextId) this.focusConflictById(nextId);
+        return;
+      }
+      const prev = [...remaining]
+        .reverse()
+        .find((id) => list.findIndex((c) => c.id === id) < current);
+      this.focusConflictById(prev ?? remaining[remaining.length - 1]!);
       return;
     }
-    const prev = [...remaining]
-      .reverse()
-      .find((id) => (list.findIndex((c) => c.id === id) < current));
-    this.focusConflictById(prev ?? remaining[remaining.length - 1]!);
+    this.goToAdjacentPendingFile(dir);
+  }
+
+  private goToAdjacentPendingFile(dir: 1 | -1): void {
+    const files = this.conflicted();
+    const path = this.store.conflictResolverPath();
+    const idx = files.findIndex((file) => file.path === path);
+    if (idx < 0 || files.length < 2) return;
+    const order = dir === 1
+      ? [...files.slice(idx + 1), ...files.slice(0, idx)]
+      : [...files.slice(0, idx).reverse(), ...files.slice(idx + 1).reverse()];
+    const next = order.find((file) => !this.fileIsReady(file));
+    if (next) this.pickFile(next.path);
   }
 
   focusConflictById(id: string, scroll = true): void {
     this.activeConflictId.set(id);
     if (!scroll) return;
+    this.flashConflict(id);
     queueMicrotask(() => this.scrollSourcesToConflict(id));
+  }
+
+  private flashConflict(id: string): void {
+    this.flashConflictId.set(null);
+    if (this.flashTimer) clearTimeout(this.flashTimer);
+    requestAnimationFrame(() => {
+      this.flashConflictId.set(id);
+      this.flashTimer = setTimeout(() => this.flashConflictId.set(null), 850);
+    });
   }
 
   private scrollSourcesToConflict(id: string): void {
@@ -824,8 +901,41 @@ export class ConflictResolverDialog {
     area.scrollTop = Math.max(0, (line - 2) * lh);
   }
 
+  fileProgress(file: FileStatusEntry): FileProgress {
+    if (file.markersCleared) {
+      return { ready: true, pending: false, remaining: 0, total: 0 };
+    }
+    if (file.path === this.store.conflictResolverPath()) {
+      const total = this.conflicts().length;
+      const remaining = this.remainingCount();
+      return {
+        ready: total > 0 && remaining === 0,
+        pending: total > 0 && remaining === total,
+        remaining,
+        total,
+      };
+    }
+    const snap = this.fileSnapshots().get(file.path);
+    if (!snap) return { ready: false, pending: false, remaining: 0, total: 0 };
+    return {
+      ready: snap.total > 0 && snap.remaining === 0,
+      pending: snap.total > 0 && snap.remaining === snap.total,
+      remaining: snap.remaining,
+      total: snap.total,
+    };
+  }
+
+  fileIsReady(file: FileStatusEntry): boolean {
+    return this.fileProgress(file).ready;
+  }
+
   fileNavLabel(file: FileStatusEntry): string {
-    const status = file.markersCleared ? 'ready to stage' : file.conflictLabel || 'unresolved';
+    const progress = this.fileProgress(file);
+    const status = progress.ready
+      ? 'ready to stage'
+      : progress.pending
+        ? 'pending'
+        : file.conflictLabel || 'unresolved';
     const dir = this.dirName(file.path);
     return dir
       ? `${this.fileName(file.path)}, ${status}, ${dir}`
@@ -936,9 +1046,17 @@ export class ConflictResolverDialog {
 
   async save(): Promise<void> {
     if (!this.canSave() || this.saving()) return;
+    const path = this.store.conflictResolverPath();
     this.saving.set(true);
     try {
       await this.store.saveConflictResolution();
+      if (path) {
+        this.fileSnapshots.update((map) => {
+          const next = new Map(map);
+          next.delete(path);
+          return next;
+        });
+      }
       this.syncFromSides();
     } finally {
       this.saving.set(false);

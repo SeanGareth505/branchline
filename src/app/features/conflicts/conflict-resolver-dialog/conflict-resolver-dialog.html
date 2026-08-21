@@ -122,12 +122,23 @@
                 <ng-icon [name]="sidePaneChevron(filesCollapsed())" size="14" />
               </button>
               <span>Conflicts</span>
-              <strong>{{ fileTotal() }}</strong>
+              @if (allFilesReady()) {
+                <span class="file-status">Ready</span>
+              } @else {
+                <strong>{{ fileTotal() }}</strong>
+              }
             </div>
             @for (f of conflicted(); track f.path) {
               @let selected = f.path === store.conflictResolverPath();
               @let open = fileTreeOpen(f.path);
-              <div class="file-node" [class.on]="selected" [class.open]="open" [class.ready]="f.markersCleared">
+              @let progress = fileProgress(f);
+              <div
+                class="file-node"
+                [class.on]="selected"
+                [class.open]="open"
+                [class.ready]="progress.ready"
+                [class.pending]="progress.pending"
+              >
                 <div class="file-row-line">
                   <button
                     type="button"
@@ -144,7 +155,8 @@
                     class="file-row"
                     role="treeitem"
                     [class.on]="selected"
-                    [class.ready]="f.markersCleared"
+                    [class.ready]="progress.ready"
+                    [class.pending]="progress.pending"
                     [attr.aria-expanded]="open"
                     [attr.aria-current]="selected ? 'true' : null"
                     [attr.aria-label]="fileNavLabel(f)"
@@ -153,10 +165,12 @@
                   >
                     <ng-icon class="file-icon" name="lucideFileText" size="14" />
                     <span class="file-name">{{ fileName(f.path) }}</span>
-                    @if (selected && conflicts().length) {
-                      <span class="file-count">{{ remainingCount() }}/{{ conflicts().length }}</span>
-                    } @else if (f.markersCleared) {
-                      <ng-icon class="file-ready" name="lucideCheck" size="12" />
+                    @if (progress.ready) {
+                      <span class="file-status">Ready</span>
+                    } @else if (progress.pending) {
+                      <span class="file-status pending">Pending</span>
+                    } @else if (progress.total) {
+                      <span class="file-count">{{ progress.remaining }}/{{ progress.total }}</span>
                     }
                   </button>
                 </div>
@@ -168,13 +182,20 @@
                         class="hunk-child"
                         [class.active]="activeConflictId() === conflict.id"
                         [class.resolved]="!!choiceFor(conflict.id)"
+                        [class.pending]="!choiceFor(conflict.id)"
                         (click)="focusConflictById(conflict.id)"
                         [attr.aria-current]="activeConflictId() === conflict.id ? 'true' : null"
                         [attr.aria-label]="hunkRailLabel(conflict)"
                       >
-                        <span class="hunk-dot" [class.resolved]="!!choiceFor(conflict.id)"></span>
+                        <span class="hunk-dot" [class.resolved]="!!choiceFor(conflict.id)" [class.pending]="!choiceFor(conflict.id)"></span>
                         <span class="hunk-index">{{ conflict.index + 1 }}</span>
-                        <span class="hunk-child-copy">Line {{ conflict.startLine }}</span>
+                        <span class="hunk-child-copy">
+                          @if (!choiceFor(conflict.id)) {
+                            Pending
+                          } @else {
+                            Line {{ conflict.startLine }}
+                          }
+                        </span>
                         @if (choiceFor(conflict.id)) {
                           <ng-icon class="hunk-done" name="lucideCheck" size="11" />
                         }
@@ -448,6 +469,7 @@
                           tabindex="0"
                           [class.active]="activeConflictId() === block.conflict.id"
                           [class.resolved]="!!choiceFor(block.conflict.id)"
+                          [class.flash]="flashConflictId() === block.conflict.id"
                           [attr.data-conflict-id]="block.conflict.id"
                           [attr.aria-label]="hunkRailLabel(block.conflict)"
                           (click)="focusConflictById(block.conflict.id, false)"
@@ -579,7 +601,7 @@
                                 title="Accept Current (1)"
                                 (click)="toggleCurrent(block.conflict.id); $event.stopPropagation()"
                               >
-                                <span class="box"><ng-icon name="lucideCheck" size="11" /></span>
+                                <span class="box"></span>
                                 {{ yoursLabel() }}
                               </button>
                               <button
@@ -590,7 +612,7 @@
                                 title="Accept Incoming (2)"
                                 (click)="toggleIncoming(block.conflict.id); $event.stopPropagation()"
                               >
-                                <span class="box"><ng-icon name="lucideCheck" size="11" /></span>
+                                <span class="box"></span>
                                 {{ incomingLabel() }}
                               </button>
                               <button
@@ -883,6 +905,7 @@
             [class.active]="activeConflictId() === block.conflict.id"
             [class.resolved]="!!choiceFor(block.conflict.id)"
             [class.chosen]="sideChosen(side, block.conflict.id)"
+            [class.flash]="flashConflictId() === block.conflict.id"
             [class.rejected]="sideRejected(side, block.conflict.id)"
             [class.locked]="manualResultEdit()"
             [attr.data-conflict-id]="block.conflict.id"
@@ -1004,7 +1027,7 @@
         title="Accept Incoming (2)"
         (click)="toggleIncoming(conflict.id); $event.stopPropagation()"
       >
-        <span class="box"><ng-icon name="lucideCheck" size="12" /></span>
+        <span class="box"></span>
         Accept incoming
       </button>
     } @else if (side === 'ours') {
@@ -1016,7 +1039,7 @@
         title="Accept Current (1)"
         (click)="toggleCurrent(conflict.id); $event.stopPropagation()"
       >
-        <span class="box"><ng-icon name="lucideCheck" size="12" /></span>
+        <span class="box"></span>
         Accept yours
       </button>
     }

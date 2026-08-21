@@ -320,7 +320,8 @@ footer {
 
 .file-nav.collapsed .file-node,
 .file-nav.collapsed .nav-head span,
-.file-nav.collapsed .nav-head strong {
+.file-nav.collapsed .nav-head strong,
+.file-nav.collapsed .nav-head .file-status {
   display: none;
 }
 
@@ -411,11 +412,29 @@ footer {
   color: var(--text-muted);
 }
 
-.file-ready,
-.hunk-done {
+.file-status {
   margin-left: auto;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 1.2rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--git-added) 16%, transparent);
   color: var(--git-added);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.file-status.pending {
+  background: color-mix(in srgb, var(--git-conflict) 14%, transparent);
+  color: var(--git-conflict);
+}
+
+.file-node.pending .file-icon {
+  color: var(--git-conflict);
 }
 
 .file-count {
@@ -436,8 +455,22 @@ footer {
   font-weight: 650;
 }
 
-.file-node.ready .file-name {
+.file-node.ready .file-icon {
   color: var(--git-added);
+}
+
+.file-node.ready:not(.on) .file-name {
+  color: var(--text-secondary);
+}
+
+.file-node.ready.on > .file-row-line {
+  background: color-mix(in srgb, var(--git-added) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--git-added);
+}
+
+.file-node.pending.on > .file-row-line {
+  background: color-mix(in srgb, var(--git-conflict) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--git-conflict);
 }
 
 .main {
@@ -663,6 +696,20 @@ kbd {
   background: var(--git-added);
 }
 
+.hunk-dot.pending {
+  background: var(--git-conflict);
+}
+
+.hunk-child.pending:not(.active) {
+  color: var(--text-secondary);
+}
+
+.hunk-child.pending.active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--git-conflict) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--git-conflict);
+}
+
 .hunk-index {
   flex-shrink: 0;
   width: 1.05rem;
@@ -689,6 +736,12 @@ kbd {
 
 .hunk-child.resolved {
   color: var(--text-muted);
+}
+
+.hunk-done {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--git-added);
 }
 
 .context {
@@ -727,7 +780,37 @@ kbd {
 }
 
 .accept-check .box ng-icon {
-  display: block;
+  display: none;
+}
+
+@keyframes conflict-flash {
+  0% {
+    background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 32%, var(--merge-editor-bg));
+    box-shadow:
+      inset 3px 0 0 var(--hunk-accent, var(--merge-conflict-rail)),
+      inset 0 0 0 1px color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 55%, transparent);
+  }
+  100% {
+    background: color-mix(in srgb, var(--hunk-accent, var(--merge-conflict-rail)) 7%, var(--merge-editor-bg));
+  }
+}
+
+.hunk.flash,
+.source-hunk.flash {
+  animation: conflict-flash 0.85s ease;
+}
+
+.source-hunk.chosen.flash {
+  animation-name: conflict-flash-chosen;
+}
+
+@keyframes conflict-flash-chosen {
+  0% {
+    background: color-mix(in srgb, var(--hunk-accent) 38%, var(--merge-editor-bg));
+  }
+  100% {
+    background: color-mix(in srgb, var(--hunk-accent) 22%, var(--merge-editor-bg));
+  }
 }
 
 .expand {
@@ -793,11 +876,16 @@ kbd {
 }
 
 .source-hunk.chosen {
-  background: color-mix(in srgb, var(--hunk-accent) 11%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent) 22%, var(--merge-editor-bg));
   box-shadow:
     inset 3px 0 0 var(--hunk-accent),
-    inset 0 1px 0 color-mix(in srgb, var(--hunk-accent) 28%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--hunk-accent) 28%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--hunk-accent) 28%, transparent);
+}
+
+.source-hunk.chosen .cmp-line[data-kind='insert'],
+.source-hunk.chosen .cmp-line[data-kind='delete'],
+.source-hunk.chosen .cmp-line[data-kind='change'] {
+  background: color-mix(in srgb, var(--hunk-accent) 16%, transparent);
 }
 
 .source-hunk.rejected {
@@ -829,7 +917,7 @@ kbd {
 }
 
 .source-hunk.active.chosen {
-  background: color-mix(in srgb, var(--hunk-accent) 13%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent) 26%, var(--merge-editor-bg));
 }
 
 .source-hunk.active.rejected {
@@ -1131,9 +1219,29 @@ kbd {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--merge-editor-muted) 70%, transparent)
+    color-mix(in srgb, var(--merge-editor-muted) 14%, transparent);
   background: var(--merge-editor-bg);
   color: var(--merge-editor-fg);
   overscroll-behavior: contain;
+}
+
+.source-doc::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.source-doc::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--merge-editor-muted) 14%, var(--merge-editor-bg));
+}
+
+.source-doc::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--merge-editor-muted) 72%, var(--merge-editor-fg));
 }
 
 .source-hunk,
@@ -1261,7 +1369,7 @@ kbd {
 
 .source-hunk.chosen .codelens,
 .hunk.resolved .codelens {
-  background: color-mix(in srgb, var(--hunk-accent, var(--git-added)) 14%, var(--merge-editor-bg));
+  background: color-mix(in srgb, var(--hunk-accent, var(--git-added)) 24%, var(--merge-editor-bg));
 }
 
 .source-hunk.rejected .codelens {
@@ -1314,14 +1422,17 @@ kbd {
 }
 
 .accept-check .box {
-  display: grid;
-  place-items: center;
-  width: 0.95rem;
-  height: 0.95rem;
-  border: 1.5px solid color-mix(in srgb, var(--hunk-accent, var(--merge-editor-muted)) 80%, white);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1.5px solid color-mix(in srgb, var(--hunk-accent, var(--merge-editor-muted)) 72%, var(--merge-editor-fg));
   border-radius: 3px;
-  color: transparent;
-  background: color-mix(in srgb, var(--merge-editor-bg) 55%, transparent);
+  background: var(--merge-editor-bg);
 }
 
 .accept-check.incoming.on,
@@ -1340,9 +1451,19 @@ kbd {
 
 .accept-check.incoming.on .box,
 .accept-check.current.on .box {
-  border-color: transparent;
+  border-color: var(--hunk-accent, var(--merge-incoming));
   background: var(--hunk-accent, var(--merge-incoming));
-  color: var(--merge-editor-bg);
+}
+
+.accept-check.incoming.on .box::after,
+.accept-check.current.on .box::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  margin-top: -1px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg);
 }
 
 .accept-check:hover:not(:disabled):not(.on) {
