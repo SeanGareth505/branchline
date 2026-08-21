@@ -42,39 +42,121 @@
         No deploys or tags found for this app yet. Pushes to the deploy branches will show up here.
       </p>
     } @else {
-      <ul class="events">
-        @for (event of app.events; track event.title + (event.at || '') + event.kind) {
-          <li>
-            <button
-              type="button"
-              class="event"
-              [attr.data-status]="event.status"
-              [disabled]="!event.url"
-              (click)="event.url && openEvent.emit(event)"
-            >
-              <span class="mark" aria-hidden="true">
-                <ng-icon [name]="statusIcon(event.status)" size="11" />
-              </span>
-              <span class="copy">
-                <span class="title">{{ event.title }}</span>
-                <span class="detail">
-                  {{ kindLabel(event.kind) }}
-                  @if (event.detail) {
-                    · {{ event.detail }}
-                  }
-                  @if (whenLabel(event.at); as when) {
-                    · {{ when }}
-                  }
-                </span>
-              </span>
-              <span class="state">{{ statusLabel(event.status) }}</span>
-              @if (event.url) {
-                <ng-icon class="open" name="lucideExternalLink" size="12" />
-              }
-            </button>
-          </li>
+      <div class="stats">
+        <span><strong>{{ counts().shown }}</strong> shown</span>
+        <span><strong>{{ counts().live }}</strong> live</span>
+        <span><strong>{{ counts().running }}</strong> running</span>
+        @if (counts().queued) {
+          <span><strong>{{ counts().queued }}</strong> queued</span>
         }
-      </ul>
+        <span class="fail"><strong>{{ counts().failed }}</strong> failed</span>
+      </div>
+
+      <div class="filters bl-glass">
+        <label class="search">
+          <ng-icon name="lucideSearch" size="14" />
+          <input
+            type="search"
+            placeholder="Search title, tag, detail, branch…"
+            [ngModel]="query()"
+            (ngModelChange)="setQuery($event)"
+          />
+        </label>
+
+        <select [ngModel]="status()" (ngModelChange)="setStatus($event)">
+          <option value="all">All statuses</option>
+          <option value="success">Live</option>
+          <option value="pending">Running</option>
+          <option value="failure">Failed</option>
+          @if (showQueuedFilter()) {
+            <option value="queued">Queued</option>
+          }
+        </select>
+
+        @if (environments().length) {
+          <select [ngModel]="environment()" (ngModelChange)="setEnvironment($event)">
+            <option value="all">All environments</option>
+            @for (env of environments(); track env) {
+              <option [value]="env">{{ envLabel(env) }}</option>
+            }
+          </select>
+        }
+
+        @if (showKindFilter()) {
+          <select [ngModel]="kind()" (ngModelChange)="setKind($event)">
+            <option value="all">All kinds</option>
+            <option value="workflow">Deploy</option>
+            <option value="tag">Tag</option>
+          </select>
+        }
+
+        <select [ngModel]="sort()" (ngModelChange)="setSort($event)">
+          <option value="newest">Sort: newest</option>
+          <option value="oldest">Sort: oldest</option>
+        </select>
+
+        @if (filtersActive()) {
+          <button
+            type="button"
+            class="bl-btn"
+            (click)="resetFilters()"
+            title="Reset deploy filters"
+          >
+            Reset
+          </button>
+        }
+      </div>
+
+      <div class="list-tools">
+        <span class="muted">{{ listSubtitle() }}</span>
+      </div>
+
+      @if (!filtered().length) {
+        <div class="empty">
+          <p class="empty-title">No deploys match these filters</p>
+          <p class="empty-hint">Try a different search, status, or environment — or reset the toolbar.</p>
+        </div>
+      } @else {
+        <ul class="events">
+          @for (event of filtered(); track eventTrack(event)) {
+            <li>
+              <div
+                class="event"
+                [class.clickable]="!!event.url"
+                [attr.data-status]="event.status"
+                (click)="onRowClick(event)"
+              >
+                <span class="mark" aria-hidden="true">
+                  <ng-icon [name]="statusIcon(event.status)" size="11" />
+                </span>
+                <span class="copy">
+                  <span class="title">{{ event.title }}</span>
+                  <span class="detail">
+                    {{ kindLabel(event.kind) }}
+                    @if (event.detail) {
+                      · {{ event.detail }}
+                    }
+                    @if (whenLabel(event.at); as when) {
+                      · {{ when }}
+                    }
+                  </span>
+                </span>
+                <span class="state">{{ statusLabel(event.status) }}</span>
+                @if (event.url) {
+                  <span class="actions">
+                    <button type="button" class="bl-btn" (click)="openRow(event, $event)">
+                      Open
+                    </button>
+                    <button type="button" class="bl-btn" (click)="copyLink(event, $event)">
+                      Copy link
+                    </button>
+                  </span>
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      }
     }
   }
 </div>

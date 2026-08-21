@@ -2808,10 +2808,10 @@ fn event_status(status: Option<&str>, conclusion: Option<&str>) -> String {
         return "failure".into();
     }
     let status = status.unwrap_or("").to_ascii_lowercase();
-    if matches!(
-        status.as_str(),
-        "queued" | "in_progress" | "waiting" | "requested" | "pending"
-    ) {
+    if matches!(status.as_str(), "queued" | "waiting" | "requested") {
+        return "queued".into();
+    }
+    if matches!(status.as_str(), "in_progress" | "pending") {
         return "pending".into();
     }
     "unknown".into()
@@ -2901,7 +2901,7 @@ fn list_local_tags(repo: &Path) -> Vec<LocalTag> {
         &[
             "for-each-ref",
             "--sort=-creatordate",
-            "--count=40",
+            "--count=50",
             "--format=%(refname:short)|%(creatordate:iso-strict)",
             "refs/tags",
         ],
@@ -2940,13 +2940,23 @@ fn assign_tag_app(tag: &str, apps: &[DiscoveredApp], tagging_ids: &[String]) -> 
 }
 
 fn gh_list_app_runs(gh: &str, repo: &str, workflow: &str) -> Vec<GhWorkflowRun> {
-    gh_list_workflow_runs(
-        gh,
-        repo,
-        workflow,
-        "databaseId,status,conclusion,url,headBranch,displayTitle,headSha,createdAt",
-        None,
-    )
+    let json_fields = "databaseId,status,conclusion,url,headBranch,displayTitle,headSha,createdAt";
+    Command::new(gh)
+        .args([
+            "run",
+            "list",
+            "-R",
+            repo,
+            &format!("--workflow={workflow}"),
+            "--limit",
+            "50",
+            "--json",
+            json_fields,
+        ])
+        .output()
+        .ok()
+        .and_then(parse_gh_runs)
+        .unwrap_or_default()
 }
 
 fn event_from_run(run: &GhWorkflowRun, workflow: &str) -> RepoReleaseEvent {
@@ -3009,7 +3019,7 @@ fn fetch_api_workflow_runs(
 ) -> Vec<RepoReleaseEvent> {
     let Ok(resp) = client
         .get(format!(
-            "{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=10"
+            "{base}/repos/{full}/actions/workflows/{workflow}/runs?per_page=50"
         ))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "Branchline")
@@ -3083,7 +3093,7 @@ fn merge_app_events(runs: Vec<RepoReleaseEvent>, tags: Vec<RepoReleaseEvent>) ->
         events.push(tag);
     }
     events.sort_by(|a, b| b.at.cmp(&a.at));
-    events.truncate(12);
+    events.truncate(50);
     events
 }
 
@@ -3520,6 +3530,14 @@ mod tests {
         run: Option<WorkflowSnapshot>,
     ) -> PollReleaseDeployOutput {
         evaluate_deploy(&urls(), tag, release_url, run, false)
+    }
+
+    #[test]
+    fn event_status_splits_queued_from_running() {
+        assert_eq!(event_status(Some("queued"), None), "queued");
+        assert_eq!(event_status(Some("in_progress"), None), "pending");
+        assert_eq!(event_status(Some("completed"), Some("success")), "success");
+        assert_eq!(event_status(Some("completed"), Some("failure")), "failure");
     }
 
     #[test]
