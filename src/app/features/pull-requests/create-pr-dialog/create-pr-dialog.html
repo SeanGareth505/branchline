@@ -40,10 +40,15 @@
       <section class="templates">
         <div class="templates-head">
           <h3>Template</h3>
-          <button type="button" class="bl-btn save" (click)="saveCurrentTemplate()">
-            <ng-icon name="lucidePlus" size="13" />
-            Save current
-          </button>
+          <div class="template-actions">
+            <button type="button" class="bl-btn save" (click)="startNewTemplate()">
+              <ng-icon name="lucidePlus" size="13" />
+              New
+            </button>
+            <button type="button" class="bl-btn save" (click)="saveCurrentTemplate()">
+              Save current
+            </button>
+          </div>
         </div>
         <div class="chips">
           <button
@@ -53,6 +58,14 @@
             (click)="selectTemplate('blank')"
           >
             Blank
+          </button>
+          <button
+            type="button"
+            class="chip"
+            [class.on]="selectedId() === 'new'"
+            (click)="startNewTemplate()"
+          >
+            New
           </button>
           @for (t of repoTemplates(); track t.id) {
             <button
@@ -88,10 +101,12 @@
         </div>
         @if (loadingTemplates()) {
           <p class="hint">Looking for PULL_REQUEST_TEMPLATE.md…</p>
-        }         @else if (!repoTemplates().length && !savedTemplates().length) {
+        }         @else if (!repoTemplates().length && !savedTemplates().length && selectedId() !== 'new') {
           <p class="hint">No repo template found. Description suggested from branch commits.</p>
         } @else if (selectedId() === 'blank' && body().trim()) {
           <p class="hint">Description suggested from commits between branches.</p>
+        } @else if (selectedId() === 'new') {
+          <p class="hint">Insert placeholders. They fill from the branch, Jira ticket, and commits when you pick the saved template later.</p>
         }
       </section>
 
@@ -108,11 +123,26 @@
       <label class="field body-field">
         <span>Description</span>
         <textarea
+          #bodyField
           rows="9"
           [ngModel]="body()"
           (ngModelChange)="onBodyChange($event)"
           placeholder="What changed, why, and how to test it"
         ></textarea>
+        @if (selectedId() === 'new') {
+          <div class="token-row">
+            @for (token of tokens; track token.token) {
+              <button
+                type="button"
+                class="token"
+                [title]="token.hint"
+                (click)="insertToken(token.token)"
+              >
+                {{ token.token }}
+              </button>
+            }
+          </div>
+        }
       </label>
 
       @if (method() === 'cli') {

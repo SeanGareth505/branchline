@@ -1,16 +1,18 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   computed,
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import { TauriService } from '../../../core/tauri.service';
-import type { PrCreateMethod, RepoPrTemplate, SavedPrTemplate } from '../../../core/models';
+import type { CommitInfo, PrCreateMethod, RepoPrTemplate, SavedPrTemplate } from '../../../core/models';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { Spinner } from '../../../shared/ui/spinner/spinner';
 import { branchLeafName, isMainlineBranch } from '../../../shared/git/mainline-branch';
@@ -19,6 +21,14 @@ import {
   defaultPrDescription,
   fallbackPrDescription,
 } from '../../../shared/git/pr-description';
+import {
+  PR_TEMPLATE_TOKENS,
+  STARTER_PR_TEMPLATE_BODY,
+  STARTER_PR_TEMPLATE_TITLE,
+  buildPrTemplateContext,
+  fillPrTemplate,
+  insertAtCaret,
+} from '../../../shared/git/pr-template';
 
 @Component({
   selector: 'app-create-pr-dialog',
@@ -43,6 +53,8 @@ export class CreatePrDialog {
   readonly repoTemplates = signal<RepoPrTemplate[]>([]);
   readonly loadingTemplates = signal(false);
   readonly busy = signal(false);
+  readonly tokens = PR_TEMPLATE_TOKENS;
+  private readonly bodyField = viewChild<ElementRef<HTMLTextAreaElement>>('bodyField');
   private titleTouched = false;
   private bodyTouched = false;
   private draftToken = 0;
@@ -115,27 +127,46 @@ export class CreatePrDialog {
     }
     const repo = this.repoTemplates().find((t) => t.id === id);
     if (repo) {
-      this.body.set(repo.body);
+      void this.applyFilled(this.title(), repo.body);
       return;
     }
     const saved = this.savedTemplates().find((t) => t.id === id);
     if (saved) {
-      if (saved.title.trim()) {
-        this.titleTouched = true;
-        this.title.set(saved.title);
-      }
-      this.body.set(saved.body);
+      void this.applyFilled(saved.title, saved.body);
     }
+  }
+
+  startNewTemplate(): void {
+    this.selectedId.set('new');
+    this.titleTouched = false;
+    this.bodyTouched = false;
+    this.title.set(STARTER_PR_TEMPLATE_TITLE);
+    this.body.set(STARTER_PR_TEMPLATE_BODY);
+  }
+
+  insertToken(token: string): void {
+    const field = this.bodyField()?.nativeElement;
+    const applied = insertAtCaret(this.body(), token, field?.selectionStart, field?.selectionEnd);
+    this.bodyTouched = true;
+    this.body.set(applied.next);
+    queueMicrotask(() => {
+      const next = this.bodyField()?.nativeElement;
+      if (!next) return;
+      next.focus();
+      next.setSelectionRange(applied.caret, applied.caret);
+    });
   }
 
   onHeadChange(value: string): void {
     this.head.set(value);
     void this.refreshDraft();
+    void this.refillSelectedTemplate();
   }
 
   onBaseChange(value: string): void {
     this.base.set(value);
     void this.refreshDraft();
+    void this.refillSelectedTemplate();
   }
 
   onTitleChange(value: string): void {
@@ -250,7 +281,7 @@ export class CreatePrDialog {
       const auto = templates.find((t) => t.name === 'Repo default') ?? templates[0];
       if (auto && this.selectedId() === 'blank' && !this.bodyTouched) {
         this.selectedId.set(auto.id);
-        this.body.set(auto.body);
+        await this.applyFilled(this.title(), auto.body);
         return;
       }
       if (this.selectedId() === 'blank' && !this.bodyTouched) {
@@ -263,6 +294,76 @@ export class CreatePrDialog {
       }
     } finally {
       this.loadingTemplates.set(false);
+    }
+  }
+
+  private async refillSelectedTemplate(): Promise<void> {
+    const id = this.selectedId();
+    if (id === 'blank' || id === 'new' || this.bodyTouched) return;
+    const repo = this.repoTemplates().find((t) => t.id === id);
+    if (repo) {
+      await this.applyFilled(this.title(), repo.body);
+      return;
+    }
+    const saved = this.savedTemplates().find((t) => t.id === id);
+    if (saved) await this.applyFilled(saved.title, saved.body);
+  }
+
+  private async applyFilled(titleSource: string, bodySource: string): Promise<void> {
+    const ctx = await this.templateContext();
+    const title = fillPrTemplate(titleSource, ctx).trim();
+    if (title && title !== STARTER_PR_TEMPLATE_TITLE) {
+      this.titleTouched = true;
+      this.title.set(title);
+    }
+    this.body.set(fillPrTemplate(bodySource, ctx));
+  }
+
+  private async templateContext() {
+    const head = this.head().trim();
+    const base = this.base().trim();
+    const ticket = this.store.ticketForBranch(head) ?? '';
+    const ticketUrl = ticket ? this.store.jiraBrowseUrl(ticket) ?? '' : '';
+    const ticketSummary =
+      this.store.jiraIssues().find((issue) => issue.key.toLowerCase() === ticket.toLowerCase())
+        ?.summary ?? '';
+    const commitsNewestFirst = await this.loadCommits();
+    let author = '';
+    let email = '';
+    const path = this.store.currentRepo()?.path;
+    if (path) {
+      try {
+        const ident = await this.tauri.getGitIdentity(path);
+        author = ident.name;
+        email = ident.email;
+      } catch {
+        author = '';
+        email = '';
+      }
+    }
+    return buildPrTemplateContext({
+      head,
+      base,
+      title: this.title(),
+      ticket,
+      ticketUrl,
+      ticketSummary,
+      commitsNewestFirst,
+      author,
+      email,
+      repo: this.store.currentRepo()?.name ?? '',
+    });
+  }
+
+  private async loadCommits(): Promise<CommitInfo[]> {
+    const path = this.store.currentRepo()?.path;
+    const head = this.head().trim();
+    const base = this.base().trim();
+    if (!path || !head || !base || head === base) return [];
+    try {
+      return await this.tauri.getCommitRange(path, base, head, 100);
+    } catch {
+      return [];
     }
   }
 }
