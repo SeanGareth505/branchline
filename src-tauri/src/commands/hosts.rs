@@ -106,8 +106,7 @@ fn list_host_repositories_inner(
     settings: AppSettings,
     connection_id: Option<String>,
 ) -> AppResult<Vec<HostRepository>> {
-
-    let connections: Vec<&ConnectionConfig> = settings
+    let mut connections: Vec<ConnectionConfig> = settings
         .connections
         .iter()
         .filter(|c| {
@@ -119,16 +118,33 @@ fn list_host_repositories_inner(
                     .map(|id| &c.id == id || &c.provider == id)
                     .unwrap_or(true)
         })
+        .cloned()
         .collect();
+
+    let want_github = connection_id
+        .as_ref()
+        .map(|id| {
+            id == "github"
+                || settings
+                    .connections
+                    .iter()
+                    .any(|c| c.provider == "github" && (&c.id == id))
+        })
+        .unwrap_or(true);
+    if want_github && !connections.iter().any(|c| c.provider == "github") {
+        if let Some(github) = crate::commands::github_git::resolve_github_api_connection(&settings) {
+            connections.insert(0, github);
+        }
+    }
 
     if connections.is_empty() {
         return Err(AppError::msg(
-            "No linked Git host. Enable GitHub or GitLab under Settings → Connections and paste a PAT.",
+            "No linked Git host. Add a GitHub account under Settings → Connections, or paste a GitLab PAT.",
         ));
     }
 
     let mut out = Vec::new();
-    for connection in connections {
+    for connection in &connections {
         match connection.provider.as_str() {
             "github" => out.extend(fetch_github_repos(connection)?),
             "gitlab" => out.extend(fetch_gitlab_repos(connection)?),
@@ -306,15 +322,11 @@ pub fn publish_to_github(
 
 fn github_connection(state: &State<'_, AppState>) -> AppResult<ConnectionConfig> {
     let settings = load_settings_with_tokens(state)?;
-    settings
-        .connections
-        .into_iter()
-        .find(|c| c.provider == "github" && c.enabled && !c.token.trim().is_empty())
-        .ok_or_else(|| {
-            AppError::msg(
-                "GitHub is not linked. Open Settings → Connections, paste a PAT with repo scope, then try again.",
-            )
-        })
+    crate::commands::github_git::resolve_github_api_connection(&settings).ok_or_else(|| {
+        AppError::msg(
+            "GitHub is not linked. Add a GitHub account under Settings → Connections, or paste a PAT with repo scope.",
+        )
+    })
 }
 
 fn sanitize_repo_name(raw: &str) -> AppResult<String> {

@@ -300,23 +300,8 @@ fn github_http_client() -> &'static reqwest::blocking::Client {
 }
 
 fn github_token_from_settings(settings: &AppSettings) -> Option<String> {
-    let mut found = None;
-    for connection in &settings.connections {
-        if connection.provider != "github" {
-            continue;
-        }
-        let token = connection.token.trim();
-        if token.is_empty() {
-            continue;
-        }
-        if connection.enabled {
-            return Some(token.to_string());
-        }
-        if found.is_none() {
-            found = Some(token.to_string());
-        }
-    }
-    found
+    crate::commands::github_git::resolve_github_api_connection(settings)
+        .map(|connection| connection.token)
 }
 
 fn map_github_state(raw: &str) -> String {

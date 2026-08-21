@@ -1,0 +1,382 @@
+<article class="bl-panel block">
+  <div class="block-head">
+    <div>
+      <h2 class="block-title">Git hosts</h2>
+      <p class="block-hint">
+        GitHub CLI accounts cover fetch, push, and pull requests. GitLab, Azure DevOps, and Jira still
+        need their own tokens.
+      </p>
+    </div>
+    <div class="block-head-actions">
+      <button
+        type="button"
+        class="bl-btn quiet"
+        [disabled]="testingAll()"
+        (click)="testAllConnections()"
+      >
+        {{ testingAll() ? 'Testing…' : 'Test all' }}
+      </button>
+      <label class="switch labeled">
+        <span>Show tokens</span>
+        <input
+          type="checkbox"
+          [ngModel]="showTokens()"
+          (ngModelChange)="showTokens.set($event)"
+        />
+        <span class="track"></span>
+      </label>
+    </div>
+  </div>
+
+  @if (githubConn(); as github) {
+    <div
+      class="host github-host"
+      [class.linked]="githubGitReady() || githubPrReady()"
+      [class.editing]="editingConnectionId() === github.id"
+    >
+      <div class="conn-head">
+        <div class="conn-identity">
+          <span class="conn-glyph" aria-hidden="true">
+            <ng-icon name="lucideGithub" size="16" />
+          </span>
+          <div class="conn-title">
+            <div class="conn-name-row">
+              <strong>GitHub</strong>
+              <span class="status" [attr.data-state]="githubStatus()">{{ githubStatus() }}</span>
+            </div>
+            <span class="conn-uses">
+              One place for accounts. Fetch/push and pull requests no longer live in separate
+              sections.
+            </span>
+            @if (connectionTests()[github.id]; as result) {
+              <span class="conn-test" [class.ok]="result.ok" [class.bad]="!result.ok">
+                {{ result.message }}
+              </span>
+            }
+          </div>
+        </div>
+        <div class="conn-actions">
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="testingId() === github.id || testingAll()"
+            (click)="testConnection(github)"
+          >
+            {{ testingId() === github.id ? 'Testing…' : 'Test' }}
+          </button>
+          @if (githubPrReady()) {
+            <button type="button" class="bl-btn quiet" (click)="openFeature('github')">
+              Open PRs
+            </button>
+          }
+        </div>
+      </div>
+
+      <ul class="access-list">
+        @for (row of githubAccess(); track row.id) {
+          <li class="access-row" [attr.data-state]="row.state">
+            <span class="access-mark" aria-hidden="true">
+              @if (row.state === 'ready') {
+                <ng-icon name="lucideCheck" size="14" />
+              } @else {
+                <ng-icon name="lucideCircleAlert" size="14" />
+              }
+            </span>
+            <div class="access-copy">
+              <strong>{{ row.label }}</strong>
+              <span>{{ row.detail }}</span>
+            </div>
+            @if (row.state === 'token-off') {
+              <button type="button" class="bl-btn bl-btn-primary" (click)="enableConnection(github)">
+                Turn on
+              </button>
+            } @else if (row.id === 'git' && row.state === 'missing') {
+              <button
+                type="button"
+                class="bl-btn"
+                [disabled]="store.githubGitBusy()"
+                (click)="addGithubAccount()"
+              >
+                Add account
+              </button>
+            } @else if (row.id === 'prs' && row.state === 'missing') {
+              <button
+                type="button"
+                class="bl-btn"
+                [disabled]="store.githubGitBusy()"
+                (click)="addGithubAccount()"
+              >
+                Add account
+              </button>
+            }
+          </li>
+        }
+      </ul>
+
+      <div id="settings-github-git" class="host-section">
+        <div class="section-label">
+          <strong>GitHub accounts</strong>
+          <span>Used for HTTPS fetch/push, and for pull requests unless you add a token below.</span>
+        </div>
+        <app-git-account-bar variant="settings" />
+      </div>
+
+      <div class="host-section token-section">
+        <div class="section-label">
+          <strong>Optional GitHub token</strong>
+          <span>{{ providerHint('github') }}</span>
+        </div>
+        <div class="conn-actions start">
+          @if (githubPatLinked()) {
+            <button type="button" class="bl-btn quiet" (click)="disconnect(github)">
+              Remove token
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="bl-btn"
+              [disabled]="connectingId() === github.id"
+              (click)="connect(github)"
+            >
+              Sign in with GitHub
+            </button>
+          }
+          <button type="button" class="bl-btn quiet" (click)="editConnection(github.id)">
+            {{ editingConnectionId() === github.id ? 'Done' : 'Paste a token' }}
+          </button>
+        </div>
+        @if (editingConnectionId() === github.id) {
+          <div class="fields compact">
+            <label>
+              Base URL
+              <input
+                [ngModel]="github.baseUrl"
+                (ngModelChange)="updateConnection(github.id, { baseUrl: $event })"
+                placeholder="https://api.github.com"
+              />
+            </label>
+            <label>
+              Username / email
+              <input
+                [ngModel]="github.username"
+                (ngModelChange)="updateConnection(github.id, { username: $event })"
+                autocomplete="username"
+              />
+            </label>
+            <label>
+              Token / PAT
+              <input
+                [type]="showTokens() ? 'text' : 'password'"
+                [ngModel]="github.token"
+                (ngModelChange)="updateConnection(github.id, { token: $event })"
+                autocomplete="off"
+                placeholder="Paste token with repo scope"
+              />
+            </label>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @for (conn of otherConns(); track conn.id) {
+    <div
+      class="host"
+      [attr.data-provider]="conn.provider"
+      [class.linked]="store.isConnectionLinked(conn)"
+      [class.editing]="editingConnectionId() === conn.id"
+    >
+      <div class="conn-head">
+        <div class="conn-identity">
+          <span class="conn-glyph" aria-hidden="true">
+            <ng-icon [name]="glyph(conn.provider)" size="16" />
+          </span>
+          <div class="conn-title">
+            <div class="conn-name-row">
+              <strong>{{ conn.label }}</strong>
+              <span class="status" [attr.data-state]="connectionStatus(conn)">
+                {{ connectionStatus(conn) }}
+              </span>
+            </div>
+            <span class="conn-uses">{{ connectionUses(conn.provider) }}</span>
+            @if (store.isConnectionLinked(conn) && conn.username) {
+              <span class="conn-user">{{ conn.username }}</span>
+            }
+            @if (connectionTests()[conn.id]; as result) {
+              <span class="conn-test" [class.ok]="result.ok" [class.bad]="!result.ok">
+                {{ result.message }}
+              </span>
+            }
+          </div>
+        </div>
+        <div class="conn-actions">
+          <button
+            type="button"
+            class="bl-btn quiet"
+            [disabled]="testingId() === conn.id || testingAll()"
+            (click)="testConnection(conn)"
+          >
+            {{ testingId() === conn.id ? 'Testing…' : 'Test' }}
+          </button>
+          @if (store.isConnectionLinked(conn)) {
+            <button type="button" class="bl-btn quiet" (click)="openFeature(conn.provider)">
+              Open
+            </button>
+            <button type="button" class="bl-btn quiet" (click)="disconnect(conn)">
+              Disconnect
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="bl-btn bl-btn-primary"
+              [disabled]="connectingId() === conn.id"
+              (click)="connect(conn)"
+            >
+              Connect
+            </button>
+          }
+          <button type="button" class="bl-btn quiet" (click)="editConnection(conn.id)">
+            {{ editingConnectionId() === conn.id ? 'Done' : 'Edit' }}
+          </button>
+        </div>
+      </div>
+      @if (editingConnectionId() === conn.id) {
+        <p class="conn-hint">{{ providerHint(conn.provider) }}</p>
+        <div class="fields compact">
+          <label>
+            Base URL
+            <input
+              [ngModel]="conn.baseUrl"
+              (ngModelChange)="updateConnection(conn.id, { baseUrl: $event })"
+              placeholder="https://…"
+            />
+          </label>
+          <label>
+            {{ conn.provider === 'jira' ? 'Email' : 'Username / email' }}
+            <input
+              [ngModel]="conn.username"
+              (ngModelChange)="updateConnection(conn.id, { username: $event })"
+              autocomplete="username"
+            />
+          </label>
+          <label>
+            Token / PAT
+            <input
+              [type]="showTokens() ? 'text' : 'password'"
+              [ngModel]="conn.token"
+              (ngModelChange)="updateConnection(conn.id, { token: $event })"
+              autocomplete="off"
+              placeholder="Paste token"
+            />
+          </label>
+          @if (conn.provider === 'azureDevOps') {
+            <label>
+              Organization
+              <input
+                [ngModel]="conn.organization"
+                (ngModelChange)="updateConnection(conn.id, { organization: $event })"
+              />
+            </label>
+            <label>
+              Project
+              <input
+                [ngModel]="conn.project"
+                (ngModelChange)="updateConnection(conn.id, { project: $event })"
+              />
+            </label>
+          }
+          <label class="inline-enable">
+            <input
+              type="checkbox"
+              [ngModel]="conn.enabled"
+              (ngModelChange)="updateConnection(conn.id, { enabled: $event })"
+            />
+            Enabled
+          </label>
+        </div>
+      }
+    </div>
+  }
+</article>
+
+<article id="settings-ssh" class="bl-panel block">
+  <h2 class="block-title">SSH &amp; credentials</h2>
+  <p class="block-hint">How Branchline talks to Git remotes over SSH and HTTPS.</p>
+  <div class="setting">
+    <div class="setting-label">
+      <strong>SSH client</strong>
+      <span>Used for remote Git operations</span>
+    </div>
+    <div class="setting-control">
+      <div class="seg">
+        <button
+          type="button"
+          class="seg-btn"
+          [class.on]="store.settings().sshClient === 'openssh'"
+          (click)="setSshClient('openssh')"
+        >
+          OpenSSH
+        </button>
+        <button
+          type="button"
+          class="seg-btn"
+          [class.on]="store.settings().sshClient === 'other'"
+          (click)="setSshClient('other')"
+        >
+          System
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>SSH keys</strong>
+      @if (gitEnv()?.sshKeysFound) {
+        <span class="ok-inline">Found</span>
+      } @else {
+        <span class="warn-inline">None in ~/.ssh</span>
+      }
+      @if (sshTest(); as result) {
+        <span class="conn-test" [class.ok]="result.ok" [class.bad]="!result.ok">
+          {{ result.message }}
+        </span>
+      }
+    </div>
+    <div class="setting-control">
+      <button type="button" class="bl-btn quiet" [disabled]="testingSsh()" (click)="testSsh()">
+        {{ testingSsh() ? 'Testing…' : 'Test SSH' }}
+      </button>
+      <button type="button" class="bl-btn quiet" (click)="refreshEnv()">Refresh</button>
+    </div>
+  </div>
+  @if (gitEnv()?.sshKeyPaths?.length) {
+    <ul class="paths">
+      @for (path of gitEnv()?.sshKeyPaths ?? []; track path) {
+        <li class="mono">{{ path }}</li>
+      }
+    </ul>
+  }
+
+  <div class="setting">
+    <div class="setting-label">
+      <strong>Credential helper</strong>
+      <span class="mono">{{ gitEnv()?.credentialHelper || '(not set)' }}</span>
+    </div>
+    <div class="setting-control">
+      <div class="seg wrap">
+        <button type="button" class="seg-btn" (click)="setCredentialHelper('osxkeychain')">
+          osxkeychain
+        </button>
+        <button type="button" class="seg-btn" (click)="setCredentialHelper('wincred')">
+          wincred
+        </button>
+        <button type="button" class="seg-btn" (click)="setCredentialHelper('libsecret')">
+          libsecret
+        </button>
+        <button type="button" class="seg-btn" (click)="setCredentialHelper('cache')">cache</button>
+        <button type="button" class="seg-btn" (click)="setCredentialHelper('')">Clear</button>
+      </div>
+    </div>
+  </div>
+</article>

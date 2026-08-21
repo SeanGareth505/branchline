@@ -2,8 +2,85 @@
   display: block;
 }
 
-:host.settings .bar {
-  margin: 0.15rem 0 0;
+:host.settings .accounts-panel {
+  margin: 0;
+}
+
+.accounts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.account-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.15rem;
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--glass-bg-soft) 80%, transparent);
+}
+
+.account-row.on {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.account-pick {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-pick:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.account-pick strong {
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.chip.warn,
+.account-row.bad .chip.warn {
+  color: var(--danger, #ef4444);
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 40%, transparent);
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 :host.compact .bar {

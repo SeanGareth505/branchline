@@ -112,7 +112,7 @@ export class RemoteTroubleshootDialog {
         id: 'auth',
         title: 'Use the HTTPS login above',
         detail:
-          'GitHub Connected in Branchline is only the API. Fetch and push use GitHub CLI (or the credential helper), not the browser.',
+          'Fetch and push use the GitHub CLI account (or credential helper) selected above — not a browser session.',
       });
       if (helper.toLowerCase().includes('gh auth')) {
         items.push({

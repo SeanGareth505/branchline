@@ -463,7 +463,7 @@ export class AppStore {
     return (
       activity?.willTag !== false &&
       !!activity?.tag &&
-      (!!activity.releaseUrl || this.hasGithubConnection())
+      (!!activity.releaseUrl || this.hasGithubApiAccess())
     );
   });
   readonly releaseNotesSynced = computed(() => !!this.visibleReleaseActivity()?.notesSynced);
@@ -1127,12 +1127,22 @@ export class AppStore {
   }
 
   hasLinkedPrHost(): boolean {
-    return this.settings().connections.some(
-      (c) =>
-        c.enabled &&
-        (c.hasToken || c.token.trim()) &&
-        (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
+    return (
+      this.settings().connections.some(
+        (c) =>
+          c.enabled &&
+          (c.hasToken || c.token.trim()) &&
+          (c.provider === 'github' || c.provider === 'gitlab' || c.provider === 'azureDevOps'),
+      ) || this.hasGithubCliLogin()
     );
+  }
+
+  hasGithubCliLogin(): boolean {
+    return (this.githubGitStatus()?.accounts ?? []).some((account) => account.ok);
+  }
+
+  hasGithubApiAccess(): boolean {
+    return this.hasGithubConnection() || this.hasGithubCliLogin();
   }
 
   hasLinkedJira(): boolean {
@@ -6115,11 +6125,16 @@ export class AppStore {
     ) {
       return;
     }
+    const hadCli = this.hasGithubCliLogin();
     try {
       this.githubGitStatus.set(await this.tauri.githubGitStatus());
       this.githubGitStatusAt = Date.now();
     } catch {
       this.githubGitStatus.set(null);
+    }
+    if (!hadCli && this.hasGithubCliLogin() && !this.hasGithubConnection()) {
+      void this.refreshPullRequests('open', { force: true });
+      void this.refreshHostRepositories(undefined, { force: true });
     }
   }
 

@@ -1835,19 +1835,11 @@ fn evaluate_deploy(
 
 fn github_connection(state: &AppState) -> AppResult<ConnectionConfig> {
     let settings = load_settings_with_tokens(state)?;
-    settings
-        .connections
-        .into_iter()
-        .find(|c| {
-            c.provider == "github"
-                && c.enabled
-                && !c.token.trim().is_empty()
-        })
-        .ok_or_else(|| {
-            crate::AppError::msg(
-                "GitHub is not linked. Open Settings → Connections and sign in or paste a PAT.",
-            )
-        })
+    crate::commands::github_git::resolve_github_api_connection(&settings).ok_or_else(|| {
+        crate::AppError::msg(
+            "GitHub is not linked. Add a GitHub account under Settings → Connections, or sign in / paste a PAT.",
+        )
+    })
 }
 
 fn gh_command() -> Option<String> {

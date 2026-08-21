@@ -197,17 +197,16 @@
         chip to switch HTTPS vs SSH or pick a GitHub CLI account for this repo.
       </p>
       <p class="hint">
-        GitHub OAuth login in Branchline powers API features (repo list, pull requests, Actions).
-        Clone, fetch, pull, and push still go through system Git — connecting GitHub in Settings does
-        not replace your SSH key or credential helper for Git protocol operations.
+        GitHub OAuth or a PAT is optional when GitHub CLI is already logged in. Clone, fetch, pull,
+        and push still go through system Git — SSH keys or the GitHub CLI credential helper.
       </p>
     </article>
 
     <article id="help-prs" class="bl-panel block section">
       <h2>Pull requests</h2>
       <p>
-        The PRs view lists open, closed, and draft pull requests for the current repository when
-        GitHub (or another supported host) is connected.
+        The PRs view lists open, closed, and draft pull requests for the current repository when a
+        GitHub account is added (GitHub CLI) or a GitHub / GitLab / Azure token is connected.
       </p>
       <ul>
         <li><strong>Create PR</strong> — open a pull request from your current branch, with optional templates.</li>
@@ -215,8 +214,8 @@
         <li><strong>Browser vs CLI</strong> — create via the host website or GitHub CLI, depending on your setup.</li>
       </ul>
       <p>
-        Connect GitHub under Settings → Connections. Organization repos may require OAuth approval
-        for the Branchline app before API access works.
+        Add a GitHub account under Settings → Connections. Organization repos may still require
+        SSO or a PAT if GitHub CLI cannot see the repo.
       </p>
     </article>
 
@@ -240,7 +239,7 @@
       <dl class="dl">
         <div class="dl-row">
           <dt>GitHub</dt>
-          <dd>Device login for API access — repos, PRs, and Actions. Separate from Git SSH/HTTPS credentials.</dd>
+          <dd>GitHub CLI accounts for fetch, push, and pull requests. Optional PAT or GitHub sign-in for orgs that need it.</dd>
         </div>
         <div class="dl-row">
           <dt>GitLab / Azure</dt>

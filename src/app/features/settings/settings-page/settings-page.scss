@@ -105,10 +105,16 @@
   min-width: 0;
 }
 
-.content > .block:only-child,
-.content > app-dashboard {
+.content > app-dashboard,
+.content > app-connections-panel {
   flex: 1;
   min-height: 0;
+}
+
+.content > app-connections-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .content > app-dashboard {

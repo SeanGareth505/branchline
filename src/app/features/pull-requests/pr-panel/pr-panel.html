@@ -55,9 +55,9 @@
 
   @if (needsConnect()) {
     <app-empty-state
-      title="Link a Git host to see pull requests"
-      message="Connect GitHub, GitLab, or Azure DevOps under Settings → Connections. You can still open a PR in the browser from New PR."
-      ctaLabel="Connect host"
+      title="Add a GitHub account to see pull requests"
+      message="Settings → Connections. GitHub CLI accounts load live PRs. GitLab and Azure DevOps still need a token. You can still open a PR in the browser from New PR."
+      ctaLabel="Open Connections"
       (cta)="connectHosts()"
     />
   } @else {
@@ -352,7 +352,7 @@
         } @else if (showingDummy()) {
           No pull requests match these filters.
         } @else if (!hasHost()) {
-          Link GitHub, GitLab, or Azure DevOps under Settings → Connections to load live pull requests.
+          Add a GitHub account under Settings → Connections to load live pull requests.
         } @else {
           No pull requests found for this repository.
         }

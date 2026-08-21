@@ -119,13 +119,14 @@ fn github_connection_from(
     settings: &AppSettings,
     connection_id: Option<&str>,
 ) -> AppResult<ConnectionConfig> {
-    linked_connection(settings, "github", connection_id)
-        .cloned()
-        .ok_or_else(|| {
-            AppError::msg(
-                "GitHub is not linked. Open Settings → Connections and sign in or paste a PAT.",
-            )
-        })
+    if let Some(connection) = linked_connection(settings, "github", connection_id) {
+        return Ok(connection.clone());
+    }
+    crate::commands::github_git::resolve_github_api_connection(settings).ok_or_else(|| {
+        AppError::msg(
+            "GitHub is not linked. Add a GitHub account under Settings → Connections, or sign in / paste a PAT.",
+        )
+    })
 }
 
 fn gitlab_connection_from(

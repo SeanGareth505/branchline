@@ -63,14 +63,14 @@ export class PrPanel {
 
   readonly connectionLabel = computed(() => {
     if (this.showingDummy()) {
-      return 'Browser preview — sample PRs. Link GitHub, GitLab, or Azure DevOps under Settings → Connections for live PRs.';
+      return 'Browser preview — sample PRs. Add a GitHub account under Settings → Connections for live PRs.';
     }
     if (this.hasHost()) {
       const n = this.prs().length;
       const updating = this.store.pullRequestsRefreshing() ? ' · updating…' : '';
       return `Live pull requests for this repo${n ? ` · ${n} loaded` : ''}${updating}.`;
     }
-    return 'Link GitHub, GitLab, or Azure DevOps to load pull requests here.';
+    return 'Add a GitHub account under Settings → Connections to load pull requests here.';
   });
 
   readonly teams = computed(() => this.unique((p) => p.team));

@@ -1,4 +1,5 @@
 use crate::commands::branch::MutationOutput;
+use crate::commands::settings::{AppSettings, ConnectionConfig};
 use crate::infrastructure::git_cli;
 use crate::AppResult;
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,75 @@ fn github_git_status_inner() -> GithubGitStatus {
         gh_available: gh_command().is_some(),
         accounts,
         active_login,
+    }
+}
+
+pub fn resolve_github_api_connection(settings: &AppSettings) -> Option<ConnectionConfig> {
+    if let Some(connection) = settings.connections.iter().find(|connection| {
+        connection.provider == "github"
+            && connection.enabled
+            && !connection.token.trim().is_empty()
+    }) {
+        return Some(connection.clone());
+    }
+    github_connection_from_cli(settings)
+}
+
+fn github_connection_from_cli(settings: &AppSettings) -> Option<ConnectionConfig> {
+    let token = gh_auth_token()?;
+    let login = gh_accounts()
+        .into_iter()
+        .find(|account| account.active)
+        .map(|account| account.login)
+        .unwrap_or_default();
+    let mut connection = settings
+        .connections
+        .iter()
+        .find(|connection| connection.provider == "github")
+        .cloned()
+        .unwrap_or_else(default_github_connection);
+    connection.enabled = true;
+    connection.has_token = true;
+    connection.token = token;
+    if connection.username.trim().is_empty() {
+        connection.username = login;
+    }
+    if connection.base_url.trim().is_empty() {
+        connection.base_url = "https://api.github.com".into();
+    }
+    Some(connection)
+}
+
+fn default_github_connection() -> ConnectionConfig {
+    ConnectionConfig {
+        id: "github".into(),
+        provider: "github".into(),
+        label: "GitHub".into(),
+        enabled: true,
+        base_url: "https://api.github.com".into(),
+        username: String::new(),
+        token: String::new(),
+        organization: String::new(),
+        project: String::new(),
+        has_token: false,
+    }
+}
+
+pub fn gh_auth_token() -> Option<String> {
+    let gh = gh_command()?;
+    let output = Command::new(gh)
+        .args(["auth", "token", "--hostname", "github.com"])
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
     }
 }
 
@@ -522,5 +592,20 @@ github.com
         assert_eq!(accounts[1].login, "teammate");
         assert!(!accounts[1].active);
         assert!(!accounts[1].ok);
+    }
+
+    #[test]
+    fn prefers_enabled_github_pat_over_cli() {
+        let mut settings = crate::commands::settings::AppSettings::default();
+        for connection in &mut settings.connections {
+            if connection.provider == "github" {
+                connection.enabled = true;
+                connection.token = "ghp_saved_pat".into();
+                connection.username = "pat-user".into();
+            }
+        }
+        let resolved = resolve_github_api_connection(&settings).expect("github connection");
+        assert_eq!(resolved.token, "ghp_saved_pat");
+        assert_eq!(resolved.username, "pat-user");
     }
 }

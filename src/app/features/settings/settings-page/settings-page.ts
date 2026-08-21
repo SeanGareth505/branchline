@@ -1,21 +1,17 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NgIcon } from '@ng-icons/core';
 import { AppStore, normalizeSettingsSection, type SettingsSection } from '../../../core/app.store';
 import { DEFAULT_COMMIT_TYPES, normalizeCommitTypeId } from '../../../core/commit-types';
 import { TauriService } from '../../../core/tauri.service';
 import type {
   AppSettings,
   CommitTypeOption,
-  ConnectionConfig,
   DefaultPullAction,
   DefaultPushAction,
   GitEnvSnapshot,
-  TestConnectionOutput,
 } from '../../../core/models';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { Dashboard } from '../../../layout/dashboard/dashboard';
-import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { UpdateService } from '../../../core/update.service';
 import { DiagnosticsService } from '../../../core/diagnostics.service';
 import { mergeToolPreset, type IdeEditor } from '../../../shared/git/open-in-editor';
@@ -28,8 +24,8 @@ import {
   type ShortcutId,
 } from '../../../shared/git/shortcuts';
 import { TicketFromBranch } from '../ticket-from-branch/ticket-from-branch';
-import { GitAccountBar } from '../../remotes/git-account-bar/git-account-bar';
 import { HelpPage } from '../../help/help-page/help-page';
+import { ConnectionsPanel } from '../connections-panel/connections-panel';
 
 type ConfirmationKey =
   | 'confirmForcePush'
@@ -45,7 +41,7 @@ type ConfirmationKey =
 
 @Component({
   selector: 'app-settings-page',
-  imports: [FormsModule, NgIcon, HelpTip, Dashboard, TicketFromBranch, GitAccountBar, HelpPage],
+  imports: [FormsModule, HelpTip, Dashboard, TicketFromBranch, ConnectionsPanel, HelpPage],
   templateUrl: './settings-page.html',
   styleUrl: './settings-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -55,23 +51,14 @@ export class SettingsPage implements OnInit {
   readonly updates = inject(UpdateService);
   readonly diagnostics = inject(DiagnosticsService);
   private readonly tauri = inject(TauriService);
-  private readonly prompts = inject(PromptService);
 
   readonly section = signal<SettingsSection>('repos');
   readonly gitEnv = signal<GitEnvSnapshot | null>(null);
   readonly identityName = signal('');
   readonly identityEmail = signal('');
-  readonly editingConnectionId = signal<string | null>(null);
-  readonly showTokens = signal(false);
   readonly newTypeId = signal('');
   readonly newTypeDescription = signal('');
   readonly savingTypes = signal(false);
-  readonly connectingId = signal<string | null>(null);
-  readonly testingId = signal<string | null>(null);
-  readonly testingAll = signal(false);
-  readonly testingSsh = signal(false);
-  readonly connectionTests = signal<Record<string, TestConnectionOutput>>({});
-  readonly sshTest = signal<TestConnectionOutput | null>(null);
   readonly capturingShortcut = signal<ShortcutId | null>(null);
   readonly formatShortcut = formatShortcut;
   readonly shortcutRows: { id: ShortcutId; label: string }[] = [
@@ -125,7 +112,7 @@ export class SettingsPage implements OnInit {
       id: 'connections',
       label: 'Connections',
       hint: 'Git hosts, Jira, SSH keys, and credentials',
-      help: 'GitHub accounts, Jira, SSH keys, and credentials used to talk to remotes and issue trackers.',
+      help: 'GitHub accounts for fetch, push, and pull requests. Jira, SSH keys, and credentials.',
     },
     {
       id: 'help',
@@ -145,10 +132,6 @@ export class SettingsPage implements OnInit {
     () => this.sections.find((s) => s.id === this.section()) ?? this.sections[0],
   );
 
-  readonly linkedCount = computed(
-    () => this.store.settings().connections.filter((c) => this.store.isConnectionLinked(c)).length,
-  );
-
   constructor() {
     effect(() => {
       this.section.set(normalizeSettingsSection(this.store.settingsSection()));
@@ -157,15 +140,13 @@ export class SettingsPage implements OnInit {
       const focus = this.store.settingsFocusConnectionId();
       if (!focus) return;
       this.section.set('connections');
-      this.store.clearSettingsFocusConnection();
       if (focus === 'ssh' || focus === 'github-git') {
         const id = focus === 'ssh' ? 'settings-ssh' : 'settings-github-git';
         queueMicrotask(() =>
           document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
         );
-        return;
+        this.store.clearSettingsFocusConnection();
       }
-      this.editingConnectionId.set(focus);
     });
     effect((onCleanup) => {
       const id = this.capturingShortcut();
@@ -294,10 +275,6 @@ export class SettingsPage implements OnInit {
     void this.store.saveSettings({ gitFlowDevelop: value });
   }
 
-  setSshClient(sshClient: string): void {
-    void this.store.saveSettings({ sshClient });
-  }
-
   async saveIdentity(): Promise<void> {
     try {
       await this.tauri.setGitIdentity(this.identityName().trim(), this.identityEmail().trim());
@@ -305,236 +282,6 @@ export class SettingsPage implements OnInit {
       this.store.showSuccess('Git identity saved');
     } catch (err) {
       this.store.showError(err);
-    }
-  }
-
-  connectionStatus(conn: ConnectionConfig): string {
-    if (this.store.isConnectionLinked(conn)) return 'Connected';
-    if (!conn.enabled) return 'Off';
-    return 'Needs token';
-  }
-
-  connectionUses(provider: string): string {
-    switch (provider) {
-      case 'github':
-        return 'Repo picker, clone from host, live pull requests';
-      case 'gitlab':
-        return 'Repo picker and clone. Merge requests open in the browser.';
-      case 'azureDevOps':
-        return 'Pull requests open in the browser.';
-      case 'jira':
-        return 'Issues panel, branch from ticket, commit keys';
-      default:
-        return '';
-    }
-  }
-
-  editConnection(id: string): void {
-    const closing = this.editingConnectionId() === id;
-    this.editingConnectionId.set(closing ? null : id);
-    if (closing) {
-      const conn = this.store.settings().connections.find((c) => c.id === id);
-      if (conn && this.connectionKind(conn.provider) && (conn.hasToken || conn.token.trim())) {
-        void this.testConnection(conn);
-      }
-    }
-  }
-
-  updateConnection(id: string, patch: Partial<ConnectionConfig>): void {
-    const connections = this.store.settings().connections.map((c) => {
-      if (c.id !== id) return c;
-      const next = { ...c, ...patch };
-      if (patch.token !== undefined) {
-        next.hasToken = !!patch.token.trim();
-      }
-      return next;
-    });
-    void this.store.saveSettings({ connections });
-  }
-
-  providerHint(provider: string): string {
-    switch (provider) {
-      case 'github':
-        return 'Connect with GitHub (browser approval), or paste a PAT with repo scope.';
-      case 'gitlab':
-        return 'Personal access token with api scope. Self-hosted: change base URL.';
-      case 'azureDevOps':
-        return 'PAT with Code (read) + Pull Request scopes. Set organization and project.';
-      case 'jira':
-        return 'Atlassian API token (email + token). Powers the Jira panel, branch-from-ticket, and commit keys.';
-      default:
-        return '';
-    }
-  }
-
-  async connect(conn: ConnectionConfig): Promise<void> {
-    this.connectingId.set(conn.id);
-    try {
-      if (conn.provider === 'github') {
-        this.store.openGithubDeviceLogin();
-        return;
-      }
-
-      if (conn.provider === 'gitlab') {
-        const token = await this.prompts.ask({
-          title: 'Connect GitLab',
-          message: this.providerHint(conn.provider),
-          label: 'Personal access token',
-          placeholder: 'glpat-…',
-          confirmLabel: 'Connect',
-          mono: true,
-        });
-        if (!token?.trim()) return;
-        await this.store.signInGitHost(conn.provider, token.trim(), conn.username);
-        return;
-      }
-
-      if (conn.provider === 'azureDevOps') {
-        let org = conn.organization.trim();
-        if (!org) {
-          const asked = await this.prompts.ask({
-            title: 'Azure DevOps organization',
-            message: 'Organization name from dev.azure.com/{org}.',
-            label: 'Organization',
-            placeholder: 'contoso',
-            confirmLabel: 'Next',
-            initialValue: conn.organization,
-          });
-          if (!asked?.trim()) return;
-          org = asked.trim();
-        }
-        const token = await this.prompts.ask({
-          title: 'Connect Azure DevOps',
-          message: this.providerHint(conn.provider),
-          label: 'Personal access token',
-          placeholder: 'PAT',
-          confirmLabel: 'Connect',
-          mono: true,
-        });
-        if (!token?.trim()) return;
-        await this.store.signInAzureDevOps(token.trim(), org, conn.project);
-        return;
-      }
-
-      if (conn.provider === 'jira') {
-        const email = await this.prompts.ask({
-          title: 'Connect Jira',
-          message: 'Atlassian account email for API token auth.',
-          label: 'Email',
-          placeholder: 'you@company.com',
-          confirmLabel: 'Next',
-          initialValue: conn.username,
-        });
-        if (!email?.trim()) return;
-        const token = await this.prompts.ask({
-          title: 'Jira API token',
-          message: 'Create a token at id.atlassian.com → Security → API tokens.',
-          label: 'API token',
-          placeholder: 'ATATT…',
-          confirmLabel: 'Next',
-          mono: true,
-        });
-        if (!token?.trim()) return;
-        let baseUrl = conn.baseUrl;
-        if (!baseUrl.trim() || baseUrl.includes('your-domain')) {
-          const asked = await this.prompts.ask({
-            title: 'Jira site URL',
-            message: 'Your Atlassian Cloud site, e.g. https://company.atlassian.net',
-            label: 'Base URL',
-            placeholder: 'https://company.atlassian.net',
-            confirmLabel: 'Connect',
-            mono: true,
-          });
-          if (!asked?.trim()) return;
-          baseUrl = asked.trim();
-        }
-        await this.store.signInJira(email.trim(), token.trim(), baseUrl);
-        return;
-      }
-
-      this.editingConnectionId.set(conn.id);
-      this.updateConnection(conn.id, { enabled: true });
-      this.store.showInfo('Paste your PAT below, then enable the connection.');
-    } finally {
-      this.connectingId.set(null);
-    }
-  }
-
-  async disconnect(conn: ConnectionConfig): Promise<void> {
-    await this.store.disconnectConnection(conn.id);
-    if (this.editingConnectionId() === conn.id) {
-      this.editingConnectionId.set(null);
-    }
-  }
-
-  async testConnection(conn: ConnectionConfig): Promise<void> {
-    if (this.testingId()) return;
-    const kind = this.connectionKind(conn.provider);
-    if (!kind) return;
-    this.testingId.set(conn.id);
-    try {
-      const result = await this.store.testConnection({ kind, connectionId: conn.id });
-      this.connectionTests.update((current) => ({ ...current, [conn.id]: result }));
-    } finally {
-      this.testingId.set(null);
-    }
-  }
-
-  async testAllConnections(): Promise<void> {
-    if (this.testingAll()) return;
-    this.testingAll.set(true);
-    try {
-      const results = await this.store.testAllConnections();
-      const next: Record<string, TestConnectionOutput> = { ...this.connectionTests() };
-      for (const result of results) {
-        if (result.kind === 'ssh') this.sshTest.set(result);
-        if (result.connectionId && result.kind !== 'ssh' && result.kind !== 'gitRemote') {
-          next[result.connectionId] = result;
-        }
-      }
-      this.connectionTests.set(next);
-    } finally {
-      this.testingAll.set(false);
-    }
-  }
-
-  async testSsh(): Promise<void> {
-    if (this.testingSsh()) return;
-    this.testingSsh.set(true);
-    try {
-      this.sshTest.set(
-        await this.store.testConnection({
-          kind: 'ssh',
-          path: this.store.currentRepo()?.path ?? '',
-          remote: 'origin',
-        }),
-      );
-    } finally {
-      this.testingSsh.set(false);
-    }
-  }
-
-  private connectionKind(
-    provider: string,
-  ): 'github' | 'gitlab' | 'azureDevOps' | 'jira' | null {
-    if (
-      provider === 'github' ||
-      provider === 'gitlab' ||
-      provider === 'azureDevOps' ||
-      provider === 'jira'
-    ) {
-      return provider;
-    }
-    return null;
-  }
-
-  openFeature(provider: string): void {
-    if (provider === 'jira') {
-      this.store.setView('jira');
-      return;
-    }
-    if (provider === 'github' || provider === 'gitlab' || provider === 'azureDevOps') {
-      this.store.setView('prs');
     }
   }
 
@@ -671,10 +418,6 @@ export class SettingsPage implements OnInit {
       return;
     }
     this.store.showSuccess('You are on the latest version', undefined, 'updates');
-  }
-
-  async setCredentialHelper(value: string): Promise<void> {
-    await this.saveGitConfig('credential.helper', value);
   }
 
   async toggleCommitSigning(enabled: boolean): Promise<void> {

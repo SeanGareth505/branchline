@@ -89,6 +89,27 @@ fn test_integration(
     kind: &str,
     input: &TestConnectionInput,
 ) -> TestConnectionOutput {
+    if kind == "github" {
+        let Some(resolved) = crate::commands::github_git::resolve_github_api_connection(settings)
+        else {
+            return fail(
+                "github",
+                "Add a GitHub account, or paste a PAT with repo scope, then test again.",
+            );
+        };
+        let via_cli = settings
+            .connections
+            .iter()
+            .find(|connection| connection.provider == "github")
+            .map(|connection| connection.token.trim().is_empty() || !connection.enabled)
+            .unwrap_or(true);
+        let mut result = test_github(&resolved);
+        if via_cli && result.ok {
+            result.message = format!("{} via GitHub CLI", result.message);
+        }
+        return result;
+    }
+
     let Some(connection) = find_connection(settings, &input.connection_id, kind) else {
         return fail(kind, "This integration is not configured.");
     };
@@ -96,7 +117,6 @@ fn test_integration(
         return fail(kind, "Paste a token first, then test again.");
     }
     match kind {
-        "github" => test_github(connection),
         "gitlab" => test_gitlab(connection),
         "azureDevOps" => test_azure(connection),
         "jira" => test_jira(connection),

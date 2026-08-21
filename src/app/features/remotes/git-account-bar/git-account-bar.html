@@ -1,41 +1,53 @@
 @if (visible()) {
-  <section class="bar">
-    <div class="copy">
-      @if (variant() !== 'settings') {
-        <strong>GitHub for this repo</strong>
-      }
-      <span>{{ busy() ? 'Switching GitHub account…' : summary() }}</span>
-    </div>
-    <div class="controls">
-      <div class="cluster">
-        <span class="seg-label">HTTPS login</span>
-        @if (accounts().length) {
-          <div class="seg" role="group" aria-label="GitHub CLI account">
-            @for (account of accounts(); track account.login) {
+  @if (variant() === 'settings') {
+    <section class="accounts-panel">
+      @if (accounts().length) {
+        <ul class="account-list">
+          @for (account of accounts(); track account.login) {
+            <li class="account-row" [class.on]="account.active" [class.bad]="!account.ok">
               <button
                 type="button"
-                class="seg-btn"
-                [class.on]="account.active"
-                [class.bad]="!account.ok"
+                class="account-pick"
                 [disabled]="busy() || protocol() === 'ssh'"
                 [title]="
                   protocol() === 'ssh'
                     ? 'Switch this repo to HTTPS to use this account'
                     : account.ok
-                      ? 'Use this account for HTTPS Git. Right-click to unlink.'
+                      ? 'Use this account for HTTPS Git'
                       : 'This GitHub CLI login is invalid'
                 "
                 (click)="useAccount(account.login)"
-                (contextmenu)="unlink(account.login); $event.preventDefault()"
               >
-                {{ account.login }}
+                <strong>{{ account.login }}</strong>
+                @if (account.active && protocol() !== 'ssh') {
+                  <span class="chip">This repo</span>
+                }
+                @if (!account.ok) {
+                  <span class="chip warn">Login invalid</span>
+                }
               </button>
-            }
-          </div>
-        } @else {
-          <span class="solo muted">None yet</span>
-        }
-      </div>
+              <button
+                type="button"
+                class="text-btn danger"
+                [disabled]="busy()"
+                (click)="unlink(account.login)"
+              >
+                Unlink
+              </button>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="empty">
+          @if (store.githubGitStatus()?.ghAvailable) {
+            No GitHub accounts yet. Add one to fetch, push, and load pull requests.
+          } @else {
+            GitHub CLI (gh) is not installed. Install it, or paste a PAT below for pull requests and
+            use SSH for Git.
+          }
+        </p>
+      }
+
       @if (protocol() !== 'none') {
         <div class="cluster">
           <span class="seg-label">This repo</span>
@@ -61,31 +73,111 @@
               SSH
             </button>
           </div>
+          <span class="solo muted">{{ busy() ? 'Switching GitHub account…' : summary() }}</span>
         </div>
       }
-      @if (sshLogin() && (protocol() === 'ssh' || protocol() === 'mixed')) {
-        <span class="solo muted" title="Account the default GitHub SSH key authenticates as">
-          SSH · {{ sshLogin() }}
-        </span>
-      }
+
       <div class="cluster extras">
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          [disabled]="busy() || !store.githubGitStatus()?.ghAvailable"
+          (click)="addAccount()"
+        >
+          Add GitHub account
+        </button>
         <button type="button" class="text-btn" [disabled]="busy()" (click)="refresh()">
           Refresh
         </button>
-        <button type="button" class="text-btn" [disabled]="busy()" (click)="addAccount()">
-          Add account
-        </button>
-        @if (activeLogin()) {
-          <button
-            type="button"
-            class="text-btn danger"
-            [disabled]="busy()"
-            (click)="unlink(activeLogin())"
-          >
-            Unlink {{ activeLogin() }}
-          </button>
-        }
       </div>
-    </div>
-  </section>
+    </section>
+  } @else {
+    <section class="bar">
+      <div class="copy">
+        <strong>GitHub for this repo</strong>
+        <span>{{ busy() ? 'Switching GitHub account…' : summary() }}</span>
+      </div>
+      <div class="controls">
+        <div class="cluster">
+          <span class="seg-label">HTTPS login</span>
+          @if (accounts().length) {
+            <div class="seg" role="group" aria-label="GitHub CLI account">
+              @for (account of accounts(); track account.login) {
+                <button
+                  type="button"
+                  class="seg-btn"
+                  [class.on]="account.active"
+                  [class.bad]="!account.ok"
+                  [disabled]="busy() || protocol() === 'ssh'"
+                  [title]="
+                    protocol() === 'ssh'
+                      ? 'Switch this repo to HTTPS to use this account'
+                      : account.ok
+                        ? 'Use this account for HTTPS Git. Right-click to unlink.'
+                        : 'This GitHub CLI login is invalid'
+                  "
+                  (click)="useAccount(account.login)"
+                  (contextmenu)="unlink(account.login); $event.preventDefault()"
+                >
+                  {{ account.login }}
+                </button>
+              }
+            </div>
+          } @else {
+            <span class="solo muted">None yet</span>
+          }
+        </div>
+        @if (protocol() !== 'none') {
+          <div class="cluster">
+            <span class="seg-label">This repo</span>
+            <div class="seg" role="group" aria-label="Git protocol">
+              <button
+                type="button"
+                class="seg-btn"
+                [class.on]="protocol() === 'https'"
+                [disabled]="busy()"
+                title="Use GitHub CLI for fetch and push"
+                (click)="useProtocol('https')"
+              >
+                HTTPS
+              </button>
+              <button
+                type="button"
+                class="seg-btn"
+                [class.on]="protocol() === 'ssh'"
+                [disabled]="busy()"
+                title="Use the SSH key in ~/.ssh"
+                (click)="useProtocol('ssh')"
+              >
+                SSH
+              </button>
+            </div>
+          </div>
+        }
+        @if (sshLogin() && (protocol() === 'ssh' || protocol() === 'mixed')) {
+          <span class="solo muted" title="Account the default GitHub SSH key authenticates as">
+            SSH · {{ sshLogin() }}
+          </span>
+        }
+        <div class="cluster extras">
+          <button type="button" class="text-btn" [disabled]="busy()" (click)="refresh()">
+            Refresh
+          </button>
+          <button type="button" class="text-btn" [disabled]="busy()" (click)="addAccount()">
+            Add account
+          </button>
+          @if (activeLogin()) {
+            <button
+              type="button"
+              class="text-btn danger"
+              [disabled]="busy()"
+              (click)="unlink(activeLogin())"
+            >
+              Unlink {{ activeLogin() }}
+            </button>
+          }
+        </div>
+      </div>
+    </section>
+  }
 }
