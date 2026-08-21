@@ -60,6 +60,7 @@ export class SettingsPage implements OnInit {
   readonly newTypeDescription = signal('');
   readonly savingTypes = signal(false);
   readonly capturingShortcut = signal<ShortcutId | null>(null);
+  private previewTimers: number[] = [];
   readonly formatShortcut = formatShortcut;
   readonly shortcutRows: { id: ShortcutId; label: string }[] = [
     { id: 'palette', label: 'Palette' },
@@ -197,8 +198,25 @@ export class SettingsPage implements OnInit {
     void this.store.saveSettings({ notifySoundVolume: Math.max(0, Math.min(1, Number(percent) / 100)) });
   }
 
-  playTestSound(): void {
-    this.store.playTestNotifySound();
+  playTestSound(kind: 'review' | 'ready' | 'success' | 'fail' | 'activity' = 'review'): void {
+    this.store.playTestNotifySound(kind);
+  }
+
+  previewAllSounds(): void {
+    for (const id of this.previewTimers) window.clearTimeout(id);
+    this.previewTimers = [];
+    const kinds: Array<'review' | 'ready' | 'success' | 'fail' | 'activity'> = [
+      'review',
+      'ready',
+      'success',
+      'fail',
+      'activity',
+    ];
+    kinds.forEach((kind, index) => {
+      this.previewTimers.push(
+        window.setTimeout(() => this.store.playTestNotifySound(kind), index * 560),
+      );
+    });
   }
 
   async refreshDiagnostics(): Promise<void> {

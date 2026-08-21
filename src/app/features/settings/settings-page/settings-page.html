@@ -841,6 +841,7 @@
 
           <article class="bl-panel block">
             <h2 class="block-title">Sounds</h2>
+            <p class="block-hint">Each PR event has its own chime. Preview them here, then keep only the ones you want.</p>
             <div class="setting">
               <div class="setting-label">
                 <strong>Sound effects</strong>
@@ -876,18 +877,26 @@
                   type="button"
                   class="bl-btn"
                   [disabled]="!store.settings().notifySoundEnabled"
-                  (click)="playTestSound()"
+                  (click)="previewAllSounds()"
                 >
-                  Test
+                  Preview all
                 </button>
               </div>
             </div>
             <div class="setting">
               <div class="setting-label">
                 <strong>Needs review</strong>
-                <span>Chime when a PR is waiting for you</span>
+                <span>Warm two-note knock when a PR is waiting for you</span>
               </div>
-              <div class="setting-control">
+              <div class="setting-control sound-row">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  (click)="playTestSound('review')"
+                >
+                  Play
+                </button>
                 <label class="switch">
                   <input
                     type="checkbox"
@@ -902,9 +911,17 @@
             <div class="setting">
               <div class="setting-label">
                 <strong>Ready to merge</strong>
-                <span>Chime when your PR is mergeable</span>
+                <span>Rising major arpeggio when your PR is mergeable</span>
               </div>
-              <div class="setting-control">
+              <div class="setting-control sound-row">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  (click)="playTestSound('ready')"
+                >
+                  Play
+                </button>
                 <label class="switch">
                   <input
                     type="checkbox"
@@ -918,10 +935,18 @@
             </div>
             <div class="setting">
               <div class="setting-label">
-                <strong>PR CI</strong>
-                <span>Pass and fail tones for checks on PRs you care about</span>
+                <strong>Checks passed</strong>
+                <span>Bright glass ping when CI goes green</span>
               </div>
-              <div class="setting-control">
+              <div class="setting-control sound-row">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  (click)="playTestSound('success')"
+                >
+                  Play
+                </button>
                 <label class="switch">
                   <input
                     type="checkbox"
@@ -935,10 +960,34 @@
             </div>
             <div class="setting">
               <div class="setting-label">
-                <strong>PR activity</strong>
-                <span>Soft click for comments, reviews, and merges (off by default)</span>
+                <strong>Checks failed</strong>
+                <span>Low descending tone when CI breaks on a PR you care about</span>
               </div>
-              <div class="setting-control">
+              <div class="setting-control sound-row">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled || !store.settings().notifySoundPrCi"
+                  (click)="playTestSound('fail')"
+                >
+                  Play
+                </button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-label">
+                <strong>Other PR activity</strong>
+                <span>Soft tick for comments and review-state changes (off by default)</span>
+              </div>
+              <div class="setting-control sound-row">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="!store.settings().notifySoundEnabled"
+                  (click)="playTestSound('activity')"
+                >
+                  Play
+                </button>
                 <label class="switch">
                   <input
                     type="checkbox"

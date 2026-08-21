@@ -4577,9 +4577,9 @@ export class AppStore {
     this.sounds.unlock();
   }
 
-  playTestNotifySound(): void {
+  playTestNotifySound(kind: NotifySoundKind = 'review'): void {
     this.sounds.unlock();
-    this.sounds.play('review', this.settings().notifySoundVolume);
+    this.sounds.play(kind, this.settings().notifySoundVolume);
   }
 
   private emitPullRequestNotifications(key: string, next: MockPullRequest[], notify = true): void {
