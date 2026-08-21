@@ -547,6 +547,23 @@ export function prReadyToMerge(pr: MockPullRequest): boolean {
   );
 }
 
+export function prMergeBlockReason(pr: MockPullRequest): string | null {
+  if (pr.status !== 'open') return `This pull request is ${pr.status}`;
+  if (pr.draft) return 'Mark ready before merging';
+  const state = (pr.mergeState ?? '').toLowerCase();
+  if (pr.mergeable === false || state === 'dirty' || state === 'conflicting') {
+    return 'Has merge conflicts';
+  }
+  if (prCheckFailed(pr) > 0 || pr.pipelineStatus === 'failure') return 'CI is failing';
+  if (pr.reviewState === 'changesRequested' || prChangesRequested(pr) > 0) {
+    return 'Requested changes are outstanding';
+  }
+  if (pr.reviewState !== 'approved' && prApprovals(pr) === 0) return 'Needs approval';
+  if (state === 'blocked') return 'Merge is blocked';
+  if (state === 'behind') return 'Branch is behind the base';
+  return null;
+}
+
 export function normalizePullRequest(pr: MockPullRequest): MockPullRequest {
   const approvals =
     pr.approvals ??

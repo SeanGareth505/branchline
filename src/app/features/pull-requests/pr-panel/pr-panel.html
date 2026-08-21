@@ -85,15 +85,27 @@
   } @else {
   <div class="stats">
     <span><strong>{{ stats().total }}</strong> matching</span>
-    <span><strong>{{ stats().open }}</strong> open</span>
-    <span><strong>{{ stats().draft }}</strong> draft</span>
-    <span><strong>{{ stats().approved }}</strong> approved</span>
-    <span><strong>{{ stats().ready }}</strong> ready</span>
-    <span class="fail"><strong>{{ stats().failing }}</strong> failing checks</span>
+    <button type="button" class="stat" [class.on]="status() === 'open'" (click)="applyStat('open')">
+      <strong>{{ stats().open }}</strong> open
+    </button>
+    <button type="button" class="stat" [class.on]="status() === 'draft'" (click)="applyStat('draft')">
+      <strong>{{ stats().draft }}</strong> draft
+    </button>
+    <button type="button" class="stat" [class.on]="review() === 'approved'" (click)="applyStat('approved')">
+      <strong>{{ stats().approved }}</strong> approved
+    </button>
+    <button type="button" class="stat" [class.on]="readyOnly()" (click)="applyStat('ready')">
+      <strong>{{ stats().ready }}</strong> ready
+    </button>
+    <button type="button" class="stat fail" [class.on]="failingOnly()" (click)="applyStat('failing')">
+      <strong>{{ stats().failing }}</strong> failing checks
+    </button>
     @if (stats().blocked) {
       <span class="fail"><strong>{{ stats().blocked }}</strong> blocked</span>
     }
-    <span><strong>{{ stats().needsReview }}</strong> need review</span>
+    <button type="button" class="stat" [class.on]="needsMyReview()" (click)="applyStat('review')">
+      <strong>{{ stats().needsReview }}</strong> need review
+    </button>
   </div>
 
   <div class="filters bl-glass">
@@ -243,8 +255,10 @@
 
         <div class="main">
           <div class="title-line">
-            <span class="num mono">#{{ pr.number }}</span>
-            <strong>{{ pr.title }}</strong>
+            <button type="button" class="title-open" (click)="openBrowser(pr)" [title]="'Open #' + pr.number">
+              <span class="num mono">#{{ pr.number }}</span>
+              <strong>{{ pr.title }}</strong>
+            </button>
             @if (pr.draft) {
               <span class="bl-chip">draft</span>
             }
@@ -260,7 +274,7 @@
             <span class="bl-chip" [attr.data-review]="pr.reviewState" [title]="approvedNames(pr)">
               {{ reviewCountLabel(pr) }}
             </span>
-            <span class="bl-chip" [attr.data-ci]="checkTone(pr)">
+            <span class="bl-chip" [attr.data-ci]="checkTone(pr)" [title]="checkCountLabel(pr)">
               {{ checkCountLabel(pr) }}
             </span>
             @if (waitingCount(pr) && pr.reviewState !== 'approved') {
@@ -322,24 +336,26 @@
                   Mark ready
                 </button>
               } @else {
-                <button
-                  type="button"
-                  class="bl-btn"
-                  [class.done]="pr.reviewState === 'approved'"
-                  [disabled]="isActing(pr)"
-                  (click)="approve(pr)"
-                >
-                  <ng-icon name="lucideCheck" size="13" />
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  class="bl-btn"
-                  [disabled]="isActing(pr)"
-                  (click)="startRequestChanges(pr)"
-                >
-                  Request changes
-                </button>
+                @if (canApprove(pr)) {
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    [class.done]="pr.reviewState === 'approved'"
+                    [disabled]="isActing(pr)"
+                    (click)="approve(pr)"
+                  >
+                    <ng-icon name="lucideCheck" size="13" />
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    [disabled]="isActing(pr)"
+                    (click)="startRequestChanges(pr)"
+                  >
+                    Request changes
+                  </button>
+                }
                 <button
                   type="button"
                   class="bl-btn"
@@ -353,7 +369,8 @@
                   <button
                     type="button"
                     class="bl-btn bl-btn-primary"
-                    [disabled]="isActing(pr)"
+                    [disabled]="isActing(pr) || !canMergeNow(pr)"
+                    [title]="mergeHint(pr)"
                     (click)="merge(pr)"
                   >
                     <ng-icon name="lucideGitMerge" size="13" />
@@ -362,7 +379,7 @@
                   <button
                     type="button"
                     class="bl-btn"
-                    [disabled]="isActing(pr)"
+                    [disabled]="isActing(pr) || !canMergeNow(pr)"
                     title="More merge methods"
                     (click)="mergeMenuId.set(mergeMenuId() === pr.id ? null : pr.id)"
                   >
@@ -377,13 +394,25 @@
                 </div>
               }
               <span class="sep" aria-hidden="true"></span>
-              @if (showingDummy()) {
-                <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
-                @if (!pr.draft) {
-                  <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
-                    Request my review
-                  </button>
-                }
+              @if (!isAssignedToMe(pr)) {
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  [disabled]="isActing(pr)"
+                  (click)="assignMyself(pr)"
+                >
+                  Assign me
+                </button>
+              }
+              @if (canRequestMyReview(pr) && !pr.needsMyReview) {
+                <button
+                  type="button"
+                  class="bl-btn quiet"
+                  [disabled]="isActing(pr)"
+                  (click)="requestMyReview(pr)"
+                >
+                  Request my review
+                </button>
               }
               <button
                 type="button"
@@ -447,6 +476,11 @@
           <button type="button" class="bl-btn" (click)="copyOneLink(pr)">Copy link</button>
           <button type="button" class="bl-btn" (click)="copyOneMarkdown(pr)">Copy md</button>
           <button type="button" class="bl-btn" (click)="openBrowser(pr)">Open</button>
+          @if (canReopen(pr)) {
+            <button type="button" class="bl-btn" [disabled]="isActing(pr)" (click)="reopenPr(pr)">
+              Reopen
+            </button>
+          }
           <button type="button" class="bl-btn" (click)="checkoutPr(pr)">Checkout</button>
         </div>
       </article>

@@ -101,6 +101,10 @@ struct GhPr {
     requested_reviewers: Option<Vec<GhUser>>,
     assignees: Option<Vec<GhUser>>,
     merged_at: Option<String>,
+    #[serde(default)]
+    mergeable: Option<bool>,
+    #[serde(default)]
+    mergeable_state: Option<String>,
 }
 
 fn linked_connection<'a>(
@@ -328,6 +332,11 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
         pending_reviewers,
+        mergeable: pr.mergeable,
+        merge_state: pr
+            .mergeable_state
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
         ..Default::default()
     };
     finalize_pr_insights(&mut mapped);
@@ -419,7 +428,7 @@ query($owner: String!, $name: String!, $states: [PullRequestState!]) {
         mergeable
         mergeStateStatus
         reviewDecision
-        reviews(first: 100) { nodes { author { login } state } }
+        latestReviews(first: 40) { nodes { author { login } state } }
         reviewRequests(first: 20) {
           nodes {
             requestedReviewer {
@@ -584,6 +593,7 @@ struct GqlPullRequest {
     mergeable: Option<String>,
     merge_state_status: Option<String>,
     review_decision: Option<String>,
+    #[serde(rename = "latestReviews")]
     reviews: Option<GqlNodes<GqlReviewNode>>,
     review_requests: Option<GqlNodes<GqlReviewerNode>>,
     commits: Option<GqlCommits>,
@@ -730,7 +740,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         .and_then(|c| c.nodes.into_iter().flatten().next())
         .and_then(|n| n.commit)
         .and_then(|c| c.status_check_rollup);
-    let (check_passed, check_failed, check_pending, check_total, pipeline_status) =
+    let (check_passed, check_failed, check_pending, check_total, pipeline_status, check_summary) =
         summarize_checks(rollup.as_ref());
     let merge_state = pr
         .merge_state_status
@@ -794,6 +804,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         check_total,
         mergeable,
         merge_state,
+        check_summary,
         ..Default::default()
     };
     finalize_pr_insights(&mut mapped);
@@ -832,13 +843,56 @@ where
     )
 }
 
-fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String) {
+fn check_context_name(ctx: &GqlCheckContext) -> String {
+    ctx.name
+        .clone()
+        .filter(|s| !s.is_empty())
+        .or_else(|| ctx.context.clone().filter(|s| !s.is_empty()))
+        .unwrap_or_default()
+}
+
+fn clip_check_names(names: &[String]) -> String {
+    const MAX: usize = 3;
+    let mut shown: Vec<String> = names.iter().take(MAX).cloned().collect();
+    if names.len() > MAX {
+        shown.push(format!("+{}", names.len() - MAX));
+    }
+    shown.join(", ")
+}
+
+fn format_check_summary(
+    passed: u32,
+    failed_names: &[String],
+    pending_names: &[String],
+    total: u32,
+) -> String {
+    if total == 0 {
+        return String::new();
+    }
+    if !failed_names.is_empty() {
+        return format!(
+            "{} failing · {passed}/{total} checks",
+            clip_check_names(failed_names)
+        );
+    }
+    if !pending_names.is_empty() {
+        return format!(
+            "{} running · {passed}/{total} checks",
+            clip_check_names(pending_names)
+        );
+    }
+    format!("{passed}/{total} checks")
+}
+
+fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String, String) {
     let Some(rollup) = rollup else {
-        return (0, 0, 0, 0, "unknown".into());
+        return (0, 0, 0, 0, "unknown".into(), String::new());
     };
     let mut passed = 0u32;
     let mut failed = 0u32;
     let mut pending = 0u32;
+    let mut failed_names = Vec::new();
+    let mut pending_names = Vec::new();
     for ctx in rollup
         .contexts
         .as_ref()
@@ -846,11 +900,15 @@ fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String) 
         .into_iter()
         .flatten()
     {
+        let name = check_context_name(ctx);
         if ctx.name.is_some() || ctx.context.is_some() || ctx.conclusion.is_some() || ctx.status.is_some() {
             let status = ctx.status.as_deref().unwrap_or("").to_ascii_uppercase();
             let conclusion = ctx.conclusion.as_deref().unwrap_or("").to_ascii_uppercase();
             if status != "COMPLETED" && status != "" {
                 pending += 1;
+                if !name.is_empty() {
+                    pending_names.push(name);
+                }
             } else if matches!(
                 conclusion.as_str(),
                 "SUCCESS" | "NEUTRAL" | "SKIPPED"
@@ -858,14 +916,30 @@ fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String) 
                 passed += 1;
             } else if conclusion.is_empty() {
                 pending += 1;
+                if !name.is_empty() {
+                    pending_names.push(name);
+                }
             } else {
                 failed += 1;
+                if !name.is_empty() {
+                    failed_names.push(name);
+                }
             }
         } else if let Some(state) = ctx.state.as_deref() {
             match state.to_ascii_uppercase().as_str() {
                 "SUCCESS" => passed += 1,
-                "PENDING" | "EXPECTED" => pending += 1,
-                _ => failed += 1,
+                "PENDING" | "EXPECTED" => {
+                    pending += 1;
+                    if !name.is_empty() {
+                        pending_names.push(name);
+                    }
+                }
+                _ => {
+                    failed += 1;
+                    if !name.is_empty() {
+                        failed_names.push(name);
+                    }
+                }
             }
         }
     }
@@ -884,7 +958,8 @@ fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String) 
             _ => "unknown",
         }
     };
-    (passed, failed, pending, total, pipeline.into())
+    let summary = format_check_summary(passed, &failed_names, &pending_names, total);
+    (passed, failed, pending, total, pipeline.into(), summary)
 }
 
 fn finalize_pr_insights(pr: &mut MockPullRequest) {
@@ -1020,6 +1095,8 @@ struct GhCheckRuns {
 #[derive(Debug, Deserialize)]
 struct GhCheckRun {
     #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
     status: Option<String>,
     #[serde(default)]
     conclusion: Option<String>,
@@ -1077,11 +1154,17 @@ fn enrich_github_pr_rest(
                     let mut passed = 0u32;
                     let mut failed = 0u32;
                     let mut pending = 0u32;
+                    let mut failed_names = Vec::new();
+                    let mut pending_names = Vec::new();
                     for run in payload.check_runs {
+                        let name = run.name.unwrap_or_default();
                         let status = run.status.unwrap_or_default().to_ascii_lowercase();
                         let conclusion = run.conclusion.unwrap_or_default().to_ascii_lowercase();
                         if status != "completed" {
                             pending += 1;
+                            if !name.is_empty() {
+                                pending_names.push(name);
+                            }
                         } else if matches!(
                             conclusion.as_str(),
                             "success" | "neutral" | "skipped"
@@ -1089,6 +1172,9 @@ fn enrich_github_pr_rest(
                             passed += 1;
                         } else {
                             failed += 1;
+                            if !name.is_empty() {
+                                failed_names.push(name);
+                            }
                         }
                     }
                     pr.check_passed = passed;
@@ -1096,7 +1182,8 @@ fn enrich_github_pr_rest(
                     pr.check_pending = pending;
                     pr.check_total = passed + failed + pending;
                     pr.pipeline_status = String::new();
-                    pr.check_summary = String::new();
+                    pr.check_summary =
+                        format_check_summary(passed, &failed_names, &pending_names, pr.check_total);
                 }
             }
         }
@@ -2054,6 +2141,10 @@ pub struct UpdatePullRequestInput {
     pub state: Option<String>,
     #[serde(default)]
     pub ready: Option<bool>,
+    #[serde(default)]
+    pub assign_me: Option<bool>,
+    #[serde(default)]
+    pub request_my_review: Option<bool>,
 }
 
 fn resolve_github_for_path(
@@ -2214,6 +2305,25 @@ pub async fn update_pull_request(
     run_blocking(move || update_pull_request_inner(settings, input)).await
 }
 
+fn github_login_for(connection: &ConnectionConfig) -> AppResult<String> {
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let login = resolve_github_login(github_http_client(), base, token, &connection.username);
+    if login.is_empty() {
+        Err(AppError::msg(
+            "Could not determine your GitHub username. Re-link GitHub under Settings → Connections.",
+        ))
+    } else {
+        Ok(login)
+    }
+}
+
+fn github_mutation_error(response: reqwest::blocking::Response, number: u32, action: &str) -> AppError {
+    let status = response.status();
+    let text = response.text().unwrap_or_default();
+    AppError::msg(format!("Could not {action} #{number} ({status}). {text}"))
+}
+
 fn update_pull_request_inner(
     settings: AppSettings,
     input: UpdatePullRequestInput,
@@ -2223,6 +2333,49 @@ fn update_pull_request_inner(
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
     let client = github_http_client();
+    if input.assign_me == Some(true) {
+        let me = github_login_for(&connection)?;
+        let url = format!("{base}/repos/{owner}/{repo}/issues/{}/assignees", input.number);
+        let response = github_json(
+            client,
+            token,
+            reqwest::Method::POST,
+            &url,
+            Some(serde_json::json!({ "assignees": [me] })),
+        )?;
+        if !response.status().is_success() {
+            return Err(github_mutation_error(response, input.number, "assign you to"));
+        }
+        return Ok(MutationOutputLike {
+            ok: true,
+            message: format!("Assigned you to #{}", input.number),
+        });
+    }
+    if input.request_my_review == Some(true) {
+        let me = github_login_for(&connection)?;
+        let url = format!(
+            "{base}/repos/{owner}/{repo}/pulls/{}/requested_reviewers",
+            input.number
+        );
+        let response = github_json(
+            client,
+            token,
+            reqwest::Method::POST,
+            &url,
+            Some(serde_json::json!({ "reviewers": [me] })),
+        )?;
+        if !response.status().is_success() {
+            return Err(github_mutation_error(
+                response,
+                input.number,
+                "request your review on",
+            ));
+        }
+        return Ok(MutationOutputLike {
+            ok: true,
+            message: format!("Requested your review on #{}", input.number),
+        });
+    }
     if input.ready == Some(true) {
         let url = format!(
             "{base}/repos/{owner}/{repo}/pulls/{}/ready_for_review",

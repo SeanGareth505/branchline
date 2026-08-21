@@ -1359,7 +1359,7 @@ export class AppStore {
 
   async updatePullRequest(
     pr: MockPullRequest,
-    patch: { state?: 'open' | 'closed'; ready?: boolean },
+    patch: { state?: 'open' | 'closed'; ready?: boolean; assignMe?: boolean; requestMyReview?: boolean },
   ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) {

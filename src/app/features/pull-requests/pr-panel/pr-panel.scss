@@ -127,6 +127,25 @@
   color: var(--git-deleted);
 }
 
+.stat {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.stat:hover,
+.stat.on {
+  color: var(--text-primary);
+}
+
+.stat.on {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -223,6 +242,26 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
+}
+
+.title-open {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.title-open:hover strong,
+.title-open:hover .num {
+  color: var(--accent);
 }
 
 .num {

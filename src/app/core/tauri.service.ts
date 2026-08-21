@@ -1233,7 +1233,14 @@ export class TauriService {
     return this.invoke<MutationOutput>('merge_pull_request', { input });
   }
 
-  updatePullRequest(input: { path: string; number: number; state?: 'open' | 'closed'; ready?: boolean }) {
+  updatePullRequest(input: {
+    path: string;
+    number: number;
+    state?: 'open' | 'closed';
+    ready?: boolean;
+    assignMe?: boolean;
+    requestMyReview?: boolean;
+  }) {
     return this.invoke<MutationOutput>('update_pull_request', { input });
   }
 
@@ -2963,7 +2970,14 @@ export class TauriService {
     }
 
     if (cmd === 'review_pull_request' || cmd === 'merge_pull_request' || cmd === 'update_pull_request') {
-      const input = (args?.['input'] as { number?: number; event?: string; state?: string; ready?: boolean } | undefined) ?? {};
+      const input = (args?.['input'] as {
+        number?: number;
+        event?: string;
+        state?: string;
+        ready?: boolean;
+        assignMe?: boolean;
+        requestMyReview?: boolean;
+      } | undefined) ?? {};
       const number = input.number ?? 0;
       let message = `Updated #${number}`;
       if (cmd === 'review_pull_request') {
@@ -2975,10 +2989,16 @@ export class TauriService {
               : `Commented on #${number}`;
       } else if (cmd === 'merge_pull_request') {
         message = `Merged #${number}`;
+      } else if (input.assignMe) {
+        message = `Assigned you to #${number}`;
+      } else if (input.requestMyReview) {
+        message = `Requested your review on #${number}`;
       } else if (input.ready) {
         message = `Marked #${number} ready for review`;
       } else if (input.state === 'closed') {
         message = `Closed #${number}`;
+      } else if (input.state === 'open') {
+        message = `Reopened #${number}`;
       }
       return { ok: true, message } as T;
     }
