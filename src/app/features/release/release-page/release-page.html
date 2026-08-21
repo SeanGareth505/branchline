@@ -257,11 +257,27 @@
         (closeEvent)="closeEvent()"
         (openExternal)="openExternal($event)"
         (openWorkflow)="openWorkflow($event)"
+        (refresh)="reloadApps()"
       />
     </div>
   } @else {
-    <div class="panel">
+    <div class="panel" [class.with-apps]="hasWorkspaceApps()">
       <app-release-panel [releaseStatus]="status()" />
+      @if (hasWorkspaceApps()) {
+        <app-release-apps
+          [apps]="releaseApps()"
+          [selectedId]="selectedAppId()"
+          [loading]="appsLoading()"
+          [message]="releaseAppsMessage()"
+          [opened]="openedEvent()"
+          (selectApp)="selectApp($event)"
+          (openEvent)="openEvent($event)"
+          (closeEvent)="closeEvent()"
+          (openExternal)="openExternal($event)"
+          (openWorkflow)="openWorkflow($event)"
+          (refresh)="reloadApps()"
+        />
+      }
     </div>
   }
 </section>

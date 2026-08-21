@@ -5,9 +5,10 @@
       Back to list
     </button>
     @if (event().url) {
-      <button type="button" class="bl-btn" (click)="openGithub()">
-        Open on GitHub
-      </button>
+      <div class="nav-actions">
+        <button type="button" class="bl-btn" (click)="copyLink()">Copy link</button>
+        <button type="button" class="bl-btn" (click)="openGithub()">Open on GitHub</button>
+      </div>
     }
   </div>
 
@@ -41,7 +42,11 @@
     <ul class="jobs">
       @for (job of jobViews(); track job.name) {
         <li [attr.data-status]="job.chip">
-          <div class="job">
+          <div
+            class="job"
+            [class.clickable]="!!job.url"
+            (click)="openJob(job.url)"
+          >
             <span class="job-mark" [class.spin]="job.chip === 'pending' || job.chip === 'queued'" aria-hidden="true">
               <ng-icon [name]="jobChipIcon(job.chip)" size="11" />
             </span>

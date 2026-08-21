@@ -60,6 +60,12 @@
   gap: 0.75rem;
 }
 
+.meta-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
 .app-meta strong {
   font-size: 1.05rem;
   letter-spacing: -0.03em;

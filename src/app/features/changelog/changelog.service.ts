@@ -131,7 +131,7 @@ export class ChangelogService {
       title: '',
       team: '',
       preparedBy: '',
-      includeAuthors: true,
+      includeAuthors: false,
       includeShas: false,
       includeContributors: false,
       excludeMerges: true,
@@ -209,9 +209,11 @@ export class ChangelogService {
       /\bBREAKING CHANGE\b/i.test(commit.subject);
     const summary = (match?.groups?.['summary'] ?? firstLine).trim();
     let section = TYPE_SECTION[type] ?? 'Other';
+    if (!type) section = this.inferProseSection(summary);
     if (breaking) section = 'Breaking';
-    if (/^merge\b/i.test(firstLine)) section = 'Other';
-    return { commit, type: type || 'other', scope, breaking, summary, section };
+    if (/^merge\b/i.test(firstLine) || /^release\s/i.test(firstLine)) section = 'Other';
+    const parsedType = /^release\s/i.test(firstLine) ? 'release' : type || 'other';
+    return { commit, type: parsedType, scope, breaking, summary, section };
   }
 
   generate(
@@ -226,7 +228,15 @@ export class ChangelogService {
       parsed = parsed.filter((p) => !/^merge\b/i.test(p.commit.subject || p.commit.message));
     }
     if (options.excludeChores) {
-      parsed = parsed.filter((p) => p.type !== 'chore' && p.type !== 'ci' && p.type !== 'build');
+      parsed = parsed.filter(
+        (p) =>
+          p.type !== 'chore' &&
+          p.type !== 'ci' &&
+          p.type !== 'build' &&
+          p.type !== 'test' &&
+          p.type !== 'tests' &&
+          p.type !== 'release',
+      );
     }
 
     const markdown = this.render(parsed, options, fromLabel, toLabel);
@@ -298,8 +308,14 @@ export class ChangelogService {
   private githubBullet(item: ParsedCommit): string {
     let text = this.sentenceCase(item.summary);
     if (item.scope) text = `**${item.scope}:** ${text}`;
-    if (item.commit.author) text = `${text} — ${item.commit.author}`;
     return text;
+  }
+
+  private inferProseSection(summary: string): ChangelogSection {
+    if (/^(fix|fixed|fixes|open)\b/i.test(summary) || /\bbug\b/i.test(summary)) return 'Fixed';
+    if (/^(add|added|give|let|notify|support|enable)\b/i.test(summary)) return 'Added';
+    if (/^(remove|drop|delete)\b/i.test(summary)) return 'Removed';
+    return 'Changed';
   }
 
   private sentenceCase(value: string): string {

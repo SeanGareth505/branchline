@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
-import { format } from 'date-fns';
+import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { RepoReleaseApp, RepoReleaseEvent } from '../../../core/models';
 import { ReleaseRun } from '../release-run/release-run';
@@ -51,6 +51,7 @@ export class ReleaseApps {
   readonly closeEvent = output<void>();
   readonly openExternal = output<RepoReleaseEvent>();
   readonly openWorkflow = output<RepoReleaseApp>();
+  readonly refresh = output<void>();
 
   readonly query = signal('');
   readonly status = signal<ReleaseEventStatusFilter>('all');
@@ -188,7 +189,7 @@ export class ReleaseApps {
     if (!value?.trim()) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return format(date, 'd MMM yyyy, HH:mm');
+    return formatDistanceToNowStrict(date, { addSuffix: true });
   }
 
   statusIcon(status: string): string {

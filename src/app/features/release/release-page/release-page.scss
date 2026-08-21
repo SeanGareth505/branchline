@@ -154,6 +154,17 @@
   overflow: hidden;
 }
 
+.panel.with-apps {
+  overflow: auto;
+}
+
+.panel.with-apps app-release-panel,
+.panel.with-apps app-release-apps {
+  height: auto;
+  min-height: 18rem;
+  flex: 1 1 auto;
+}
+
 .empty {
   margin: auto;
   max-width: 28rem;

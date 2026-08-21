@@ -22,11 +22,17 @@
   flex-shrink: 0;
 }
 
-.nav {
+.nav-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
+  gap: 0.4rem;
+}
+
+.job.clickable {
+  cursor: pointer;
+}
+
+.job.clickable:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--glass-border));
 }
 
 .hero {

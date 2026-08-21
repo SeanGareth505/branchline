@@ -29,11 +29,16 @@
           }
         </p>
       </div>
-      @if (app.workflowUrl) {
-        <button type="button" class="bl-btn" (click)="openWorkflow.emit(app)">
-          Open workflow
+      <div class="meta-actions">
+        <button type="button" class="bl-btn" (click)="refresh.emit()" [disabled]="loading()">
+          {{ loading() ? 'Refreshing…' : 'Refresh' }}
         </button>
-      }
+        @if (app.workflowUrl) {
+          <button type="button" class="bl-btn" (click)="openWorkflow.emit(app)">
+            Open workflow
+          </button>
+        }
+      </div>
     </div>
 
     @if (message()) {

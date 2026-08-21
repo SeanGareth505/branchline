@@ -10,8 +10,8 @@ import {
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
 import { format } from 'date-fns';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { AppStore } from '../../../core/app.store';
+import { TauriService } from '../../../core/tauri.service';
 import { UpdateService } from '../../../core/update.service';
 import type {
   ReleaseActivity,
@@ -84,6 +84,7 @@ interface ProgressStepView {
 export class ReleasePanel {
   readonly store = inject(AppStore);
   readonly releaseStatus = input<ReleaseStatusOutput | null>(null);
+  private readonly tauri = inject(TauriService);
   private readonly updates = inject(UpdateService);
   private readonly now = signal(Date.now());
   private promptedVersion = '';
@@ -628,7 +629,7 @@ export class ReleasePanel {
 
   openLink(url: string | null | undefined): void {
     if (!url) return;
-    void openUrl(url);
+    void this.tauri.openExternalUrl(url).catch((err) => this.store.showError(err));
   }
 
   isJobExpanded(name: string): boolean {

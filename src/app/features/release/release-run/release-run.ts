@@ -1,4 +1,5 @@
 import {
+  ApplicationRef,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -10,7 +11,7 @@ import {
   untracked,
 } from '@angular/core';
 import { NgIcon } from '@ng-icons/core';
-import { format } from 'date-fns';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
 import type { ReleaseDeployJob, RepoReleaseEvent } from '../../../core/models';
 import { TauriService } from '../../../core/tauri.service';
@@ -27,6 +28,7 @@ type JobChip = 'success' | 'failure' | 'pending' | 'queued' | 'unknown';
 export class ReleaseRun {
   private readonly store = inject(AppStore);
   private readonly tauri = inject(TauriService);
+  private readonly appRef = inject(ApplicationRef);
 
   readonly event = input.required<RepoReleaseEvent>();
   readonly back = output<void>();
@@ -112,7 +114,7 @@ export class ReleaseRun {
     if (!value?.trim()) return '';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return format(date, 'd MMM yyyy, HH:mm');
+    return `${formatDistanceToNowStrict(date, { addSuffix: true })} · ${format(date, 'd MMM HH:mm')}`;
   }
 
   goBack(): void {
@@ -121,6 +123,22 @@ export class ReleaseRun {
 
   openGithub(): void {
     const url = this.event().url?.trim();
+    if (url) this.openUrl.emit(url);
+  }
+
+  async copyLink(): Promise<void> {
+    const url = this.event().url?.trim();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.store.showSuccess('Copied run link');
+    } catch {
+      this.store.showError('Could not copy link');
+    }
+  }
+
+  openJob(url: string | null, click?: Event): void {
+    click?.stopPropagation();
     if (url) this.openUrl.emit(url);
   }
 
@@ -149,12 +167,14 @@ export class ReleaseRun {
       this.message.set(result.message || '');
       this.jobs.set(result.jobs ?? []);
       this.now.set(Date.now());
+      this.appRef.tick();
       const live = result.status === 'pending' || result.status === 'queued';
       if (live) this.schedulePoll(event, path);
       else this.stopPoll();
     } catch (err) {
       if (gen !== this.pollGen) return;
       this.message.set(this.store.formatError(err));
+      this.appRef.tick();
       this.schedulePoll(event, path);
     } finally {
       if (gen === this.pollGen) this.loading.set(false);

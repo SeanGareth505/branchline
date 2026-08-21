@@ -44,12 +44,27 @@ describe('ChangelogService github release notes', () => {
     const body = changelog.githubReleaseBody(commits, '0.8.0', 'v0.7.15', 'v0.8.0');
     expect(body).toContain("## What's new in 0.8.0");
     expect(body).toContain('### Added');
-    expect(body).toContain('Add notes editor — Sean');
+    expect(body).toContain('Add notes editor');
     expect(body).toContain('### Fixed');
-    expect(body).toContain('Crash on save — Sean');
+    expect(body).toContain('Crash on save');
     expect(body).toContain('**Full changelog:** `v0.7.15` → `v0.8.0`');
     expect(body).not.toContain('Merge branch main');
     expect(body).not.toContain('bump version');
+    expect(body).not.toContain(' — Sean');
     expect(body).not.toContain('## [0.8.0]');
+  });
+
+  it('keeps plain-language commits in GitHub notes', () => {
+    const commits: CommitInfo[] = [
+      commit({ sha: 'aaa1111', subject: 'Notify when PRs need review or are ready to merge' }),
+      commit({ sha: 'bbb2222', subject: 'Open PR links in the system browser' }),
+      commit({ sha: 'ccc3333', subject: 'Release 0.8.51' }),
+    ];
+    const body = changelog.githubReleaseBody(commits, '0.8.51', 'v0.8.50', 'v0.8.51');
+    expect(body).toContain('### Added');
+    expect(body).toContain('Notify when PRs need review or are ready to merge');
+    expect(body).toContain('### Fixed');
+    expect(body).toContain('Open PR links in the system browser');
+    expect(body).not.toContain('Release 0.8.51');
   });
 });

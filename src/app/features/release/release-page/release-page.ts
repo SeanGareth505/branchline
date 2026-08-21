@@ -361,6 +361,11 @@ export class ReleasePage {
     if (path) void this.load(path);
   }
 
+  reloadApps(): void {
+    const path = this.store.currentRepo()?.path;
+    if (path) void this.refreshApps(path);
+  }
+
   private async loadApps(path: string, gen: number): Promise<void> {
     this.appsLoading.set(true);
     try {
