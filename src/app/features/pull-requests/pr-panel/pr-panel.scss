@@ -205,6 +205,22 @@ select {
   color: var(--text-muted);
 }
 
+.hidden-hint {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--git-modified);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hidden-hint:hover {
+  color: var(--text-primary);
+}
+
 .list {
   display: flex;
   flex-direction: column;

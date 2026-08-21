@@ -121,8 +121,8 @@
 
     <select [ngModel]="status()" (ngModelChange)="status.set($event)">
       <option value="all">All statuses</option>
-      <option value="open">Open</option>
-      <option value="draft">Draft</option>
+      <option value="open">Open (includes drafts)</option>
+      <option value="draft">Draft only</option>
       <option value="merged">Merged</option>
       <option value="closed">Closed</option>
     </select>
@@ -236,6 +236,11 @@
       Select all ({{ filtered().length }})
     </label>
     <span class="muted">Copy and filters use the selection, or every matching PR if none are selected.</span>
+    @if (hiddenCount()) {
+      <button type="button" class="hidden-hint" (click)="revealHidden()">
+        {{ hiddenCount() }} hidden by filters — show all
+      </button>
+    }
   </div>
 
   @if (loading() && prs().length === 0) {
@@ -492,6 +497,8 @@
           No pull requests match these filters.
         } @else if (!hasHost()) {
           Add a GitHub account under Settings → Connections to load live pull requests.
+        } @else if (prs().length) {
+          No pull requests match these filters.
         } @else {
           No pull requests found for this repository.
         }

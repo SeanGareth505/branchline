@@ -107,9 +107,11 @@ export class PrPanel {
     let list = this.prs().filter((pr) => {
       if (this.mineOnly() && !pr.isMine) return false;
       if (this.needsMyReview() && !pr.needsMyReview) return false;
-      if (this.team() !== 'all' && pr.team !== this.team()) return false;
-      if (this.author() !== 'all' && pr.author !== this.author()) return false;
-      if (this.reviewer() !== 'all' && !pr.reviewers.includes(this.reviewer())) return false;
+      if (this.team() !== 'all' && !sameName(pr.team, this.team())) return false;
+      if (this.author() !== 'all' && !sameName(pr.author, this.author())) return false;
+      if (this.reviewer() !== 'all' && !pr.reviewers.some((r) => sameName(r, this.reviewer()))) {
+        return false;
+      }
       if (this.repo() !== 'all' && pr.repo !== this.repo()) return false;
       if (this.label() !== 'all' && !pr.labels.includes(this.label())) return false;
       if (this.pipeline() !== 'all' && pr.pipelineStatus !== this.pipeline()) return false;
@@ -121,8 +123,6 @@ export class PrPanel {
       if (status === 'draft') {
         if (!pr.draft || pr.status !== 'open') return false;
       } else if (status !== 'all' && pr.status !== status) {
-        return false;
-      } else if (status === 'open' && pr.draft) {
         return false;
       }
 
@@ -173,6 +173,8 @@ export class PrPanel {
       blocked: all.filter((p) => p.mergeable === false || p.mergeState === 'dirty' || p.mergeState === 'blocked').length,
     };
   });
+
+  readonly hiddenCount = computed(() => Math.max(0, this.prs().length - this.filtered().length));
 
   readonly allFilteredSelected = computed(() => {
     const ids = this.filtered().map((p) => p.id);
@@ -295,6 +297,22 @@ export class PrPanel {
     this.needsMyReview.set(false);
     this.readyOnly.set(false);
     this.failingOnly.set(false);
+  }
+
+  revealHidden(): void {
+    this.query.set('');
+    this.team.set('all');
+    this.author.set('all');
+    this.reviewer.set('all');
+    this.pipeline.set('all');
+    this.review.set('all');
+    this.repo.set('all');
+    this.label.set('all');
+    this.mineOnly.set(false);
+    this.needsMyReview.set(false);
+    this.readyOnly.set(false);
+    this.failingOnly.set(false);
+    if (this.status() === 'draft') this.status.set('open');
   }
 
   applyStat(kind: 'open' | 'draft' | 'ready' | 'failing' | 'review' | 'approved'): void {
@@ -934,4 +952,8 @@ export class PrPanel {
 
 function ensureYou(reviewers: string[]): string[] {
   return reviewers.includes('you') ? reviewers : [...reviewers, 'you'];
+}
+
+function sameName(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
