@@ -469,6 +469,143 @@ export interface MockPullRequest {
   commentCount: number;
   isMine: boolean;
   needsMyReview: boolean;
+  approvals?: number;
+  changesRequested?: number;
+  pendingReviewers?: number;
+  approvedBy?: string[];
+  requestedChangesBy?: string[];
+  checkPassed?: number;
+  checkFailed?: number;
+  checkPending?: number;
+  checkTotal?: number;
+  mergeable?: boolean | null;
+  mergeState?: string;
+  readyToMerge?: boolean;
+  checkSummary?: string;
+}
+
+export type PrCopyFormat =
+  | 'links'
+  | 'markdown'
+  | 'slack'
+  | 'standup'
+  | 'titles'
+  | 'refs'
+  | 'checkout'
+  | 'csv';
+
+export function prApprovals(pr: MockPullRequest): number {
+  return pr.approvals ?? 0;
+}
+
+export function prChangesRequested(pr: MockPullRequest): number {
+  return pr.changesRequested ?? 0;
+}
+
+export function prPendingReviewers(pr: MockPullRequest): number {
+  if (typeof pr.pendingReviewers === 'number') return pr.pendingReviewers;
+  const waiting = pr.reviewers.filter(
+    (name) => !(pr.approvedBy ?? []).some((a) => a.toLowerCase() === name.toLowerCase()),
+  );
+  return waiting.length;
+}
+
+export function prCheckPassed(pr: MockPullRequest): number {
+  return pr.checkPassed ?? 0;
+}
+
+export function prCheckFailed(pr: MockPullRequest): number {
+  return pr.checkFailed ?? 0;
+}
+
+export function prCheckPending(pr: MockPullRequest): number {
+  return pr.checkPending ?? 0;
+}
+
+export function prCheckTotal(pr: MockPullRequest): number {
+  if (typeof pr.checkTotal === 'number' && pr.checkTotal > 0) return pr.checkTotal;
+  return prCheckPassed(pr) + prCheckFailed(pr) + prCheckPending(pr);
+}
+
+export function prReadyToMerge(pr: MockPullRequest): boolean {
+  if (typeof pr.readyToMerge === 'boolean') return pr.readyToMerge;
+  return (
+    pr.status === 'open' &&
+    !pr.draft &&
+    pr.reviewState === 'approved' &&
+    pr.pipelineStatus !== 'failure' &&
+    pr.pipelineStatus !== 'pending' &&
+    prChangesRequested(pr) === 0
+  );
+}
+
+export function normalizePullRequest(pr: MockPullRequest): MockPullRequest {
+  const approvals =
+    pr.approvals ??
+    (pr.reviewState === 'approved' ? Math.max(1, pr.reviewers.length || 1) : 0);
+  const changesRequested =
+    pr.changesRequested ?? (pr.reviewState === 'changesRequested' ? 1 : 0);
+  const approvedBy =
+    pr.approvedBy ??
+    (approvals > 0 ? pr.reviewers.slice(0, approvals) : []);
+  const requestedChangesBy =
+    pr.requestedChangesBy ??
+    (changesRequested > 0 ? pr.reviewers.slice(0, 1) : []);
+  let checkPassed = pr.checkPassed;
+  let checkFailed = pr.checkFailed;
+  let checkPending = pr.checkPending;
+  if (checkPassed == null && checkFailed == null && checkPending == null) {
+    if (pr.pipelineStatus === 'success') checkPassed = 3;
+    else if (pr.pipelineStatus === 'failure') {
+      checkFailed = 1;
+      checkPassed = 2;
+    } else if (pr.pipelineStatus === 'pending') {
+      checkPending = 2;
+      checkPassed = 1;
+    } else if (pr.pipelineStatus === 'cancelled') {
+      checkFailed = 1;
+    }
+  }
+  checkPassed ??= 0;
+  checkFailed ??= 0;
+  checkPending ??= 0;
+  const checkTotal = pr.checkTotal ?? checkPassed + checkFailed + checkPending;
+  const pendingReviewers =
+    pr.pendingReviewers ??
+    pr.reviewers.filter(
+      (name) => !approvedBy.some((a) => a.toLowerCase() === name.toLowerCase()),
+    ).length;
+  const mergeState = pr.mergeState ?? (pr.mergeable === false ? 'dirty' : '');
+  const readyToMerge =
+    pr.readyToMerge ??
+    (pr.status === 'open' &&
+      !pr.draft &&
+      changesRequested === 0 &&
+      approvals > 0 &&
+      checkFailed === 0 &&
+      checkPending === 0 &&
+      mergeState !== 'dirty' &&
+      mergeState !== 'blocked' &&
+      mergeState !== 'conflicting');
+  const checkSummary =
+    pr.checkSummary ||
+    (checkTotal > 0 ? `${checkPassed}/${checkTotal} checks` : '');
+  return {
+    ...pr,
+    approvals,
+    changesRequested,
+    pendingReviewers,
+    approvedBy,
+    requestedChangesBy,
+    checkPassed,
+    checkFailed,
+    checkPending,
+    checkTotal,
+    mergeable: pr.mergeable ?? null,
+    mergeState,
+    readyToMerge,
+    checkSummary,
+  };
 }
 
 export interface JiraIssue {

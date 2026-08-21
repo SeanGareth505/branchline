@@ -5,7 +5,7 @@
         <h1>Pull requests</h1>
         <app-help-tip
           heading="Pull requests"
-          body="Pull requests for this repository from the linked GitHub, GitLab, or Azure DevOps account."
+          body="Reviews, checks, and merge readiness for this repository. Filter, copy, approve, and merge without leaving Branchline."
         />
         @if (showingDummy()) {
           <span class="dummy-badge">PREVIEW</span>
@@ -41,15 +41,37 @@
         </button>
         <button type="button" class="bl-btn" (click)="createPr()">New PR</button>
       }
-      <button
-        type="button"
-        class="bl-btn"
-        (click)="copyLinks()"
-        title="Copy matching PR links"
-      >
-        <ng-icon name="lucideLink" size="14" />
-        Copy links
-      </button>
+      <div class="copy-wrap">
+        <button
+          type="button"
+          class="bl-btn"
+          (click)="toggleCopyMenu()"
+          title="Copy matching pull requests"
+        >
+          <ng-icon name="lucideCopy" size="14" />
+          Copy
+          <ng-icon name="lucideChevronDown" size="12" />
+        </button>
+        @if (copyMenuOpen()) {
+          <div class="copy-menu bl-glass" role="menu">
+            <button type="button" (click)="copyFormat('links')">Links</button>
+            <button type="button" (click)="copyFormat('markdown')">Markdown list</button>
+            <button type="button" (click)="copyFormat('slack')">Slack list</button>
+            <button type="button" (click)="copyFormat('standup')">Standup by author</button>
+            <button type="button" (click)="copyFormat('titles')">Titles</button>
+            <button type="button" (click)="copyFormat('refs')">repo#number</button>
+            <button type="button" (click)="copyFormat('checkout')">Checkout commands</button>
+            <button type="button" (click)="copyFormat('csv')">CSV</button>
+            <span class="copy-sep"></span>
+            <button type="button" (click)="copyOpenForRepo(copyRepoKey())">
+              All open in {{ copyRepoLabel() }}
+            </button>
+            <button type="button" (click)="copyReady()">Ready to merge</button>
+            <button type="button" (click)="copyFailing()">Failing checks</button>
+            <button type="button" (click)="copyNeedsReview()">Needs review</button>
+          </div>
+        }
+      </div>
     </div>
   </header>
 
@@ -65,8 +87,11 @@
     <span><strong>{{ stats().total }}</strong> matching</span>
     <span><strong>{{ stats().open }}</strong> open</span>
     <span><strong>{{ stats().draft }}</strong> draft</span>
-    @if (!liveMode()) {
-      <span class="fail"><strong>{{ stats().failing }}</strong> failing CI</span>
+    <span><strong>{{ stats().approved }}</strong> approved</span>
+    <span><strong>{{ stats().ready }}</strong> ready</span>
+    <span class="fail"><strong>{{ stats().failing }}</strong> failing checks</span>
+    @if (stats().blocked) {
+      <span class="fail"><strong>{{ stats().blocked }}</strong> blocked</span>
     }
     <span><strong>{{ stats().needsReview }}</strong> need review</span>
   </div>
@@ -133,30 +158,28 @@
       </select>
     }
 
-    @if (!liveMode()) {
-      <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
-        <option value="all">Any CI</option>
-        <option value="success">CI success</option>
-        <option value="pending">CI pending</option>
-        <option value="failure">CI failure</option>
-        <option value="cancelled">CI cancelled</option>
-      </select>
+    <select [ngModel]="pipeline()" (ngModelChange)="pipeline.set($event)">
+      <option value="all">Any CI</option>
+      <option value="success">CI success</option>
+      <option value="pending">CI pending</option>
+      <option value="failure">CI failure</option>
+      <option value="cancelled">CI cancelled</option>
+    </select>
 
-      <select [ngModel]="review()" (ngModelChange)="review.set($event)">
-        <option value="all">Any review</option>
-        <option value="pending">Pending</option>
-        <option value="approved">Approved</option>
-        <option value="changesRequested">Changes requested</option>
-      </select>
-    }
+    <select [ngModel]="review()" (ngModelChange)="review.set($event)">
+      <option value="all">Any review</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="changesRequested">Changes requested</option>
+    </select>
 
     <select [ngModel]="sortKey()" (ngModelChange)="sortKey.set($event)">
       <option value="updated">Sort: updated</option>
       <option value="number">Sort: number</option>
       <option value="title">Sort: title</option>
-      @if (!liveMode()) {
-        <option value="additions">Sort: size</option>
-      }
+      <option value="approvals">Sort: approvals</option>
+      <option value="checks">Sort: failing checks</option>
+      <option value="additions">Sort: size</option>
     </select>
 
     <label class="check">
@@ -170,6 +193,14 @@
         (ngModelChange)="needsMyReview.set($event)"
       />
       Needs my review
+    </label>
+    <label class="check">
+      <input type="checkbox" [ngModel]="readyOnly()" (ngModelChange)="readyOnly.set($event)" />
+      Ready to merge
+    </label>
+    <label class="check">
+      <input type="checkbox" [ngModel]="failingOnly()" (ngModelChange)="failingOnly.set($event)" />
+      Failing checks
     </label>
 
     <button
@@ -192,6 +223,7 @@
       />
       Select all ({{ filtered().length }})
     </label>
+    <span class="muted">Copy and filters use the selection, or every matching PR if none are selected.</span>
   </div>
 
   @if (loading() && prs().length === 0) {
@@ -217,13 +249,25 @@
               <span class="bl-chip">draft</span>
             }
             <span class="bl-chip" [attr.data-status]="pr.status">{{ pr.status }}</span>
-            @if (pr.pipelineStatus !== 'unknown') {
-              <span class="bl-chip" [attr.data-ci]="pr.pipelineStatus">{{ pr.pipelineStatus }}</span>
-            }
-            @if (pr.reviewState !== 'unknown') {
-              <span class="bl-chip" [attr.data-review]="pr.reviewState">{{ reviewLabel(pr.reviewState) }}</span>
+            @if (mergeStateLabel(pr); as mergeLabel) {
+              <span class="bl-chip" [attr.data-merge]="mergeLabel === 'Ready to merge' ? 'ready' : 'blocked'">
+                {{ mergeLabel }}
+              </span>
             }
           </div>
+
+          <div class="insight">
+            <span class="bl-chip" [attr.data-review]="pr.reviewState" [title]="approvedNames(pr)">
+              {{ reviewCountLabel(pr) }}
+            </span>
+            <span class="bl-chip" [attr.data-ci]="checkTone(pr)">
+              {{ checkCountLabel(pr) }}
+            </span>
+            @if (waitingCount(pr) && pr.reviewState !== 'approved') {
+              <span class="bl-chip" data-review="pending">{{ waitingCount(pr) }} waiting</span>
+            }
+          </div>
+
           <div class="meta">
             @if (repos().length > 1) {
               <span>{{ pr.repo }}</span>
@@ -253,15 +297,28 @@
             @for (l of pr.labels; track l) {
               <span class="tag">{{ l }}</span>
             }
+            @for (r of pr.approvedBy ?? []; track r) {
+              <span class="tag reviewer approved">@{{ r }} approved</span>
+            }
+            @for (r of pr.requestedChangesBy ?? []; track r) {
+              <span class="tag reviewer changes">@{{ r }} requested changes</span>
+            }
             @for (r of pr.reviewers; track r) {
-              <span class="tag reviewer">@{{ r }}</span>
+              @if (!(pr.approvedBy ?? []).includes(r) && !(pr.requestedChangesBy ?? []).includes(r)) {
+                <span class="tag reviewer">@{{ r }}</span>
+              }
             }
           </div>
 
-          @if (showingDummy() && pr.status === 'open') {
+          @if (showReviewBar(pr)) {
             <div class="review-bar">
               @if (pr.draft) {
-                <button type="button" class="bl-btn bl-btn-primary" (click)="markReady(pr)">
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-primary"
+                  [disabled]="isActing(pr)"
+                  (click)="markReady(pr)"
+                >
                   Mark ready
                 </button>
               } @else {
@@ -269,32 +326,73 @@
                   type="button"
                   class="bl-btn"
                   [class.done]="pr.reviewState === 'approved'"
-                  [disabled]="pr.reviewState === 'approved'"
+                  [disabled]="isActing(pr)"
                   (click)="approve(pr)"
                 >
                   <ng-icon name="lucideCheck" size="13" />
                   Approve
                 </button>
-                <button type="button" class="bl-btn" (click)="startRequestChanges(pr)">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="isActing(pr)"
+                  (click)="startRequestChanges(pr)"
+                >
                   Request changes
                 </button>
-                <button type="button" class="bl-btn" (click)="startComment(pr)">
+                <button
+                  type="button"
+                  class="bl-btn"
+                  [disabled]="isActing(pr)"
+                  (click)="startComment(pr)"
+                >
                   <ng-icon name="lucideMessageSquare" size="13" />
                   Comment
                 </button>
-                <button type="button" class="bl-btn bl-btn-primary" (click)="merge(pr)">
-                  <ng-icon name="lucideGitMerge" size="13" />
-                  Merge
-                </button>
+                <div class="merge-wrap">
+                  <button
+                    type="button"
+                    class="bl-btn bl-btn-primary"
+                    [disabled]="isActing(pr)"
+                    (click)="merge(pr)"
+                  >
+                    <ng-icon name="lucideGitMerge" size="13" />
+                    Squash merge
+                  </button>
+                  <button
+                    type="button"
+                    class="bl-btn"
+                    [disabled]="isActing(pr)"
+                    title="More merge methods"
+                    (click)="mergeMenuId.set(mergeMenuId() === pr.id ? null : pr.id)"
+                  >
+                    <ng-icon name="lucideChevronDown" size="12" />
+                  </button>
+                  @if (mergeMenuId() === pr.id) {
+                    <div class="copy-menu merge-menu bl-glass">
+                      <button type="button" (click)="merge(pr, 'merge')">Merge commit</button>
+                      <button type="button" (click)="merge(pr, 'rebase')">Rebase merge</button>
+                    </div>
+                  }
+                </div>
               }
               <span class="sep" aria-hidden="true"></span>
-              <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
-              @if (!pr.draft) {
-                <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
-                  Request my review
-                </button>
+              @if (showingDummy()) {
+                <button type="button" class="bl-btn quiet" (click)="assignMyself(pr)">Assign me</button>
+                @if (!pr.draft) {
+                  <button type="button" class="bl-btn quiet" (click)="requestMyReview(pr)">
+                    Request my review
+                  </button>
+                }
               }
-              <button type="button" class="bl-btn quiet" (click)="closePr(pr)">Close</button>
+              <button
+                type="button"
+                class="bl-btn quiet"
+                [disabled]="isActing(pr)"
+                (click)="closePr(pr)"
+              >
+                Close
+              </button>
             </div>
           }
 
@@ -308,7 +406,12 @@
                 (ngModelChange)="commentText.set($event)"
               ></textarea>
               <div class="composer-actions">
-                <button type="button" class="bl-btn bl-btn-primary" (click)="submitComment(pr)">
+                <button
+                  type="button"
+                  class="bl-btn bl-btn-primary"
+                  [disabled]="isActing(pr)"
+                  (click)="submitComment(pr)"
+                >
                   Post comment
                 </button>
                 <button type="button" class="bl-btn" (click)="cancelComment()">Cancel</button>
@@ -329,6 +432,7 @@
                 <button
                   type="button"
                   class="bl-btn bl-btn-danger"
+                  [disabled]="isActing(pr)"
                   (click)="submitRequestChanges(pr)"
                 >
                   Request changes
@@ -341,6 +445,7 @@
 
         <div class="actions">
           <button type="button" class="bl-btn" (click)="copyOneLink(pr)">Copy link</button>
+          <button type="button" class="bl-btn" (click)="copyOneMarkdown(pr)">Copy md</button>
           <button type="button" class="bl-btn" (click)="openBrowser(pr)">Open</button>
           <button type="button" class="bl-btn" (click)="checkoutPr(pr)">Checkout</button>
         </div>

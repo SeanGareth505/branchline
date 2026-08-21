@@ -25,6 +25,74 @@ pub struct MockPullRequest {
     pub comment_count: u32,
     pub is_mine: bool,
     pub needs_my_review: bool,
+    #[serde(default)]
+    pub approvals: u32,
+    #[serde(default)]
+    pub changes_requested: u32,
+    #[serde(default)]
+    pub pending_reviewers: u32,
+    #[serde(default)]
+    pub approved_by: Vec<String>,
+    #[serde(default)]
+    pub requested_changes_by: Vec<String>,
+    #[serde(default)]
+    pub check_passed: u32,
+    #[serde(default)]
+    pub check_failed: u32,
+    #[serde(default)]
+    pub check_pending: u32,
+    #[serde(default)]
+    pub check_total: u32,
+    #[serde(default)]
+    pub mergeable: Option<bool>,
+    #[serde(default)]
+    pub merge_state: String,
+    #[serde(default)]
+    pub ready_to_merge: bool,
+    #[serde(default)]
+    pub check_summary: String,
+}
+
+impl Default for MockPullRequest {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            number: 0,
+            title: String::new(),
+            author: String::new(),
+            assignees: Vec::new(),
+            reviewers: Vec::new(),
+            team: String::new(),
+            repo: String::new(),
+            source_branch: String::new(),
+            target_branch: String::new(),
+            status: String::new(),
+            url: String::new(),
+            labels: Vec::new(),
+            updated_at: String::new(),
+            draft: false,
+            review_state: "unknown".into(),
+            pipeline_status: "unknown".into(),
+            additions: 0,
+            deletions: 0,
+            comment_count: 0,
+            is_mine: false,
+            needs_my_review: false,
+            approvals: 0,
+            changes_requested: 0,
+            pending_reviewers: 0,
+            approved_by: Vec::new(),
+            requested_changes_by: Vec::new(),
+            check_passed: 0,
+            check_failed: 0,
+            check_pending: 0,
+            check_total: 0,
+            mergeable: None,
+            merge_state: String::new(),
+            ready_to_merge: false,
+            check_summary: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

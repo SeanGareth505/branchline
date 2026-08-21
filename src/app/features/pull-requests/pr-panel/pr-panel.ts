@@ -11,13 +11,23 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
-import type { MockPullRequest } from '../../../core/models';
+import type { MockPullRequest, PrCopyFormat } from '../../../core/models';
+import {
+  prApprovals,
+  prChangesRequested,
+  prCheckFailed,
+  prCheckPending,
+  prCheckTotal,
+  prPendingReviewers,
+  prReadyToMerge,
+} from '../../../core/models';
+import { formatPullRequests, checkLine, reviewLine } from '../pr-copy';
 import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
 
-type SortKey = 'updated' | 'number' | 'title' | 'additions';
+type SortKey = 'updated' | 'number' | 'title' | 'additions' | 'approvals' | 'checks';
 
 @Component({
   selector: 'app-pr-panel',
@@ -44,6 +54,8 @@ export class PrPanel {
   readonly label = signal('all');
   readonly mineOnly = signal(false);
   readonly needsMyReview = signal(false);
+  readonly readyOnly = signal(false);
+  readonly failingOnly = signal(false);
   readonly sortKey = signal<SortKey>('updated');
   readonly selected = signal<Set<string>>(new Set());
   readonly commentDraftId = signal<string | null>(null);
@@ -51,6 +63,9 @@ export class PrPanel {
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
   readonly testing = signal(false);
+  readonly copyMenuOpen = signal(false);
+  readonly actingId = signal<string | null>(null);
+  readonly mergeMenuId = signal<string | null>(null);
 
   readonly showingDummy = computed(
     () => this.store.isDummyBackend && !this.store.hasLinkedPrHost(),
@@ -93,10 +108,10 @@ export class PrPanel {
       if (this.reviewer() !== 'all' && !pr.reviewers.includes(this.reviewer())) return false;
       if (this.repo() !== 'all' && pr.repo !== this.repo()) return false;
       if (this.label() !== 'all' && !pr.labels.includes(this.label())) return false;
-      if (!this.liveMode()) {
-        if (this.pipeline() !== 'all' && pr.pipelineStatus !== this.pipeline()) return false;
-        if (this.review() !== 'all' && pr.reviewState !== this.review()) return false;
-      }
+      if (this.pipeline() !== 'all' && pr.pipelineStatus !== this.pipeline()) return false;
+      if (this.review() !== 'all' && pr.reviewState !== this.review()) return false;
+      if (this.readyOnly() && !prReadyToMerge(pr)) return false;
+      if (this.failingOnly() && pr.pipelineStatus !== 'failure' && prCheckFailed(pr) === 0) return false;
 
       const status = this.status();
       if (status === 'draft') {
@@ -130,6 +145,8 @@ export class PrPanel {
       if (key === 'number') return b.number - a.number;
       if (key === 'title') return a.title.localeCompare(b.title);
       if (key === 'additions') return b.additions - a.additions;
+      if (key === 'approvals') return prApprovals(b) - prApprovals(a);
+      if (key === 'checks') return prCheckFailed(b) - prCheckFailed(a) || prCheckPending(b) - prCheckPending(a);
       return b.updatedAt.localeCompare(a.updatedAt);
     });
     return list;
@@ -141,12 +158,15 @@ export class PrPanel {
       total: all.length,
       open: all.filter((p) => p.status === 'open' && !p.draft).length,
       draft: all.filter((p) => p.draft).length,
-      failing: all.filter((p) => p.pipelineStatus === 'failure').length,
+      failing: all.filter((p) => p.pipelineStatus === 'failure' || prCheckFailed(p) > 0).length,
       needsReview: all.filter((p) =>
         this.liveMode()
           ? p.needsMyReview
           : p.reviewState === 'pending' || p.reviewState === 'changesRequested',
       ).length,
+      ready: all.filter((p) => prReadyToMerge(p)).length,
+      approved: all.filter((p) => p.reviewState === 'approved').length,
+      blocked: all.filter((p) => p.mergeable === false || p.mergeState === 'dirty' || p.mergeState === 'blocked').length,
     };
   });
 
@@ -169,7 +189,9 @@ export class PrPanel {
       session.prSortKey === 'updated' ||
       session.prSortKey === 'number' ||
       session.prSortKey === 'title' ||
-      session.prSortKey === 'additions'
+      session.prSortKey === 'additions' ||
+      session.prSortKey === 'approvals' ||
+      session.prSortKey === 'checks'
     ) {
       this.sortKey.set(session.prSortKey);
     }
@@ -244,13 +266,15 @@ export class PrPanel {
     return 'open';
   }
 
-  private allowDummyMutation(pr: MockPullRequest, action: string): boolean {
-    if (this.showingDummy()) return true;
+  private canMutate(pr: MockPullRequest): boolean {
+    return this.showingDummy() || (this.liveMode() && pr.id.startsWith('gh-'));
+  }
+
+  private openInstead(pr: MockPullRequest, action: string): void {
     this.store.showInfo(
-      `${action} isn’t available for live PRs yet — opening #${pr.number} in the browser.`,
+      `${action} isn’t available for this host yet — opening #${pr.number} in the browser.`,
     );
     this.openBrowser(pr);
-    return false;
   }
 
   clearFilters(): void {
@@ -265,6 +289,8 @@ export class PrPanel {
     this.label.set('all');
     this.mineOnly.set(false);
     this.needsMyReview.set(false);
+    this.readyOnly.set(false);
+    this.failingOnly.set(false);
   }
 
   toggleSelect(id: string): void {
@@ -290,14 +316,69 @@ export class PrPanel {
   }
 
   async copyLinks(): Promise<void> {
-    const text = this.selectedOrFiltered()
-      .map((p) => p.url)
-      .join('\n');
-    await this.copy(text, `Copied ${text.split('\n').filter(Boolean).length} PR link(s)`);
+    await this.copyFormat('links');
+  }
+
+  async copyFormat(format: PrCopyFormat, source: MockPullRequest[] = this.selectedOrFiltered()): Promise<void> {
+    this.copyMenuOpen.set(false);
+    const text = formatPullRequests(source, format);
+    const labels: Record<PrCopyFormat, string> = {
+      links: 'link(s)',
+      markdown: 'markdown row(s)',
+      slack: 'Slack row(s)',
+      standup: 'standup line(s)',
+      titles: 'title(s)',
+      refs: 'ref(s)',
+      checkout: 'checkout command(s)',
+      csv: 'CSV row(s)',
+    };
+    const count = source.length;
+    await this.copy(text, `Copied ${count} ${labels[format]}`);
+  }
+
+  async copyOpenForRepo(repo: string): Promise<void> {
+    this.copyMenuOpen.set(false);
+    const list = this.prs().filter(
+      (pr) => pr.status === 'open' && !pr.draft && (repo === 'all' || pr.repo === repo),
+    );
+    await this.copyFormat('markdown', list);
+  }
+
+  async copyReady(): Promise<void> {
+    await this.copyFormat(
+      'markdown',
+      this.selectedOrFiltered().filter((pr) => prReadyToMerge(pr)),
+    );
+  }
+
+  async copyFailing(): Promise<void> {
+    await this.copyFormat(
+      'markdown',
+      this.selectedOrFiltered().filter((pr) => pr.pipelineStatus === 'failure' || prCheckFailed(pr) > 0),
+    );
+  }
+
+  async copyNeedsReview(): Promise<void> {
+    await this.copyFormat(
+      'markdown',
+      this.selectedOrFiltered().filter((pr) => pr.needsMyReview || pr.reviewState === 'pending'),
+    );
+  }
+
+  toggleCopyMenu(): void {
+    this.copyMenuOpen.update((open) => !open);
+  }
+
+  closeCopyMenu(): void {
+    this.copyMenuOpen.set(false);
   }
 
   async copyOneLink(pr: MockPullRequest): Promise<void> {
     await this.copy(pr.url, `Copied #${pr.number}`);
+  }
+
+  async copyOneMarkdown(pr: MockPullRequest): Promise<void> {
+    await this.copy(formatPullRequests([pr], 'markdown'), `Copied #${pr.number} markdown`);
   }
 
   async openBrowser(pr: MockPullRequest): Promise<void> {
@@ -321,27 +402,52 @@ export class PrPanel {
     return pr.status === 'open' && !pr.draft;
   }
 
-  approve(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Approve')) return;
+  showReviewBar(pr: MockPullRequest): boolean {
+    return pr.status === 'open' && this.canMutate(pr);
+  }
+
+  isActing(pr: MockPullRequest): boolean {
+    return this.actingId() === pr.id;
+  }
+
+  async approve(pr: MockPullRequest): Promise<void> {
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Approve');
+      return;
+    }
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before reviewing` : `#${pr.number} is not open`);
       return;
     }
-    if (pr.reviewState === 'approved') {
-      this.store.showInfo(`#${pr.number} is already approved`);
+    if (this.showingDummy()) {
+      if (pr.reviewState === 'approved') {
+        this.store.showInfo(`#${pr.number} is already approved`);
+        return;
+      }
+      this.patchPr(pr.id, {
+        reviewState: 'approved',
+        updatedAt: new Date().toISOString(),
+        reviewers: ensureYou(pr.reviewers),
+        needsMyReview: false,
+        approvals: Math.max(1, prApprovals(pr) + 1),
+        approvedBy: [...new Set([...(pr.approvedBy ?? []), 'you'])],
+      });
+      this.store.showSuccess(`Approved #${pr.number}`, undefined, 'prActivity');
       return;
     }
-    this.patchPr(pr.id, {
-      reviewState: 'approved',
-      updatedAt: new Date().toISOString(),
-      reviewers: ensureYou(pr.reviewers),
-      needsMyReview: true,
-    });
-    this.store.showSuccess(`DUMMY: approved #${pr.number}`, undefined, 'prActivity');
+    this.actingId.set(pr.id);
+    try {
+      await this.store.reviewPullRequest(pr, 'APPROVE');
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
   startRequestChanges(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Request changes')) return;
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Request changes');
+      return;
+    }
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before reviewing` : `#${pr.number} is not open`);
       return;
@@ -357,26 +463,45 @@ export class PrPanel {
     this.changesText.set('');
   }
 
-  submitRequestChanges(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Request changes')) return;
+  async submitRequestChanges(pr: MockPullRequest): Promise<void> {
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Request changes');
+      return;
+    }
     const note = this.changesText().trim();
     if (!note) {
       this.store.showWarning('Add a short note explaining the requested changes');
       return;
     }
-    this.patchPr(pr.id, {
-      reviewState: 'changesRequested',
-      commentCount: pr.commentCount + 1,
-      updatedAt: new Date().toISOString(),
-      reviewers: ensureYou(pr.reviewers),
-      needsMyReview: true,
-    });
-    this.cancelRequestChanges();
-    this.store.showWarning(`DUMMY: requested changes on #${pr.number}`);
+    if (this.showingDummy()) {
+      this.patchPr(pr.id, {
+        reviewState: 'changesRequested',
+        commentCount: pr.commentCount + 1,
+        updatedAt: new Date().toISOString(),
+        reviewers: ensureYou(pr.reviewers),
+        needsMyReview: false,
+        changesRequested: Math.max(1, prChangesRequested(pr)),
+        requestedChangesBy: [...new Set([...(pr.requestedChangesBy ?? []), 'you'])],
+        readyToMerge: false,
+      });
+      this.cancelRequestChanges();
+      this.store.showWarning(`Requested changes on #${pr.number}`);
+      return;
+    }
+    this.actingId.set(pr.id);
+    try {
+      const ok = await this.store.reviewPullRequest(pr, 'REQUEST_CHANGES', note);
+      if (ok) this.cancelRequestChanges();
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
   startComment(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Comment')) return;
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Comment');
+      return;
+    }
     if (pr.status === 'closed' || pr.status === 'merged') {
       this.store.showWarning(`#${pr.number} is ${pr.status} — comments are read-only here`);
       return;
@@ -392,75 +517,134 @@ export class PrPanel {
     this.commentText.set('');
   }
 
-  submitComment(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Comment')) return;
+  async submitComment(pr: MockPullRequest): Promise<void> {
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Comment');
+      return;
+    }
     const body = this.commentText().trim();
     if (!body) {
       this.store.showWarning('Write a comment before posting');
       return;
     }
-    this.patchPr(pr.id, {
-      commentCount: pr.commentCount + 1,
-      updatedAt: new Date().toISOString(),
-    });
-    this.cancelComment();
-    this.store.showSuccess(`DUMMY: commented on #${pr.number}`, undefined, 'prActivity');
+    if (this.showingDummy()) {
+      this.patchPr(pr.id, {
+        commentCount: pr.commentCount + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      this.cancelComment();
+      this.store.showSuccess(`Commented on #${pr.number}`, undefined, 'prActivity');
+      return;
+    }
+    this.actingId.set(pr.id);
+    try {
+      const ok = await this.store.reviewPullRequest(pr, 'COMMENT', body);
+      if (ok) this.cancelComment();
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
-  merge(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Merge')) return;
+  async merge(pr: MockPullRequest, method: 'merge' | 'squash' | 'rebase' = 'squash'): Promise<void> {
+    this.mergeMenuId.set(null);
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Merge');
+      return;
+    }
     if (!this.canReview(pr)) {
       this.store.showWarning(pr.draft ? `Mark #${pr.number} ready before merging` : `#${pr.number} cannot be merged`);
       return;
     }
-    if (pr.pipelineStatus === 'failure') {
+    if (pr.pipelineStatus === 'failure' || prCheckFailed(pr) > 0) {
       this.store.showError('CI is failing — fix checks before merging');
       return;
     }
-    if (pr.reviewState === 'changesRequested') {
+    if (pr.reviewState === 'changesRequested' || prChangesRequested(pr) > 0) {
       this.store.showWarning(`#${pr.number} still has requested changes`);
       return;
     }
-    if (pr.reviewState !== 'approved') {
+    if (pr.reviewState !== 'approved' && prApprovals(pr) === 0) {
       this.store.showWarning(`#${pr.number} is not approved yet`);
       return;
     }
-    this.patchPr(pr.id, {
-      status: 'merged',
-      updatedAt: new Date().toISOString(),
-    });
-    this.store.showSuccess(`DUMMY: merged #${pr.number} into ${pr.targetBranch}`, undefined, 'prActivity');
+    if (pr.mergeable === false) {
+      this.store.showWarning(`#${pr.number} has merge conflicts`);
+      return;
+    }
+    if (this.showingDummy()) {
+      this.patchPr(pr.id, {
+        status: 'merged',
+        updatedAt: new Date().toISOString(),
+        readyToMerge: false,
+      });
+      this.store.showSuccess(`Merged #${pr.number} into ${pr.targetBranch}`, undefined, 'prActivity');
+      return;
+    }
+    this.actingId.set(pr.id);
+    try {
+      await this.store.mergePullRequest(pr, method);
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
-  closePr(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Close')) return;
+  async closePr(pr: MockPullRequest): Promise<void> {
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Close');
+      return;
+    }
     if (pr.status !== 'open') {
       this.store.showInfo(`#${pr.number} is already ${pr.status}`);
       return;
     }
-    this.patchPr(pr.id, {
-      status: 'closed',
-      draft: false,
-      updatedAt: new Date().toISOString(),
-    });
-    this.store.showInfo(`DUMMY: closed #${pr.number}`, undefined, 'prActivity');
+    if (this.showingDummy()) {
+      this.patchPr(pr.id, {
+        status: 'closed',
+        draft: false,
+        updatedAt: new Date().toISOString(),
+        readyToMerge: false,
+      });
+      this.store.showInfo(`Closed #${pr.number}`);
+      return;
+    }
+    this.actingId.set(pr.id);
+    try {
+      await this.store.updatePullRequest(pr, { state: 'closed' });
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
-  markReady(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Mark ready')) return;
+  async markReady(pr: MockPullRequest): Promise<void> {
+    if (!this.canMutate(pr)) {
+      this.openInstead(pr, 'Mark ready');
+      return;
+    }
     if (!pr.draft || pr.status !== 'open') {
       this.store.showInfo(`#${pr.number} is already ready for review`);
       return;
     }
-    this.patchPr(pr.id, {
-      draft: false,
-      updatedAt: new Date().toISOString(),
-    });
-    this.store.showSuccess(`DUMMY: marked #${pr.number} ready for review`, undefined, 'prActivity');
+    if (this.showingDummy()) {
+      this.patchPr(pr.id, {
+        draft: false,
+        updatedAt: new Date().toISOString(),
+      });
+      this.store.showSuccess(`Marked #${pr.number} ready for review`, undefined, 'prActivity');
+      return;
+    }
+    this.actingId.set(pr.id);
+    try {
+      await this.store.updatePullRequest(pr, { ready: true });
+    } finally {
+      this.actingId.set(null);
+    }
   }
 
   assignMyself(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Assign')) return;
+    if (!this.showingDummy()) {
+      this.openInstead(pr, 'Assign');
+      return;
+    }
     if (pr.assignees.includes('you')) {
       this.store.showInfo(`You are already assigned to #${pr.number}`);
       return;
@@ -469,11 +653,14 @@ export class PrPanel {
       assignees: [...pr.assignees, 'you'],
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: assigned yourself to #${pr.number}`, undefined, 'prActivity');
+    this.store.showSuccess(`Assigned yourself to #${pr.number}`, undefined, 'prActivity');
   }
 
   requestMyReview(pr: MockPullRequest): void {
-    if (!this.allowDummyMutation(pr, 'Request review')) return;
+    if (!this.showingDummy()) {
+      this.openInstead(pr, 'Request review');
+      return;
+    }
     if (!this.canReview(pr)) {
       this.store.showWarning(`#${pr.number} is not open for review`);
       return;
@@ -488,7 +675,7 @@ export class PrPanel {
       reviewState: pr.reviewState === 'approved' ? 'pending' : pr.reviewState,
       updatedAt: new Date().toISOString(),
     });
-    this.store.showSuccess(`DUMMY: added you as reviewer on #${pr.number}`, undefined, 'prActivity');
+    this.store.showSuccess(`Added you as reviewer on #${pr.number}`, undefined, 'prActivity');
   }
 
   private patchPr(id: string, partial: Partial<MockPullRequest>): void {
@@ -522,6 +709,55 @@ export class PrPanel {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return 'unknown';
     return formatDistanceToNowStrict(date, { addSuffix: true });
+  }
+
+  reviewCountLabel(pr: MockPullRequest): string {
+    return reviewLine(pr);
+  }
+
+  checkCountLabel(pr: MockPullRequest): string {
+    return checkLine(pr);
+  }
+
+  mergeStateLabel(pr: MockPullRequest): string | null {
+    if (prReadyToMerge(pr)) return 'Ready to merge';
+    const state = (pr.mergeState ?? '').toLowerCase();
+    if (pr.mergeable === false || state === 'dirty' || state === 'conflicting') return 'Conflicts';
+    if (state === 'blocked') return 'Blocked';
+    if (state === 'behind') return 'Behind base';
+    if (state === 'unstable') return 'Unstable';
+    return null;
+  }
+
+  approvedNames(pr: MockPullRequest): string {
+    return (pr.approvedBy ?? []).map((n) => `@${n}`).join(', ');
+  }
+
+  changesNames(pr: MockPullRequest): string {
+    return (pr.requestedChangesBy ?? []).map((n) => `@${n}`).join(', ');
+  }
+
+  waitingCount(pr: MockPullRequest): number {
+    return prPendingReviewers(pr);
+  }
+
+  checkTone(pr: MockPullRequest): string {
+    if (prCheckFailed(pr) > 0 || pr.pipelineStatus === 'failure') return 'failure';
+    if (prCheckPending(pr) > 0 || pr.pipelineStatus === 'pending') return 'pending';
+    if (prCheckTotal(pr) > 0 || pr.pipelineStatus === 'success') return 'success';
+    return 'unknown';
+  }
+
+  copyRepoLabel(): string {
+    if (this.repo() !== 'all') return this.repo();
+    if (this.repos().length === 1) return this.repos()[0];
+    return this.store.currentRepo()?.name || 'this repo';
+  }
+
+  copyRepoKey(): string {
+    if (this.repo() !== 'all') return this.repo();
+    if (this.repos().length === 1) return this.repos()[0];
+    return 'all';
   }
 
   reviewLabel(state: string): string {

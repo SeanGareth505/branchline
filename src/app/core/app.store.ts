@@ -61,6 +61,7 @@ import type {
   TestConnectionInput,
   TestConnectionOutput,
 } from './models';
+import { normalizePullRequest } from './models';
 import { mergeUiSession } from './ui-session';
 import { TauriService } from './tauri.service';
 import { DiagnosticsService } from './diagnostics.service';
@@ -1272,7 +1273,7 @@ export class AppStore {
 
   patchPullRequest(id: string, partial: Partial<MockPullRequest>): void {
     this.pullRequests.update((list) =>
-      list.map((p) => (p.id === id ? { ...p, ...partial } : p)),
+      list.map((p) => (p.id === id ? normalizePullRequest({ ...p, ...partial }) : p)),
     );
     const cached = this.pullRequestCache.get(this.pullRequestsKey);
     if (cached) {
@@ -1281,6 +1282,94 @@ export class AppStore {
         at: cached.at,
       });
     }
+  }
+
+  async reviewPullRequest(
+    pr: MockPullRequest,
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT',
+    body?: string,
+  ): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return false;
+    }
+    try {
+      const result = await this.tauri.reviewPullRequest({
+        path,
+        number: pr.number,
+        event,
+        body,
+      });
+      if (!result.ok) {
+        this.showError(result.message);
+        return false;
+      }
+      this.showSuccess(result.message, undefined, 'prActivity');
+      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true });
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async mergePullRequest(pr: MockPullRequest, mergeMethod: 'merge' | 'squash' | 'rebase' = 'squash'): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return false;
+    }
+    try {
+      const result = await this.tauri.mergePullRequest({
+        path,
+        number: pr.number,
+        mergeMethod,
+      });
+      if (!result.ok) {
+        this.showError(result.message);
+        return false;
+      }
+      this.showSuccess(result.message, undefined, 'prActivity');
+      await this.refreshPullRequests('open', { force: true });
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  async updatePullRequest(
+    pr: MockPullRequest,
+    patch: { state?: 'open' | 'closed'; ready?: boolean },
+  ): Promise<boolean> {
+    const path = this.currentRepo()?.path;
+    if (!path) {
+      this.showWarning('Open a repository first');
+      return false;
+    }
+    try {
+      const result = await this.tauri.updatePullRequest({
+        path,
+        number: pr.number,
+        ...patch,
+      });
+      if (!result.ok) {
+        this.showError(result.message);
+        return false;
+      }
+      this.showSuccess(result.message, undefined, 'prActivity');
+      await this.refreshPullRequests(this.prListStateFromStatus(pr.status), { force: true });
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
+  private prListStateFromStatus(status: string): 'open' | 'closed' | 'all' {
+    if (status === 'closed' || status === 'merged') return 'closed';
+    return 'open';
   }
 
   private clearPullRequestCache(): void {

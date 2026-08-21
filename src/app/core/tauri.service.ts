@@ -22,10 +22,10 @@ import type {
   IgnoreFileOutput,
   IgnoreKind,
   MockPullRequest,
+  MutationOutput,
   HostRepository,
   JiraIssue,
   JiraTransition,
-  MutationOutput,
   OnboardingStatusOutput,
   PublishToGithubOutput,
   GithubDeviceStartOutput,
@@ -80,6 +80,7 @@ import type {
   PollRepoReleaseRunOutput,
   SyncCommitInfo,
 } from './models';
+import { normalizePullRequest } from './models';
 import { DEFAULT_TICKET_FROM_BRANCH } from '../shared/git/ticket-from-branch';
 import { DEFAULT_SHORTCUTS } from '../shared/git/shortcuts';
 import { rawErrorMessage } from '../shared/git/git-error';
@@ -738,7 +739,7 @@ export class TauriService {
   listPullRequests(path: string, state: 'open' | 'closed' | 'all' = 'open') {
     return this.invoke<MockPullRequest[]>('list_pull_requests', {
       input: { path, state },
-    });
+    }).then((list) => list.map(normalizePullRequest));
   }
 
   listPrTemplates(path: string) {
@@ -1214,7 +1215,26 @@ export class TauriService {
   }
 
   listMockPullRequests() {
-    return this.invoke<MockPullRequest[]>('list_mock_pull_requests');
+    return this.invoke<MockPullRequest[]>('list_mock_pull_requests').then((list) =>
+      list.map(normalizePullRequest),
+    );
+  }
+
+  reviewPullRequest(input: {
+    path: string;
+    number: number;
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
+    body?: string;
+  }) {
+    return this.invoke<MutationOutput>('review_pull_request', { input });
+  }
+
+  mergePullRequest(input: { path: string; number: number; mergeMethod?: 'merge' | 'squash' | 'rebase' }) {
+    return this.invoke<MutationOutput>('merge_pull_request', { input });
+  }
+
+  updatePullRequest(input: { path: string; number: number; state?: 'open' | 'closed'; ready?: boolean }) {
+    return this.invoke<MutationOutput>('update_pull_request', { input });
   }
 
   listHostRepositories(connectionId?: string) {
@@ -2931,7 +2951,28 @@ export class TauriService {
     }
 
     if (cmd === 'list_pull_requests') {
-      return mocks['list_mock_pull_requests'] as T;
+      return (mocks['list_mock_pull_requests'] as MockPullRequest[]).map(normalizePullRequest) as T;
+    }
+
+    if (cmd === 'review_pull_request' || cmd === 'merge_pull_request' || cmd === 'update_pull_request') {
+      const input = (args?.['input'] as { number?: number; event?: string; state?: string; ready?: boolean } | undefined) ?? {};
+      const number = input.number ?? 0;
+      let message = `Updated #${number}`;
+      if (cmd === 'review_pull_request') {
+        message =
+          input.event === 'APPROVE'
+            ? `Approved #${number}`
+            : input.event === 'REQUEST_CHANGES'
+              ? `Requested changes on #${number}`
+              : `Commented on #${number}`;
+      } else if (cmd === 'merge_pull_request') {
+        message = `Merged #${number}`;
+      } else if (input.ready) {
+        message = `Marked #${number} ready for review`;
+      } else if (input.state === 'closed') {
+        message = `Closed #${number}`;
+      }
+      return { ok: true, message } as T;
     }
 
     if (cmd === 'list_pr_templates') {

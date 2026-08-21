@@ -4,6 +4,7 @@ use crate::infrastructure::mock_providers::MockPullRequest;
 use crate::state::AppState;
 use crate::{run_blocking, AppError, AppResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -75,6 +76,8 @@ struct GhRef {
     label: Option<String>,
     #[serde(default)]
     r#ref: Option<String>,
+    #[serde(default)]
+    sha: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -212,7 +215,7 @@ fn github_http_client() -> &'static reqwest::blocking::Client {
     static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(45))
             .build()
             .unwrap_or_else(|_| reqwest::blocking::Client::new())
     })
@@ -300,7 +303,8 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         && reviewers
             .iter()
             .any(|r| r.eq_ignore_ascii_case(me));
-    MockPullRequest {
+    let pending_reviewers = reviewers.len() as u32;
+    let mut mapped = MockPullRequest {
         id: format!("gh-{}", pr.id),
         number: pr.number,
         title: pr.title,
@@ -323,7 +327,11 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         comment_count,
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
-    }
+        pending_reviewers,
+        ..Default::default()
+    };
+    finalize_pr_insights(&mut mapped);
+    mapped
 }
 
 #[command]
@@ -357,24 +365,629 @@ fn list_github_prs(
     repo: String,
     input: &ListPullRequestsInput,
 ) -> AppResult<Vec<MockPullRequest>> {
-    let full = format!("{owner}/{repo}");
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
     let client = github_http_client();
     let me = resolve_github_login(client, base, token, &connection.username);
 
+    match list_github_prs_graphql(client, base, token, &owner, &repo, &me, input) {
+        Ok(prs) => Ok(prs),
+        Err(_) => list_github_prs_rest(client, base, token, &owner, &repo, &me, input),
+    }
+}
+
+fn github_graphql_url(api_base: &str) -> String {
+    let base = api_base.trim().trim_end_matches('/');
+    if base.contains("api.github.com") {
+        return "https://api.github.com/graphql".into();
+    }
+    if let Some(stripped) = base.strip_suffix("/api/v3") {
+        return format!("{stripped}/api/graphql");
+    }
+    format!("{base}/graphql")
+}
+
+fn github_pr_states(input: &ListPullRequestsInput) -> Vec<&'static str> {
+    match input.state.as_deref().map(str::trim).unwrap_or("open") {
+        "all" => vec!["OPEN", "CLOSED", "MERGED"],
+        "closed" => vec!["CLOSED", "MERGED"],
+        _ => vec!["OPEN"],
+    }
+}
+
+const GITHUB_PR_QUERY: &str = r#"
+query($owner: String!, $name: String!, $states: [PullRequestState!]) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 80, states: $states, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes {
+        databaseId
+        number
+        title
+        url
+        isDraft
+        state
+        mergedAt
+        updatedAt
+        additions
+        deletions
+        comments { totalCount }
+        author { login }
+        assignees(first: 10) { nodes { login } }
+        labels(first: 20) { nodes { name } }
+        headRefName
+        baseRefName
+        mergeable
+        mergeStateStatus
+        reviewDecision
+        reviews(first: 100) { nodes { author { login } state } }
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              ... on User { login }
+              ... on Team { name }
+            }
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 80) {
+                  nodes {
+                    ... on CheckRun { name status conclusion }
+                    ... on StatusContext { context state }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+#[derive(Debug, Deserialize)]
+struct GqlError {
+    #[serde(default)]
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlEnvelope {
+    data: Option<GqlData>,
+    #[serde(default)]
+    errors: Option<Vec<GqlError>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlData {
+    repository: Option<GqlRepository>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlRepository {
+    pull_requests: GqlPrConnection,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlPrConnection {
+    nodes: Vec<Option<GqlPullRequest>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlLogin {
+    login: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlCount {
+    #[serde(rename = "totalCount", default)]
+    total_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>"))]
+struct GqlNodes<T> {
+    #[serde(default)]
+    nodes: Vec<T>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlReviewerNode {
+    #[serde(rename = "requestedReviewer")]
+    requested_reviewer: Option<GqlRequestedReviewer>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlRequestedReviewer {
+    #[serde(default)]
+    login: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlReviewNode {
+    author: Option<GqlLogin>,
+    #[serde(default)]
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlCheckContext {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    conclusion: Option<String>,
+    #[serde(default)]
+    context: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlRollup {
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    contexts: Option<GqlNodes<GqlCheckContext>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlCommitInner {
+    #[serde(rename = "statusCheckRollup")]
+    status_check_rollup: Option<GqlRollup>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlCommitNode {
+    commit: Option<GqlCommitInner>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlCommits {
+    #[serde(default)]
+    nodes: Vec<Option<GqlCommitNode>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlPullRequest {
+    database_id: Option<u64>,
+    number: u32,
+    title: String,
+    url: String,
+    #[serde(default)]
+    is_draft: bool,
+    #[serde(default)]
+    state: String,
+    merged_at: Option<String>,
+    #[serde(default)]
+    updated_at: String,
+    #[serde(default)]
+    additions: u32,
+    #[serde(default)]
+    deletions: u32,
+    comments: Option<GqlCount>,
+    author: Option<GqlLogin>,
+    assignees: Option<GqlNodes<GqlLogin>>,
+    labels: Option<GqlNodes<GqlLabel>>,
+    head_ref_name: Option<String>,
+    base_ref_name: Option<String>,
+    mergeable: Option<String>,
+    merge_state_status: Option<String>,
+    review_decision: Option<String>,
+    reviews: Option<GqlNodes<GqlReviewNode>>,
+    review_requests: Option<GqlNodes<GqlReviewerNode>>,
+    commits: Option<GqlCommits>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlLabel {
+    name: Option<String>,
+}
+
+fn list_github_prs_graphql(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    me: &str,
+    input: &ListPullRequestsInput,
+) -> AppResult<Vec<MockPullRequest>> {
+    let url = github_graphql_url(base);
+    let body = serde_json::json!({
+        "query": GITHUB_PR_QUERY,
+        "variables": {
+            "owner": owner,
+            "name": repo,
+            "states": github_pr_states(input),
+        }
+    });
+    let response = client
+        .post(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .map_err(|e| AppError::msg(format!("GitHub PR query failed: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not list pull requests ({status}). {text}"
+        )));
+    }
+    let envelope: GqlEnvelope = response
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse pull requests: {e}")))?;
+    if envelope.data.as_ref().and_then(|d| d.repository.as_ref()).is_none() {
+        let detail = envelope
+            .errors
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| e.message)
+            .filter(|m| !m.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Err(AppError::msg(if detail.is_empty() {
+            "GitHub GraphQL returned no repository data.".into()
+        } else {
+            detail
+        }));
+    }
+    let nodes = envelope
+        .data
+        .and_then(|d| d.repository)
+        .map(|r| r.pull_requests.nodes)
+        .unwrap_or_default();
+    Ok(nodes
+        .into_iter()
+        .flatten()
+        .map(|pr| map_gql_pr(pr, repo, me))
+        .collect())
+}
+
+fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
+    let author = pr
+        .author
+        .and_then(|u| u.login)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".into());
+    let assignees = pr
+        .assignees
+        .map(|n| {
+            n.nodes
+                .into_iter()
+                .filter_map(|u| u.login)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let labels = pr
+        .labels
+        .map(|n| {
+            n.nodes
+                .into_iter()
+                .filter_map(|l| l.name)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let requested: Vec<String> = pr
+        .review_requests
+        .map(|n| {
+            n.nodes
+                .into_iter()
+                .filter_map(|node| {
+                    let reviewer = node.requested_reviewer?;
+                    reviewer
+                        .login
+                        .filter(|s| !s.is_empty())
+                        .or_else(|| reviewer.name.filter(|s| !s.is_empty()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let reviews: Vec<GqlReviewNode> = pr
+        .reviews
+        .map(|n| n.nodes)
+        .unwrap_or_default();
+    let (approvals, changes_requested, approved_by, requested_changes_by) =
+        summarize_reviews(reviews.iter().map(|r| {
+            (
+                r.author
+                    .as_ref()
+                    .and_then(|a| a.login.clone())
+                    .unwrap_or_default(),
+                r.state.as_str(),
+            )
+        }));
+    let mut reviewers = requested.clone();
+    for name in approved_by.iter().chain(requested_changes_by.iter()) {
+        if !reviewers.iter().any(|r| r.eq_ignore_ascii_case(name)) {
+            reviewers.push(name.clone());
+        }
+    }
+    let status = if pr.merged_at.is_some() || pr.state.eq_ignore_ascii_case("MERGED") {
+        "merged".to_string()
+    } else if pr.state.eq_ignore_ascii_case("CLOSED") {
+        "closed".to_string()
+    } else {
+        "open".to_string()
+    };
+    let rollup = pr
+        .commits
+        .and_then(|c| c.nodes.into_iter().flatten().next())
+        .and_then(|n| n.commit)
+        .and_then(|c| c.status_check_rollup);
+    let (check_passed, check_failed, check_pending, check_total, pipeline_status) =
+        summarize_checks(rollup.as_ref());
+    let merge_state = pr
+        .merge_state_status
+        .or(pr.mergeable.clone())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let mergeable = match pr.mergeable.as_deref().map(|s| s.to_ascii_uppercase()) {
+        Some(ref s) if s == "MERGEABLE" => Some(true),
+        Some(ref s) if s == "CONFLICTING" => Some(false),
+        _ => None,
+    };
+    let review_state = match pr
+        .review_decision
+        .as_deref()
+        .unwrap_or("")
+        .to_ascii_uppercase()
+        .as_str()
+    {
+        "CHANGES_REQUESTED" => "changesRequested".into(),
+        "APPROVED" => "approved".into(),
+        "REVIEW_REQUIRED" => "pending".into(),
+        _ if changes_requested > 0 => "changesRequested".into(),
+        _ if approvals > 0 => "approved".into(),
+        _ => "pending".into(),
+    };
+    let needs_my_review = !me.is_empty()
+        && requested
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(me));
+    let mut mapped = MockPullRequest {
+        id: format!("gh-{}", pr.database_id.unwrap_or(pr.number as u64)),
+        number: pr.number,
+        title: pr.title,
+        author: author.clone(),
+        assignees,
+        reviewers,
+        team: String::new(),
+        repo: repo.to_string(),
+        source_branch: pr.head_ref_name.unwrap_or_default(),
+        target_branch: pr.base_ref_name.unwrap_or_default(),
+        status,
+        url: pr.url,
+        labels,
+        updated_at: pr.updated_at,
+        draft: pr.is_draft,
+        review_state,
+        pipeline_status,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        comment_count: pr.comments.map(|c| c.total_count).unwrap_or(0),
+        is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
+        needs_my_review,
+        approvals,
+        changes_requested,
+        pending_reviewers: requested.len() as u32,
+        approved_by,
+        requested_changes_by,
+        check_passed,
+        check_failed,
+        check_pending,
+        check_total,
+        mergeable,
+        merge_state,
+        ..Default::default()
+    };
+    finalize_pr_insights(&mut mapped);
+    mapped
+}
+
+fn summarize_reviews<'a, I>(reviews: I) -> (u32, u32, Vec<String>, Vec<String>)
+where
+    I: Iterator<Item = (String, &'a str)>,
+{
+    let mut latest: HashMap<String, (String, String)> = HashMap::new();
+    for (login, state) in reviews {
+        let login = login.trim();
+        if login.is_empty() {
+            continue;
+        }
+        let key = login.to_ascii_lowercase();
+        latest.insert(key, (login.to_string(), state.to_ascii_uppercase()));
+    }
+    let mut approved_by = Vec::new();
+    let mut requested_changes_by = Vec::new();
+    for (_, (name, state)) in latest {
+        match state.as_str() {
+            "APPROVED" => approved_by.push(name),
+            "CHANGES_REQUESTED" => requested_changes_by.push(name),
+            _ => {}
+        }
+    }
+    approved_by.sort();
+    requested_changes_by.sort();
+    (
+        approved_by.len() as u32,
+        requested_changes_by.len() as u32,
+        approved_by,
+        requested_changes_by,
+    )
+}
+
+fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String) {
+    let Some(rollup) = rollup else {
+        return (0, 0, 0, 0, "unknown".into());
+    };
+    let mut passed = 0u32;
+    let mut failed = 0u32;
+    let mut pending = 0u32;
+    for ctx in rollup
+        .contexts
+        .as_ref()
+        .map(|c| c.nodes.iter())
+        .into_iter()
+        .flatten()
+    {
+        if ctx.name.is_some() || ctx.context.is_some() || ctx.conclusion.is_some() || ctx.status.is_some() {
+            let status = ctx.status.as_deref().unwrap_or("").to_ascii_uppercase();
+            let conclusion = ctx.conclusion.as_deref().unwrap_or("").to_ascii_uppercase();
+            if status != "COMPLETED" && status != "" {
+                pending += 1;
+            } else if matches!(
+                conclusion.as_str(),
+                "SUCCESS" | "NEUTRAL" | "SKIPPED"
+            ) {
+                passed += 1;
+            } else if conclusion.is_empty() {
+                pending += 1;
+            } else {
+                failed += 1;
+            }
+        } else if let Some(state) = ctx.state.as_deref() {
+            match state.to_ascii_uppercase().as_str() {
+                "SUCCESS" => passed += 1,
+                "PENDING" | "EXPECTED" => pending += 1,
+                _ => failed += 1,
+            }
+        }
+    }
+    let total = passed + failed + pending;
+    let pipeline = if failed > 0 {
+        "failure"
+    } else if pending > 0 {
+        "pending"
+    } else if passed > 0 {
+        "success"
+    } else {
+        match rollup.state.as_deref().unwrap_or("").to_ascii_uppercase().as_str() {
+            "SUCCESS" => "success",
+            "PENDING" | "EXPECTED" => "pending",
+            "FAILURE" | "ERROR" => "failure",
+            _ => "unknown",
+        }
+    };
+    (passed, failed, pending, total, pipeline.into())
+}
+
+fn finalize_pr_insights(pr: &mut MockPullRequest) {
+    if pr.review_state == "unknown" || pr.review_state.is_empty() {
+        pr.review_state = if pr.changes_requested > 0 {
+            "changesRequested".into()
+        } else if pr.approvals > 0 {
+            "approved".into()
+        } else {
+            "pending".into()
+        };
+    }
+    if pr.pipeline_status == "unknown" || pr.pipeline_status.is_empty() {
+        pr.pipeline_status = if pr.check_failed > 0 {
+            "failure".into()
+        } else if pr.check_pending > 0 {
+            "pending".into()
+        } else if pr.check_passed > 0 {
+            "success".into()
+        } else {
+            "unknown".into()
+        };
+    }
+    if pr.check_summary.is_empty() {
+        if pr.check_total > 0 {
+            pr.check_summary = format!("{}/{} checks", pr.check_passed, pr.check_total);
+        } else if pr.pipeline_status != "unknown" {
+            pr.check_summary = match pr.pipeline_status.as_str() {
+                "success" => "Checks passed".into(),
+                "failure" => "Checks failing".into(),
+                "pending" => "Checks running".into(),
+                "cancelled" => "Checks cancelled".into(),
+                _ => String::new(),
+            };
+        }
+    }
+    let checks_ok = pr.check_failed == 0 && pr.check_pending == 0;
+    let merge_ok = match pr.merge_state.to_ascii_lowercase().as_str() {
+        "dirty" | "blocked" | "conflicting" | "behind" => false,
+        _ => pr.mergeable != Some(false),
+    };
+    pr.ready_to_merge = pr.status == "open"
+        && !pr.draft
+        && pr.changes_requested == 0
+        && pr.approvals > 0
+        && checks_ok
+        && merge_ok;
+}
+
+fn list_github_prs_rest(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    me: &str,
+    input: &ListPullRequestsInput,
+) -> AppResult<Vec<MockPullRequest>> {
+    let full = format!("{owner}/{repo}");
     let state_q = match input.state.as_deref().map(str::trim).unwrap_or("open") {
         "all" => "all",
         "closed" => "closed",
         _ => "open",
     };
-
-    let mut out = Vec::new();
     let url = format!(
         "{base}/repos/{full}/pulls?state={state_q}&per_page=100&page=1&sort=updated&direction=desc"
     );
+    let response = github_get(client, token, &url)?;
+    let batch: Vec<GhPr> = response
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse pull requests: {e}")))?;
+    let mut mapped: Vec<(MockPullRequest, String)> = batch
+        .into_iter()
+        .map(|pr| {
+            let sha = pr
+                .head
+                .as_ref()
+                .and_then(|h| h.sha.clone())
+                .unwrap_or_default();
+            (map_pr(pr, repo, me), sha)
+        })
+        .collect();
+    for chunk in mapped.chunks_mut(8) {
+        std::thread::scope(|s| {
+            for (pr, sha) in chunk {
+                let sha = sha.clone();
+                let full = full.clone();
+                s.spawn(move || {
+                    enrich_github_pr_rest(client, base, token, &full, pr, &sha);
+                });
+            }
+        });
+    }
+    Ok(mapped.into_iter().map(|(pr, _)| pr).collect())
+}
+
+fn github_get(
+    client: &reqwest::blocking::Client,
+    token: &str,
+    url: &str,
+) -> AppResult<reqwest::blocking::Response> {
     let response = client
-        .get(&url)
+        .get(url)
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "Branchline")
         .header("X-GitHub-Api-Version", "2022-11-28")
@@ -388,14 +1001,107 @@ fn list_github_prs(
             "Could not list pull requests ({status}). {body}"
         )));
     }
-    let batch: Vec<GhPr> = response
-        .json()
-        .map_err(|e| AppError::msg(format!("Could not parse pull requests: {e}")))?;
-    for pr in batch {
-        out.push(map_pr(pr, &repo, &me));
-    }
+    Ok(response)
+}
 
-    Ok(out)
+#[derive(Debug, Deserialize)]
+struct GhReview {
+    user: Option<GhUser>,
+    #[serde(default)]
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCheckRuns {
+    #[serde(default)]
+    check_runs: Vec<GhCheckRun>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhCheckRun {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    conclusion: Option<String>,
+}
+
+fn enrich_github_pr_rest(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    full: &str,
+    pr: &mut MockPullRequest,
+    sha: &str,
+) {
+    let reviews_url = format!("{base}/repos/{full}/pulls/{}/reviews?per_page=100", pr.number);
+    if let Ok(response) = client
+        .get(&reviews_url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+    {
+        if response.status().is_success() {
+            if let Ok(reviews) = response.json::<Vec<GhReview>>() {
+                let (approvals, changes_requested, approved_by, requested_changes_by) =
+                    summarize_reviews(reviews.iter().map(|r| {
+                        (
+                            r.user
+                                .as_ref()
+                                .map(|u| u.login.clone())
+                                .unwrap_or_default(),
+                            r.state.as_str(),
+                        )
+                    }));
+                pr.approvals = approvals;
+                pr.changes_requested = changes_requested;
+                pr.approved_by = approved_by;
+                pr.requested_changes_by = requested_changes_by;
+                pr.review_state = String::new();
+            }
+        }
+    }
+    if !sha.is_empty() {
+        let checks_url = format!("{base}/repos/{full}/commits/{sha}/check-runs?per_page=100");
+        if let Ok(response) = client
+            .get(&checks_url)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Branchline")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .bearer_auth(token)
+            .send()
+        {
+            if response.status().is_success() {
+                if let Ok(payload) = response.json::<GhCheckRuns>() {
+                    let mut passed = 0u32;
+                    let mut failed = 0u32;
+                    let mut pending = 0u32;
+                    for run in payload.check_runs {
+                        let status = run.status.unwrap_or_default().to_ascii_lowercase();
+                        let conclusion = run.conclusion.unwrap_or_default().to_ascii_lowercase();
+                        if status != "completed" {
+                            pending += 1;
+                        } else if matches!(
+                            conclusion.as_str(),
+                            "success" | "neutral" | "skipped"
+                        ) {
+                            passed += 1;
+                        } else {
+                            failed += 1;
+                        }
+                    }
+                    pr.check_passed = passed;
+                    pr.check_failed = failed;
+                    pr.check_pending = pending;
+                    pr.check_total = passed + failed + pending;
+                    pr.pipeline_status = String::new();
+                    pr.check_summary = String::new();
+                }
+            }
+        }
+    }
+    finalize_pr_insights(pr);
 }
 
 #[command]
@@ -928,7 +1634,8 @@ fn map_gitlab_mr(mr: GlMr, repo: &str, me: &str) -> MockPullRequest {
         && reviewers
             .iter()
             .any(|r| r.eq_ignore_ascii_case(me));
-    MockPullRequest {
+    let pending_reviewers = reviewers.len() as u32;
+    let mut mapped = MockPullRequest {
         id: format!("gl-{}", mr.id),
         number: mr.iid,
         title: mr.title,
@@ -951,7 +1658,11 @@ fn map_gitlab_mr(mr: GlMr, repo: &str, me: &str) -> MockPullRequest {
         comment_count: mr.user_notes_count.unwrap_or(0),
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
-    }
+        pending_reviewers,
+        ..Default::default()
+    };
+    finalize_pr_insights(&mut mapped);
+    mapped
 }
 
 fn list_gitlab_mrs(
@@ -1057,6 +1768,8 @@ struct AzReviewer {
     display_name: Option<String>,
     #[serde(default)]
     unique_name: Option<String>,
+    #[serde(default)]
+    vote: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1110,20 +1823,28 @@ fn map_azure_pr(pr: AzPr, repo: &str, org: &str, project: &str, me: &str) -> Moc
         _ => "open".to_string(),
     };
     let author = az_name(&pr.created_by);
-    let reviewers = pr
-        .reviewers
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|r| {
-            r.display_name
-                .filter(|s| !s.is_empty())
-                .or(r.unique_name)
-        })
-        .collect::<Vec<_>>();
+    let mut reviewers = Vec::new();
+    let mut approved_by = Vec::new();
+    let mut requested_changes_by = Vec::new();
+    for r in pr.reviewers.unwrap_or_default() {
+        let name = r
+            .display_name
+            .filter(|s| !s.is_empty())
+            .or(r.unique_name)
+            .unwrap_or_else(|| "unknown".into());
+        let vote = r.vote.unwrap_or(0);
+        if vote >= 5 {
+            approved_by.push(name.clone());
+        } else if vote <= -5 {
+            requested_changes_by.push(name.clone());
+        }
+        reviewers.push(name);
+    }
     let needs_my_review = !me.is_empty()
         && reviewers
             .iter()
-            .any(|r| r.eq_ignore_ascii_case(me));
+            .any(|r| r.eq_ignore_ascii_case(me))
+        && !approved_by.iter().any(|r| r.eq_ignore_ascii_case(me));
     let url = pr.url.clone().unwrap_or_else(|| {
         format!(
             "https://dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{}",
@@ -1138,7 +1859,7 @@ fn map_azure_pr(pr: AzPr, repo: &str, org: &str, project: &str, me: &str) -> Moc
     } else {
         url
     };
-    MockPullRequest {
+    let mut mapped = MockPullRequest {
         id: format!("az-{}", pr.pull_request_id),
         number: pr.pull_request_id,
         title: pr.title,
@@ -1161,7 +1882,21 @@ fn map_azure_pr(pr: AzPr, repo: &str, org: &str, project: &str, me: &str) -> Moc
         comment_count: 0,
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
-    }
+        approvals: approved_by.len() as u32,
+        changes_requested: requested_changes_by.len() as u32,
+        pending_reviewers: reviewers
+            .iter()
+            .filter(|name| {
+                !approved_by.iter().any(|a| a.eq_ignore_ascii_case(name))
+                    && !requested_changes_by.iter().any(|a| a.eq_ignore_ascii_case(name))
+            })
+            .count() as u32,
+        approved_by,
+        requested_changes_by,
+        ..Default::default()
+    };
+    finalize_pr_insights(&mut mapped);
+    mapped
 }
 
 fn azure_api_base(connection: &ConnectionConfig) -> String {
@@ -1289,4 +2024,263 @@ fn create_azure_pr(
         url: Some(web),
         number: Some(created.pull_request_id),
     })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPullRequestInput {
+    pub path: String,
+    pub number: u32,
+    pub event: String,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePullRequestInput {
+    pub path: String,
+    pub number: u32,
+    #[serde(default)]
+    pub merge_method: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePullRequestInput {
+    pub path: String,
+    pub number: u32,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub ready: Option<bool>,
+}
+
+fn resolve_github_for_path(
+    settings: &AppSettings,
+    path: &PathBuf,
+) -> AppResult<(ConnectionConfig, String, String)> {
+    match resolve_pr_target(path, settings, None)? {
+        PrTarget::Github(connection, owner, repo) => Ok((connection, owner, repo)),
+        PrTarget::Gitlab(_, _) => Err(AppError::msg(
+            "Review and merge from Branchline are available for GitHub PRs. Open this merge request in the browser.",
+        )),
+        PrTarget::Azure(_, _, _, _) => Err(AppError::msg(
+            "Review and merge from Branchline are available for GitHub PRs. Open this pull request in the browser.",
+        )),
+    }
+}
+
+fn github_json(
+    client: &reqwest::blocking::Client,
+    token: &str,
+    method: reqwest::Method,
+    url: &str,
+    body: Option<serde_json::Value>,
+) -> AppResult<reqwest::blocking::Response> {
+    let mut req = client
+        .request(method, url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token);
+    if let Some(body) = body {
+        req = req.json(&body);
+    }
+    req.send()
+        .map_err(|e| AppError::msg(format!("GitHub request failed: {e}")))
+}
+
+#[command]
+pub async fn review_pull_request(
+    state: State<'_, AppState>,
+    input: ReviewPullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let settings = load_settings_with_tokens(&state)?;
+    run_blocking(move || review_pull_request_inner(settings, input)).await
+}
+
+fn review_pull_request_inner(
+    settings: AppSettings,
+    input: ReviewPullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let path = PathBuf::from(&input.path);
+    let (connection, owner, repo) = resolve_github_for_path(&settings, &path)?;
+    let event = match input.event.trim().to_ascii_uppercase().as_str() {
+        "APPROVE" | "APPROVED" => "APPROVE",
+        "REQUEST_CHANGES" | "CHANGES_REQUESTED" => "REQUEST_CHANGES",
+        "COMMENT" | "COMMENTED" => "COMMENT",
+        other => {
+            return Err(AppError::msg(format!(
+                "Unknown review action '{other}'. Use approve, request changes, or comment."
+            )));
+        }
+    };
+    let body = input.body.unwrap_or_default();
+    if event != "APPROVE" && body.trim().is_empty() {
+        return Err(AppError::msg("Add a short note before submitting this review."));
+    }
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let url = format!("{base}/repos/{owner}/{repo}/pulls/{}/reviews", input.number);
+    let payload = serde_json::json!({
+        "event": event,
+        "body": body,
+    });
+    let response = github_json(
+        github_http_client(),
+        token,
+        reqwest::Method::POST,
+        &url,
+        Some(payload),
+    )?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not submit review on #{} ({status}). {text}",
+            input.number
+        )));
+    }
+    let message = match event {
+        "APPROVE" => format!("Approved #{}", input.number),
+        "REQUEST_CHANGES" => format!("Requested changes on #{}", input.number),
+        _ => format!("Commented on #{}", input.number),
+    };
+    Ok(MutationOutputLike {
+        ok: true,
+        message,
+    })
+}
+
+#[command]
+pub async fn merge_pull_request(
+    state: State<'_, AppState>,
+    input: MergePullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let settings = load_settings_with_tokens(&state)?;
+    run_blocking(move || merge_pull_request_inner(settings, input)).await
+}
+
+fn merge_pull_request_inner(
+    settings: AppSettings,
+    input: MergePullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let path = PathBuf::from(&input.path);
+    let (connection, owner, repo) = resolve_github_for_path(&settings, &path)?;
+    let method = match input
+        .merge_method
+        .as_deref()
+        .unwrap_or("squash")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "merge" => "merge",
+        "rebase" => "rebase",
+        _ => "squash",
+    };
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let url = format!("{base}/repos/{owner}/{repo}/pulls/{}/merge", input.number);
+    let payload = serde_json::json!({ "merge_method": method });
+    let response = github_json(
+        github_http_client(),
+        token,
+        reqwest::Method::PUT,
+        &url,
+        Some(payload),
+    )?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not merge #{} ({status}). {text}",
+            input.number
+        )));
+    }
+    Ok(MutationOutputLike {
+        ok: true,
+        message: format!("Merged #{} ({method})", input.number),
+    })
+}
+
+#[command]
+pub async fn update_pull_request(
+    state: State<'_, AppState>,
+    input: UpdatePullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let settings = load_settings_with_tokens(&state)?;
+    run_blocking(move || update_pull_request_inner(settings, input)).await
+}
+
+fn update_pull_request_inner(
+    settings: AppSettings,
+    input: UpdatePullRequestInput,
+) -> AppResult<MutationOutputLike> {
+    let path = PathBuf::from(&input.path);
+    let (connection, owner, repo) = resolve_github_for_path(&settings, &path)?;
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let client = github_http_client();
+    if input.ready == Some(true) {
+        let url = format!(
+            "{base}/repos/{owner}/{repo}/pulls/{}/ready_for_review",
+            input.number
+        );
+        let response = github_json(client, token, reqwest::Method::POST, &url, Some(serde_json::json!({})))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().unwrap_or_default();
+            return Err(AppError::msg(format!(
+                "Could not mark #{} ready ({status}). {text}",
+                input.number
+            )));
+        }
+        return Ok(MutationOutputLike {
+            ok: true,
+            message: format!("Marked #{} ready for review", input.number),
+        });
+    }
+    let Some(state) = input.state.as_deref().map(str::trim) else {
+        return Err(AppError::msg("Nothing to update on this pull request."));
+    };
+    let state = match state.to_ascii_lowercase().as_str() {
+        "closed" | "close" => "closed",
+        "open" | "reopen" => "open",
+        other => {
+            return Err(AppError::msg(format!("Unknown pull request state '{other}'.")));
+        }
+    };
+    let url = format!("{base}/repos/{owner}/{repo}/pulls/{}", input.number);
+    let response = github_json(
+        client,
+        token,
+        reqwest::Method::PATCH,
+        &url,
+        Some(serde_json::json!({ "state": state })),
+    )?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not update #{} ({status}). {text}",
+            input.number
+        )));
+    }
+    Ok(MutationOutputLike {
+        ok: true,
+        message: if state == "closed" {
+            format!("Closed #{}", input.number)
+        } else {
+            format!("Reopened #{}", input.number)
+        },
+    })
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MutationOutputLike {
+    pub ok: bool,
+    pub message: String,
 }

@@ -63,6 +63,58 @@
   gap: 0.4rem;
 }
 
+.copy-wrap,
+.merge-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.copy-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 8;
+  min-width: 13.5rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-subtle);
+}
+
+.copy-menu button {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.copy-menu button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.copy-sep {
+  height: 1px;
+  margin: 0.25rem 0.2rem;
+  background: var(--border-subtle);
+}
+
+.merge-wrap {
+  gap: 0.2rem;
+}
+
+.merge-menu {
+  left: 0;
+  right: auto;
+  min-width: 10rem;
+}
+
 .stats {
   display: flex;
   flex-wrap: wrap;
@@ -212,6 +264,20 @@ select {
   color: var(--git-renamed);
 }
 
+.tag.reviewer.approved {
+  color: var(--git-added);
+}
+
+.tag.reviewer.changes {
+  color: var(--git-modified);
+}
+
+.insight {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .actions {
   display: flex;
   flex-direction: column;
@@ -313,6 +379,16 @@ select {
 .bl-chip[data-review='pending'] {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--accent);
+}
+
+.bl-chip[data-merge='ready'] {
+  background: color-mix(in srgb, var(--git-added) 18%, transparent);
+  color: var(--git-added);
+}
+
+.bl-chip[data-merge='blocked'] {
+  background: color-mix(in srgb, var(--git-deleted) 16%, transparent);
+  color: var(--git-deleted);
 }
 
 .empty {
