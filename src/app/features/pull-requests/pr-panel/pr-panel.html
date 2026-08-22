@@ -384,7 +384,7 @@
   } @else {
   <div class="list">
     @for (pr of filtered(); track pr.id) {
-      <article class="row bl-glass" [class.selected]="selected().has(pr.id)">
+      <article class="row bl-glass" [class.selected]="selected().has(pr.id)" [class.expanded]="isExpanded(pr.id)">
         <label class="pick">
           <input
             type="checkbox"
@@ -395,29 +395,35 @@
         </label>
 
         <div class="main">
-          <div class="title-line">
-            <button type="button" class="title-open" (click)="openBrowser(pr)" [title]="'Open #' + pr.number">
-              <span class="num mono">#{{ pr.number }}</span>
-              <strong>{{ pr.title }}</strong>
-            </button>
-            @if (pr.draft) {
-              <span class="bl-chip">draft</span>
-            }
-            <span class="bl-chip" [attr.data-status]="pr.status">{{ pr.status }}</span>
-            @if (mergeStateLabel(pr); as mergeLabel) {
-              <span class="bl-chip" [attr.data-merge]="mergeLabel === 'Ready to merge' ? 'ready' : 'blocked'">
-                {{ mergeLabel }}
+          <div class="head">
+            <div class="title-line">
+              <button type="button" class="title-open" (click)="openBrowser(pr)" [title]="'Open #' + pr.number">
+                <span class="num mono">#{{ pr.number }}</span>
+                <strong>{{ pr.title }}</strong>
+              </button>
+              @if (pr.draft) {
+                <span class="bl-chip">draft</span>
+              }
+              <span class="bl-chip" [attr.data-status]="pr.status">{{ pr.status }}</span>
+              @if (mergeStateLabel(pr); as mergeLabel) {
+                <span class="bl-chip" [attr.data-merge]="mergeLabel === 'Ready to merge' ? 'ready' : 'blocked'">
+                  {{ mergeLabel }}
+                </span>
+              }
+              <span class="bl-chip" [attr.data-ci]="checkTone(pr)" [title]="checkCountLabel(pr)">
+                {{ checkCountLabel(pr) }}
               </span>
-            }
-            <span class="bl-chip" [attr.data-review]="pr.reviewState" [title]="approvedNames(pr)">
-              {{ reviewCountLabel(pr) }}
-            </span>
-            <span class="bl-chip" [attr.data-ci]="checkTone(pr)" [title]="checkCountLabel(pr)">
-              {{ checkCountLabel(pr) }}
-            </span>
-            @if (waitingCount(pr) && pr.reviewState !== 'approved') {
-              <span class="bl-chip" data-review="pending">{{ waitingCount(pr) }} waiting</span>
-            }
+            </div>
+            <button
+              type="button"
+              class="expand"
+              [class.open]="isExpanded(pr.id)"
+              [attr.aria-expanded]="isExpanded(pr.id)"
+              [attr.aria-label]="(isExpanded(pr.id) ? 'Collapse' : 'Expand') + ' pull request #' + pr.number"
+              (click)="toggleExpanded(pr, $event)"
+            >
+              <ng-icon name="lucideChevronDown" size="16" />
+            </button>
           </div>
 
           <div class="meta">
@@ -445,23 +451,84 @@
             }
             <span>{{ time(pr.updatedAt) }}</span>
           </div>
-          @if (pr.labels.length || (pr.approvedBy?.length ?? 0) || (pr.requestedChangesBy?.length ?? 0) || pr.reviewers.length) {
-          <div class="labels">
-            @for (l of pr.labels; track l) {
-              <span class="tag">{{ l }}</span>
+
+          <div class="scan">
+            @if (!isExpanded(pr.id) && compactReviewers(pr).length) {
+              <div class="people" role="list" [attr.aria-label]="'Reviewers for #' + pr.number">
+                @for (person of compactReviewers(pr); track person.name) {
+                  <span
+                    class="person"
+                    role="listitem"
+                    [attr.data-state]="person.state"
+                    [title]="person.name + ' — ' + reviewerStateLabel(person.state)"
+                  >
+                    <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
+                    <span class="mark" aria-hidden="true">
+                      @if (person.state === 'approved') {
+                        <ng-icon name="lucideCheck" size="9" />
+                      } @else if (person.state === 'changes') {
+                        <ng-icon name="lucideX" size="9" />
+                      }
+                    </span>
+                  </span>
+                }
+                @if (extraReviewerCount(pr); as extra) {
+                  <span class="person-more">+{{ extra }}</span>
+                }
+              </div>
             }
-            @for (r of pr.approvedBy ?? []; track r) {
-              <span class="tag reviewer approved">@{{ r }} approved</span>
-            }
-            @for (r of pr.requestedChangesBy ?? []; track r) {
-              <span class="tag reviewer changes">@{{ r }} requested changes</span>
-            }
-            @for (r of pr.reviewers; track r) {
-              @if (!(pr.approvedBy ?? []).includes(r) && !(pr.requestedChangesBy ?? []).includes(r)) {
-                <span class="tag reviewer">@{{ r }}</span>
-              }
+            <span class="people-sum" [attr.data-review]="pr.reviewState">{{ reviewerSummary(pr) }}</span>
+            @if (pr.labels.length) {
+              <div class="labels">
+                @for (l of visibleLabels(pr); track l) {
+                  <span class="tag">{{ l }}</span>
+                }
+                @if (extraLabelCount(pr); as extra) {
+                  <span class="tag more">+{{ extra }}</span>
+                }
+              </div>
             }
           </div>
+
+          @if (!isExpanded(pr.id) && bodyExcerpt(pr); as excerpt) {
+            <button type="button" class="excerpt" (click)="toggleExpanded(pr, $event)">{{ excerpt }}</button>
+          }
+
+          @if (isExpanded(pr.id)) {
+            <div class="detail">
+              @if (pr.body?.trim()) {
+                <pre class="description">{{ pr.body }}</pre>
+              } @else {
+                <p class="no-body">No description</p>
+              }
+
+              <div class="reviewer-list" role="list" [attr.aria-label]="'Reviewers for #' + pr.number">
+                @for (person of reviewerPeople(pr); track person.name) {
+                  <div class="reviewer-row" role="listitem" [attr.data-state]="person.state">
+                    <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
+                    <span class="who">{{ person.name }}</span>
+                    <span class="state">
+                      @if (person.state === 'approved') {
+                        <ng-icon name="lucideCheck" size="12" />
+                      } @else if (person.state === 'changes') {
+                        <ng-icon name="lucideX" size="12" />
+                      } @else {
+                        <ng-icon name="lucideMinus" size="12" />
+                      }
+                      {{ reviewerStateLabel(person.state) }}
+                    </span>
+                  </div>
+                } @empty {
+                  <p class="no-body">No reviewers assigned</p>
+                }
+              </div>
+
+              <app-pr-comments
+                [threads]="commentsFor(pr)"
+                [loading]="isCommentsLoading(pr.id)"
+                [error]="commentsErrorFor(pr.id)"
+              />
+            </div>
           }
 
           @if (showReviewBar(pr)) {

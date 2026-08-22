@@ -1,0 +1,89 @@
+@if (loading()) {
+  <div class="status muted">Loading comments…</div>
+} @else if (error()) {
+  <div class="status fail">{{ error() }}</div>
+} @else if (!conversation().length && !code().length) {
+  <div class="status muted">No comments yet</div>
+} @else {
+  @if (conversation().length) {
+    <section class="block">
+      <h4>
+        <ng-icon name="lucideMessageSquare" size="13" />
+        Conversation
+        <span class="count">{{ conversation().length }}</span>
+      </h4>
+      <div class="threads">
+        @for (thread of conversation(); track thread.id) {
+          <article class="thread" [attr.data-kind]="thread.kind">
+            @for (comment of thread.comments; track comment.id; let first = $first) {
+              <div class="note" [class.reply]="!first">
+                <span class="face" [style.--identity]="identityColor(comment.author)">
+                  {{ initials(comment.author) }}
+                </span>
+                <div class="copy">
+                  <div class="who">
+                    <strong>{{ comment.author }}</strong>
+                    @if (reviewLabel(comment.reviewState ?? thread.reviewState); as label) {
+                      <span class="event" [attr.data-state]="(comment.reviewState ?? thread.reviewState) ?? ''">
+                        {{ label }}
+                      </span>
+                    }
+                    @if (time(comment.createdAt); as when) {
+                      <span class="when">{{ when }}</span>
+                    }
+                  </div>
+                  @if (body(comment)) {
+                    <pre class="body">{{ body(comment) }}</pre>
+                  }
+                </div>
+              </div>
+            }
+          </article>
+        }
+      </div>
+    </section>
+  }
+
+  @if (code().length) {
+    <section class="block">
+      <h4>
+        <ng-icon name="lucideFileText" size="13" />
+        On code
+        <span class="count">{{ code().length }}</span>
+      </h4>
+      <div class="threads">
+        @for (thread of code(); track thread.id) {
+          <article class="thread code" [class.resolved]="thread.resolved">
+            <div class="file">
+              <span class="path mono">{{ fileLabel(thread) }}</span>
+              @if (thread.resolved) {
+                <span class="resolved-tag">Resolved</span>
+              }
+            </div>
+            @if (hunkPreview(thread.diffHunk); as hunk) {
+              <pre class="hunk">{{ hunk }}</pre>
+            }
+            @for (comment of thread.comments; track comment.id; let first = $first) {
+              <div class="note" [class.reply]="!first">
+                <span class="face" [style.--identity]="identityColor(comment.author)">
+                  {{ initials(comment.author) }}
+                </span>
+                <div class="copy">
+                  <div class="who">
+                    <strong>{{ comment.author }}</strong>
+                    @if (time(comment.createdAt); as when) {
+                      <span class="when">{{ when }}</span>
+                    }
+                  </div>
+                  @if (body(comment)) {
+                    <pre class="body">{{ body(comment) }}</pre>
+                  }
+                </div>
+              </div>
+            }
+          </article>
+        }
+      </div>
+    </section>
+  }
+}

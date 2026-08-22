@@ -1,0 +1,178 @@
+:host {
+  display: block;
+}
+
+.status {
+  margin: 0;
+  font-size: 12px;
+}
+
+.status.muted {
+  color: var(--text-muted);
+}
+
+.status.fail {
+  color: var(--git-deleted);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.block + .block {
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.threads {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.thread.code {
+  padding: 0.5rem 0.55rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+}
+
+.thread.code.resolved {
+  opacity: 0.78;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.path {
+  font-size: 11px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resolved-tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--git-added);
+}
+
+.hunk {
+  margin: 0 0 0.45rem;
+  padding: 0.4rem 0.45rem;
+  max-height: 7.5rem;
+  overflow: auto;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-app) 70%, transparent);
+  color: var(--text-secondary);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+.note {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: start;
+}
+
+.note + .note {
+  margin-top: 0.4rem;
+}
+
+.note.reply {
+  margin-left: 0.35rem;
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 750;
+  color: #fff;
+  background: var(--identity, var(--accent));
+}
+
+.copy {
+  min-width: 0;
+}
+
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.45rem;
+  font-size: 12px;
+}
+
+.who strong {
+  font-weight: 650;
+}
+
+.when {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.event {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.event[data-state='APPROVED'] {
+  color: var(--git-added);
+}
+
+.event[data-state='CHANGES_REQUESTED'] {
+  color: var(--git-modified);
+}
+
+.body {
+  margin: 0.2rem 0 0;
+  max-height: 10rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}

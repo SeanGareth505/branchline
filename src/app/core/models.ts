@@ -490,6 +490,33 @@ export interface MockPullRequest {
   mergeState?: string;
   readyToMerge?: boolean;
   checkSummary?: string;
+  body?: string;
+}
+
+export type PrCommentKind = 'conversation' | 'review' | 'code';
+
+export interface PrComment {
+  id: string;
+  kind: PrCommentKind;
+  author: string;
+  body: string;
+  createdAt: string;
+  path?: string | null;
+  line?: number | null;
+  diffHunk?: string | null;
+  reviewState?: string | null;
+  resolved?: boolean;
+}
+
+export interface PrCommentThread {
+  id: string;
+  kind: PrCommentKind;
+  path?: string | null;
+  line?: number | null;
+  diffHunk?: string | null;
+  resolved?: boolean;
+  reviewState?: string | null;
+  comments: PrComment[];
 }
 
 export type PrCopyFormat =
@@ -562,6 +589,91 @@ export function prMergeBlockReason(pr: MockPullRequest): string | null {
   if (state === 'blocked') return 'Merge is blocked';
   if (state === 'behind') return 'Branch is behind the base';
   return null;
+}
+
+export type PrReviewerState = 'approved' | 'changes' | 'pending';
+
+export interface PrReviewerPerson {
+  name: string;
+  state: PrReviewerState;
+}
+
+export function prReviewerPeople(pr: MockPullRequest): PrReviewerPerson[] {
+  const approved = new Set((pr.approvedBy ?? []).map((n) => n.toLowerCase()));
+  const changes = new Set((pr.requestedChangesBy ?? []).map((n) => n.toLowerCase()));
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const name of [...pr.reviewers, ...(pr.approvedBy ?? []), ...(pr.requestedChangesBy ?? [])]) {
+    const key = name.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    names.push(name.trim());
+  }
+  return names.map((name) => {
+    const key = name.toLowerCase();
+    const state: PrReviewerState = approved.has(key)
+      ? 'approved'
+      : changes.has(key)
+        ? 'changes'
+        : 'pending';
+    return { name, state };
+  });
+}
+
+export function prReviewerInitials(name: string): string {
+  const cleaned = name.replace(/^@/, '').trim();
+  const parts = cleaned.split(/[._\-\s]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return cleaned.slice(0, 2).toUpperCase() || '?';
+}
+
+export function prBodyExcerpt(body?: string | null, max = 160): string {
+  if (!body) return '';
+  const text = body
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((part) =>
+      part
+        .replace(/^#+\s*/, '')
+        .replace(/[*_`>#]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join(' ');
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trimEnd()}…`;
+}
+
+export function prConversationThreads(threads: PrCommentThread[]): PrCommentThread[] {
+  return threads.filter((thread) => thread.kind !== 'code');
+}
+
+export function prCodeThreads(threads: PrCommentThread[]): PrCommentThread[] {
+  return threads.filter((thread) => thread.kind === 'code');
+}
+
+export function prDiffHunkPreview(hunk?: string | null, maxLines = 6): string {
+  if (!hunk) return '';
+  const lines = hunk.replace(/\r/g, '').split('\n').filter((line) => line.length > 0);
+  return lines.slice(-maxLines).join('\n');
+}
+
+export function prReviewStateLabel(state?: string | null): string | null {
+  switch ((state ?? '').toUpperCase()) {
+    case 'APPROVED':
+      return 'Approved';
+    case 'CHANGES_REQUESTED':
+      return 'Requested changes';
+    case 'COMMENTED':
+      return 'Commented';
+    case 'DISMISSED':
+      return 'Dismissed';
+    default:
+      return null;
+  }
 }
 
 export function normalizePullRequest(pr: MockPullRequest): MockPullRequest {

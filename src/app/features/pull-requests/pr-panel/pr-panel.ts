@@ -13,9 +13,10 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
-import type { MockPullRequest, PrCopyFormat } from '../../../core/models';
+import type { MockPullRequest, PrCommentThread, PrCopyFormat, PrReviewerPerson, PrReviewerState } from '../../../core/models';
 import {
   prApprovals,
+  prBodyExcerpt,
   prChangesRequested,
   prCheckFailed,
   prCheckPending,
@@ -23,19 +24,23 @@ import {
   prMergeBlockReason,
   prPendingReviewers,
   prReadyToMerge,
+  prReviewerInitials,
+  prReviewerPeople,
 } from '../../../core/models';
+import { identityColor } from '../../../shared/ui/identity-color';
 import { formatPullRequests, checkLine, reviewLine, sharedRepoPrefix } from '../pr-copy';
 import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
 import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
+import { PrComments } from '../pr-comments/pr-comments';
 
 type SortKey = 'updated' | 'number' | 'title' | 'additions' | 'approvals' | 'checks';
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgTemplateOutlet, NgIcon, HelpTip, PageSkeleton, EmptyState],
+  imports: [FormsModule, NgTemplateOutlet, NgIcon, HelpTip, PageSkeleton, EmptyState, PrComments],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -81,6 +86,12 @@ export class PrPanel {
     { id: 'csv', label: 'CSV' },
   ];
   readonly mergeMenuId = signal<string | null>(null);
+  readonly expandedIds = signal<Set<string>>(new Set());
+  readonly commentsById = signal<Record<string, PrCommentThread[]>>({});
+  readonly commentsLoading = signal<Set<string>>(new Set());
+  readonly commentsError = signal<Record<string, string>>({});
+  readonly identityColor = identityColor;
+  readonly compactReviewerLimit = 7;
 
   readonly showingDummy = computed(
     () => this.store.isDummyBackend && !this.store.hasLinkedPrHost(),
@@ -149,6 +160,7 @@ export class PrPanel {
         ...pr.labels,
         ...pr.reviewers,
         ...pr.assignees,
+        pr.body ?? '',
       ]
         .join(' ')
         .toLowerCase();
@@ -630,6 +642,8 @@ export class PrPanel {
         requestedChangesBy: [...new Set([...(pr.requestedChangesBy ?? []), 'you'])],
         readyToMerge: false,
       });
+      await this.loadComments(pr);
+      this.appendLocalComment(pr, note, 'review', 'CHANGES_REQUESTED');
       this.cancelRequestChanges();
       this.store.showWarning(`Requested changes on #${pr.number}`);
       return;
@@ -637,7 +651,13 @@ export class PrPanel {
     this.actingId.set(pr.id);
     try {
       const ok = await this.store.reviewPullRequest(pr, 'REQUEST_CHANGES', note);
-      if (ok) this.cancelRequestChanges();
+      if (ok) {
+        this.cancelRequestChanges();
+        const expanded = new Set(this.expandedIds());
+        expanded.add(pr.id);
+        this.expandedIds.set(expanded);
+        await this.loadComments(pr, true);
+      }
     } finally {
       this.actingId.set(null);
     }
@@ -678,6 +698,8 @@ export class PrPanel {
         commentCount: pr.commentCount + 1,
         updatedAt: new Date().toISOString(),
       });
+      await this.loadComments(pr);
+      this.appendLocalComment(pr, body);
       this.cancelComment();
       this.store.showSuccess(`Commented on #${pr.number}`, undefined, 'prActivity');
       return;
@@ -685,7 +707,13 @@ export class PrPanel {
     this.actingId.set(pr.id);
     try {
       const ok = await this.store.reviewPullRequest(pr, 'COMMENT', body);
-      if (ok) this.cancelComment();
+      if (ok) {
+        this.cancelComment();
+        const expanded = new Set(this.expandedIds());
+        expanded.add(pr.id);
+        this.expandedIds.set(expanded);
+        await this.loadComments(pr, true);
+      }
     } finally {
       this.actingId.set(null);
     }
@@ -924,6 +952,135 @@ export class PrPanel {
 
   approvedNames(pr: MockPullRequest): string {
     return (pr.approvedBy ?? []).map((n) => `@${n}`).join(', ');
+  }
+
+  isExpanded(id: string): boolean {
+    return this.expandedIds().has(id);
+  }
+
+  toggleExpanded(pr: MockPullRequest, event?: Event): void {
+    event?.stopPropagation();
+    const next = new Set(this.expandedIds());
+    if (next.has(pr.id)) next.delete(pr.id);
+    else next.add(pr.id);
+    this.expandedIds.set(next);
+    if (next.has(pr.id)) void this.loadComments(pr);
+  }
+
+  commentsFor(pr: MockPullRequest): PrCommentThread[] {
+    return this.commentsById()[pr.id] ?? [];
+  }
+
+  isCommentsLoading(id: string): boolean {
+    return this.commentsLoading().has(id);
+  }
+
+  commentsErrorFor(id: string): string | null {
+    return this.commentsError()[id] ?? null;
+  }
+
+  private async loadComments(pr: MockPullRequest, force = false): Promise<void> {
+    if (!force && this.commentsById()[pr.id]) return;
+    const path = this.store.currentRepo()?.path ?? '';
+    const loading = new Set(this.commentsLoading());
+    loading.add(pr.id);
+    this.commentsLoading.set(loading);
+    const errors = { ...this.commentsError() };
+    delete errors[pr.id];
+    this.commentsError.set(errors);
+    try {
+      const threads = await this.tauri.listPullRequestComments(path, pr.number);
+      this.commentsById.update((map) => ({ ...map, [pr.id]: threads }));
+    } catch (err) {
+      this.commentsError.update((map) => ({
+        ...map,
+        [pr.id]: err instanceof Error ? err.message : 'Could not load comments',
+      }));
+    } finally {
+      const next = new Set(this.commentsLoading());
+      next.delete(pr.id);
+      this.commentsLoading.set(next);
+    }
+  }
+
+  private appendLocalComment(
+    pr: MockPullRequest,
+    body: string,
+    kind: PrCommentThread['kind'] = 'conversation',
+    reviewState?: string,
+  ): void {
+    const thread: PrCommentThread = {
+      id: `local-${Date.now()}`,
+      kind,
+      reviewState,
+      comments: [
+        {
+          id: `local-c-${Date.now()}`,
+          kind,
+          author: 'you',
+          body,
+          createdAt: new Date().toISOString(),
+          reviewState,
+        },
+      ],
+    };
+    this.commentsById.update((map) => ({
+      ...map,
+      [pr.id]: [...(map[pr.id] ?? []), thread],
+    }));
+    const expanded = new Set(this.expandedIds());
+    expanded.add(pr.id);
+    this.expandedIds.set(expanded);
+  }
+
+  reviewerPeople(pr: MockPullRequest): PrReviewerPerson[] {
+    return prReviewerPeople(pr);
+  }
+
+  compactReviewers(pr: MockPullRequest): PrReviewerPerson[] {
+    return prReviewerPeople(pr).slice(0, this.compactReviewerLimit);
+  }
+
+  extraReviewerCount(pr: MockPullRequest): number {
+    return Math.max(0, prReviewerPeople(pr).length - this.compactReviewerLimit);
+  }
+
+  initials(name: string): string {
+    return prReviewerInitials(name);
+  }
+
+  reviewerStateLabel(state: PrReviewerState): string {
+    switch (state) {
+      case 'approved':
+        return 'Approved';
+      case 'changes':
+        return 'Requested changes';
+      default:
+        return 'Waiting';
+    }
+  }
+
+  reviewerSummary(pr: MockPullRequest): string {
+    const people = prReviewerPeople(pr);
+    if (!people.length) return pr.status === 'open' ? 'No reviewers' : 'No reviews';
+    const approved = people.filter((p) => p.state === 'approved').length;
+    const changes = people.filter((p) => p.state === 'changes').length;
+    if (changes) return `${changes} requested changes`;
+    return `${approved} of ${people.length} approved`;
+  }
+
+  bodyExcerpt(pr: MockPullRequest): string {
+    return prBodyExcerpt(pr.body);
+  }
+
+  visibleLabels(pr: MockPullRequest): string[] {
+    if (this.isExpanded(pr.id)) return pr.labels;
+    return pr.labels.slice(0, 3);
+  }
+
+  extraLabelCount(pr: MockPullRequest): number {
+    if (this.isExpanded(pr.id)) return 0;
+    return Math.max(0, pr.labels.length - 3);
   }
 
   changesNames(pr: MockPullRequest): string {

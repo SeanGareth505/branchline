@@ -51,6 +51,8 @@ pub struct MockPullRequest {
     pub ready_to_merge: bool,
     #[serde(default)]
     pub check_summary: String,
+    #[serde(default)]
+    pub body: String,
 }
 
 impl Default for MockPullRequest {
@@ -91,6 +93,7 @@ impl Default for MockPullRequest {
             merge_state: String::new(),
             ready_to_merge: false,
             check_summary: String::new(),
+            body: String::new(),
         }
     }
 }

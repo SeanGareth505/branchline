@@ -68,6 +68,7 @@ import type {
   FormatPatchOutput,
   LargeFileEntry,
   RepoPrTemplate,
+  PrCommentThread,
   ReleaseStatusOutput,
   ReleasePreviewOutput,
   ReleaseRunOptions,
@@ -740,6 +741,12 @@ export class TauriService {
     return this.invoke<MockPullRequest[]>('list_pull_requests', {
       input: { path, state },
     }).then((list) => list.map(normalizePullRequest));
+  }
+
+  listPullRequestComments(path: string, number: number) {
+    return this.invoke<PrCommentThread[]>('list_pull_request_comments', {
+      input: { path, number },
+    });
   }
 
   listPrTemplates(path: string) {
@@ -2377,6 +2384,7 @@ export class TauriService {
           commentCount: 6,
           isMine: false,
           needsMyReview: false,
+          body: 'Makes graph focus easier to scan when many lanes are on screen.\n\n- Dim inactive lanes\n- Keep the current commit readable',
         },
         {
           id: 'pr-98',
@@ -2425,6 +2433,7 @@ export class TauriService {
           commentCount: 11,
           isMine: true,
           needsMyReview: false,
+          body: 'Adds templates and amend to the commit dialog so the default message matches the repo.\n\nStill need to handle empty amend when nothing is staged.',
         },
         {
           id: 'pr-92',
@@ -2521,6 +2530,7 @@ export class TauriService {
           commentCount: 8,
           isMine: false,
           needsMyReview: true,
+          body: 'Creates a local branch from the selected Jira issue and prefills the PR title from the summary.',
         },
         {
           id: 'pr-70',
@@ -2967,6 +2977,11 @@ export class TauriService {
 
     if (cmd === 'list_pull_requests') {
       return (mocks['list_mock_pull_requests'] as MockPullRequest[]).map(normalizePullRequest) as T;
+    }
+
+    if (cmd === 'list_pull_request_comments') {
+      const number = (args?.['input'] as { number?: number } | undefined)?.number ?? 0;
+      return dummyPrComments(number) as T;
     }
 
     if (cmd === 'review_pull_request' || cmd === 'merge_pull_request' || cmd === 'update_pull_request') {
@@ -3777,6 +3792,146 @@ export class TauriService {
       /* ignore */
     }
   }
+}
+
+function dummyPrComments(number: number): PrCommentThread[] {
+  if (number === 101) {
+    return [
+      {
+        id: 'c-101-1',
+        kind: 'review',
+        reviewState: 'APPROVED',
+        comments: [
+          {
+            id: 'c-101-1a',
+            kind: 'review',
+            author: 'jamie',
+            body: 'Focus mode is much easier to scan now. Nice work.',
+            createdAt: '2026-07-17T12:10:00Z',
+            reviewState: 'APPROVED',
+          },
+        ],
+      },
+      {
+        id: 'c-101-2',
+        kind: 'conversation',
+        comments: [
+          {
+            id: 'c-101-2a',
+            kind: 'conversation',
+            author: 'sam',
+            body: 'Can we keep the current commit readable when a lane is dimmed?',
+            createdAt: '2026-07-17T13:04:00Z',
+          },
+        ],
+      },
+      {
+        id: 'c-101-3',
+        kind: 'code',
+        path: 'src/app/graph/focus-mode.ts',
+        line: 84,
+        diffHunk:
+          '@@ -80,6 +80,9 @@ export function dimLanes(lanes: Lane[]) {\n-  return lanes.map((lane) => ({ ...lane, dim: lane.id !== active }));\n+  return lanes.map((lane) => ({\n+    ...lane,\n+    dim: lane.id !== active && !lane.containsHead,\n+  }));',
+        comments: [
+          {
+            id: 'c-101-3a',
+            kind: 'code',
+            author: 'sam',
+            body: 'This keeps HEAD readable without undimming the whole lane.',
+            createdAt: '2026-07-17T13:06:00Z',
+            path: 'src/app/graph/focus-mode.ts',
+            line: 84,
+          },
+          {
+            id: 'c-101-3b',
+            kind: 'code',
+            author: 'alex',
+            body: 'Good catch — added containsHead to the dim check.',
+            createdAt: '2026-07-17T13:40:00Z',
+            path: 'src/app/graph/focus-mode.ts',
+            line: 84,
+          },
+        ],
+      },
+    ];
+  }
+  if (number === 95) {
+    return [
+      {
+        id: 'c-95-1',
+        kind: 'review',
+        reviewState: 'CHANGES_REQUESTED',
+        comments: [
+          {
+            id: 'c-95-1a',
+            kind: 'review',
+            author: 'jordan',
+            body: 'Amend with an empty index still looks like a successful commit.',
+            createdAt: '2026-07-18T09:12:00Z',
+            reviewState: 'CHANGES_REQUESTED',
+          },
+        ],
+      },
+      {
+        id: 'c-95-2',
+        kind: 'code',
+        path: 'src/app/features/commit/commit-dialog.ts',
+        line: 212,
+        diffHunk:
+          '@@ -208,7 +208,11 @@ async submit() {\n-    await this.git.commit(this.message());\n+    if (!this.hasStaged() && this.amend()) {\n+      throw new Error("Nothing to amend");\n+    }\n+    await this.git.commit(this.message(), { amend: this.amend() });',
+        comments: [
+          {
+            id: 'c-95-2a',
+            kind: 'code',
+            author: 'jordan',
+            body: 'Throwing here surfaces in the dialog, but we should disable Amend until there is a HEAD commit.',
+            createdAt: '2026-07-18T09:14:00Z',
+            path: 'src/app/features/commit/commit-dialog.ts',
+            line: 212,
+          },
+        ],
+      },
+    ];
+  }
+  if (number === 77) {
+    return [
+      {
+        id: 'c-77-1',
+        kind: 'conversation',
+        comments: [
+          {
+            id: 'c-77-1a',
+            kind: 'conversation',
+            author: 'jamie',
+            body: 'Title fill from the Jira summary looks right. Can the branch name stay kebab-case when the summary has slashes?',
+            createdAt: '2026-07-18T08:20:00Z',
+          },
+        ],
+      },
+      {
+        id: 'c-77-2',
+        kind: 'code',
+        path: 'src/app/shared/git/ticket-from-branch.ts',
+        line: 41,
+        resolved: true,
+        diffHunk:
+          '@@ -36,6 +36,8 @@ export function branchFromIssue(key: string, summary: string) {\n+  const slug = summary.toLowerCase().replace(/[^a-z0-9]+/g, "-");\n   return `${key.toLowerCase()}-${slug}`;',
+        comments: [
+          {
+            id: 'c-77-2a',
+            kind: 'code',
+            author: 'you',
+            body: 'Slug now strips slashes and punctuation.',
+            createdAt: '2026-07-18T08:55:00Z',
+            path: 'src/app/shared/git/ticket-from-branch.ts',
+            line: 41,
+            resolved: true,
+          },
+        ],
+      },
+    ];
+  }
+  return [];
 }
 
 function dummyRepoSummary(args?: Record<string, unknown>): RepoSummary {

@@ -142,6 +142,7 @@ pub fn run() {
             commands::submodules::lfs_unlock,
             commands::pull_requests::list_pull_requests,
             commands::pull_requests::list_pr_templates,
+            commands::pull_requests::list_pull_request_comments,
             commands::pull_requests::create_pull_request,
             commands::pull_requests::review_pull_request,
             commands::pull_requests::merge_pull_request,

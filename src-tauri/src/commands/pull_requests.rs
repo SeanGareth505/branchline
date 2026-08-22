@@ -85,6 +85,8 @@ struct GhPr {
     id: u64,
     number: u32,
     title: String,
+    #[serde(default)]
+    body: Option<String>,
     user: Option<GhUser>,
     html_url: String,
     state: String,
@@ -321,6 +323,7 @@ fn map_pr(pr: GhPr, repo: &str, me: &str) -> MockPullRequest {
         target_branch: target,
         status,
         url: pr.html_url,
+        body: pr.body.unwrap_or_default(),
         labels: pr.labels.into_iter().map(|l| l.name).collect(),
         updated_at: pr.updated_at,
         draft,
@@ -412,6 +415,7 @@ query($owner: String!, $name: String!, $states: [PullRequestState!]) {
         databaseId
         number
         title
+        body
         url
         isDraft
         state
@@ -420,6 +424,7 @@ query($owner: String!, $name: String!, $states: [PullRequestState!]) {
         additions
         deletions
         comments { totalCount }
+        reviewThreads { totalCount }
         author { login }
         assignees(first: 10) { nodes { login } }
         labels(first: 20) { nodes { name } }
@@ -572,6 +577,8 @@ struct GqlPullRequest {
     database_id: Option<u64>,
     number: u32,
     title: String,
+    #[serde(default)]
+    body: String,
     url: String,
     #[serde(default)]
     is_draft: bool,
@@ -585,6 +592,8 @@ struct GqlPullRequest {
     #[serde(default)]
     deletions: u32,
     comments: Option<GqlCount>,
+    #[serde(default)]
+    review_threads: Option<GqlCount>,
     author: Option<GqlLogin>,
     assignees: Option<GqlNodes<GqlLogin>>,
     labels: Option<GqlNodes<GqlLabel>>,
@@ -790,7 +799,8 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         pipeline_status,
         additions: pr.additions,
         deletions: pr.deletions,
-        comment_count: pr.comments.map(|c| c.total_count).unwrap_or(0),
+        comment_count: pr.comments.map(|c| c.total_count).unwrap_or(0)
+            + pr.review_threads.map(|c| c.total_count).unwrap_or(0),
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
         approvals,
@@ -805,6 +815,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         mergeable,
         merge_state,
         check_summary,
+        body: pr.body,
         ..Default::default()
     };
     finalize_pr_insights(&mut mapped);
@@ -1681,6 +1692,8 @@ struct GlMr {
     #[serde(default)]
     user_notes_count: Option<u32>,
     #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
     assignees: Option<Vec<GlUser>>,
     #[serde(default)]
     reviewers: Option<Vec<GlUser>>,
@@ -1746,6 +1759,7 @@ fn map_gitlab_mr(mr: GlMr, repo: &str, me: &str) -> MockPullRequest {
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
         pending_reviewers,
+        body: mr.description.unwrap_or_default(),
         ..Default::default()
     };
     finalize_pr_insights(&mut mapped);
@@ -1879,6 +1893,8 @@ struct AzPr {
     #[serde(default)]
     is_draft: Option<bool>,
     #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
     reviewers: Option<Vec<AzReviewer>>,
     #[serde(default)]
     url: Option<String>,
@@ -1980,6 +1996,7 @@ fn map_azure_pr(pr: AzPr, repo: &str, org: &str, project: &str, me: &str) -> Moc
             .count() as u32,
         approved_by,
         requested_changes_by,
+        body: pr.description.unwrap_or_default(),
         ..Default::default()
     };
     finalize_pr_insights(&mut mapped);
@@ -2180,6 +2197,826 @@ fn github_json(
     }
     req.send()
         .map_err(|e| AppError::msg(format!("GitHub request failed: {e}")))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPullRequestCommentsInput {
+    pub path: String,
+    pub number: u32,
+    #[serde(default)]
+    pub connection_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrComment {
+    pub id: String,
+    pub kind: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_hunk: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_state: Option<String>,
+    #[serde(default)]
+    pub resolved: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCommentThread {
+    pub id: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_hunk: Option<String>,
+    #[serde(default)]
+    pub resolved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_state: Option<String>,
+    pub comments: Vec<PrComment>,
+}
+
+fn pr_comment(
+    id: impl Into<String>,
+    kind: &str,
+    author: impl Into<String>,
+    body: impl Into<String>,
+    created_at: impl Into<String>,
+) -> PrComment {
+    PrComment {
+        id: id.into(),
+        kind: kind.into(),
+        author: author.into(),
+        body: body.into(),
+        created_at: created_at.into(),
+        path: None,
+        line: None,
+        diff_hunk: None,
+        review_state: None,
+        resolved: false,
+    }
+}
+
+const GITHUB_PR_COMMENTS_QUERY: &str = r#"
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(first: 60) {
+        nodes { id author { login } body createdAt }
+      }
+      reviews(first: 40) {
+        nodes { id author { login } body state submittedAt }
+      }
+      reviewThreads(first: 50) {
+        nodes {
+          id
+          isResolved
+          comments(first: 30) {
+            nodes {
+              id
+              author { login }
+              body
+              createdAt
+              path
+              line
+              originalLine
+              diffHunk
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+
+#[derive(Debug, Deserialize)]
+struct GqlConvEnvelope {
+    data: Option<GqlConvData>,
+    #[serde(default)]
+    errors: Option<Vec<GqlError>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlConvData {
+    repository: Option<GqlConvRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvRepo {
+    pull_request: Option<GqlConvPr>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvPr {
+    comments: Option<GqlNodes<GqlConvComment>>,
+    reviews: Option<GqlNodes<GqlConvReview>>,
+    review_threads: Option<GqlNodes<GqlConvThread>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvComment {
+    id: Option<String>,
+    author: Option<GqlLogin>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvReview {
+    id: Option<String>,
+    author: Option<GqlLogin>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    state: String,
+    submitted_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvThread {
+    id: Option<String>,
+    #[serde(default)]
+    is_resolved: bool,
+    comments: Option<GqlNodes<GqlConvThreadComment>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GqlConvThreadComment {
+    id: Option<String>,
+    author: Option<GqlLogin>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    line: Option<i32>,
+    #[serde(default)]
+    original_line: Option<i32>,
+    #[serde(default)]
+    diff_hunk: Option<String>,
+}
+
+fn gql_author(author: Option<GqlLogin>) -> String {
+    author
+        .and_then(|a| a.login)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+#[command]
+pub async fn list_pull_request_comments(
+    state: State<'_, AppState>,
+    input: ListPullRequestCommentsInput,
+) -> AppResult<Vec<PrCommentThread>> {
+    let settings = load_settings_with_tokens(&state)?;
+    run_blocking(move || list_pull_request_comments_inner(settings, input)).await
+}
+
+fn list_pull_request_comments_inner(
+    settings: AppSettings,
+    input: ListPullRequestCommentsInput,
+) -> AppResult<Vec<PrCommentThread>> {
+    let path = PathBuf::from(&input.path);
+    match resolve_pr_target(&path, &settings, input.connection_id.as_deref())? {
+        PrTarget::Github(connection, owner, repo) => {
+            list_github_pr_comments(connection, owner, repo, input.number)
+        }
+        PrTarget::Gitlab(connection, project) => {
+            list_gitlab_mr_comments(connection, project, input.number)
+        }
+        PrTarget::Azure(connection, org, project, repo) => {
+            list_azure_pr_comments(connection, org, project, repo, input.number)
+        }
+    }
+}
+
+fn list_github_pr_comments(
+    connection: ConnectionConfig,
+    owner: String,
+    repo: String,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let base = connection.base_url.trim().trim_end_matches('/');
+    let token = connection.token.trim();
+    let client = github_http_client();
+    match list_github_pr_comments_graphql(client, base, token, &owner, &repo, number) {
+        Ok(threads) => Ok(threads),
+        Err(_) => list_github_pr_comments_rest(client, base, token, &owner, &repo, number),
+    }
+}
+
+fn list_github_pr_comments_graphql(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let url = github_graphql_url(base);
+    let body = serde_json::json!({
+        "query": GITHUB_PR_COMMENTS_QUERY,
+        "variables": { "owner": owner, "name": repo, "number": number },
+    });
+    let response = client
+        .post(&url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .map_err(|e| AppError::msg(format!("GitHub comments query failed: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        let text = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not load pull request comments ({status}). {text}"
+        )));
+    }
+    let envelope: GqlConvEnvelope = response
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse pull request comments: {e}")))?;
+    let pr = envelope
+        .data
+        .and_then(|d| d.repository)
+        .and_then(|r| r.pull_request)
+        .ok_or_else(|| {
+            let detail = envelope
+                .errors
+                .unwrap_or_default()
+                .into_iter()
+                .map(|e| e.message)
+                .filter(|m| !m.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            AppError::msg(if detail.is_empty() {
+                "GitHub returned no pull request comments.".into()
+            } else {
+                detail
+            })
+        })?;
+    Ok(map_github_graphql_comments(pr))
+}
+
+fn map_github_graphql_comments(pr: GqlConvPr) -> Vec<PrCommentThread> {
+    let mut threads = Vec::new();
+    for node in pr.comments.map(|n| n.nodes).unwrap_or_default() {
+        let body = node.body.trim();
+        if body.is_empty() {
+            continue;
+        }
+        let id = node.id.clone().unwrap_or_else(|| format!("issue-{}", threads.len()));
+        let comment = pr_comment(
+            id.clone(),
+            "conversation",
+            gql_author(node.author),
+            node.body,
+            node.created_at,
+        );
+        threads.push(PrCommentThread {
+            id,
+            kind: "conversation".into(),
+            path: None,
+            line: None,
+            diff_hunk: None,
+            resolved: false,
+            review_state: None,
+            comments: vec![comment],
+        });
+    }
+    for node in pr.reviews.map(|n| n.nodes).unwrap_or_default() {
+        let state = node.state.to_ascii_uppercase();
+        if state == "PENDING" {
+            continue;
+        }
+        let body = node.body.trim();
+        if body.is_empty() && state != "APPROVED" && state != "CHANGES_REQUESTED" {
+            continue;
+        }
+        let id = node.id.clone().unwrap_or_else(|| format!("review-{}", threads.len()));
+        let mut comment = pr_comment(
+            id.clone(),
+            "review",
+            gql_author(node.author),
+            node.body,
+            node.submitted_at.unwrap_or_default(),
+        );
+        comment.review_state = Some(node.state);
+        threads.push(PrCommentThread {
+            id,
+            kind: "review".into(),
+            path: None,
+            line: None,
+            diff_hunk: None,
+            resolved: false,
+            review_state: Some(state),
+            comments: vec![comment],
+        });
+    }
+    for node in pr.review_threads.map(|n| n.nodes).unwrap_or_default() {
+        let comments: Vec<GqlConvThreadComment> = node.comments.map(|n| n.nodes).unwrap_or_default();
+        if comments.is_empty() {
+            continue;
+        }
+        let first = &comments[0];
+        let path = first.path.clone();
+        let line = first.line.or(first.original_line);
+        let diff_hunk = first.diff_hunk.clone();
+        let id = node
+            .id
+            .clone()
+            .unwrap_or_else(|| format!("thread-{}", threads.len()));
+        let mapped: Vec<PrComment> = comments
+            .into_iter()
+            .map(|c| {
+                let mut comment = pr_comment(
+                    c.id.unwrap_or_default(),
+                    "code",
+                    gql_author(c.author),
+                    c.body,
+                    c.created_at,
+                );
+                comment.path = c.path.or_else(|| path.clone());
+                comment.line = c.line.or(c.original_line).or(line);
+                comment.diff_hunk = c.diff_hunk.or_else(|| diff_hunk.clone());
+                comment.resolved = node.is_resolved;
+                comment
+            })
+            .collect();
+        threads.push(PrCommentThread {
+            id,
+            kind: "code".into(),
+            path,
+            line,
+            diff_hunk,
+            resolved: node.is_resolved,
+            review_state: None,
+            comments: mapped,
+        });
+    }
+    threads.sort_by(|a, b| {
+        let a_at = a.comments.first().map(|c| c.created_at.as_str()).unwrap_or("");
+        let b_at = b.comments.first().map(|c| c.created_at.as_str()).unwrap_or("");
+        a_at.cmp(b_at)
+    });
+    threads
+}
+
+#[derive(Debug, Deserialize)]
+struct GhIssueComment {
+    id: u64,
+    user: Option<GhUser>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhReviewComment {
+    id: u64,
+    user: Option<GhUser>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    line: Option<i32>,
+    #[serde(default)]
+    original_line: Option<i32>,
+    #[serde(default)]
+    diff_hunk: Option<String>,
+    #[serde(default)]
+    in_reply_to_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhReviewEvent {
+    id: u64,
+    user: Option<GhUser>,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    state: String,
+    submitted_at: Option<String>,
+}
+
+fn list_github_pr_comments_rest(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let issue_url = format!("{base}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100");
+    let review_url = format!("{base}/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100");
+    let code_url = format!("{base}/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100");
+    let issue: Vec<GhIssueComment> = github_get(client, token, &issue_url)?
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse conversation comments: {e}")))?;
+    let reviews: Vec<GhReviewEvent> = github_get(client, token, &review_url)?
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse review comments: {e}")))?;
+    let code: Vec<GhReviewComment> = github_get(client, token, &code_url)?
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse code comments: {e}")))?;
+    let mut threads = Vec::new();
+    for node in issue {
+        if node.body.trim().is_empty() {
+            continue;
+        }
+        let author = node.user.map(|u| u.login).unwrap_or_else(|| "unknown".into());
+        let id = format!("issue-{}", node.id);
+        let comment = pr_comment(id.clone(), "conversation", author, node.body, node.created_at);
+        threads.push(PrCommentThread {
+            id,
+            kind: "conversation".into(),
+            path: None,
+            line: None,
+            diff_hunk: None,
+            resolved: false,
+            review_state: None,
+            comments: vec![comment],
+        });
+    }
+    for node in reviews {
+        let state = node.state.to_ascii_uppercase();
+        if state == "PENDING" {
+            continue;
+        }
+        if node.body.trim().is_empty() && state != "APPROVED" && state != "CHANGES_REQUESTED" {
+            continue;
+        }
+        let author = node.user.map(|u| u.login).unwrap_or_else(|| "unknown".into());
+        let id = format!("review-{}", node.id);
+        let mut comment = pr_comment(
+            id.clone(),
+            "review",
+            author,
+            node.body,
+            node.submitted_at.unwrap_or_default(),
+        );
+        comment.review_state = Some(node.state.clone());
+        threads.push(PrCommentThread {
+            id,
+            kind: "review".into(),
+            path: None,
+            line: None,
+            diff_hunk: None,
+            resolved: false,
+            review_state: Some(state),
+            comments: vec![comment],
+        });
+    }
+    let mut by_id: HashMap<u64, GhReviewComment> = HashMap::new();
+    let mut children: HashMap<u64, Vec<u64>> = HashMap::new();
+    let mut roots = Vec::new();
+    for node in code {
+        if let Some(parent) = node.in_reply_to_id {
+            children.entry(parent).or_default().push(node.id);
+        } else {
+            roots.push(node.id);
+        }
+        by_id.insert(node.id, node);
+    }
+    for root_id in roots {
+        let Some(root) = by_id.get(&root_id) else {
+            continue;
+        };
+        let path = root.path.clone();
+        let line = root.line.or(root.original_line);
+        let diff_hunk = root.diff_hunk.clone();
+        let mut ids = vec![root_id];
+        if let Some(replies) = children.get(&root_id) {
+            ids.extend(replies.iter().copied());
+        }
+        let comments: Vec<PrComment> = ids
+            .into_iter()
+            .filter_map(|id| by_id.get(&id))
+            .map(|c| {
+                let author = c
+                    .user
+                    .as_ref()
+                    .map(|u| u.login.clone())
+                    .unwrap_or_else(|| "unknown".into());
+                let mut comment = pr_comment(
+                    format!("code-{}", c.id),
+                    "code",
+                    author,
+                    c.body.clone(),
+                    c.created_at.clone(),
+                );
+                comment.path = c.path.clone().or_else(|| path.clone());
+                comment.line = c.line.or(c.original_line).or(line);
+                comment.diff_hunk = c.diff_hunk.clone().or_else(|| diff_hunk.clone());
+                comment
+            })
+            .collect();
+        if comments.is_empty() {
+            continue;
+        }
+        threads.push(PrCommentThread {
+            id: format!("code-thread-{}", root_id),
+            kind: "code".into(),
+            path,
+            line,
+            diff_hunk,
+            resolved: false,
+            review_state: None,
+            comments,
+        });
+    }
+    threads.sort_by(|a, b| {
+        let a_at = a.comments.first().map(|c| c.created_at.as_str()).unwrap_or("");
+        let b_at = b.comments.first().map(|c| c.created_at.as_str()).unwrap_or("");
+        a_at.cmp(b_at)
+    });
+    Ok(threads)
+}
+
+#[derive(Debug, Deserialize)]
+struct GlDiscussion {
+    id: String,
+    #[serde(default)]
+    notes: Vec<GlNote>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlNote {
+    id: u64,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    system: bool,
+    #[serde(default)]
+    author: Option<GlUser>,
+    #[serde(default)]
+    position: Option<GlPosition>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlPosition {
+    #[serde(default)]
+    new_path: Option<String>,
+    #[serde(default)]
+    old_path: Option<String>,
+    #[serde(default)]
+    new_line: Option<i32>,
+    #[serde(default)]
+    old_line: Option<i32>,
+}
+
+fn list_gitlab_mr_comments(
+    connection: ConnectionConfig,
+    project: String,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let api = gitlab_api_base(&connection.base_url);
+    let token = connection.token.trim();
+    let encoded = encode_project_path(&project);
+    let url = format!("{api}/projects/{encoded}/merge_requests/{number}/discussions?per_page=100");
+    let response = github_http_client()
+        .get(&url)
+        .header("User-Agent", "Branchline")
+        .header("PRIVATE-TOKEN", token)
+        .send()
+        .map_err(|e| AppError::msg(format!("GitLab comments request failed: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not load merge request comments ({status}). {body}"
+        )));
+    }
+    let discussions: Vec<GlDiscussion> = response
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse merge request comments: {e}")))?;
+    let mut threads = Vec::new();
+    for discussion in discussions {
+        let notes: Vec<GlNote> = discussion
+            .notes
+            .into_iter()
+            .filter(|n| !n.system && !n.body.trim().is_empty())
+            .collect();
+        if notes.is_empty() {
+            continue;
+        }
+        let position = notes.iter().find_map(|n| n.position.as_ref());
+        let kind = if position.is_some() { "code" } else { "conversation" };
+        let path = position.and_then(|p| p.new_path.clone().or(p.old_path.clone()));
+        let line = position.and_then(|p| p.new_line.or(p.old_line));
+        let comments = notes
+            .into_iter()
+            .map(|n| {
+                let author = n
+                    .author
+                    .as_ref()
+                    .map(|u| u.username.clone())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "unknown".into());
+                let mut comment = pr_comment(
+                    format!("gl-{}", n.id),
+                    kind,
+                    author,
+                    n.body,
+                    n.created_at,
+                );
+                comment.path = path.clone();
+                comment.line = line;
+                comment
+            })
+            .collect::<Vec<_>>();
+        threads.push(PrCommentThread {
+            id: format!("gl-{}", discussion.id),
+            kind: kind.into(),
+            path,
+            line,
+            diff_hunk: None,
+            resolved: false,
+            review_state: None,
+            comments,
+        });
+    }
+    Ok(threads)
+}
+
+#[derive(Debug, Deserialize)]
+struct AzThreads {
+    #[serde(default)]
+    value: Vec<AzThread>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AzThread {
+    id: Option<i64>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    comments: Vec<AzComment>,
+    #[serde(default)]
+    thread_context: Option<AzThreadContext>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AzThreadContext {
+    #[serde(default)]
+    file_path: Option<String>,
+    #[serde(default)]
+    right_file_start: Option<AzFileLine>,
+    #[serde(default)]
+    left_file_start: Option<AzFileLine>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AzFileLine {
+    #[serde(default)]
+    line: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AzComment {
+    id: Option<i64>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    comment_type: Option<String>,
+    #[serde(default)]
+    published_date: Option<String>,
+    #[serde(default)]
+    author: Option<AzIdentity>,
+}
+
+fn list_azure_pr_comments(
+    connection: ConnectionConfig,
+    org: String,
+    project: String,
+    repo: String,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let org = if connection.organization.trim().is_empty() {
+        org
+    } else {
+        connection.organization.trim().to_string()
+    };
+    let project = if connection.project.trim().is_empty() {
+        project
+    } else {
+        connection.project.trim().to_string()
+    };
+    let base = azure_api_base(&connection);
+    let token = connection.token.trim();
+    let url = format!(
+        "{base}/{org}/{project}/_apis/git/repositories/{repo}/pullRequests/{number}/threads?api-version=7.1"
+    );
+    let response = github_http_client()
+        .get(&url)
+        .header("User-Agent", "Branchline")
+        .header("Accept", "application/json")
+        .basic_auth("", Some(token))
+        .send()
+        .map_err(|e| AppError::msg(format!("Azure DevOps comments request failed: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!(
+            "Could not load pull request comments ({status}). {body}"
+        )));
+    }
+    let payload: AzThreads = response
+        .json()
+        .map_err(|e| AppError::msg(format!("Could not parse pull request comments: {e}")))?;
+    let mut threads = Vec::new();
+    for thread in payload.value {
+        let status = thread.status.unwrap_or_default().to_ascii_lowercase();
+        if status == "unknown" {
+            continue;
+        }
+        let comments: Vec<AzComment> = thread
+            .comments
+            .into_iter()
+            .filter(|c| {
+                let kind = c.comment_type.as_deref().unwrap_or("text").to_ascii_lowercase();
+                kind != "system" && !c.content.as_deref().unwrap_or("").trim().is_empty()
+            })
+            .collect();
+        if comments.is_empty() {
+            continue;
+        }
+        let path = thread
+            .thread_context
+            .as_ref()
+            .and_then(|ctx| ctx.file_path.clone())
+            .filter(|s| !s.is_empty());
+        let line = thread.thread_context.as_ref().and_then(|ctx| {
+            ctx.right_file_start
+                .as_ref()
+                .and_then(|l| l.line)
+                .or_else(|| ctx.left_file_start.as_ref().and_then(|l| l.line))
+        });
+        let kind = if path.is_some() { "code" } else { "conversation" };
+        let resolved = matches!(status.as_str(), "fixed" | "closed" | "wontfix" | "bydesign");
+        let id = thread
+            .id
+            .map(|n| format!("az-{n}"))
+            .unwrap_or_else(|| format!("az-thread-{}", threads.len()));
+        let mapped = comments
+            .into_iter()
+            .map(|c| {
+                let mut comment = pr_comment(
+                    c.id.map(|n| format!("az-c-{n}")).unwrap_or_default(),
+                    kind,
+                    az_name(&c.author),
+                    c.content.unwrap_or_default(),
+                    c.published_date.unwrap_or_default(),
+                );
+                comment.path = path.clone();
+                comment.line = line;
+                comment.resolved = resolved;
+                comment
+            })
+            .collect();
+        threads.push(PrCommentThread {
+            id,
+            kind: kind.into(),
+            path,
+            line,
+            diff_hunk: None,
+            resolved,
+            review_state: None,
+            comments: mapped,
+        });
+    }
+    Ok(threads)
 }
 
 #[command]
