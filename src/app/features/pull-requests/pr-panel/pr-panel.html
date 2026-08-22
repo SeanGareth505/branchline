@@ -323,6 +323,34 @@
     >
       Reset
     </button>
+
+    <div class="copy-wrap list-copy filter-copy">
+      <button
+        type="button"
+        class="bl-btn"
+        [disabled]="!filtered().length"
+        (click)="copyFormat('markdown', filtered())"
+        title="Copy every pull request matching these filters as markdown"
+      >
+        <ng-icon name="lucideCopy" size="14" />
+        Copy filtered
+        <span class="count">{{ filtered().length }}</span>
+      </button>
+      <button
+        type="button"
+        class="bl-btn icon copy-more"
+        [disabled]="!filtered().length"
+        (click)="toggleCopyMenu('filtered')"
+        title="Copy this filter as…"
+      >
+        <ng-icon name="lucideChevronDown" size="12" />
+      </button>
+      @if (copyMenuOpen() === 'filtered') {
+        <div class="bl-menu copy-flyout" role="menu">
+          <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: filtered() }" />
+        </div>
+      }
+    </div>
   </div>
 
   <div class="list-tools">
@@ -335,32 +363,6 @@
       />
       Select all ({{ filtered().length }})
     </label>
-    <div class="copy-wrap list-copy">
-      <button
-        type="button"
-        class="bl-btn"
-        [disabled]="!filtered().length"
-        (click)="copyFormat('markdown', filtered())"
-        title="Copy every pull request in this list as markdown"
-      >
-        <ng-icon name="lucideCopy" size="14" />
-        Copy filtered
-      </button>
-      <button
-        type="button"
-        class="bl-btn icon copy-more"
-        [disabled]="!filtered().length"
-        (click)="toggleCopyMenu('list')"
-        title="Copy this list as…"
-      >
-        <ng-icon name="lucideChevronDown" size="12" />
-      </button>
-      @if (copyMenuOpen() === 'list') {
-        <div class="bl-menu copy-flyout" role="menu">
-          <ng-container *ngTemplateOutlet="copyFormatsTpl; context: { $implicit: filtered() }" />
-        </div>
-      }
-    </div>
     @if (copyCounts().selected) {
       <button
         type="button"
@@ -371,7 +373,6 @@
         Copy selected ({{ copyCounts().selected }})
       </button>
     }
-    <span class="muted">Copy filtered uses this list. Select rows to copy only those.</span>
     @if (hiddenCount()) {
       <button type="button" class="hidden-hint" (click)="revealHidden()">
         {{ hiddenCount() }} hidden by filters — show all
@@ -497,7 +498,7 @@
           @if (isExpanded(pr.id)) {
             <div class="detail">
               @if (pr.body?.trim()) {
-                <pre class="description">{{ pr.body }}</pre>
+                <pre class="description">{{ bodyDisplay(pr) }}</pre>
               } @else {
                 <p class="no-body">No description</p>
               }

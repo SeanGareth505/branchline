@@ -3,6 +3,7 @@ use crate::infrastructure::git_cli;
 use crate::infrastructure::mock_providers::MockPullRequest;
 use crate::state::AppState;
 use crate::{run_blocking, AppError, AppResult};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -2291,6 +2292,15 @@ query($owner: String!, $name: String!, $number: Int!) {
       reviews(first: 40) {
         nodes { id author { login } body state submittedAt }
       }
+    }
+  }
+}
+"#;
+
+const GITHUB_PR_CODE_THREADS_QUERY: &str = r#"
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
       reviewThreads(first: 50) {
         nodes {
           id
@@ -2433,24 +2443,38 @@ fn list_github_pr_comments(
 ) -> AppResult<Vec<PrCommentThread>> {
     let base = connection.base_url.trim().trim_end_matches('/');
     let token = connection.token.trim();
-    let client = github_http_client();
-    match list_github_pr_comments_graphql(client, base, token, &owner, &repo, number) {
+    match list_github_pr_comments_graphql(
+        github_graphql_client(),
+        base,
+        token,
+        &owner,
+        &repo,
+        number,
+    ) {
         Ok(threads) => Ok(threads),
-        Err(_) => list_github_pr_comments_rest(client, base, token, &owner, &repo, number),
+        Err(_) => list_github_pr_comments_rest(
+            github_http_client(),
+            base,
+            token,
+            &owner,
+            &repo,
+            number,
+        ),
     }
 }
 
-fn list_github_pr_comments_graphql(
+fn github_pr_comments_graphql_envelope(
     client: &reqwest::blocking::Client,
     base: &str,
     token: &str,
+    query: &str,
     owner: &str,
     repo: &str,
     number: u32,
-) -> AppResult<Vec<PrCommentThread>> {
+) -> AppResult<GqlConvEnvelope> {
     let url = github_graphql_url(base);
     let body = serde_json::json!({
-        "query": GITHUB_PR_COMMENTS_QUERY,
+        "query": query,
         "variables": { "owner": owner, "name": repo, "number": number },
     });
     let response = client
@@ -2469,10 +2493,22 @@ fn list_github_pr_comments_graphql(
             "Could not load pull request comments ({status}). {text}"
         )));
     }
-    let envelope: GqlConvEnvelope = response
+    response
         .json()
-        .map_err(|e| AppError::msg(format!("Could not parse pull request comments: {e}")))?;
-    let pr = envelope
+        .map_err(|e| AppError::msg(format!("Could not parse pull request comments: {e}")))
+}
+
+fn list_github_pr_comments_graphql(
+    client: &reqwest::blocking::Client,
+    base: &str,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    number: u32,
+) -> AppResult<Vec<PrCommentThread>> {
+    let envelope =
+        github_pr_comments_graphql_envelope(client, base, token, GITHUB_PR_COMMENTS_QUERY, owner, repo, number)?;
+    let mut pr = envelope
         .data
         .and_then(|d| d.repository)
         .and_then(|r| r.pull_request)
@@ -2491,6 +2527,23 @@ fn list_github_pr_comments_graphql(
                 detail
             })
         })?;
+    if let Ok(code_env) = github_pr_comments_graphql_envelope(
+        client,
+        base,
+        token,
+        GITHUB_PR_CODE_THREADS_QUERY,
+        owner,
+        repo,
+        number,
+    ) {
+        if let Some(code_pr) = code_env
+            .data
+            .and_then(|d| d.repository)
+            .and_then(|r| r.pull_request)
+        {
+            pr.review_threads = code_pr.review_threads;
+        }
+    }
     Ok(map_github_graphql_comments(pr))
 }
 
@@ -2639,6 +2692,33 @@ struct GhReviewEvent {
     submitted_at: Option<String>,
 }
 
+fn github_get_json_or_empty<T: DeserializeOwned + Default>(
+    client: &reqwest::blocking::Client,
+    token: &str,
+    url: &str,
+    error_label: &str,
+) -> AppResult<T> {
+    let response = client
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "Branchline")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .bearer_auth(token)
+        .send()
+        .map_err(|e| AppError::msg(format!("{error_label}: {e}")))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(T::default());
+    }
+    if !status.is_success() {
+        let body = response.text().unwrap_or_default();
+        return Err(AppError::msg(format!("{error_label} ({status}). {body}")));
+    }
+    response
+        .json()
+        .map_err(|e| AppError::msg(format!("{error_label}: {e}")))
+}
+
 fn list_github_pr_comments_rest(
     client: &reqwest::blocking::Client,
     base: &str,
@@ -2650,15 +2730,24 @@ fn list_github_pr_comments_rest(
     let issue_url = format!("{base}/repos/{owner}/{repo}/issues/{number}/comments?per_page=100");
     let review_url = format!("{base}/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100");
     let code_url = format!("{base}/repos/{owner}/{repo}/pulls/{number}/comments?per_page=100");
-    let issue: Vec<GhIssueComment> = github_get(client, token, &issue_url)?
-        .json()
-        .map_err(|e| AppError::msg(format!("Could not parse conversation comments: {e}")))?;
-    let reviews: Vec<GhReviewEvent> = github_get(client, token, &review_url)?
-        .json()
-        .map_err(|e| AppError::msg(format!("Could not parse review comments: {e}")))?;
-    let code: Vec<GhReviewComment> = github_get(client, token, &code_url)?
-        .json()
-        .map_err(|e| AppError::msg(format!("Could not parse code comments: {e}")))?;
+    let issue: Vec<GhIssueComment> = github_get_json_or_empty(
+        client,
+        token,
+        &issue_url,
+        "Could not load conversation comments",
+    )?;
+    let reviews: Vec<GhReviewEvent> = github_get_json_or_empty(
+        client,
+        token,
+        &review_url,
+        "Could not load review comments",
+    )?;
+    let code: Vec<GhReviewComment> = github_get_json_or_empty(
+        client,
+        token,
+        &code_url,
+        "Could not load code comments",
+    )?;
     let mut threads = Vec::new();
     for node in issue {
         if node.body.trim().is_empty() {

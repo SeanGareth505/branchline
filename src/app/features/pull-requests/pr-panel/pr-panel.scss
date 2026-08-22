@@ -107,6 +107,15 @@
   margin-left: -1px;
 }
 
+.filters .filter-copy {
+  margin-left: auto;
+}
+
+.filter-copy .count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
 .copy-menu {
   position: absolute;
   top: calc(100% + 0.3rem);
@@ -518,7 +527,7 @@ select {
 
 .description {
   margin: 0;
-  max-height: 16rem;
+  max-height: 10rem;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

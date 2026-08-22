@@ -629,9 +629,32 @@ export function prReviewerInitials(name: string): string {
   return cleaned.slice(0, 2).toUpperCase() || '?';
 }
 
+const PR_BODY_TRACKING_PARAMS = new Set(['atlOrigin', 'atl_f', 'focusedCommentId', 'pageId']);
+
+export function prBodyDisplay(body?: string | null): string {
+  if (!body) return '';
+  return body.replace(/https?:\/\/[^\s)<>\]]+/g, (url) => {
+    try {
+      const parsed = new URL(url);
+      let changed = false;
+      for (const key of [...parsed.searchParams.keys()]) {
+        if (PR_BODY_TRACKING_PARAMS.has(key) || key.startsWith('utm_')) {
+          parsed.searchParams.delete(key);
+          changed = true;
+        }
+      }
+      if (!changed) return url;
+      parsed.hash = '';
+      return parsed.toString().replace(/\?$/, '');
+    } catch {
+      return url;
+    }
+  });
+}
+
 export function prBodyExcerpt(body?: string | null, max = 160): string {
   if (!body) return '';
-  const text = body
+  const text = prBodyDisplay(body)
     .replace(/\r/g, '')
     .split('\n')
     .map((part) =>

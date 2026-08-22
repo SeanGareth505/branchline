@@ -1,4 +1,5 @@
 import {
+  prBodyDisplay,
   prBodyExcerpt,
   prCodeThreads,
   prConversationThreads,
@@ -106,6 +107,16 @@ describe('prBodyExcerpt', () => {
       'Summary Ship the graph focus work',
     );
     expect(prBodyExcerpt('a'.repeat(200)).length).toBeLessThanOrEqual(161);
+  });
+});
+
+describe('prBodyDisplay', () => {
+  it('strips Jira tracking query params from links', () => {
+    expect(
+      prBodyDisplay(
+        '[WEB-83](https://jira.example.com/browse/WEB-83?atlOrigin=eyJpIjoiYWJjIn0)',
+      ),
+    ).toBe('[WEB-83](https://jira.example.com/browse/WEB-83)');
   });
 });
 

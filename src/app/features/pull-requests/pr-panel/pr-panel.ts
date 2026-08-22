@@ -16,6 +16,7 @@ import { AppStore } from '../../../core/app.store';
 import type { MockPullRequest, PrCommentThread, PrCopyFormat, PrReviewerPerson, PrReviewerState } from '../../../core/models';
 import {
   prApprovals,
+  prBodyDisplay,
   prBodyExcerpt,
   prChangesRequested,
   prCheckFailed,
@@ -73,7 +74,7 @@ export class PrPanel {
   readonly changesDraftId = signal<string | null>(null);
   readonly changesText = signal('');
   readonly testing = signal(false);
-  readonly copyMenuOpen = signal<'header' | 'list' | null>(null);
+  readonly copyMenuOpen = signal<'header' | 'filtered' | null>(null);
   readonly actingId = signal<string | null>(null);
   readonly copyFormats: { id: PrCopyFormat; label: string }[] = [
     { id: 'links', label: 'Links' },
@@ -465,7 +466,7 @@ export class PrPanel {
     await this.copy(text, `Copied ${count} ${labels[format]}`);
   }
 
-  toggleCopyMenu(which: 'header' | 'list'): void {
+  toggleCopyMenu(which: 'header' | 'filtered'): void {
     this.copyMenuOpen.update((open) => (open === which ? null : which));
   }
 
@@ -1071,6 +1072,10 @@ export class PrPanel {
 
   bodyExcerpt(pr: MockPullRequest): string {
     return prBodyExcerpt(pr.body);
+  }
+
+  bodyDisplay(pr: MockPullRequest): string {
+    return prBodyDisplay(pr.body);
   }
 
   visibleLabels(pr: MockPullRequest): string[] {
