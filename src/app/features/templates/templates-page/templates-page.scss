@@ -128,6 +128,12 @@
   color: var(--git-modified);
 }
 
+.icon[data-kind='pullRequest'] {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
 .title-row {
   display: flex;
   align-items: center;

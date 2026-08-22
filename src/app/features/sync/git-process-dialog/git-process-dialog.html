@@ -1,7 +1,7 @@
 @if (store.gitProcess(); as process) {
   <div
     class="backdrop"
-    (click)="!process.running && close()"
+    (click)="close()"
     role="presentation"
   >
     <div
@@ -39,7 +39,6 @@
             type="button"
             class="bl-btn icon"
             (click)="close()"
-            [disabled]="process.running"
             aria-label="Close"
             title="Close"
           >
@@ -65,15 +64,14 @@
           />
           Keep dialog open after process exits
         </label>
-        <button
-          type="button"
-          class="bl-btn"
-          [class.bl-btn-primary]="!process.running"
-          [disabled]="process.running"
-          (click)="close()"
-        >
-          {{ process.running ? 'Running…' : 'Close' }}
-        </button>
+          <button
+            type="button"
+            class="bl-btn"
+            [class.bl-btn-primary]="!process.running"
+            (click)="close()"
+          >
+            {{ process.running ? 'Stop' : 'Close' }}
+          </button>
       </footer>
     </div>
   </div>

@@ -18,6 +18,7 @@ import { SelectDialog } from '../../shared/ui/select-dialog/select-dialog';
 import { SafetyDialog } from '../../shared/ui/safety-dialog/safety-dialog';
 import { Spinner } from '../../shared/ui/spinner/spinner';
 import { CloneDialog } from '../../features/repositories/clone-dialog/clone-dialog';
+import { OpenRepoDialog } from '../../features/repositories/open-repo-dialog/open-repo-dialog';
 import { CreateBranchDialog } from '../../features/branches/create-branch-dialog/create-branch-dialog';
 import { InteractiveRebaseDialog } from '../../features/rebase/interactive-rebase-dialog/interactive-rebase-dialog';
 import { ConflictResolverDialog } from '../../features/conflicts/conflict-resolver-dialog/conflict-resolver-dialog';
@@ -86,6 +87,7 @@ type ReleaseNavStatus = 'running' | 'success' | 'failure' | 'paused';
     CommitDialog,
     ChangelogDialog,
     CloneDialog,
+    OpenRepoDialog,
     CreateBranchDialog,
     InteractiveRebaseDialog,
     ConflictResolverDialog,

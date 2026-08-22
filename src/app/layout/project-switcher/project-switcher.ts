@@ -22,6 +22,7 @@ import { AppStore } from '../../core/app.store';
 import type { HostRepository, RecentRepo } from '../../core/models';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
+import { looksLikeFilesystemPath } from '../../shared/git/looks-like-path';
 
 type SwitcherTab = 'local' | 'remote' | 'results';
 
@@ -88,6 +89,14 @@ export class ProjectSwitcher {
   readonly linkedHostLabels = computed(() => this.linkedHosts().map((h) => h.label).join(', '));
 
   readonly searching = computed(() => this.filter().trim().length > 0);
+  readonly looksLikePathFilter = computed(() => looksLikeFilesystemPath(this.filter()));
+
+  openTypedPath(): void {
+    const path = this.filter().trim();
+    if (!path) return;
+    this.close();
+    void this.store.openOrOfferInit(path);
+  }
 
   private readonly localFuse = computed(() => {
     const current = this.store.currentRepo()?.path;
@@ -322,6 +331,15 @@ export class ProjectSwitcher {
 
   onSearchKeydown(event: KeyboardEvent): void {
     const items = this.flatItems();
+    if (event.key === 'Enter') {
+      const typed = this.filter().trim();
+      if (!items.length && looksLikeFilesystemPath(typed)) {
+        event.preventDefault();
+        this.close();
+        void this.store.openOrOfferInit(typed);
+        return;
+      }
+    }
     if (!items.length) return;
 
     if (event.key === 'ArrowDown') {
@@ -402,28 +420,7 @@ export class ProjectSwitcher {
 
   async openFolder(): Promise<void> {
     this.close();
-    if (this.isTauri()) {
-      try {
-        const selected = await openDialog({ directory: true, multiple: false });
-        if (typeof selected === 'string' && selected) {
-          await this.store.openRepo(selected);
-        }
-      } catch (err) {
-        this.store.showError(err);
-      }
-      return;
-    }
-    const path = await this.prompts.ask({
-      title: 'Open repository',
-      message: 'Enter the full path to a Git repository.',
-      label: 'Repository path',
-      placeholder: '/Users/you/Projects/repo',
-      confirmLabel: 'Open',
-      mono: true,
-    });
-    if (path?.trim()) {
-      await this.store.openRepo(path.trim());
-    }
+    this.store.openOpenRepoDialog();
   }
 
   startClone(): void {

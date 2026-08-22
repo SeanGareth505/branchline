@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import Fuse from 'fuse.js';
@@ -10,6 +10,7 @@ interface PaletteItem {
   id: string;
   label: string;
   group: string;
+  keywords?: string;
   run: () => void;
 }
 
@@ -26,6 +27,7 @@ export class CommandPalette {
   private readonly updates = inject(UpdateService);
   readonly query = signal('');
   readonly activeIndex = signal(0);
+  private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('search');
 
   constructor() {
     effect(() => {
@@ -33,6 +35,16 @@ export class CommandPalette {
       if (!this.store.paletteOpen() || !seed) return;
       this.query.set(seed);
       this.store.paletteSeedQuery.set(null);
+    });
+    effect((onCleanup) => {
+      if (!this.store.paletteOpen()) return;
+      const id = window.setTimeout(() => {
+        const el = this.searchInput()?.nativeElement;
+        if (!el) return;
+        el.focus();
+        el.select();
+      }, 0);
+      onCleanup(() => window.clearTimeout(id));
     });
   }
 
@@ -601,6 +613,13 @@ export class CommandPalette {
         run: () => void store.applyPatchFromUser(),
       },
       {
+        id: 'hygiene',
+        label: 'Clean up leftover branches…',
+        group: 'Git',
+        keywords: 'hygiene leftover merged gone unmerged',
+        run: () => store.openBranchHygieneDialog(),
+      },
+      {
         id: 'git-clean',
         label: 'Clean untracked files…',
         group: 'Git',
@@ -761,6 +780,13 @@ export class CommandPalette {
         run: () => store.closeRepo(),
       },
       {
+        id: 'open-repo',
+        label: 'Open repository…',
+        group: 'Repositories',
+        keywords: 'open folder path browse init filesystem',
+        run: () => store.openOpenRepoDialog(),
+      },
+      {
         id: 'clone',
         label: 'Clone repository…',
         group: 'Repositories',
@@ -830,7 +856,7 @@ export class CommandPalette {
   });
 
   private readonly fuse = computed(
-    () => new Fuse(this.actions(), { keys: ['label', 'group'], threshold: 0.35 }),
+    () => new Fuse(this.actions(), { keys: ['label', 'group', 'keywords'], threshold: 0.35 }),
   );
 
   readonly results = computed(() => {

@@ -12,6 +12,7 @@
       <button
         type="button"
         class="bl-btn"
+        [disabled]="running()"
         (click)="runQuick('status -sb')"
         title="Run git status -sb"
       >
@@ -20,6 +21,7 @@
       <button
         type="button"
         class="bl-btn"
+        [disabled]="running()"
         (click)="runQuick('log --oneline -12')"
         title="Run git log --oneline -12"
       >
@@ -28,6 +30,7 @@
       <button
         type="button"
         class="bl-btn"
+        [disabled]="running()"
         (click)="runQuick('diff --stat')"
         title="Run git diff --stat"
       >
@@ -36,6 +39,7 @@
       <button
         type="button"
         class="bl-btn"
+        [disabled]="running()"
         (click)="runQuick('branch -vv')"
         title="Run git branch -vv"
       >
@@ -51,12 +55,15 @@
 <span>{{ line }}</span>
 }
   </pre>
-  <form class="input-row" (submit)="$event.preventDefault(); run()">
+  <form class="input-row" ngNoForm (submit)="$event.preventDefault(); run()">
     <span class="prompt">$</span>
     <span class="git">git</span>
     <input
+      name="command"
       [ngModel]="command()"
+      [ngModelOptions]="{ standalone: true }"
       (ngModelChange)="command.set($event)"
+      (keydown.enter)="$event.preventDefault(); run()"
       placeholder="status -sb"
       [disabled]="running()"
       autocomplete="off"

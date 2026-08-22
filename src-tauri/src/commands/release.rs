@@ -191,7 +191,7 @@ fn load_config(repo: &Path) -> AppResult<ReleaseConfig> {
         .map_err(|e| crate::AppError::msg(format!("Could not read release.config.json: {e}")))?;
     let mut cfg: ReleaseConfig = serde_json::from_str(&text)
         .map_err(|e| crate::AppError::msg(format!("Invalid release.config.json: {e}")))?;
-    if cfg.files.is_empty() {
+    if cfg.files.is_empty() && repo.join("package.json").is_file() {
         cfg.files.push(ReleaseFileSpec {
             path: "package.json".into(),
             kind: "json".into(),
@@ -254,6 +254,24 @@ fn json_version_value(path: &Path, keys: &[String]) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+fn latest_tag_version(repo: &Path, prefix: &str) -> Option<String> {
+    let (ok, stdout, _) = git_cli::run_git_allow_fail(repo, &["tag", "--list", "--sort=-v:refname"]);
+    if !ok {
+        return None;
+    }
+    for line in stdout.lines() {
+        let tag = line.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        let version = version_from_release_tag(tag, prefix);
+        if parse_semver(&version).is_ok() {
+            return Some(version);
+        }
+    }
+    None
+}
+
 fn current_version(repo: &Path, cfg: &ReleaseConfig) -> AppResult<String> {
     for file in &cfg.files {
         if file.kind != "json" {
@@ -266,6 +284,12 @@ fn current_version(repo: &Path, cfg: &ReleaseConfig) -> AppResult<String> {
     }
     if let Some(version) = json_version_value(&repo.join("package.json"), &["version".into()]) {
         return Ok(version);
+    }
+    if cfg.files.is_empty() {
+        if let Some(version) = latest_tag_version(repo, &cfg.tag_prefix) {
+            return Ok(version);
+        }
+        return Ok("0.1.0".into());
     }
     Err(crate::AppError::msg(
         "Could not find a version source (package.json or a json file in release.config.json)",
@@ -676,11 +700,18 @@ fn build_preview(repo: &Path, input: &ReleasePreviewInput) -> AppResult<ReleaseP
                 .into(),
         );
     }
+    if files.is_empty() && !will_tag && dev_skipped_files.is_empty() {
+        blockers.push(
+            "No version files to update. Add a version file or create a tag.".into(),
+        );
+    }
 
     Ok(ReleasePreviewOutput {
         ok: blockers.is_empty(),
         message: if blockers.is_empty() {
-            if dev_skipped_files.is_empty() {
+            if files.is_empty() && will_tag {
+                format!("Ready to tag {product_name} {next} on HEAD (no version files)")
+            } else if dev_skipped_files.is_empty() {
                 format!("Ready to release {product_name} {current} → {next}")
             } else {
                 format!(
@@ -865,28 +896,39 @@ fn run_release_blocking(app: AppHandle, input: ReleasePreviewInput) -> AppResult
             effective_full_ship(preview.will_push),
         )?;
         let changed = applied.changed;
-        emit_release_progress(
-            &app,
-            path,
-            "staging",
-            &format!("Staging {} file(s)…", changed.len()),
-            Some(&preview.next_version),
-            Some(&preview.tag),
-        );
-        let add_args: Vec<&str> = std::iter::once("add")
-            .chain(std::iter::once("--"))
-            .chain(changed.iter().map(String::as_str))
-            .collect();
-        git_cli::run_git(path, &add_args)?;
-        emit_release_progress(
-            &app,
-            path,
-            "committing",
-            "Creating release commit…",
-            Some(&preview.next_version),
-            Some(&preview.tag),
-        );
-        git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
+        if changed.is_empty() {
+            if !preview.will_tag {
+                let message = "No version files changed, and tagging is off.".to_string();
+                emit_release_progress(&app, path, "error", &message, None, None);
+                return Ok(MutationOutput {
+                    ok: false,
+                    message,
+                });
+            }
+        } else {
+            emit_release_progress(
+                &app,
+                path,
+                "staging",
+                &format!("Staging {} file(s)…", changed.len()),
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            let add_args: Vec<&str> = std::iter::once("add")
+                .chain(std::iter::once("--"))
+                .chain(changed.iter().map(String::as_str))
+                .collect();
+            git_cli::run_git(path, &add_args)?;
+            emit_release_progress(
+                &app,
+                path,
+                "committing",
+                "Creating release commit…",
+                Some(&preview.next_version),
+                Some(&preview.tag),
+            );
+            git_cli::run_git(path, &["commit", "-m", &preview.commit_message])?;
+        }
         if preview.will_tag {
             emit_release_progress(
                 &app,
@@ -1452,14 +1494,88 @@ fn build_setup_hints(path: &Path) -> AppResult<ReleaseSetupHintsOutput> {
             },
         )
     };
-    let current_version = json_version_value(&pkg, &["version".into()]);
+    let current_version = json_version_value(&pkg, &["version".into()])
+        .or_else(|| latest_tag_version(path, &default_tag_prefix()));
+    let tag_only = suggested.is_empty();
     Ok(ReleaseSetupHintsOutput {
         product_name,
         branch,
         current_version,
         create_tag_default: true,
-        push_default: true,
+        push_default: !tag_only,
         suggested_files: suggested,
+    })
+}
+
+fn sanitize_npm_name(raw: &str) -> String {
+    let cleaned: String = raw
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches('-');
+    if trimmed.is_empty() {
+        "app".into()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn seed_package_json(repo: &Path) -> AppResult<()> {
+    let pkg = repo.join("package.json");
+    let version = latest_tag_version(repo, &tag_prefix_for_repo(repo)).unwrap_or_else(|| "0.1.0".into());
+    let name = sanitize_npm_name(
+        repo.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("app"),
+    );
+    if pkg.exists() {
+        let text = fs::read_to_string(&pkg)
+            .map_err(|e| crate::AppError::msg(format!("Could not read package.json: {e}")))?;
+        let mut data: Value = serde_json::from_str(&text)
+            .map_err(|e| crate::AppError::msg(format!("Invalid package.json: {e}")))?;
+        let obj = data
+            .as_object_mut()
+            .ok_or_else(|| crate::AppError::msg("package.json must be a JSON object"))?;
+        if json_version_value(&pkg, &["version".into()]).is_some() {
+            return Err(crate::AppError::msg(
+                "package.json already has a version field",
+            ));
+        }
+        obj.insert("version".into(), Value::String(version));
+        if !obj.contains_key("name") {
+            obj.insert("name".into(), Value::String(name));
+        }
+        let out = serde_json::to_string_pretty(&data).map_err(|e| {
+            crate::AppError::msg(format!("Could not serialize package.json: {e}"))
+        })?;
+        fs::write(&pkg, format!("{out}\n"))
+            .map_err(|e| crate::AppError::msg(format!("Could not write package.json: {e}")))?;
+        return Ok(());
+    }
+    let data = serde_json::json!({
+        "name": name,
+        "version": version,
+        "private": true
+    });
+    let out = serde_json::to_string_pretty(&data)
+        .map_err(|e| crate::AppError::msg(format!("Could not serialize package.json: {e}")))?;
+    fs::write(&pkg, format!("{out}\n"))
+        .map_err(|e| crate::AppError::msg(format!("Could not write package.json: {e}")))?;
+    Ok(())
+}
+
+#[command]
+pub fn seed_release_version_file(input: ReleaseRepoInput) -> AppResult<ReleaseSetupHintsOutput> {
+    git_cli::with_repo_lock(&PathBuf::from(&input.path), |path| {
+        seed_package_json(path)?;
+        build_setup_hints(path)
     })
 }
 
@@ -1480,8 +1596,10 @@ pub fn save_release_config(input: SaveReleaseConfigInput) -> AppResult<MutationO
     if branch.is_empty() {
         return Err(crate::AppError::msg("Release branch is required"));
     }
-    if input.files.is_empty() {
-        return Err(crate::AppError::msg("Select at least one version file"));
+    if input.files.is_empty() && !input.create_tag {
+        return Err(crate::AppError::msg(
+            "Select at least one version file, or enable tagging without a bump file",
+        ));
     }
     for file in &input.files {
         let relative = Path::new(&file.path);
@@ -4181,6 +4299,32 @@ mod tests {
         assert_eq!(version_from_release_tag("0.8.45", "v"), "0.8.45");
         assert_eq!(version_from_release_tag("rel-1.2.3", "rel-"), "1.2.3");
         assert_eq!(version_from_release_tag("sotf-1734", "v"), "sotf-1734");
+    }
+
+    #[test]
+    fn sanitize_npm_name_from_folder() {
+        assert_eq!(sanitize_npm_name("Branchline App"), "branchline-app");
+        assert_eq!(sanitize_npm_name("@@@"), "app");
+    }
+
+    #[test]
+    fn load_config_keeps_empty_files_without_package_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "branchline-release-empty-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("release.config.json"),
+            r#"{"productName":"Demo","createTag":true,"files":[]}"#,
+        )
+        .unwrap();
+        let cfg = load_config(&dir).unwrap();
+        assert!(cfg.files.is_empty());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

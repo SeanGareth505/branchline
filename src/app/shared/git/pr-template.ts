@@ -37,31 +37,32 @@ export interface PrTemplateContext {
 
 export interface PrTemplateToken {
   token: string;
+  label: string;
   hint: string;
 }
 
 export const PR_TEMPLATE_TOKENS: readonly PrTemplateToken[] = [
-  { token: '{title}', hint: 'Suggested pull request title' },
-  { token: '{branch}', hint: 'Source branch name' },
-  { token: '{base}', hint: 'Target branch name' },
-  { token: '{topic}', hint: 'Humanized branch topic' },
-  { token: '{slug}', hint: 'Branch leaf without the ticket' },
-  { token: '{type}', hint: 'feature, fix, hotfix, …' },
-  { token: '{jira}', hint: 'Ticket key from the branch' },
-  { token: '{jira_link}', hint: 'Markdown Jira link' },
-  { token: '{jira_url}', hint: 'Jira browse URL' },
-  { token: '{jira_summary}', hint: 'Linked Jira issue summary' },
-  { token: '{first_commit}', hint: 'Oldest unique commit subject' },
-  { token: '{first_commit_body}', hint: 'Oldest unique commit body' },
-  { token: '{first_commit_sha}', hint: 'Oldest unique commit short SHA' },
-  { token: '{latest_commit}', hint: 'Newest unique commit subject' },
-  { token: '{commits}', hint: 'Bullet list of commit subjects' },
-  { token: '{commit_count}', hint: 'Number of unique commits' },
-  { token: '{author}', hint: 'Git author name' },
-  { token: '{email}', hint: 'Git author email' },
-  { token: '{user}', hint: 'Git user slug' },
-  { token: '{repo}', hint: 'Repository name' },
-  { token: '{date}', hint: 'Today YYYY-MM-DD' },
+  { token: '{title}', label: 'Title', hint: 'Suggested pull request title' },
+  { token: '{branch}', label: 'Branch', hint: 'Source branch name' },
+  { token: '{base}', label: 'Base', hint: 'Target branch name' },
+  { token: '{topic}', label: 'Topic', hint: 'Humanized branch topic' },
+  { token: '{slug}', label: 'Slug', hint: 'Branch leaf without the ticket' },
+  { token: '{type}', label: 'Type', hint: 'feature, fix, hotfix, …' },
+  { token: '{jira}', label: 'Jira', hint: 'Ticket key from the branch' },
+  { token: '{jira_link}', label: 'Jira link', hint: 'Markdown Jira link' },
+  { token: '{jira_url}', label: 'Jira URL', hint: 'Jira browse URL' },
+  { token: '{jira_summary}', label: 'Jira summary', hint: 'Linked Jira issue summary' },
+  { token: '{first_commit}', label: 'First commit', hint: 'Oldest unique commit subject' },
+  { token: '{first_commit_body}', label: 'Commit body', hint: 'Oldest unique commit body' },
+  { token: '{first_commit_sha}', label: 'SHA', hint: 'Oldest unique commit short SHA' },
+  { token: '{latest_commit}', label: 'Latest commit', hint: 'Newest unique commit subject' },
+  { token: '{commits}', label: 'Commits', hint: 'Bullet list of commit subjects' },
+  { token: '{commit_count}', label: 'Count', hint: 'Number of unique commits' },
+  { token: '{author}', label: 'Author', hint: 'Git author name' },
+  { token: '{email}', label: 'Email', hint: 'Git author email' },
+  { token: '{user}', label: 'User', hint: 'Git user slug' },
+  { token: '{repo}', label: 'Repo', hint: 'Repository name' },
+  { token: '{date}', label: 'Date', hint: 'Today YYYY-MM-DD' },
 ];
 
 export const STARTER_PR_TEMPLATE_TITLE = '{title}';

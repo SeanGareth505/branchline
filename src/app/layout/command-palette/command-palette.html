@@ -10,6 +10,7 @@
       <div class="search-row">
         <ng-icon name="lucideSearch" size="16" />
         <input
+          #search
           type="search"
           placeholder="Search actions, repos, commits…"
           [ngModel]="query()"

@@ -163,9 +163,16 @@
                     }
                   </ul>
                 } @else {
-                  <div class="inline-alert error" role="alert">
-                    <ng-icon name="lucideCircleAlert" size="15" />
-                    <span>No supported version files were detected in this repository.</span>
+                  <div class="empty-files">
+                    <p>No version files yet. Add a <code>package.json</code> the releaser can bump, or enable Tag only to tag HEAD without a bump file.</p>
+                    <button
+                      type="button"
+                      class="bl-btn"
+                      [disabled]="setupBusy()"
+                      (click)="addVersionFile()"
+                    >
+                      {{ setupBusy() ? 'Adding…' : 'Add a version file' }}
+                    </button>
                   </div>
                 }
               </div>
@@ -182,6 +189,7 @@
                     type="button"
                     class="toggle"
                     [class.active]="createTagDefault() && pushDefault()"
+                    [disabled]="!hints.suggestedFiles.length"
                     (click)="setReleaseMode(true, true)"
                   >
                     Push & deploy
@@ -198,6 +206,7 @@
                     type="button"
                     class="toggle"
                     [class.active]="!createTagDefault()"
+                    [disabled]="!hints.suggestedFiles.length"
                     (click)="setReleaseMode(false, false)"
                   >
                     Commit only
@@ -205,7 +214,9 @@
                 </div>
                 <span class="field-help">
                   {{
-                    !createTagDefault()
+                    !hints.suggestedFiles.length
+                      ? 'Tag only creates a local tag on HEAD. It does not bump files, publish, or push.'
+                      : !createTagDefault()
                       ? 'Updates version files and creates a commit without creating or pushing a tag.'
                       : pushDefault()
                       ? 'Recommended. Pushes the release commit and tag so GitHub can build installers.'

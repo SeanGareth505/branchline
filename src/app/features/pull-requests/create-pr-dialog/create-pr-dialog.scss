@@ -148,6 +148,72 @@ h3 {
   font-size: 0.78rem;
 }
 
+.templates-label,
+.template-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tokens > span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.token {
+  height: 1.55rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--glass-bg);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.token:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+  color: var(--accent);
+}
+
+.token.off,
+.token:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.75rem 0.8rem 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+}
+
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

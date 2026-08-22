@@ -55,7 +55,6 @@ export class GitProcessDialog {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.store.gitProcess()?.running) return;
     this.close();
   }
 }

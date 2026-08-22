@@ -465,7 +465,7 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         } else {
             None
         };
-        let safe_to_delete = gone || merged_into_head || remote_merge_target.is_some();
+        let mut safe_to_delete = gone || merged_into_head || remote_merge_target.is_some();
         let (reason, detail) = if gone {
             (
                 "gone",
@@ -480,7 +480,8 @@ pub fn list_branch_hygiene(input: RepoPathInput) -> AppResult<Vec<BranchHygieneE
         } else if merged_into_head {
             ("merged", "Merged into HEAD".to_string())
         } else {
-            continue;
+            safe_to_delete = false;
+            ("unmerged", "Not merged into HEAD".to_string())
         };
         entries.push(BranchHygieneEntry {
             name: name.to_string(),

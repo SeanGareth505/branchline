@@ -124,16 +124,23 @@ export class ReleasePage {
   });
 
   readonly canSaveSetup = computed(() => {
-    return !!this.productName().trim() && !!this.branch().trim() && this.selectedFileList().length > 0;
+    if (!this.productName().trim() || !this.branch().trim()) return false;
+    if (this.selectedFileList().length > 0) return true;
+    return this.createTagDefault();
   });
   readonly setupGuidance = computed(() => {
     const hints = this.setupHints();
     if (!hints) return '';
-    if (!hints.suggestedFiles.length) {
-      return 'No supported version files were found. Add a package.json or Tauri version file, then try again.';
-    }
     if (!this.productName().trim()) return 'Enter the product name shown to users.';
     if (!this.branch().trim()) return 'Enter the branch that releases should use.';
+    if (!hints.suggestedFiles.length && !this.createTagDefault()) {
+      return 'Add a version file, or choose Tag only to tag HEAD without a bump file.';
+    }
+    if (!this.selectedFileList().length && this.createTagDefault()) {
+      return hints.suggestedFiles.length
+        ? 'Select at least one file containing the app version, or keep Tag only to tag HEAD without bumping files.'
+        : 'Ready to enable Tag only. Releases will tag HEAD without a version file, and will not publish or push.';
+    }
     if (!this.selectedFileList().length) return 'Select at least one file containing the app version.';
     if (hints.currentVersion) {
       return `Ready to enable releases. Branchline detected version ${hints.currentVersion}.`;
@@ -257,8 +264,34 @@ export class ReleasePage {
 
   setReleaseMode(createTag: boolean, push: boolean): void {
     this.store.releaseSetupError.set(null);
+    const hasFiles = this.selectedFileList().length > 0;
+    if (!hasFiles && (!createTag || push)) return;
     this.createTagDefault.set(createTag);
     this.pushDefault.set(createTag && push);
+  }
+
+  async addVersionFile(): Promise<void> {
+    const path = this.store.currentRepo()?.path;
+    if (!path || this.setupBusy()) return;
+    this.setupBusy.set(true);
+    this.store.releaseSetupError.set(null);
+    try {
+      const hints = await this.tauri.seedReleaseVersionFile(path);
+      this.setupHints.set(hints);
+      const selected: Record<string, boolean> = { ...this.selectedFiles() };
+      for (const file of hints.suggestedFiles) {
+        selected[file.path] = true;
+      }
+      this.selectedFiles.set(selected);
+      if (!this.productName().trim()) this.productName.set(hints.productName);
+      if (!this.branch().trim()) this.branch.set(hints.branch);
+    } catch (err) {
+      const message = this.store.formatError(err);
+      this.store.releaseSetupError.set(message);
+      this.store.showError(message);
+    } finally {
+      this.setupBusy.set(false);
+    }
   }
 
   openSetup(): void {

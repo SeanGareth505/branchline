@@ -210,16 +210,19 @@
           <span class="kind" title="Branches on this machine">Local</span>
           <span class="count" title="Number of local branches">{{ filteredLocal().length }}</span>
         </button>
-        @if (cleanupTargetCount() > 0) {
-          <button
-            type="button"
-            class="group-action danger"
-            title="Review leftover local branches"
-            (click)="cleanupLocalBranches($event)"
-          >
-            Clean up
-          </button>
-        }
+        <button
+          type="button"
+          class="group-action"
+          [class.danger]="cleanupTargetCount() > 0"
+          [title]="
+            cleanupTargetCount() > 0
+              ? 'Review leftover local branches'
+              : 'No leftover local branches'
+          "
+          (click)="cleanupLocalBranches($event)"
+        >
+          {{ cleanupTargetCount() > 0 ? 'Clean up' : 'Nothing leftover' }}
+        </button>
         <button
           type="button"
           class="icon"

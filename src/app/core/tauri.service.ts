@@ -41,6 +41,7 @@ import type {
   TestConnectionOutput,
   RepoStatus,
   RepoSummary,
+  ProbeRepoOutput,
   ResetMode,
   RunGitOutput,
   SafetyAction,
@@ -318,6 +319,10 @@ export class TauriService {
 
   peekRepository(path: string) {
     return this.invoke<RepoSummary>('peek_repository', { input: { path } });
+  }
+
+  probeRepository(path: string) {
+    return this.invoke<ProbeRepoOutput>('probe_repository', { input: { path } });
   }
 
   focusRepository(path: string) {
@@ -862,6 +867,10 @@ export class TauriService {
 
   getReleaseSetupHints(path: string) {
     return this.invoke<ReleaseSetupHintsOutput>('get_release_setup_hints', { input: { path } });
+  }
+
+  seedReleaseVersionFile(path: string) {
+    return this.invoke<ReleaseSetupHintsOutput>('seed_release_version_file', { input: { path } });
   }
 
   saveReleaseConfig(
@@ -1653,6 +1662,12 @@ export class TauriService {
       ],
       open_repository: dummyRepoSummary(args),
       peek_repository: dummyRepoSummary(args),
+      probe_repository: {
+        path: (args?.['input'] as { path?: string })?.path ?? '/Users/demo/projects/navigo',
+        exists: true,
+        isDir: true,
+        isGit: true,
+      },
       focus_repository: dummyRepoSummary(args),
       clone_repository: {
         path: (args?.['input'] as { destination?: string })?.destination ?? '/Users/demo/projects/cloned',
@@ -1799,6 +1814,16 @@ export class TauriService {
         currentVersion: '0.1.0',
         createTagDefault: true,
         pushDefault: true,
+        suggestedFiles: [
+          { path: 'package.json', kind: 'json', keys: ['version'], label: 'package.json' },
+        ],
+      },
+      seed_release_version_file: {
+        productName: 'Demo App',
+        branch: 'main',
+        currentVersion: '0.1.0',
+        createTagDefault: true,
+        pushDefault: false,
         suggestedFiles: [
           { path: 'package.json', kind: 'json', keys: ['version'], label: 'package.json' },
         ],
@@ -2688,6 +2713,12 @@ export class TauriService {
       list_templates: [
         { id: 'b1', kind: 'branch', name: 'Feature', pattern: 'feature/{jira}/{date}' },
         { id: 'c1', kind: 'commit', name: 'Conventional', pattern: '{type}: {summary}' },
+        {
+          id: 'p1',
+          kind: 'pullRequest',
+          name: 'Pull request',
+          pattern: '## Description\n\n{topic}\n\n## Jira Ticket\n\n{jira_link}\n\n## Changes\n\n{commits}',
+        },
       ],
       remove_recent_repo: [],
       pin_repo: [

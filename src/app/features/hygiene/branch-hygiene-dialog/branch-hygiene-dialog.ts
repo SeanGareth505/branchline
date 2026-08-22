@@ -42,7 +42,7 @@ export class BranchHygieneDialog {
       list.push(entry);
       buckets.set(entry.reason, list);
     }
-    const order = ['merged', 'gone'];
+    const order = ['merged', 'gone', 'unmerged'];
     const reasons = [
       ...order.filter((reason) => buckets.has(reason)),
       ...[...buckets.keys()].filter((reason) => !order.includes(reason)).sort(),
@@ -97,11 +97,23 @@ export class BranchHygieneDialog {
     if (!this.canDeleteSafe()) return;
     const chosen = this.chosen();
     if (!chosen.length) return;
+    const unmerged = chosen.filter((entry) => entry.reason === 'unmerged').length;
+    const confirmed = await this.prompts.ask({
+      title: 'Delete leftover branches?',
+      message: unmerged
+        ? `Delete ${chosen.length} local branch${chosen.length === 1 ? '' : 'es'}, including ${unmerged} unmerged? A backup is not created here.`
+        : `Delete ${chosen.length} leftover local branch${chosen.length === 1 ? '' : 'es'}?`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      confirmOnly: true,
+    });
+    if (confirmed === null) return;
     this.busy.set(true);
     try {
       await this.store.deleteLocalBranches(
         chosen.map((entry) => entry.name),
         false,
+        chosen.filter((entry) => entry.reason !== 'merged').map((entry) => entry.name),
       );
       this.store.closeBranchHygieneDialog();
     } finally {
@@ -125,7 +137,9 @@ export class BranchHygieneDialog {
     try {
       const list = await this.store.loadBranchHygiene();
       this.entries.set(list);
-      this.selectedReasons.set(new Set(list.map((entry) => entry.reason)));
+      this.selectedReasons.set(
+        new Set(list.filter((entry) => entry.reason !== 'unmerged').map((entry) => entry.reason)),
+      );
     } catch (err) {
       this.entries.set([]);
       this.selectedReasons.set(new Set());
@@ -141,6 +155,8 @@ export class BranchHygieneDialog {
         return 'Merged into HEAD';
       case 'gone':
         return 'Remote branch deleted';
+      case 'unmerged':
+        return 'Unmerged (left alone unless you pick them)';
       default:
         return reason;
     }

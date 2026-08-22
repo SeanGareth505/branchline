@@ -44,7 +44,7 @@
 
     <div class="toolbar">
       <div class="actions">
-        <button type="button" class="tool primary" (click)="openFolder()">
+        <button type="button" class="tool primary" (click)="store.openOpenRepoDialog()">
           <ng-icon name="lucideFolderOpen" size="16" />
           Open
         </button>
@@ -151,7 +151,7 @@
         title="No repositories yet"
         message="Open a local folder or clone a remote to start browsing history."
         ctaLabel="Open repository"
-        (cta)="openFolder()"
+        (cta)="store.openOpenRepoDialog()"
       />
     </div>
   } @else if (filteredCount() === 0) {
@@ -167,6 +167,11 @@
       </p>
       @if (query()) {
         <button type="button" class="bl-btn" (click)="query.set('')">Clear search</button>
+        @if (pathQuery(); as path) {
+          <button type="button" class="bl-btn bl-btn-primary" (click)="store.openOpenRepoDialog(path)">
+            Open path…
+          </button>
+        }
       } @else if (!store.showingAllRepoAccounts()) {
         <button type="button" class="bl-btn" (click)="store.selectRepoAccount('*')">
           Show all accounts

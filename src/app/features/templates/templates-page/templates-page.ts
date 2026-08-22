@@ -31,11 +31,15 @@ export class TemplatesPage implements OnInit {
   }
 
   iconFor(kind: string): string {
-    return kind === 'commit' ? 'lucideGitCommitHorizontal' : 'lucideGitBranch';
+    if (kind === 'commit') return 'lucideGitCommitHorizontal';
+    if (kind === 'pullRequest') return 'lucideGitPullRequest';
+    return 'lucideGitBranch';
   }
 
   kindHint(kind: string): string {
-    return kind === 'commit' ? 'Commit message pattern' : 'Branch name pattern';
+    if (kind === 'commit') return 'Commit message pattern';
+    if (kind === 'pullRequest') return 'Pull request description';
+    return 'Branch name pattern';
   }
 
   async copy(pattern: string): Promise<void> {
@@ -50,6 +54,10 @@ export class TemplatesPage implements OnInit {
   use(template: TemplateInfo): void {
     if (template.kind === 'branch') {
       this.store.applyBranchTemplate(template);
+      return;
+    }
+    if (template.kind === 'pullRequest') {
+      this.store.applyPrTemplate(template);
       return;
     }
     this.store.applyCommitTemplate(template);

@@ -515,6 +515,7 @@ export class AppStore {
   readonly ignoreEditor = signal<IgnoreFileOutput | null>(null);
   readonly commitModalOpen = signal(false);
   readonly pendingCommitTemplate = signal<TemplateInfo | null>(null);
+  readonly pendingPrTemplate = signal<{ title: string; body: string } | null>(null);
   readonly paletteSeedQuery = signal<string | null>(null);
   readonly changelogModalOpen = signal(false);
   readonly shortcutOverlayOpen = signal(false);
@@ -524,6 +525,8 @@ export class AppStore {
   readonly loadingMoreCommits = signal(false);
   readonly cloneDialogOpen = signal(false);
   readonly cloneDialogUrl = signal('');
+  readonly openRepoDialogOpen = signal(false);
+  readonly openRepoDialogPath = signal('');
   readonly hostRepos = signal<HostRepository[]>([]);
   readonly hostReposLoading = signal(false);
   readonly hostReposError = signal<string | null>(null);
@@ -2108,6 +2111,43 @@ export class AppStore {
     this.cloneDialogUrl.set('');
   }
 
+  openOpenRepoDialog(path?: string): void {
+    this.openRepoDialogPath.set(path?.trim() ?? '');
+    this.openRepoDialogOpen.set(true);
+  }
+
+  closeOpenRepoDialog(): void {
+    this.openRepoDialogOpen.set(false);
+    this.openRepoDialogPath.set('');
+  }
+
+  async openOrOfferInit(path: string): Promise<boolean> {
+    const normalized = path.trim();
+    if (!normalized) return false;
+    try {
+      const probe = await this.tauri.probeRepository(normalized);
+      if (probe.isGit) {
+        await this.openRepo(probe.path || normalized);
+        return true;
+      }
+      const init = await this.prompts.ask({
+        title: 'Not a Git repository',
+        message: probe.exists
+          ? `${normalized} has no .git folder. Initialize a repository here?`
+          : `${normalized} does not exist yet. Create the folder and run git init?`,
+        confirmLabel: 'Init',
+        cancelLabel: 'Cancel',
+        confirmOnly: true,
+      });
+      if (init === null) return false;
+      await this.initRepo(normalized);
+      return true;
+    } catch (err) {
+      this.showError(err);
+      return false;
+    }
+  }
+
   linkedGitHosts(): ConnectionConfig[] {
     return this.settings().connections.filter(
       (c) =>
@@ -3365,7 +3405,6 @@ export class AppStore {
   }
 
   closeGitProcess(): void {
-    if (this.gitProcess()?.running) return;
     this.clearGitProcessCloseTimer();
     this.gitProcess.set(null);
   }
@@ -5136,7 +5175,6 @@ export class AppStore {
       skipHooks: opts?.skipHooks,
       message: message.trim(),
     });
-    const ownsProcess = !this.gitProcess()?.running;
     this.openGitProcess('commit', command);
     let committed = false;
     try {
@@ -5166,7 +5204,7 @@ export class AppStore {
       this.showError(err);
       return { ok: false };
     } finally {
-      if (ownsProcess) this.finishGitProcess(committed);
+      this.finishGitProcess(committed);
     }
   }
 
@@ -5322,29 +5360,19 @@ export class AppStore {
       options: [
         {
           value: 'keep',
-          label: "Don't change",
+          label: 'Bring changes',
           hint: hasConflicts
             ? 'Unavailable — local changes would be overwritten by this checkout'
-            : 'Keep local changes if they do not conflict with the branch you are checking out',
+            : 'Keep working-tree changes if they do not conflict with the other branch',
           disabled: hasConflicts,
         },
         {
-          value: 'merge',
-          label: 'Merge',
-          hint: 'Three-way merge between your current branch, local changes, and the branch you are checking out',
-        },
-        {
           value: 'stash',
-          label: 'Stash',
-          hint: 'Stash local changes, check out the branch, then optionally re-apply the stash',
-        },
-        {
-          value: 'reset',
-          label: 'Reset',
-          hint: 'Discard local changes and check out the branch (cannot be undone)',
+          label: 'Stash and switch',
+          hint: 'Stash local changes, check out the branch, then undo from the toast to restore them',
         },
       ],
-      confirmLabel: 'Checkout',
+      confirmLabel: 'Switch',
       cancelLabel: 'Cancel',
       initialValue: hasConflicts ? 'stash' : 'keep',
       filterable: false,
@@ -5410,20 +5438,15 @@ export class AppStore {
         message = result.message;
       }
 
-      this.showToast(message, { kind: 'success' });
-
       if (mode === 'stash') {
-        const apply = await this.prompts.ask({
-          title: 'Apply stashed changes?',
-          message: `Apply the stash onto '${target}' now?`,
-          confirmLabel: 'Apply stash',
-          cancelLabel: 'Keep stashed',
-          confirmOnly: true,
-          required: false,
+        this.showToast(`Switched to ${target}. Changes stashed.`, {
+          kind: 'success',
+          actionLabel: 'Undo',
+          undo: () => void this.stashPop(0),
+          durationMs: 12000,
         });
-        if (apply !== null) {
-          await this.stashPop(0);
-        }
+      } else {
+        this.showToast(message, { kind: 'success' });
       }
 
       return true;
@@ -6903,6 +6926,18 @@ export class AppStore {
     this.openCommitModal();
   }
 
+  applyPrTemplate(template: TemplateInfo): void {
+    if (!this.currentRepo()) {
+      this.showWarning('Open a repository first');
+      return;
+    }
+    this.pendingPrTemplate.set({
+      title: '{title}',
+      body: template.pattern,
+    });
+    void this.openCreatePullRequest();
+  }
+
   applyBranchTemplate(template: TemplateInfo): void {
     if (!this.currentRepo()) {
       this.showWarning('Open a repository first');
@@ -6977,9 +7012,29 @@ export class AppStore {
     this.createPrPreferredHead.set(null);
   }
 
-  async savePrTemplate(input: { name: string; title: string; body: string }): Promise<void> {
+  async savePrTemplate(input: {
+    id?: string;
+    name: string;
+    title: string;
+    body: string;
+  }): Promise<string | null> {
     const name = input.name.trim();
-    if (!name) return;
+    if (!name) return null;
+    const current = this.settings().prTemplates;
+    const existingId = input.id?.trim();
+    if (existingId && current.some((t) => t.id === existingId)) {
+      const next: SavedPrTemplate = {
+        id: existingId,
+        name,
+        title: input.title.trim(),
+        body: input.body,
+      };
+      await this.saveSettings({
+        prTemplates: current.map((t) => (t.id === existingId ? next : t)),
+      });
+      this.showSuccess(`Updated template “${name}”`);
+      return existingId;
+    }
     const next: SavedPrTemplate = {
       id: `pr-${Date.now().toString(36)}`,
       name,
@@ -6987,9 +7042,10 @@ export class AppStore {
       body: input.body,
     };
     await this.saveSettings({
-      prTemplates: [...this.settings().prTemplates, next],
+      prTemplates: [...current, next],
     });
     this.showSuccess(`Saved template “${name}”`);
+    return next.id;
   }
 
   async deletePrTemplate(id: string): Promise<void> {
@@ -8474,7 +8530,11 @@ export class AppStore {
     return this.tauri.listBranchHygiene(path);
   }
 
-  async deleteLocalBranches(names: string[], force: boolean): Promise<void> {
+  async deleteLocalBranches(
+    names: string[],
+    force: boolean,
+    extraForce: string[] = [],
+  ): Promise<void> {
     const path = this.currentRepo()?.path;
     if (!path || !names.length) return;
     const gone = new Set(
@@ -8482,9 +8542,10 @@ export class AppStore {
         .filter((branch) => branch.upstreamGone)
         .map((branch) => branch.name),
     );
+    const forced = new Set(extraForce);
     try {
       for (const name of names) {
-        await this.tauri.deleteBranch(path, name, force || gone.has(name));
+        await this.tauri.deleteBranch(path, name, force || gone.has(name) || forced.has(name));
       }
       await this.refreshRepo();
       this.showToast(`Deleted ${names.length} local branch${names.length === 1 ? '' : 'es'}`, {
@@ -9126,33 +9187,59 @@ export class AppStore {
       return false;
     }
     const availableFiles = hints.suggestedFiles ?? [];
+    let files = availableFiles;
+    let resolvedMode: 'deploy' | 'tag' | 'commit' = releaseMode;
     if (!availableFiles.length) {
-      this.showWarning('No version files were detected for release setup.');
-      return false;
+      const emptyChoice = await this.selects.ask({
+        title: 'Release setup',
+        message:
+          'No version files were found. Add a package.json the releaser can bump, or enable Tag only to tag HEAD without a bump file. Neither option publishes or pushes.',
+        label: 'Next step',
+        options: [
+          { value: 'seed', label: 'Add a version file' },
+          { value: 'tag', label: 'Tag only without a bump file' },
+        ],
+        initialValue: 'seed',
+        confirmLabel: 'Continue',
+      });
+      if (emptyChoice === 'seed') {
+        const seeded = await this.tauri.seedReleaseVersionFile(path);
+        files = seeded.suggestedFiles ?? [];
+        if (!files.length) {
+          this.showWarning('Could not add a version file.');
+          return false;
+        }
+      } else if (emptyChoice === 'tag') {
+        files = [];
+        resolvedMode = 'tag';
+      } else {
+        return false;
+      }
+    } else {
+      const fileChoice = await this.selects.ask({
+        title: 'Release setup',
+        message: availableFiles.map((file) => `• ${file.path}`).join('\n'),
+        label: 'Version files',
+        options: [
+          { value: 'all', label: 'Use all detected version files' },
+          {
+            value: 'package',
+            label: 'Use package.json only',
+            hint: 'Only available when package.json is detected',
+          },
+        ],
+        initialValue: 'all',
+        confirmLabel: 'Create config',
+      });
+      if (fileChoice !== 'all' && fileChoice !== 'package') return false;
+      const packageOnly = availableFiles.filter((file) => file.path === 'package.json');
+      files = fileChoice === 'package' && packageOnly.length ? packageOnly : availableFiles;
     }
-    const fileChoice = await this.selects.ask({
-      title: 'Release setup',
-      message: availableFiles.map((file) => `• ${file.path}`).join('\n'),
-      label: 'Version files',
-      options: [
-        { value: 'all', label: 'Use all detected version files' },
-        {
-          value: 'package',
-          label: 'Use package.json only',
-          hint: 'Only available when package.json is detected',
-        },
-      ],
-      initialValue: 'all',
-      confirmLabel: 'Create config',
-    });
-    if (fileChoice !== 'all' && fileChoice !== 'package') return false;
-    const packageOnly = availableFiles.filter((file) => file.path === 'package.json');
-    const files = fileChoice === 'package' && packageOnly.length ? packageOnly : availableFiles;
     const saved = await this.saveReleaseSetup({
       productName: productName.trim(),
       branch: branch.trim(),
-      createTag: releaseMode !== 'commit',
-      push: releaseMode === 'deploy',
+      createTag: resolvedMode !== 'commit',
+      push: resolvedMode === 'deploy',
       files,
     });
     if (!saved) return false;

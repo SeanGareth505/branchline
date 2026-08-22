@@ -39,7 +39,14 @@
 
       <section class="templates">
         <div class="templates-head">
-          <h3>Template</h3>
+          <div class="templates-label">
+            <h3>Template</h3>
+            <app-help-tip
+              compact
+              heading="PR templates"
+              [body]="templateHelp"
+            />
+          </div>
           <div class="template-actions">
             <button type="button" class="bl-btn save" (click)="startNewTemplate()">
               <ng-icon name="lucidePlus" size="13" />
@@ -62,10 +69,10 @@
           <button
             type="button"
             class="chip"
-            [class.on]="selectedId() === 'new'"
-            (click)="startNewTemplate()"
+            [class.on]="selectedId() === 'starter'"
+            (click)="selectTemplate('starter')"
           >
-            New
+            Starter
           </button>
           @for (t of repoTemplates(); track t.id) {
             <button
@@ -91,6 +98,15 @@
                 class="remove"
                 role="button"
                 tabindex="0"
+                title="Edit template"
+                (click)="editSaved(t, $event)"
+              >
+                <ng-icon name="lucidePencil" size="11" />
+              </span>
+              <span
+                class="remove"
+                role="button"
+                tabindex="0"
                 title="Delete template"
                 (click)="removeSaved(t, $event)"
               >
@@ -101,49 +117,115 @@
         </div>
         @if (loadingTemplates()) {
           <p class="hint">Looking for PULL_REQUEST_TEMPLATE.md…</p>
-        }         @else if (!repoTemplates().length && !savedTemplates().length && selectedId() !== 'new') {
+        } @else if (selectedId() === 'starter') {
+          <p class="hint">Filled from this branch: Jira ticket, topic, commits, and first commit.</p>
+        } @else if (selectedId() !== 'blank') {
+          <p class="hint">Tokens like {{ tokenSample }} and placeholders like KEY-123 are filled from this branch.</p>
+        } @else if (!repoTemplates().length && !savedTemplates().length) {
           <p class="hint">No repo template found. Description suggested from branch commits.</p>
-        } @else if (selectedId() === 'blank' && body().trim()) {
+        } @else if (body().trim()) {
           <p class="hint">Description suggested from commits between branches.</p>
-        } @else if (selectedId() === 'new') {
-          <p class="hint">Insert placeholders. They fill from the branch, Jira ticket, and commits when you pick the saved template later.</p>
         }
       </section>
 
-      <label class="field">
-        <span>Title</span>
-        <input
-          type="text"
-          [ngModel]="title()"
-          (ngModelChange)="onTitleChange($event)"
-          placeholder="Short summary of the change"
-        />
-      </label>
+      @if (composing()) {
+        <section class="composer">
+          <label class="field">
+            <span>Template name</span>
+            <input
+              type="text"
+              [ngModel]="draftName()"
+              (ngModelChange)="draftName.set($event)"
+              placeholder="Jira feature"
+            />
+          </label>
+          <label class="field">
+            <span>Title pattern</span>
+            <input
+              #draftTitleInput
+              type="text"
+              [ngModel]="draftTitle()"
+              (ngModelChange)="draftTitle.set($event)"
+              (focus)="markInsertTarget('title')"
+              placeholder="title"
+            />
+          </label>
+          <label class="field body-field">
+            <span>Body pattern</span>
+            <textarea
+              #draftBodyInput
+              rows="9"
+              [ngModel]="draftBody()"
+              (ngModelChange)="draftBody.set($event)"
+              (focus)="markInsertTarget('body')"
+              placeholder="Use jira, branch, first_commit…"
+            ></textarea>
+          </label>
+          <div class="tokens">
+            <span>Insert token</span>
+            <div class="token-row">
+              @for (t of tokens; track t.token) {
+                <button
+                  type="button"
+                  class="token"
+                  [title]="t.hint"
+                  (click)="insertToken(t.token)"
+                >
+                  {{ t.token }}
+                </button>
+              }
+            </div>
+          </div>
+          <div class="composer-actions">
+            <button type="button" class="bl-btn" (click)="cancelCompose()">Cancel</button>
+            <button type="button" class="bl-btn bl-btn-primary" (click)="saveDraftTemplate()">
+              Save template
+            </button>
+          </div>
+        </section>
+      } @else {
+        <label class="field">
+          <span>Title</span>
+          <input
+            #titleInput
+            type="text"
+            [ngModel]="title()"
+            (ngModelChange)="onTitleChange($event)"
+            (focus)="markInsertTarget('title')"
+            placeholder="Short summary of the change"
+          />
+        </label>
 
-      <label class="field body-field">
-        <span>Description</span>
-        <textarea
-          #bodyField
-          rows="9"
-          [ngModel]="body()"
-          (ngModelChange)="onBodyChange($event)"
-          placeholder="What changed, why, and how to test it"
-        ></textarea>
-        @if (selectedId() === 'new') {
+        <label class="field body-field">
+          <span>Description</span>
+          <textarea
+            #bodyInput
+            rows="9"
+            [ngModel]="body()"
+            (ngModelChange)="onBodyChange($event)"
+            (focus)="markInsertTarget('body')"
+            placeholder="What changed, why, and how to test it"
+          ></textarea>
+        </label>
+
+        <div class="tokens">
+          <span>Insert</span>
           <div class="token-row">
-            @for (token of tokens; track token.token) {
+            @for (t of insertChips(); track t.token) {
               <button
                 type="button"
                 class="token"
-                [title]="token.hint"
-                (click)="insertToken(token.token)"
+                [class.off]="!t.value"
+                [disabled]="!t.value"
+                [title]="t.value ? t.value : t.hint"
+                (click)="insertToken(t.token)"
               >
-                {{ token.token }}
+                {{ t.label }}
               </button>
             }
           </div>
-        }
-      </label>
+        </div>
+      }
 
       @if (method() === 'cli') {
         <label class="check">

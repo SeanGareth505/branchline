@@ -41,6 +41,15 @@ pub struct RepoSummary {
     pub has_changes: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProbeRepoOutput {
+    pub path: String,
+    pub exists: bool,
+    pub is_dir: bool,
+    pub is_git: bool,
+}
+
 fn repo_name(path: &Path) -> String {
     path.file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -150,6 +159,23 @@ pub async fn peek_repository(input: PathInput) -> AppResult<RepoSummary> {
     run_blocking(move || {
         let path = PathBuf::from(&input.path);
         light_summary(&path, &input.path)
+    })
+    .await
+}
+
+#[command]
+pub async fn probe_repository(input: PathInput) -> AppResult<ProbeRepoOutput> {
+    run_blocking(move || {
+        let path = PathBuf::from(input.path.trim());
+        let exists = path.exists();
+        let is_dir = path.is_dir();
+        let is_git = is_dir && git_cli::ensure_repo(&path).is_ok();
+        Ok(ProbeRepoOutput {
+            path: input.path,
+            exists,
+            is_dir,
+            is_git,
+        })
     })
     .await
 }

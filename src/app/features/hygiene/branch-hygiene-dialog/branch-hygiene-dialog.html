@@ -25,8 +25,8 @@
         <p class="empty">Nothing to clean up</p>
       } @else {
         <p class="choice">
-          Safe delete only includes merged locals, and locals whose remote was deleted. Unmerged
-          branches that still exist on origin are left alone.
+          Safe delete is merged locals and locals whose remote was deleted. Unmerged branches stay
+          off unless you tick that group.
         </p>
         <div class="list">
           @for (group of groups(); track group.reason) {
@@ -46,7 +46,7 @@
                     <span class="row-body">
                       <span class="name-line">
                         <span class="name">{{ entry.name }}</span>
-                        <span class="safety">safe</span>
+                        <span class="safety">{{ entry.safeToDelete ? 'safe' : 'unmerged' }}</span>
                       </span>
                       @if (entry.detail || entry.tipShortSha) {
                         <span class="meta">

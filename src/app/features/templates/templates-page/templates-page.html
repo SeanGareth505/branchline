@@ -6,10 +6,10 @@
         <h1>Templates</h1>
         <app-help-tip
           heading="Templates"
-          body="Reusable patterns for branch names and commit messages. Use them from Create branch and Commit so naming stays consistent."
+          body="Reusable patterns for branch names, commit messages, and pull request descriptions. Use them from Create branch, Commit, and Create PR so naming stays consistent."
         />
       </div>
-      <p>Branch names and commit messages that stay consistent.</p>
+      <p>Branch names, commit messages, and pull request descriptions that stay consistent.</p>
     </div>
     <div class="count">
       <strong>{{ loading() ? '…' : templates().length }}</strong>
@@ -31,7 +31,7 @@
               <div>
                 <div class="title-row">
                   <h2>{{ t.name }}</h2>
-                  <span class="bl-chip" [class.bl-chip-tag]="t.kind === 'commit'">{{ t.kind }}</span>
+          <span class="bl-chip" [class.bl-chip-tag]="t.kind !== 'branch'">{{ t.kind === 'pullRequest' ? 'pull request' : t.kind }}</span>
                 </div>
                 <p class="sub">{{ kindHint(t.kind) }}</p>
               </div>

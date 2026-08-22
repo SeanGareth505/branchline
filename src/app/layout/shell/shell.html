@@ -272,6 +272,9 @@
   @defer (when store.cloneDialogOpen()) {
     <app-clone-dialog />
   }
+  @defer (when store.openRepoDialogOpen()) {
+    <app-open-repo-dialog />
+  }
   @defer (when store.createBranchDialogOpen()) {
     <app-create-branch-dialog />
   }

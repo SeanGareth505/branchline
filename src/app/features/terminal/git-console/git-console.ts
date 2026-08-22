@@ -37,6 +37,7 @@ export class GitConsole {
   }
 
   async run(): Promise<void> {
+    if (this.running()) return;
     const path = this.store.currentRepo()?.path;
     const raw = this.command().trim();
     if (!path || !raw) return;

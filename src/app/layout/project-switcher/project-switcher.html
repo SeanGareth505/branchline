@@ -126,6 +126,9 @@
         @if (searching()) {
           @if (!resultCount()) {
             <p class="empty">No matches for “{{ filter().trim() }}”</p>
+            @if (looksLikePathFilter()) {
+              <button type="button" class="text-btn" (click)="openTypedPath()">Open this path…</button>
+            }
           } @else {
             @if (localGroups().length) {
               <div class="section-label">Local</div>

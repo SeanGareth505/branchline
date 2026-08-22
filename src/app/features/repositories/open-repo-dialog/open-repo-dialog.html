@@ -1,0 +1,57 @@
+@if (store.openRepoDialogOpen()) {
+  <div class="backdrop bl-backdrop" (click)="close()" role="presentation">
+    <div
+      class="dialog bl-glass-dialog"
+      [class.dragging]="dragging()"
+      (click)="$event.stopPropagation()"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave()"
+      (drop)="onDrop($event)"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="open-repo-title"
+    >
+      <header>
+        <div>
+          <h2 id="open-repo-title">Open repository</h2>
+          <p>Paste a folder path, browse, or drop a folder. If it is not a Git repo, you can initialize it.</p>
+        </div>
+        <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close" title="Close">
+          <ng-icon name="lucideX" size="15" />
+        </button>
+      </header>
+
+      <label>
+        Folder path
+        <div class="row">
+          <input
+            type="text"
+            placeholder="/Users/you/Projects/repo"
+            [ngModel]="path()"
+            (ngModelChange)="path.set($event)"
+            (keydown.enter)="submit()"
+            autofocus
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="button" class="bl-btn" (click)="pickFolder()">Browse…</button>
+        </div>
+      </label>
+
+      <p class="drop-hint">Drop a folder here</p>
+
+      <footer>
+        <button type="button" class="bl-btn" (click)="close()" [disabled]="busy()">Cancel</button>
+        <button
+          type="button"
+          class="bl-btn bl-btn-primary"
+          (click)="submit()"
+          [disabled]="!canSubmit()"
+        >
+          <ng-icon name="lucideFolderOpen" size="15" />
+          {{ busy() ? 'Opening…' : 'Open' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}

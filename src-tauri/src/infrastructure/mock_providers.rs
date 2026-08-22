@@ -272,7 +272,7 @@ pub fn list_templates() -> Vec<TemplateInfo> {
             id: "tpl-pr".into(),
             name: "Pull request".into(),
             kind: "pullRequest".into(),
-            pattern: "## Summary\n\n## Test plan\n- [ ] ".into(),
+            pattern: "## Description\n\n{topic}\n\n## Jira Ticket\n\n{jira_link}\n\n## Changes\n\n{commits}\n\n## Screenshots\n\n## Test plan\n\n- [ ] ".into(),
             description: "PR description scaffold".into(),
         },
     ]

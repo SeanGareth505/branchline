@@ -52,6 +52,13 @@ export interface RepoSummary {
   hasChanges: boolean;
 }
 
+export interface ProbeRepoOutput {
+  path: string;
+  exists: boolean;
+  isDir: boolean;
+  isGit: boolean;
+}
+
 export type FileStatusKind =
   | 'added'
   | 'modified'

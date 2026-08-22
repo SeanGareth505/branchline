@@ -10,6 +10,7 @@ import { BrandMark } from '../../shared/ui/brand-mark/brand-mark';
 import { EmptyState } from '../../shared/ui/empty-state/empty-state';
 import { identityColor, repoIdentityKey } from '../../shared/ui/identity-color';
 import { PromptService } from '../../shared/ui/prompt-dialog/prompt.service';
+import { looksLikeFilesystemPath } from '../../shared/git/looks-like-path';
 
 type SortMode = 'recent' | 'name';
 
@@ -71,6 +72,10 @@ export class Dashboard {
 
   readonly filteredCount = computed(() => this.filtered().length);
   readonly totalCount = computed(() => this.store.repos().length);
+  readonly pathQuery = computed(() => {
+    const q = this.query().trim();
+    return looksLikeFilesystemPath(q) ? q : '';
+  });
 
   readonly continueRepo = computed(() => {
     if (this.query().trim()) return null;
@@ -164,28 +169,7 @@ export class Dashboard {
   }
 
   async openFolder(): Promise<void> {
-    if (this.isTauri()) {
-      try {
-        const selected = await open({ directory: true, multiple: false });
-        if (typeof selected === 'string' && selected) {
-          await this.store.openRepo(selected);
-        }
-      } catch (err) {
-        this.store.showError(err);
-      }
-      return;
-    }
-    const path = await this.prompts.ask({
-      title: 'Open repository',
-      message: 'Enter the full path to a Git repository.',
-      label: 'Repository path',
-      placeholder: '/Users/you/Projects/repo',
-      confirmLabel: 'Open',
-      mono: true,
-    });
-    if (path?.trim()) {
-      await this.store.openRepo(path.trim());
-    }
+    this.store.openOpenRepoDialog();
   }
 
   async initRepo(): Promise<void> {
