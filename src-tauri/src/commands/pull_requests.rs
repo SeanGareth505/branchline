@@ -227,6 +227,16 @@ fn github_http_client() -> &'static reqwest::blocking::Client {
     })
 }
 
+fn github_graphql_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
+}
+
 fn github_login_cache() -> &'static Mutex<Option<(String, String)>> {
     static CACHE: OnceLock<Mutex<Option<(String, String)>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(None))
@@ -382,7 +392,15 @@ fn list_github_prs(
     let client = github_http_client();
     let me = resolve_github_login(client, base, token, &connection.username);
 
-    match list_github_prs_graphql(client, base, token, &owner, &repo, &me, input) {
+    match list_github_prs_graphql(
+        github_graphql_client(),
+        base,
+        token,
+        &owner,
+        &repo,
+        &me,
+        input,
+    ) {
         Ok(prs) => Ok(prs),
         Err(_) => list_github_prs_rest(client, base, token, &owner, &repo, &me, input),
     }
@@ -424,7 +442,6 @@ query($owner: String!, $name: String!, $states: [PullRequestState!]) {
         additions
         deletions
         comments { totalCount }
-        reviewThreads { totalCount }
         author { login }
         assignees(first: 10) { nodes { login } }
         labels(first: 20) { nodes { name } }
@@ -592,8 +609,6 @@ struct GqlPullRequest {
     #[serde(default)]
     deletions: u32,
     comments: Option<GqlCount>,
-    #[serde(default)]
-    review_threads: Option<GqlCount>,
     author: Option<GqlLogin>,
     assignees: Option<GqlNodes<GqlLogin>>,
     labels: Option<GqlNodes<GqlLabel>>,
@@ -799,8 +814,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         pipeline_status,
         additions: pr.additions,
         deletions: pr.deletions,
-        comment_count: pr.comments.map(|c| c.total_count).unwrap_or(0)
-            + pr.review_threads.map(|c| c.total_count).unwrap_or(0),
+        comment_count: pr.comments.map(|c| c.total_count).unwrap_or(0),
         is_mine: !me.is_empty() && author.eq_ignore_ascii_case(me),
         needs_my_review,
         approvals,

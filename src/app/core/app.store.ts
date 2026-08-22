@@ -1220,7 +1220,6 @@ export class AppStore {
     if (fresh) return;
 
     if (
-      !opts?.force &&
       this.pullRequestsInflight &&
       this.pullRequestsInflightKey === key
     ) {
@@ -1763,7 +1762,9 @@ export class AppStore {
       if (this.repoLoadGen === gen) this.repoBooting = false;
     });
     this.resumeReleaseTrackingIfNeeded();
-    if (this.hasLinkedPrHost()) void this.refreshPullRequests('open');
+    if (this.hasLinkedPrHost() && this.view() === 'prs') {
+      void this.refreshPullRequests('open');
+    }
     if (!hadCache) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
