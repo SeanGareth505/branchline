@@ -737,7 +737,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         .reviews
         .map(|n| n.nodes)
         .unwrap_or_default();
-    let (approvals, changes_requested, approved_by, requested_changes_by) =
+    let (approvals, changes_requested, approved_by, requested_changes_by, commented_by) =
         summarize_reviews(reviews.iter().map(|r| {
             (
                 r.author
@@ -748,7 +748,11 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
             )
         }));
     let mut reviewers = requested.clone();
-    for name in approved_by.iter().chain(requested_changes_by.iter()) {
+    for name in approved_by
+        .iter()
+        .chain(requested_changes_by.iter())
+        .chain(commented_by.iter())
+    {
         if !reviewers.iter().any(|r| r.eq_ignore_ascii_case(name)) {
             reviewers.push(name.clone());
         }
@@ -765,8 +769,16 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         .and_then(|c| c.nodes.into_iter().flatten().next())
         .and_then(|n| n.commit)
         .and_then(|c| c.status_check_rollup);
-    let (check_passed, check_failed, check_pending, check_total, pipeline_status, check_summary) =
-        summarize_checks(rollup.as_ref());
+    let (
+        check_passed,
+        check_failed,
+        check_pending,
+        check_total,
+        pipeline_status,
+        check_summary,
+        check_failed_names,
+        check_pending_names,
+    ) = summarize_checks(rollup.as_ref());
     let merge_state = pr
         .merge_state_status
         .or(pr.mergeable.clone())
@@ -823,6 +835,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         pending_reviewers: requested.len() as u32,
         approved_by,
         requested_changes_by,
+        commented_by,
         check_passed,
         check_failed,
         check_pending,
@@ -830,6 +843,8 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
         mergeable,
         merge_state,
         check_summary,
+        check_failed_names,
+        check_pending_names,
         body: pr.body,
         ..Default::default()
     };
@@ -837,7 +852,7 @@ fn map_gql_pr(pr: GqlPullRequest, repo: &str, me: &str) -> MockPullRequest {
     mapped
 }
 
-fn summarize_reviews<'a, I>(reviews: I) -> (u32, u32, Vec<String>, Vec<String>)
+fn summarize_reviews<'a, I>(reviews: I) -> (u32, u32, Vec<String>, Vec<String>, Vec<String>)
 where
     I: Iterator<Item = (String, &'a str)>,
 {
@@ -852,20 +867,24 @@ where
     }
     let mut approved_by = Vec::new();
     let mut requested_changes_by = Vec::new();
+    let mut commented_by = Vec::new();
     for (_, (name, state)) in latest {
         match state.as_str() {
             "APPROVED" => approved_by.push(name),
             "CHANGES_REQUESTED" => requested_changes_by.push(name),
+            "COMMENTED" => commented_by.push(name),
             _ => {}
         }
     }
     approved_by.sort();
     requested_changes_by.sort();
+    commented_by.sort();
     (
         approved_by.len() as u32,
         requested_changes_by.len() as u32,
         approved_by,
         requested_changes_by,
+        commented_by,
     )
 }
 
@@ -910,9 +929,20 @@ fn format_check_summary(
     format!("{passed}/{total} checks")
 }
 
-fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String, String) {
+fn summarize_checks(
+    rollup: Option<&GqlRollup>,
+) -> (u32, u32, u32, u32, String, String, Vec<String>, Vec<String>) {
     let Some(rollup) = rollup else {
-        return (0, 0, 0, 0, "unknown".into(), String::new());
+        return (
+            0,
+            0,
+            0,
+            0,
+            "unknown".into(),
+            String::new(),
+            Vec::new(),
+            Vec::new(),
+        );
     };
     let mut passed = 0u32;
     let mut failed = 0u32;
@@ -985,7 +1015,16 @@ fn summarize_checks(rollup: Option<&GqlRollup>) -> (u32, u32, u32, u32, String, 
         }
     };
     let summary = format_check_summary(passed, &failed_names, &pending_names, total);
-    (passed, failed, pending, total, pipeline.into(), summary)
+    (
+        passed,
+        failed,
+        pending,
+        total,
+        pipeline.into(),
+        summary,
+        failed_names,
+        pending_names,
+    )
 }
 
 fn finalize_pr_insights(pr: &mut MockPullRequest) {
@@ -1147,7 +1186,7 @@ fn enrich_github_pr_rest(
     {
         if response.status().is_success() {
             if let Ok(reviews) = response.json::<Vec<GhReview>>() {
-                let (approvals, changes_requested, approved_by, requested_changes_by) =
+                let (approvals, changes_requested, approved_by, requested_changes_by, commented_by) =
                     summarize_reviews(reviews.iter().map(|r| {
                         (
                             r.user
@@ -1161,6 +1200,19 @@ fn enrich_github_pr_rest(
                 pr.changes_requested = changes_requested;
                 pr.approved_by = approved_by;
                 pr.requested_changes_by = requested_changes_by;
+                pr.commented_by = commented_by;
+                let extras: Vec<String> = pr
+                    .approved_by
+                    .iter()
+                    .chain(pr.requested_changes_by.iter())
+                    .chain(pr.commented_by.iter())
+                    .cloned()
+                    .collect();
+                for name in extras {
+                    if !pr.reviewers.iter().any(|r| r.eq_ignore_ascii_case(&name)) {
+                        pr.reviewers.push(name);
+                    }
+                }
                 pr.review_state = String::new();
             }
         }
@@ -1210,6 +1262,8 @@ fn enrich_github_pr_rest(
                     pr.pipeline_status = String::new();
                     pr.check_summary =
                         format_check_summary(passed, &failed_names, &pending_names, pr.check_total);
+                    pr.check_failed_names = failed_names;
+                    pr.check_pending_names = pending_names;
                 }
             }
         }

@@ -36,6 +36,8 @@ pub struct MockPullRequest {
     #[serde(default)]
     pub requested_changes_by: Vec<String>,
     #[serde(default)]
+    pub commented_by: Vec<String>,
+    #[serde(default)]
     pub check_passed: u32,
     #[serde(default)]
     pub check_failed: u32,
@@ -51,6 +53,10 @@ pub struct MockPullRequest {
     pub ready_to_merge: bool,
     #[serde(default)]
     pub check_summary: String,
+    #[serde(default)]
+    pub check_failed_names: Vec<String>,
+    #[serde(default)]
+    pub check_pending_names: Vec<String>,
     #[serde(default)]
     pub body: String,
 }
@@ -85,6 +91,7 @@ impl Default for MockPullRequest {
             pending_reviewers: 0,
             approved_by: Vec::new(),
             requested_changes_by: Vec::new(),
+            commented_by: Vec::new(),
             check_passed: 0,
             check_failed: 0,
             check_pending: 0,
@@ -93,6 +100,8 @@ impl Default for MockPullRequest {
             merge_state: String::new(),
             ready_to_merge: false,
             check_summary: String::new(),
+            check_failed_names: Vec::new(),
+            check_pending_names: Vec::new(),
             body: String::new(),
         }
     }
@@ -141,6 +150,16 @@ impl WorkflowStep {
             }),
         }
     }
+
+    pub fn stash_auto() -> Self {
+        Self::Detailed {
+            id: "stash".into(),
+            config: Some(WorkflowStepConfig {
+                skip_prompt: Some(true),
+                ..Default::default()
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,53 +187,44 @@ pub fn builtin_workflows() -> Vec<WorkflowInfo> {
     vec![
         WorkflowInfo {
             id: "wf-feature".into(),
-            name: "Create feature branch".into(),
-            description: "Create feature/{jira}/{date}, then open commit".into(),
-            steps: vec![
-                WorkflowStep::create_branch("feature/{jira}/{date}"),
-                WorkflowStep::simple("openCommit"),
-            ],
+            name: "Start feature".into(),
+            description: "Create feature/{jira}/{date} and check it out".into(),
+            steps: vec![WorkflowStep::create_branch("feature/{jira}/{date}")],
             builtin: true,
             enabled: true,
         },
         WorkflowInfo {
-            id: "wf-switch".into(),
-            name: "Switch branch".into(),
-            description: "Choose a local branch and check it out".into(),
-            steps: vec![WorkflowStep::simple("checkoutBranch")],
+            id: "wf-hotfix".into(),
+            name: "Start hotfix".into(),
+            description: "Create hotfix/{date} from the current HEAD".into(),
+            steps: vec![WorkflowStep::create_branch("hotfix/{date}")],
             builtin: true,
             enabled: true,
         },
         WorkflowInfo {
             id: "wf-switch-sync".into(),
-            name: "Switch and sync".into(),
-            description: "Check out a branch, then fetch and pull".into(),
+            name: "Switch and update".into(),
+            description: "Check out a branch, then rebase onto upstream".into(),
             steps: vec![
                 WorkflowStep::simple("checkoutBranch"),
-                WorkflowStep::simple("fetch"),
-                WorkflowStep::simple("pull"),
+                WorkflowStep::simple("pullRebase"),
             ],
             builtin: true,
             enabled: true,
         },
         WorkflowInfo {
             id: "wf-sync".into(),
-            name: "Sync with remote".into(),
-            description: "Fetch, pull, then push your current branch".into(),
-            steps: vec![
-                WorkflowStep::simple("fetch"),
-                WorkflowStep::simple("pull"),
-                WorkflowStep::simple("push"),
-            ],
+            name: "Update from remote".into(),
+            description: "Rebase the current branch onto upstream".into(),
+            steps: vec![WorkflowStep::simple("pullRebase")],
             builtin: true,
             enabled: true,
         },
         WorkflowInfo {
-            id: "wf-hotfix".into(),
-            name: "Hotfix release".into(),
-            description: "Create hotfix/{date}, commit, and push".into(),
+            id: "wf-commit-push".into(),
+            name: "Commit and push".into(),
+            description: "Commit current changes, then push".into(),
             steps: vec![
-                WorkflowStep::create_branch("hotfix/{date}"),
                 WorkflowStep::simple("openCommit"),
                 WorkflowStep::simple("push"),
             ],
@@ -223,12 +233,11 @@ pub fn builtin_workflows() -> Vec<WorkflowInfo> {
         },
         WorkflowInfo {
             id: "wf-stash-pull".into(),
-            name: "Stash and pull".into(),
-            description: "Park local changes, pull, then refresh".into(),
+            name: "Stash and update".into(),
+            description: "Park local changes, then rebase onto upstream".into(),
             steps: vec![
-                WorkflowStep::simple("stash"),
-                WorkflowStep::simple("pull"),
-                WorkflowStep::simple("refresh"),
+                WorkflowStep::stash_auto(),
+                WorkflowStep::simple("pullRebase"),
             ],
             builtin: true,
             enabled: true,

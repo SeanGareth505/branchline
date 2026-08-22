@@ -1,0 +1,253 @@
+:host {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.12rem 0.35rem 0.12rem 0.12rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trigger:hover,
+.trigger.open,
+.trigger:focus-visible {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
+}
+
+.trigger.empty {
+  padding: 0.12rem 0.4rem;
+}
+
+.trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.people {
+  display: flex;
+  align-items: center;
+}
+
+.person {
+  position: relative;
+  display: inline-flex;
+  margin-left: -0.28rem;
+}
+
+.person:first-child,
+.person-more:first-child {
+  margin-left: 0;
+}
+
+.face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--identity, var(--accent));
+  box-shadow: 0 0 0 1.5px var(--bg-surface);
+}
+
+.person .mark {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 1px var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.person[data-state='approved'] .mark {
+  color: var(--git-added);
+  background: color-mix(in srgb, var(--git-added) 18%, var(--bg-surface));
+}
+
+.person[data-state='changes'] .mark {
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 18%, var(--bg-surface));
+}
+
+.person[data-state='commented'] .mark {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface));
+}
+
+.person[data-state='pending'] .mark {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1.5px solid var(--text-muted);
+  background: var(--bg-surface);
+}
+
+.person-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  margin-left: -0.28rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 0 0 1.5px var(--bg-surface);
+}
+
+.sum {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.sum[data-review='approved'] {
+  color: var(--git-added);
+}
+
+.sum[data-review='changesRequested'] {
+  color: var(--git-modified);
+}
+
+.card {
+  width: min(17.5rem, calc(100vw - 1.5rem));
+  padding: 0.7rem 0.75rem 0.65rem;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 12px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  box-shadow: var(--shadow-float);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.card .sum {
+  font-size: 11px;
+}
+
+.group + .group {
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  margin: 0 0 0.32rem;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.group[data-state='approved'] h4 {
+  color: var(--git-added);
+}
+
+.group[data-state='changes'] h4 {
+  color: var(--git-modified);
+}
+
+.group[data-state='commented'] h4 {
+  color: var(--accent);
+}
+
+.n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+li {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.5rem;
+}
+
+.who {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.group[data-state='approved'] .state {
+  color: var(--git-added);
+}
+
+.group[data-state='changes'] .state {
+  color: var(--git-modified);
+}
+
+.group[data-state='commented'] .state {
+  color: var(--accent);
+}
+
+.none {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}

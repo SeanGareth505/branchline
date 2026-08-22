@@ -1,0 +1,122 @@
+:host {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.trigger {
+  cursor: pointer;
+}
+
+.trigger.open,
+.trigger:focus-visible {
+  filter: brightness(1.08);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.card {
+  width: min(18.5rem, calc(100vw - 1.5rem));
+  padding: 0.7rem 0.75rem 0.65rem;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 12px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.4);
+  box-shadow: var(--shadow-float);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.sum {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sum[data-ci='success'] {
+  color: var(--git-added);
+}
+
+.sum[data-ci='failure'] {
+  color: var(--git-deleted);
+}
+
+.sum[data-ci='pending'] {
+  color: var(--git-modified);
+}
+
+.group + .group {
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  margin: 0 0 0.32rem;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.group[data-state='failed'] h4 {
+  color: var(--git-deleted);
+}
+
+.group[data-state='pending'] h4 {
+  color: var(--git-modified);
+}
+
+.group[data-state='passed'] h4 {
+  color: var(--git-added);
+}
+
+.n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+li {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.none {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}

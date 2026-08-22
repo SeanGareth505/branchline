@@ -1,0 +1,64 @@
+<button
+  type="button"
+  class="bl-chip trigger"
+  [attr.data-ci]="tone()"
+  cdkOverlayOrigin
+  #origin="cdkOverlayOrigin"
+  [class.open]="open()"
+  (mouseenter)="show()"
+  (mouseleave)="scheduleHide()"
+  (focus)="show()"
+  (blur)="scheduleHide()"
+  (click)="keepOpen($event)"
+  [attr.aria-expanded]="open()"
+  [attr.aria-haspopup]="'dialog'"
+  [attr.aria-label]="'Checks: ' + summary()"
+>
+  {{ summary() }}
+</button>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="origin"
+  [cdkConnectedOverlayOpen]="open()"
+  [cdkConnectedOverlayPositions]="positions"
+  [cdkConnectedOverlayPush]="true"
+  [cdkConnectedOverlayViewportMargin]="10"
+  [cdkConnectedOverlayPanelClass]="'bl-help-overlay'"
+  (overlayOutsideClick)="close()"
+  (detach)="close()"
+>
+  <div
+    class="card"
+    role="dialog"
+    [attr.aria-label]="'Checks: ' + summary()"
+    (mouseenter)="show()"
+    (mouseleave)="scheduleHide()"
+  >
+    <header>
+      <h3>Checks</h3>
+      <span class="sum" [attr.data-ci]="tone()">{{ summary() }}</span>
+    </header>
+
+    @if (groups().length) {
+      @for (group of groups(); track group.state) {
+        <section class="group" [attr.data-state]="group.state">
+          <h4>
+            <ng-icon [name]="groupIcon(group.state)" size="12" />
+            {{ group.label }}
+            <span class="n">{{ group.count }}</span>
+          </h4>
+          @if (group.names.length) {
+            <ul>
+              @for (name of group.names; track name) {
+                <li>{{ name }}</li>
+              }
+            </ul>
+          }
+        </section>
+      }
+    } @else {
+      <p class="none">No checks have run on this pull request yet.</p>
+    }
+  </div>
+</ng-template>

@@ -1,13 +1,16 @@
 import {
   prBodyDisplay,
   prBodyExcerpt,
+  prBodySegments,
   prCodeThreads,
   prConversationThreads,
   prDiffHunkPreview,
   prMergeBlockReason,
   prReadyToMerge,
+  prReviewerGroups,
   prReviewerInitials,
   prReviewerPeople,
+  prReviewerSummary,
   prReviewStateLabel,
 } from './models';
 import type { MockPullRequest } from './models';
@@ -44,6 +47,7 @@ function pr(partial: Partial<MockPullRequest> = {}): MockPullRequest {
     readyToMerge: partial.readyToMerge,
     approvedBy: partial.approvedBy,
     requestedChangesBy: partial.requestedChangesBy,
+    commentedBy: partial.commentedBy,
   };
 }
 
@@ -83,6 +87,17 @@ describe('prReviewerPeople', () => {
     ]);
   });
 
+  it('marks people who only left a comment review', () => {
+    expect(
+      prReviewerPeople(
+        pr({
+          reviewers: ['alex'],
+          commentedBy: ['alex'],
+        }),
+      ),
+    ).toEqual([{ name: 'alex', state: 'commented' }]);
+  });
+
   it('includes people who approved without being in reviewers', () => {
     const people = prReviewerPeople(
       pr({
@@ -91,6 +106,40 @@ describe('prReviewerPeople', () => {
       }),
     );
     expect(people.map((p) => p.name)).toEqual(['jamie', 'sam']);
+  });
+});
+
+describe('prReviewerGroups', () => {
+  it('groups reviewers by approved, changes, and waiting', () => {
+    const groups = prReviewerGroups(
+      prReviewerPeople(
+        pr({
+          reviewers: ['jamie', 'sam', 'alex'],
+          approvedBy: ['jamie'],
+          requestedChangesBy: ['sam'],
+        }),
+      ),
+    );
+    expect(groups.map((group) => group.state)).toEqual(['approved', 'changes', 'pending']);
+    expect(groups[0].people.map((person) => person.name)).toEqual(['jamie']);
+    expect(groups[2].label).toBe('Waiting to review');
+  });
+});
+
+describe('prReviewerSummary', () => {
+  it('prefers requested changes over the approval count', () => {
+    expect(
+      prReviewerSummary(
+        prReviewerPeople(
+          pr({
+            reviewers: ['jamie', 'sam'],
+            approvedBy: ['jamie'],
+            requestedChangesBy: ['sam'],
+          }),
+        ),
+      ),
+    ).toBe('1 requested changes');
+    expect(prReviewerSummary([])).toBe('No reviewers');
   });
 });
 
@@ -117,6 +166,17 @@ describe('prBodyDisplay', () => {
         '[WEB-83](https://jira.example.com/browse/WEB-83?atlOrigin=eyJpIjoiYWJjIn0)',
       ),
     ).toBe('[WEB-83](https://jira.example.com/browse/WEB-83)');
+  });
+});
+
+describe('prBodySegments', () => {
+  it('turns markdown links into labeled segments', () => {
+    expect(
+      prBodySegments('[WEB-83](https://jira.example.com/browse/WEB-83) and more'),
+    ).toEqual([
+      { kind: 'link', text: 'WEB-83', href: 'https://jira.example.com/browse/WEB-83' },
+      { kind: 'text', text: ' and more' },
+    ]);
   });
 });
 

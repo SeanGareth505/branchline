@@ -411,9 +411,7 @@
                   {{ mergeLabel }}
                 </span>
               }
-              <span class="bl-chip" [attr.data-ci]="checkTone(pr)" [title]="checkCountLabel(pr)">
-                {{ checkCountLabel(pr) }}
-              </span>
+              <app-pr-checks [pr]="pr" />
             </div>
             <button
               type="button"
@@ -454,31 +452,11 @@
           </div>
 
           <div class="scan">
-            @if (!isExpanded(pr.id) && compactReviewers(pr).length) {
-              <div class="people" role="list" [attr.aria-label]="'Reviewers for #' + pr.number">
-                @for (person of compactReviewers(pr); track person.name) {
-                  <span
-                    class="person"
-                    role="listitem"
-                    [attr.data-state]="person.state"
-                    [title]="person.name + ' — ' + reviewerStateLabel(person.state)"
-                  >
-                    <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
-                    <span class="mark" aria-hidden="true">
-                      @if (person.state === 'approved') {
-                        <ng-icon name="lucideCheck" size="9" />
-                      } @else if (person.state === 'changes') {
-                        <ng-icon name="lucideX" size="9" />
-                      }
-                    </span>
-                  </span>
-                }
-                @if (extraReviewerCount(pr); as extra) {
-                  <span class="person-more">+{{ extra }}</span>
-                }
-              </div>
-            }
-            <span class="people-sum" [attr.data-review]="pr.reviewState">{{ reviewerSummary(pr) }}</span>
+            <app-pr-reviewers
+              [people]="reviewerPeople(pr)"
+              [reviewState]="pr.reviewState"
+              [emptyLabel]="pr.status === 'open' ? 'No reviewers' : 'No reviews'"
+            />
             @if (pr.labels.length) {
               <div class="labels">
                 @for (l of visibleLabels(pr); track l) {
@@ -497,32 +475,11 @@
 
           @if (isExpanded(pr.id)) {
             <div class="detail">
-              @if (pr.body?.trim()) {
-                <pre class="description">{{ bodyDisplay(pr) }}</pre>
+              @if (bodySegments(pr).length) {
+                <div class="description">@for (part of bodySegments(pr); track $index) {@if (part.kind === 'link' && part.href) {<a [href]="part.href" (click)="openBodyLink($event, part.href)">{{ part.text }}</a>} @else {<span>{{ part.text }}</span>}}</div>
               } @else {
                 <p class="no-body">No description</p>
               }
-
-              <div class="reviewer-list" role="list" [attr.aria-label]="'Reviewers for #' + pr.number">
-                @for (person of reviewerPeople(pr); track person.name) {
-                  <div class="reviewer-row" role="listitem" [attr.data-state]="person.state">
-                    <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
-                    <span class="who">{{ person.name }}</span>
-                    <span class="state">
-                      @if (person.state === 'approved') {
-                        <ng-icon name="lucideCheck" size="12" />
-                      } @else if (person.state === 'changes') {
-                        <ng-icon name="lucideX" size="12" />
-                      } @else {
-                        <ng-icon name="lucideMinus" size="12" />
-                      }
-                      {{ reviewerStateLabel(person.state) }}
-                    </span>
-                  </div>
-                } @empty {
-                  <p class="no-body">No reviewers assigned</p>
-                }
-              </div>
 
               <app-pr-comments
                 [threads]="commentsFor(pr)"

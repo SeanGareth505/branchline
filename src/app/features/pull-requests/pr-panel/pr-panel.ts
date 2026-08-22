@@ -13,11 +13,11 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { AppStore } from '../../../core/app.store';
-import type { MockPullRequest, PrCommentThread, PrCopyFormat, PrReviewerPerson, PrReviewerState } from '../../../core/models';
+import type { MockPullRequest, PrBodySegment, PrCommentThread, PrCopyFormat, PrReviewerPerson } from '../../../core/models';
 import {
   prApprovals,
-  prBodyDisplay,
   prBodyExcerpt,
+  prBodySegments,
   prChangesRequested,
   prCheckFailed,
   prCheckPending,
@@ -25,10 +25,8 @@ import {
   prMergeBlockReason,
   prPendingReviewers,
   prReadyToMerge,
-  prReviewerInitials,
   prReviewerPeople,
 } from '../../../core/models';
-import { identityColor } from '../../../shared/ui/identity-color';
 import { formatPullRequests, checkLine, reviewLine, sharedRepoPrefix } from '../pr-copy';
 import { TauriService } from '../../../core/tauri.service';
 import { HelpTip } from '../../../shared/ui/help-tip/help-tip';
@@ -36,12 +34,14 @@ import { PageSkeleton } from '../../../shared/ui/page-skeleton/page-skeleton';
 import { EmptyState } from '../../../shared/ui/empty-state/empty-state';
 import { PromptService } from '../../../shared/ui/prompt-dialog/prompt.service';
 import { PrComments } from '../pr-comments/pr-comments';
+import { PrReviewers } from '../pr-reviewers/pr-reviewers';
+import { PrChecks } from '../pr-checks/pr-checks';
 
 type SortKey = 'updated' | 'number' | 'title' | 'additions' | 'approvals' | 'checks';
 
 @Component({
   selector: 'app-pr-panel',
-  imports: [FormsModule, NgTemplateOutlet, NgIcon, HelpTip, PageSkeleton, EmptyState, PrComments],
+  imports: [FormsModule, NgTemplateOutlet, NgIcon, HelpTip, PageSkeleton, EmptyState, PrComments, PrReviewers, PrChecks],
   templateUrl: './pr-panel.html',
   styleUrl: './pr-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -91,8 +91,6 @@ export class PrPanel {
   readonly commentsById = signal<Record<string, PrCommentThread[]>>({});
   readonly commentsLoading = signal<Set<string>>(new Set());
   readonly commentsError = signal<Record<string, string>>({});
-  readonly identityColor = identityColor;
-  readonly compactReviewerLimit = 7;
 
   readonly showingDummy = computed(
     () => this.store.isDummyBackend && !this.store.hasLinkedPrHost(),
@@ -184,7 +182,7 @@ export class PrPanel {
     const all = this.filtered();
     return {
       total: all.length,
-      open: all.filter((p) => p.status === 'open' && !p.draft).length,
+      open: all.filter((p) => p.status === 'open').length,
       draft: all.filter((p) => p.draft).length,
       failing: all.filter((p) => p.pipelineStatus === 'failure' || prCheckFailed(p) > 0).length,
       needsReview: all.filter((p) =>
@@ -1038,44 +1036,22 @@ export class PrPanel {
     return prReviewerPeople(pr);
   }
 
-  compactReviewers(pr: MockPullRequest): PrReviewerPerson[] {
-    return prReviewerPeople(pr).slice(0, this.compactReviewerLimit);
+  bodySegments(pr: MockPullRequest): PrBodySegment[] {
+    return prBodySegments(pr.body);
   }
 
-  extraReviewerCount(pr: MockPullRequest): number {
-    return Math.max(0, prReviewerPeople(pr).length - this.compactReviewerLimit);
-  }
-
-  initials(name: string): string {
-    return prReviewerInitials(name);
-  }
-
-  reviewerStateLabel(state: PrReviewerState): string {
-    switch (state) {
-      case 'approved':
-        return 'Approved';
-      case 'changes':
-        return 'Requested changes';
-      default:
-        return 'Waiting';
+  async openBodyLink(event: Event, href: string): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await this.tauri.openExternalUrl(href);
+    } catch (err) {
+      this.store.showError(err);
     }
-  }
-
-  reviewerSummary(pr: MockPullRequest): string {
-    const people = prReviewerPeople(pr);
-    if (!people.length) return pr.status === 'open' ? 'No reviewers' : 'No reviews';
-    const approved = people.filter((p) => p.state === 'approved').length;
-    const changes = people.filter((p) => p.state === 'changes').length;
-    if (changes) return `${changes} requested changes`;
-    return `${approved} of ${people.length} approved`;
   }
 
   bodyExcerpt(pr: MockPullRequest): string {
     return prBodyExcerpt(pr.body);
-  }
-
-  bodyDisplay(pr: MockPullRequest): string {
-    return prBodyDisplay(pr.body);
   }
 
   visibleLabels(pr: MockPullRequest): string[] {

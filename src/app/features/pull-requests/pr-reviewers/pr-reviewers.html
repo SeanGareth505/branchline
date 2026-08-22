@@ -1,0 +1,87 @@
+<button
+  type="button"
+  class="trigger"
+  [class.open]="open()"
+  [class.empty]="!people().length"
+  cdkOverlayOrigin
+  #origin="cdkOverlayOrigin"
+  (mouseenter)="show()"
+  (mouseleave)="scheduleHide()"
+  (focus)="show()"
+  (blur)="scheduleHide()"
+  (click)="keepOpen($event)"
+  [attr.aria-expanded]="open()"
+  [attr.aria-haspopup]="'dialog'"
+  [attr.aria-label]="'Reviews: ' + summary()"
+>
+  @if (compact().length) {
+    <span class="people" aria-hidden="true">
+      @for (person of compact(); track person.name) {
+        <span class="person" [attr.data-state]="person.state">
+          <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
+          <span class="mark">
+            @if (person.state === 'approved') {
+              <ng-icon name="lucideCheck" size="9" />
+            } @else if (person.state === 'changes') {
+              <ng-icon name="lucideX" size="9" />
+            } @else if (person.state === 'commented') {
+              <ng-icon name="lucideMessageSquare" size="8" />
+            }
+          </span>
+        </span>
+      }
+      @if (extra(); as extraCount) {
+        <span class="person-more">+{{ extraCount }}</span>
+      }
+    </span>
+  }
+  <span class="sum" [attr.data-review]="reviewState()">{{ summary() }}</span>
+</button>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="origin"
+  [cdkConnectedOverlayOpen]="open()"
+  [cdkConnectedOverlayPositions]="positions"
+  [cdkConnectedOverlayPush]="true"
+  [cdkConnectedOverlayViewportMargin]="10"
+  [cdkConnectedOverlayPanelClass]="'bl-help-overlay'"
+  (overlayOutsideClick)="close()"
+  (detach)="close()"
+>
+  <div
+    class="card"
+    role="dialog"
+    [attr.aria-label]="'Reviews: ' + summary()"
+    (mouseenter)="show()"
+    (mouseleave)="scheduleHide()"
+  >
+    <header>
+      <h3>Reviews</h3>
+      <span class="sum" [attr.data-review]="reviewState()">{{ summary() }}</span>
+    </header>
+
+    @if (groups().length) {
+      @for (group of groups(); track group.state) {
+        <section class="group" [attr.data-state]="group.state">
+          <h4>
+            <ng-icon [name]="stateIcon(group.state)" size="12" />
+            {{ group.label }}
+            <span class="n">{{ group.people.length }}</span>
+          </h4>
+          <ul>
+            @for (person of group.people; track person.name) {
+              <li>
+                <span class="face" [style.--identity]="identityColor(person.name)">{{ initials(person.name) }}</span>
+                <span class="who">{{ person.name }}</span>
+                <span class="state">{{ stateLabel(person.state) }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    } @else {
+      <p class="none">No one is assigned to review this pull request yet.</p>
+    }
+  </div>
+</ng-template>

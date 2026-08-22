@@ -482,6 +482,7 @@ export interface MockPullRequest {
   pendingReviewers?: number;
   approvedBy?: string[];
   requestedChangesBy?: string[];
+  commentedBy?: string[];
   checkPassed?: number;
   checkFailed?: number;
   checkPending?: number;
@@ -490,6 +491,8 @@ export interface MockPullRequest {
   mergeState?: string;
   readyToMerge?: boolean;
   checkSummary?: string;
+  checkFailedNames?: string[];
+  checkPendingNames?: string[];
   body?: string;
 }
 
@@ -562,6 +565,47 @@ export function prCheckTotal(pr: MockPullRequest): number {
   return prCheckPassed(pr) + prCheckFailed(pr) + prCheckPending(pr);
 }
 
+export type PrCheckGroupState = 'failed' | 'pending' | 'passed';
+
+export interface PrCheckGroup {
+  state: PrCheckGroupState;
+  label: string;
+  count: number;
+  names: string[];
+}
+
+export function prCheckGroups(pr: MockPullRequest): PrCheckGroup[] {
+  const groups: PrCheckGroup[] = [];
+  const failed = prCheckFailed(pr);
+  const pending = prCheckPending(pr);
+  const passed = prCheckPassed(pr);
+  if (failed) {
+    groups.push({
+      state: 'failed',
+      label: 'Failing',
+      count: failed,
+      names: pr.checkFailedNames ?? [],
+    });
+  }
+  if (pending) {
+    groups.push({
+      state: 'pending',
+      label: 'Running',
+      count: pending,
+      names: pr.checkPendingNames ?? [],
+    });
+  }
+  if (passed) {
+    groups.push({
+      state: 'passed',
+      label: 'Passed',
+      count: passed,
+      names: [],
+    });
+  }
+  return groups;
+}
+
 export function prReadyToMerge(pr: MockPullRequest): boolean {
   if (typeof pr.readyToMerge === 'boolean') return pr.readyToMerge;
   return (
@@ -591,7 +635,7 @@ export function prMergeBlockReason(pr: MockPullRequest): string | null {
   return null;
 }
 
-export type PrReviewerState = 'approved' | 'changes' | 'pending';
+export type PrReviewerState = 'approved' | 'changes' | 'commented' | 'pending';
 
 export interface PrReviewerPerson {
   name: string;
@@ -601,9 +645,15 @@ export interface PrReviewerPerson {
 export function prReviewerPeople(pr: MockPullRequest): PrReviewerPerson[] {
   const approved = new Set((pr.approvedBy ?? []).map((n) => n.toLowerCase()));
   const changes = new Set((pr.requestedChangesBy ?? []).map((n) => n.toLowerCase()));
+  const commented = new Set((pr.commentedBy ?? []).map((n) => n.toLowerCase()));
   const seen = new Set<string>();
   const names: string[] = [];
-  for (const name of [...pr.reviewers, ...(pr.approvedBy ?? []), ...(pr.requestedChangesBy ?? [])]) {
+  for (const name of [
+    ...pr.reviewers,
+    ...(pr.approvedBy ?? []),
+    ...(pr.requestedChangesBy ?? []),
+    ...(pr.commentedBy ?? []),
+  ]) {
     const key = name.trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -615,9 +665,48 @@ export function prReviewerPeople(pr: MockPullRequest): PrReviewerPerson[] {
       ? 'approved'
       : changes.has(key)
         ? 'changes'
-        : 'pending';
+        : commented.has(key)
+          ? 'commented'
+          : 'pending';
     return { name, state };
   });
+}
+
+export interface PrReviewerGroup {
+  state: PrReviewerState;
+  label: string;
+  people: PrReviewerPerson[];
+}
+
+export function prReviewerStateLabel(state: PrReviewerState): string {
+  switch (state) {
+    case 'approved':
+      return 'Approved';
+    case 'changes':
+      return 'Requested changes';
+    case 'commented':
+      return 'Commented';
+    default:
+      return 'Waiting to review';
+  }
+}
+
+export function prReviewerGroups(people: PrReviewerPerson[]): PrReviewerGroup[] {
+  return (['approved', 'changes', 'commented', 'pending'] as const)
+    .map((state) => ({
+      state,
+      label: prReviewerStateLabel(state),
+      people: people.filter((person) => person.state === state),
+    }))
+    .filter((group) => group.people.length > 0);
+}
+
+export function prReviewerSummary(people: PrReviewerPerson[], emptyLabel = 'No reviewers'): string {
+  if (!people.length) return emptyLabel;
+  const changes = people.filter((person) => person.state === 'changes').length;
+  if (changes) return `${changes} requested changes`;
+  const approved = people.filter((person) => person.state === 'approved').length;
+  return `${approved} of ${people.length} approved`;
 }
 
 export function prReviewerInitials(name: string): string {
@@ -650,6 +739,36 @@ export function prBodyDisplay(body?: string | null): string {
       return url;
     }
   });
+}
+
+export interface PrBodySegment {
+  kind: 'text' | 'link';
+  text: string;
+  href?: string;
+}
+
+export function prBodySegments(body?: string | null): PrBodySegment[] {
+  const display = prBodyDisplay(body);
+  if (!display) return [];
+  const segments: PrBodySegment[] = [];
+  const pattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)<>\]]+)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(display))) {
+    if (match.index > last) {
+      segments.push({ kind: 'text', text: display.slice(last, match.index) });
+    }
+    if (match[1] && match[2]) {
+      segments.push({ kind: 'link', text: match[1], href: match[2] });
+    } else if (match[3]) {
+      segments.push({ kind: 'link', text: match[3], href: match[3] });
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < display.length) {
+    segments.push({ kind: 'text', text: display.slice(last) });
+  }
+  return segments;
 }
 
 export function prBodyExcerpt(body?: string | null, max = 160): string {
@@ -757,6 +876,7 @@ export function normalizePullRequest(pr: MockPullRequest): MockPullRequest {
     pendingReviewers,
     approvedBy,
     requestedChangesBy,
+    commentedBy: pr.commentedBy ?? [],
     checkPassed,
     checkFailed,
     checkPending,
@@ -765,6 +885,8 @@ export function normalizePullRequest(pr: MockPullRequest): MockPullRequest {
     mergeState,
     readyToMerge,
     checkSummary,
+    checkFailedNames: pr.checkFailedNames ?? [],
+    checkPendingNames: pr.checkPendingNames ?? [],
   };
 }
 
