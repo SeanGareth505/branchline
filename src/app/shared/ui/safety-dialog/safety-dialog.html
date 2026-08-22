@@ -165,16 +165,28 @@
               Cancel
             </button>
           }
-          <button
-            type="button"
-            class="bl-btn"
-            [class.bl-btn-danger]="safety.severity !== 'info' && !safety.blocked"
-            [class.bl-btn-primary]="safety.severity === 'info' || safety.blocked"
-            [disabled]="!canRunRecommended(safety)"
-            (click)="run(true)"
-          >
-            {{ safety.recommendedLabel }}
-          </button>
+          <div class="actions">
+            @if (showProceed(safety)) {
+              <button
+                type="button"
+                class="bl-btn bl-btn-danger"
+                [disabled]="!canRunProceed(safety)"
+                (click)="run(false)"
+              >
+                {{ safety.proceedLabel }}
+              </button>
+            }
+            <button
+              type="button"
+              class="bl-btn"
+              [class.bl-btn-danger]="recommendedKind(safety) === 'danger'"
+              [class.bl-btn-primary]="recommendedKind(safety) === 'primary'"
+              [disabled]="!canRunRecommended(safety)"
+              (click)="run(true)"
+            >
+              {{ safety.recommendedLabel }}
+            </button>
+          </div>
         </footer>
       }
     </div>

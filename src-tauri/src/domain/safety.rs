@@ -77,6 +77,34 @@ fn push_remote_for_branch(path: &Path, branch: &str) -> String {
         .unwrap_or_else(|| "origin".into())
 }
 
+fn delete_local_branch_actions(
+    blocked: bool,
+    gone: bool,
+    merged: bool,
+) -> (String, String, String) {
+    if blocked {
+        ("Close".into(), "keep".into(), "Close".into())
+    } else if gone {
+        (
+            "Delete leftover local branch".into(),
+            "delete_gone".into(),
+            "Delete leftover local branch".into(),
+        )
+    } else if merged {
+        (
+            "Delete local branch".into(),
+            "delete".into(),
+            "Delete local branch".into(),
+        )
+    } else {
+        (
+            "Keep branch".into(),
+            "keep".into(),
+            "Delete unmerged (backup first)".into(),
+        )
+    }
+}
+
 fn analyze_delete_branch(
     path: &Path,
     target: Option<String>,
@@ -175,27 +203,8 @@ fn analyze_delete_branch(
         "warning"
     };
 
-    let (recommended_label, recommended_action, proceed_label) = if blocked {
-        ("Close".into(), "keep".into(), "Close".into())
-    } else if gone {
-        (
-            "Delete leftover local branch".into(),
-            "delete_gone".into(),
-            "Delete leftover local branch".into(),
-        )
-    } else if merged {
-        (
-            "Delete local branch".into(),
-            "delete".into(),
-            "Delete anyway".into(),
-        )
-    } else {
-        (
-            "Keep branch".into(),
-            "keep".into(),
-            "Delete unmerged (backup first)".into(),
-        )
-    };
+    let (recommended_label, recommended_action, proceed_label) =
+        delete_local_branch_actions(blocked, gone, merged);
 
     let advice = if locked {
         "Unlock the branch from the Branches panel, then try again.".into()
@@ -903,5 +912,43 @@ fn split_pathspecs(target: &str) -> Vec<&str> {
             .collect()
     } else {
         vec![target]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::delete_local_branch_actions;
+
+    #[test]
+    fn merged_local_branch_recommends_safe_delete() {
+        let (label, action, proceed) = delete_local_branch_actions(false, false, true);
+        assert_eq!(label, "Delete local branch");
+        assert_eq!(action, "delete");
+        assert_eq!(proceed, "Delete local branch");
+    }
+
+    #[test]
+    fn unmerged_local_branch_keeps_delete_as_proceed() {
+        let (label, action, proceed) = delete_local_branch_actions(false, false, false);
+        assert_eq!(label, "Keep branch");
+        assert_eq!(action, "keep");
+        assert_eq!(proceed, "Delete unmerged (backup first)");
+        assert_ne!(label, proceed);
+    }
+
+    #[test]
+    fn current_or_locked_branch_is_keep_only() {
+        let (label, action, proceed) = delete_local_branch_actions(true, false, false);
+        assert_eq!(label, "Close");
+        assert_eq!(action, "keep");
+        assert_eq!(proceed, "Close");
+    }
+
+    #[test]
+    fn gone_on_remote_recommends_leftover_delete() {
+        let (label, action, proceed) = delete_local_branch_actions(false, true, false);
+        assert_eq!(label, "Delete leftover local branch");
+        assert_eq!(action, "delete_gone");
+        assert_eq!(proceed, "Delete leftover local branch");
     }
 }

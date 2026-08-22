@@ -15,6 +15,7 @@ import { NgIcon } from '@ng-icons/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { CommitShortcutId, FileStatusEntry, FileStatusKind, TemplateInfo } from '../../../core/models';
 import { AppStore } from '../../../core/app.store';
+import { formatCommitGitCommand } from '../../../shared/git/git-process-output';
 import {
   formatConventionalHead,
   lintConventionalMessage,
@@ -1156,21 +1157,22 @@ export class CommitDialog {
       if (ok === null) return;
     }
 
+    const amending = this.amend();
+    if (amending && !(await this.store.confirmAmend())) return;
+
     const skipChecks = this.commitChecks()?.skip() ?? false;
     const willPush = this.pushAfter();
     const checkTriggers = willPush
       ? ['pre-commit', 'commit-msg', 'pre-push']
       : ['pre-commit', 'commit-msg'];
     const checks = skipChecks ? [] : this.store.enabledChecks(checkTriggers);
-    const commitCommand = [
-      'git commit',
-      this.amend() ? '--amend' : '',
-      '--allow-empty',
-      skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']) ? '--no-verify' : '',
-      '-m <message>',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const skipGitHooks =
+      skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']);
+    const commitCommand = formatCommitGitCommand({
+      amend: amending,
+      skipHooks: skipGitHooks,
+      message: this.messagePreview(),
+    });
     const firstCommand = needsStageAll
       ? `git add -- <${this.unstagedCount()} files>`
       : checks[0]?.command ?? commitCommand;
@@ -1206,13 +1208,16 @@ export class CommitDialog {
       this.commitPhase.set('committing');
       this.store.openGitProcess('commit', commitCommand);
       await this.paintBusy();
-      const skipGitHooks =
-        skipChecks || this.store.hasDetectedChecks(['pre-commit', 'commit-msg']);
       const commit = await this.store.createCommit(
         this.messagePreview(),
-        this.amend(),
+        amending,
         true,
-        { toast: !willPush, skipHooks: skipGitHooks, refresh: !willPush },
+        {
+          toast: !willPush,
+          skipHooks: skipGitHooks,
+          refresh: !willPush,
+          amendConfirmed: amending,
+        },
       );
       if (!commit.ok) return;
       const remembered = this.sequenceToPersist();

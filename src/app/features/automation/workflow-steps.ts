@@ -1,4 +1,4 @@
-import type { WorkflowStep, WorkflowStepConfig, WorkflowStepJson } from '../../core/models';
+import type { WorkflowInfo, WorkflowStep, WorkflowStepConfig, WorkflowStepJson } from '../../core/models';
 
 export interface WorkflowStepDef {
   id: string;
@@ -122,4 +122,29 @@ export function stepSummary(step: WorkflowStepJson): string {
 
 export function createBranchIsAutomatic(config?: WorkflowStepConfig): boolean {
   return !!config?.namePattern?.trim();
+}
+
+const STEPS_THAT_REFRESH = new Set([
+  'fetch',
+  'pull',
+  'pullRebase',
+  'push',
+  'checkoutBranch',
+  'createBranch',
+  'stash',
+  'openCommit',
+]);
+
+export function shouldSkipFetch(steps: WorkflowStep[], index: number): boolean {
+  const next = steps[index + 1]?.id;
+  return next === 'pull' || next === 'pullRebase';
+}
+
+export function shouldSkipRefresh(steps: WorkflowStep[], index: number): boolean {
+  const prev = steps[index - 1]?.id;
+  return !!prev && STEPS_THAT_REFRESH.has(prev);
+}
+
+export function sortWorkflows(list: WorkflowInfo[]): WorkflowInfo[] {
+  return [...list].sort((a, b) => Number(a.builtin) - Number(b.builtin));
 }

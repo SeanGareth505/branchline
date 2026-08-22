@@ -117,7 +117,11 @@ import {
   isAlreadyUpToDateMessage,
   summarizeGitToastMessage,
 } from '../shared/git/git-toast';
-import { appendGitProcessOutput, gitProcessTitle } from '../shared/git/git-process-output';
+import {
+  appendGitProcessOutput,
+  formatCommitGitCommand,
+  gitProcessTitle,
+} from '../shared/git/git-process-output';
 import {
   checkoutBlockedNeedsUntracked,
   computeCheckoutOverwritePaths,
@@ -5093,11 +5097,25 @@ export class AppStore {
     }
   }
 
+  async confirmAmend(): Promise<boolean> {
+    return this.confirmIfEnabled('confirmAmend', {
+      title: 'Amend last commit?',
+      message:
+        'Amending rewrites the tip of this branch. If that commit was already pushed, you will need a force push with lease afterward.',
+      confirmLabel: 'Amend',
+    });
+  }
+
   async createCommit(
     message: string,
     amend = false,
     allowEmpty = false,
-    opts?: { toast?: boolean; skipHooks?: boolean; refresh?: boolean },
+    opts?: {
+      toast?: boolean;
+      skipHooks?: boolean;
+      refresh?: boolean;
+      amendConfirmed?: boolean;
+    },
   ): Promise<{ ok: boolean; shortSha?: string }> {
     const path = this.currentRepo()?.path;
     if (!path) return { ok: false };
@@ -5110,23 +5128,14 @@ export class AppStore {
       this.showToast('Resolve conflicts before committing', { kind: 'warning' });
       return { ok: false };
     }
-    if (amend && !(await this.confirmIfEnabled('confirmAmend', {
-      title: 'Amend last commit?',
-      message:
-        'Amending rewrites the tip of this branch. If that commit was already pushed, you will need a force push with lease afterward.',
-      confirmLabel: 'Amend',
-    }))) {
+    if (amend && !opts?.amendConfirmed && !(await this.confirmAmend())) {
       return { ok: false };
     }
-    const command = [
-      'git commit',
-      amend ? '--amend' : '',
-      '--allow-empty',
-      opts?.skipHooks ? '--no-verify' : '',
-      '-m <message>',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const command = formatCommitGitCommand({
+      amend,
+      skipHooks: opts?.skipHooks,
+      message: message.trim(),
+    });
     const ownsProcess = !this.gitProcess()?.running;
     this.openGitProcess('commit', command);
     let committed = false;
@@ -5792,11 +5801,11 @@ export class AppStore {
   async fetchRemote(
     remote?: string,
     opts?: { toast?: boolean; allRemotes?: boolean; prune?: boolean; tags?: boolean },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) {
       if (this.remoteBusy() === 'fetch') this.endRemoteBusy(false);
-      return;
+      return false;
     }
     const allRemotes = opts?.allRemotes ?? false;
     const prune = opts?.prune ?? false;
@@ -5807,7 +5816,7 @@ export class AppStore {
       prune,
       tags,
     });
-    if (!(await this.beginRemoteBusy('fetch', command))) return;
+    if (!(await this.beginRemoteBusy('fetch', command))) return false;
     let ok = false;
     let output = '';
     try {
@@ -5838,6 +5847,7 @@ export class AppStore {
     } finally {
       this.endRemoteBusy(ok, output);
     }
+    return ok;
   }
 
   private fetchCommand(opts: {
@@ -5945,17 +5955,17 @@ export class AppStore {
     }
   }
 
-  async pullRemote(rebase = false): Promise<void> {
+  async pullRemote(rebase = false, opts?: { toast?: boolean }): Promise<boolean> {
     const path = this.currentRepo()?.path;
     if (!path) {
       if (this.remoteBusy() === 'pull') this.endRemoteBusy(false);
-      return;
+      return false;
     }
     const remote = this.pushRemoteName();
     const command = rebase
       ? `git pull --progress --rebase ${remote}`.trim()
       : `git pull --progress --no-rebase ${remote}`.trim();
-    if (!(await this.beginRemoteBusy('pull', command))) return;
+    if (!(await this.beginRemoteBusy('pull', command))) return false;
     let ok = false;
     let output = '';
     try {
@@ -5967,28 +5977,31 @@ export class AppStore {
       if (!result.ok) {
         output = result.message;
         await this.handleConflictResult(result);
-        return;
+        return false;
       }
       await this.refreshRepo();
       output = result.message || (rebase ? 'Pulled with rebase' : 'Pulled from remote');
-      this.toastGitIntegrate(
-        output,
-        rebase ? 'Pulled with rebase' : 'Pulled from remote',
-        this.status()?.upstream ?? this.pushRemoteName() ?? null,
-        'pull',
-      );
+      if (opts?.toast !== false) {
+        this.toastGitIntegrate(
+          output,
+          rebase ? 'Pulled with rebase' : 'Pulled from remote',
+          this.status()?.upstream ?? this.pushRemoteName() ?? null,
+          'pull',
+        );
+      }
       ok = true;
     } catch (err) {
       const message = rawErrorMessage(err);
       output = message;
       if (message.toLowerCase().includes('conflict')) {
         await this.handleConflictResult({ ok: false, message });
-        return;
+        return false;
       }
       this.showError(err);
     } finally {
       this.endRemoteBusy(ok, output);
     }
+    return ok;
   }
 
   async pushRemote(opts?: {
@@ -7407,11 +7420,11 @@ export class AppStore {
     void this.syncConflictManager(prev, status);
   }
 
-  async stashPush(message?: string, includeUntracked = false): Promise<void> {
+  async stashPush(message?: string, includeUntracked = false): Promise<boolean> {
     const path = this.currentRepo()?.path;
-    if (!path) return;
+    if (!path) return false;
     if (!(await this.beginGitAction(includeUntracked ? 'Stashing including untracked…' : 'Stashing…'))) {
-      return;
+      return false;
     }
     try {
       const result = await this.withRepoMutation(() =>
@@ -7419,8 +7432,10 @@ export class AppStore {
       );
       await this.refreshWorkingTreeAndStashes(path);
       this.showToast(result.message);
+      return true;
     } catch (err) {
       this.showError(err);
+      return false;
     } finally {
       this.actionBusy.set(null);
     }

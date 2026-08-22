@@ -106,62 +106,62 @@ export class TauriService {
     return [
       {
         id: 'wf-feature',
-        name: 'Create feature branch',
-        description: 'Create feature/{jira}/{date}, then open commit',
+        name: 'Start feature',
+        description: 'Create feature/{jira}/{date} and check it out',
         steps: [
           {
             id: 'createBranch',
             config: { namePattern: 'feature/{jira}/{date}', checkout: true },
           },
-          'openCommit',
         ],
-        builtin: true,
-        enabled: true,
-      },
-      {
-        id: 'wf-switch',
-        name: 'Switch branch',
-        description: 'Choose a local branch and check it out',
-        steps: ['checkoutBranch'],
-        builtin: true,
-        enabled: true,
-      },
-      {
-        id: 'wf-switch-sync',
-        name: 'Switch and sync',
-        description: 'Check out a branch, then fetch and pull',
-        steps: ['checkoutBranch', 'fetch', 'pull'],
-        builtin: true,
-        enabled: true,
-      },
-      {
-        id: 'wf-sync',
-        name: 'Sync with remote',
-        description: 'Fetch, pull, then push your current branch',
-        steps: ['fetch', 'pull', 'push'],
         builtin: true,
         enabled: true,
       },
       {
         id: 'wf-hotfix',
-        name: 'Hotfix release',
-        description: 'Create hotfix/{date}, commit, and push',
+        name: 'Start hotfix',
+        description: 'Create hotfix/{date} from the current HEAD',
         steps: [
           {
             id: 'createBranch',
             config: { namePattern: 'hotfix/{date}', checkout: true },
           },
-          'openCommit',
-          'push',
         ],
         builtin: true,
         enabled: true,
       },
       {
+        id: 'wf-switch-sync',
+        name: 'Switch and update',
+        description: 'Check out a branch, then rebase onto upstream',
+        steps: ['checkoutBranch', 'pullRebase'],
+        builtin: true,
+        enabled: true,
+      },
+      {
+        id: 'wf-sync',
+        name: 'Update from remote',
+        description: 'Rebase the current branch onto upstream',
+        steps: ['pullRebase'],
+        builtin: true,
+        enabled: true,
+      },
+      {
+        id: 'wf-commit-push',
+        name: 'Commit and push',
+        description: 'Commit current changes, then push',
+        steps: ['openCommit', 'push'],
+        builtin: true,
+        enabled: true,
+      },
+      {
         id: 'wf-stash-pull',
-        name: 'Stash and pull',
-        description: 'Park local changes, pull, then refresh',
-        steps: ['stash', 'pull', 'refresh'],
+        name: 'Stash and update',
+        description: 'Park local changes, then rebase onto upstream',
+        steps: [
+          { id: 'stash', config: { skipPrompt: true } },
+          'pullRebase',
+        ],
         builtin: true,
         enabled: true,
       },
@@ -3365,23 +3365,56 @@ export class TauriService {
     }
 
     const branch = target || 'feature/onboarding';
+    const isCurrent = branch === 'main';
+    const gone = branch === 'old-experiment';
+    const merged = !gone && branch !== 'feature/auth';
+    const blocked = locked || isCurrent;
+    const recommendedLabel = blocked
+      ? 'Close'
+      : gone
+        ? 'Delete leftover local branch'
+        : merged
+          ? 'Delete local branch'
+          : 'Keep branch';
+    const recommendedAction = blocked ? 'keep' : gone ? 'delete_gone' : merged ? 'delete' : 'keep';
+    const proceedLabel = blocked
+      ? 'Close'
+      : gone
+        ? 'Delete leftover local branch'
+        : merged
+          ? 'Delete local branch'
+          : 'Delete unmerged (backup first)';
     return {
       action: 'deleteBranch',
       title: `Delete branch '${branch}'?`,
-      severity: locked ? 'danger' : 'warning',
+      severity: blocked || (!merged && !gone) ? 'danger' : 'warning',
       target: branch,
       consequence: locked
         ? `Branch '${branch}' is locked and cannot be deleted until unlocked.`
-        : `Delete local branch '${branch}'. Work appears merged into HEAD.`,
+        : isCurrent
+          ? `Branch '${branch}' is checked out and cannot be deleted until you switch.`
+          : gone
+            ? `Delete leftover local branch '${branch}'. The remote-tracking branch is already gone.`
+            : merged
+              ? `Delete local branch '${branch}'. Work appears merged into HEAD.`
+              : `Delete local branch '${branch}'. Unmerged commits may become harder to find.`,
       advice: locked
         ? 'Unlock the branch from the Branches panel, then try again.'
-        : 'Prefer deleting only after the branch is merged or you no longer need it.',
+        : isCurrent
+          ? 'Checkout another branch first, then try again.'
+          : gone
+            ? 'The remote branch is already gone. This leftover local branch is safe to delete.'
+            : merged
+              ? 'Prefer deleting only after the branch is merged or you no longer need it.'
+              : 'Consider creating a backup branch or cherry-picking commits you still need.',
       checks: [
         {
           id: 'not_current',
           label: 'Not the current branch',
-          ok: true,
-          detail: 'Safe to delete a non-checked-out branch',
+          ok: !isCurrent,
+          detail: isCurrent
+            ? 'Switch branches before deleting this one'
+            : 'Safe to delete a non-checked-out branch',
         },
         {
           id: 'not_locked',
@@ -3395,26 +3428,30 @@ export class TauriService {
         },
         {
           id: 'merged',
-          label: 'Merged into HEAD',
-          ok: true,
-          detail: 'Branch tip is reachable from HEAD',
+          label: gone && !merged ? 'Remote leftover' : 'Merged into HEAD',
+          ok: merged || gone,
+          detail: merged
+            ? 'Branch tip is reachable from HEAD'
+            : gone
+              ? 'Remote branch was deleted, so this local leftover is safe to remove'
+              : 'Branch contains commits not in HEAD — they may be hard to recover',
         },
         {
           id: 'no_upstream',
           label: 'No remote tracking branch',
           ok: true,
-          detail: 'Local-only branch',
+          detail: gone ? 'Remote-tracking branch is already gone' : 'Local-only branch',
         },
       ],
-      recommendedLabel: locked ? 'Close' : 'Delete local branch',
-      recommendedAction: locked ? 'keep' : 'delete',
-      proceedLabel: locked ? 'Close' : 'Delete anyway',
-      gitCommand: `git branch -d ${branch}`,
+      recommendedLabel,
+      recommendedAction,
+      proceedLabel,
+      gitCommand: `git branch ${gone || !merged ? '-D' : '-d'} ${branch}`,
       proceedGitCommand: `git branch -D ${branch}`,
       confirmPrompt: `I understand I am deleting local branch '${branch}'`,
       requireTypedConfirm: false,
-      blocked: locked,
-      canProceed: !locked,
+      blocked,
+      canProceed: !blocked,
     };
   }
 

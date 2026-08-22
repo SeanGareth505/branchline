@@ -28,15 +28,37 @@
         <h1>Automation</h1>
         <app-help-tip
           heading="Automation"
-          body="One-click Git sequences — fetch, pull, create a branch, and more. Use placeholders like {date} and {ticket} so create-branch runs without prompts."
+          body="One-click Git sequences. Starters cover the daily loops — start a branch, update from remote, commit and push. Customize any starter, or build your own with placeholders like {date} and {jira}."
         />
       </div>
-      <p>One-click Git sequences — configure branch names with date and Jira placeholders so create-branch runs hands-off.</p>
+      <p>Daily Git loops, one click — start a branch, update, commit, and push.</p>
     </div>
     <div class="hero-actions">
-      <div class="count">
-        <strong>{{ customCount() }}</strong>
-        custom
+      <div class="filters">
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'all'"
+          (click)="store.setAutomationFilter('all')"
+        >
+          All
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'custom'"
+          (click)="store.setAutomationFilter('custom')"
+        >
+          Custom
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="filter() === 'builtin'"
+          (click)="store.setAutomationFilter('builtin')"
+        >
+          Starters
+        </button>
       </div>
       <button type="button" class="bl-btn bl-btn-primary" (click)="create()" title="Create a custom workflow">
         <ng-icon name="lucidePlus" size="15" />
@@ -44,33 +66,6 @@
       </button>
     </div>
   </header>
-
-  <div class="filters">
-    <button
-      type="button"
-      class="chip"
-      [class.active]="filter() === 'all'"
-      (click)="store.setAutomationFilter('all')"
-    >
-      All
-    </button>
-    <button
-      type="button"
-      class="chip"
-      [class.active]="filter() === 'custom'"
-      (click)="store.setAutomationFilter('custom')"
-    >
-      Custom
-    </button>
-    <button
-      type="button"
-      class="chip"
-      [class.active]="filter() === 'builtin'"
-      (click)="store.setAutomationFilter('builtin')"
-    >
-      Starters
-    </button>
-  </div>
 
   @if (loading()) {
     <app-page-skeleton [cards]="4" />
@@ -87,7 +82,11 @@
   } @else {
     <div class="grid">
       @for (w of visible(); track w.id) {
-        <article class="card" [class.disabled]="!w.enabled">
+        <article
+          class="card"
+          [class.disabled]="!w.enabled"
+          [class.running]="runningId() === w.id"
+        >
           <div class="card-top">
             <div class="identity">
               <span class="icon" [class.custom]="!w.builtin">
@@ -125,7 +124,10 @@
 
           <ol class="steps">
             @for (step of w.steps; track $index; let i = $index; let last = $last) {
-              <li>
+              <li
+                [class.current]="isStepCurrent(w.id, i)"
+                [class.done]="isStepDone(w.id, i)"
+              >
                 <span class="num">{{ i + 1 }}</span>
                 <span class="label">{{ stepSummary(step) }}</span>
                 @if (!last) {
@@ -144,16 +146,16 @@
             >
               {{ w.enabled ? 'Disable' : 'Enable' }}
             </button>
-            <button
-              type="button"
-              class="bl-btn ghost"
-              (click)="duplicate(w)"
-              title="Duplicate as a custom workflow"
-            >
-              <ng-icon name="lucideCopy" size="14" />
-              Duplicate
-            </button>
             @if (!w.builtin) {
+              <button
+                type="button"
+                class="bl-btn ghost"
+                (click)="duplicate(w)"
+                title="Duplicate as a custom workflow"
+              >
+                <ng-icon name="lucideCopy" size="14" />
+                Duplicate
+              </button>
               <button
                 type="button"
                 class="bl-btn ghost"

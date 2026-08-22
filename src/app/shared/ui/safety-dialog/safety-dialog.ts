@@ -3,6 +3,11 @@ import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { AppStore } from '../../../core/app.store';
 import type { SafetyAnalysis } from '../../../core/models';
+import {
+  safetyRecommendedButtonKind,
+  safetyRecommendedIsKeep,
+  safetyShowsProceed,
+} from './safety-dialog-actions';
 
 type PushMode = 'lease' | 'force';
 
@@ -37,7 +42,11 @@ export class SafetyDialog {
   }
 
   isSafeKeep(safety: SafetyAnalysis): boolean {
-    return safety.recommendedAction === 'keep';
+    return safetyRecommendedIsKeep(safety);
+  }
+
+  recommendedKind(safety: SafetyAnalysis): 'primary' | 'danger' {
+    return safetyRecommendedButtonKind(safety);
   }
 
   behindRemote(safety: SafetyAnalysis): boolean {
@@ -89,9 +98,7 @@ export class SafetyDialog {
   }
 
   showProceed(safety: SafetyAnalysis): boolean {
-    if (safety.blocked || !safety.canProceed) return false;
-    if (this.isForcePush(safety)) return true;
-    return safety.proceedLabel !== safety.recommendedLabel;
+    return safetyShowsProceed(safety);
   }
 
   async run(recommended: boolean): Promise<void> {

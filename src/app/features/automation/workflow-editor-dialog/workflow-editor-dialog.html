@@ -14,12 +14,12 @@
             <h2 id="workflow-editor-title">{{ title() }}</h2>
             <app-help-tip
               heading="Workflow"
-              body="Name the workflow, add Git steps in order, and configure create-branch with placeholders so it can run without asking."
+              body="Name the sequence, add steps in order, and configure branch names with placeholders so runs stay hands-off."
             />
           </div>
           <p>
-            Add steps, then configure create-branch names with placeholders like
-            <code>{{ '{' }}date{{ '}' }}</code> so runs stay hands-off.
+            Add steps in order. Configure create-branch with placeholders like
+            <code>{{ '{' }}date{{ '}' }}</code> and <code>{{ '{' }}jira{{ '}' }}</code>.
           </p>
         </div>
         <button type="button" class="bl-btn icon" (click)="close()" aria-label="Close" title="Close">

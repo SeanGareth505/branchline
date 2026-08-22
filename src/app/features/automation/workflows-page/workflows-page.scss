@@ -27,6 +27,10 @@
   flex-shrink: 0;
 }
 
+.hero-actions .filters {
+  margin-bottom: 0;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -160,25 +164,6 @@
   line-height: 1.45;
 }
 
-.count {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-  padding: 0.45rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.count strong {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -188,30 +173,26 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-  padding: 1.2rem 1.25rem 1.25rem;
+  gap: 1rem;
+  padding: 1.15rem 1.2rem 1.15rem;
   border-radius: var(--radius-panel);
   border: 1px solid var(--glass-border);
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--accent) 7%, transparent),
-      transparent 42%
-    ),
-    var(--glass-bg-strong);
+  background: var(--glass-bg-strong);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.25);
   box-shadow: var(--shadow-soft);
   transition:
     border-color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-med) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+    box-shadow var(--duration-med) var(--ease-out);
 }
 
 .card:hover {
   border-color: var(--selection-border);
   box-shadow: var(--shadow-panel);
-  transform: translateY(-1px);
+}
+
+.card.running {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
 }
 
 .card-top {
@@ -281,6 +262,25 @@
   padding: 0.2rem 0;
 }
 
+.steps li.current .num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-base);
+}
+
+.steps li.current .label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.steps li.done .num {
+  opacity: 0.55;
+}
+
+.steps li.done .label {
+  color: var(--text-muted);
+}
+
 .num {
   display: grid;
   place-items: center;
@@ -320,5 +320,10 @@
   .hero {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .hero-actions {
+    flex-wrap: wrap;
+    width: 100%;
   }
 }
